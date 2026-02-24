@@ -2376,15 +2376,26 @@ class ASTGeneratorAPI:
                         }
                         external_modules[uri]["variables"].update(table_variables)
 
-            # Get date info from scopes metadata (reuse pre-computed scope_result)
-            scopes_metadata = scopes_api._get_scopes_metadata_from_result(scope_result)
-            for scope_info in scopes_metadata:
-                for module in scope_info.module_versions:
-                    mvid = module.get("module_vid")
-                    for uri, data in external_modules.items():
-                        if data["module_vid"] == mvid:
-                            data["from_date"] = module.get("from_reference_date")
-                            data["to_date"] = module.get("to_reference_date")
+            # Get date info by querying ModuleVersion directly for each external module.
+            # This avoids module_vid mismatches caused by _apply_fallback_for_equal_dates
+            # in the scopes calculation path.
+            from py_dpm.dpm.models import ModuleVersion as MV
+
+            for uri, data in external_modules.items():
+                ext_mvid = data["module_vid"]
+                if ext_mvid:
+                    mv = scopes_api.session.query(MV).filter(
+                        MV.modulevid == ext_mvid
+                    ).first()
+                    if mv:
+                        resolved_mv = MV.get_from_release_id(
+                            session=scopes_api.session,
+                            release_id=release_id,
+                            module_id=mv.moduleid,
+                        ) if release_id else mv
+                        target = resolved_mv or mv
+                        data["from_date"] = target.fromreferencedate
+                        data["to_date"] = target.toreferencedate
 
             # Build output structures
             dependency_modules = {}
