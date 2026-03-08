@@ -1,0 +1,191 @@
+"""Data dictionary service — query DPM metadata."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+from sqlalchemy import and_, distinct, func, or_
+
+from dpmcore.dpm_xl.utils.filters import (
+    filter_active_only,
+    filter_by_date,
+    filter_by_release,
+)
+from dpmcore.orm.glossary import ItemCategory
+from dpmcore.orm.infrastructure import Release
+from dpmcore.orm.packaging import (
+    ModuleVersion,
+    ModuleVersionComposition,
+)
+from dpmcore.orm.rendering import TableVersion
+from dpmcore.orm.variables import (
+    CompoundKey,
+    KeyComposition,
+    Variable,
+    VariableVersion,
+)
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+
+class DataDictionaryService:
+    """Query the DPM data dictionary.
+
+    Args:
+        session: An open SQLAlchemy session.
+    """
+
+    def __init__(self, session: "Session") -> None:
+        self.session = session
+
+    # ------------------------------------------------------------------ #
+    # Releases
+    # ------------------------------------------------------------------ #
+
+    def get_releases(self) -> List[Dict[str, Any]]:
+        """Return all releases ordered by date descending."""
+        rows = (
+            self.session.query(Release)
+            .order_by(Release.date.desc())
+            .all()
+        )
+        return [r.to_dict() for r in rows]
+
+    def get_release_by_id(self, release_id: int) -> Optional[Dict[str, Any]]:
+        """Return a single release by ID."""
+        row = (
+            self.session.query(Release)
+            .filter(Release.releaseid == release_id)
+            .first()
+        )
+        return row.to_dict() if row else None
+
+    def get_release_by_code(self, release_code: str) -> Optional[Dict[str, Any]]:
+        """Return a single release by code."""
+        row = (
+            self.session.query(Release)
+            .filter(Release.code == release_code)
+            .first()
+        )
+        return row.to_dict() if row else None
+
+    def get_latest_release(self) -> Optional[Dict[str, Any]]:
+        """Return the most recent release."""
+        row = (
+            self.session.query(Release)
+            .order_by(Release.date.desc())
+            .first()
+        )
+        return row.to_dict() if row else None
+
+    # ------------------------------------------------------------------ #
+    # Tables
+    # ------------------------------------------------------------------ #
+
+    def get_tables(
+        self,
+        release_id: Optional[int] = None,
+        date: Optional[str] = None,
+        release_code: Optional[str] = None,
+    ) -> List[str]:
+        """Return available table codes."""
+        q = self.session.query(TableVersion.code)
+
+        if date:
+            q = (
+                q.join(
+                    ModuleVersionComposition,
+                    TableVersion.tablevid == ModuleVersionComposition.tablevid,
+                )
+                .join(
+                    ModuleVersion,
+                    ModuleVersionComposition.modulevid == ModuleVersion.modulevid,
+                )
+            )
+            q = filter_by_date(
+                q, date,
+                ModuleVersion.fromreferencedate,
+                ModuleVersion.toreferencedate,
+            )
+        elif release_id:
+            q = filter_by_release(
+                q, release_id=release_id,
+                start_col=TableVersion.startreleaseid,
+                end_col=TableVersion.endreleaseid,
+            )
+        elif release_code:
+            q = filter_by_release(
+                q, release_code=release_code,
+                start_col=TableVersion.startreleaseid,
+                end_col=TableVersion.endreleaseid,
+            )
+
+        q = q.order_by(TableVersion.code)
+        return [row[0] for row in q.all()]
+
+    def get_table_version(
+        self,
+        table_code: str,
+        release_id: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Return table version info for a given table code."""
+        q = self.session.query(TableVersion).filter(
+            TableVersion.code == table_code,
+        )
+        if release_id is not None:
+            q = filter_by_release(
+                q, release_id=release_id,
+                start_col=TableVersion.startreleaseid,
+                end_col=TableVersion.endreleaseid,
+            )
+        row = q.first()
+        return row.to_dict() if row else None
+
+    # ------------------------------------------------------------------ #
+    # Items
+    # ------------------------------------------------------------------ #
+
+    def get_all_item_signatures(
+        self,
+        release_id: Optional[int] = None,
+    ) -> List[str]:
+        """Return all distinct item signatures."""
+        q = self.session.query(
+            distinct(ItemCategory.signature).label("signature"),
+        ).filter(ItemCategory.signature.isnot(None))
+
+        if release_id is not None:
+            q = filter_by_release(
+                q, release_id=release_id,
+                start_col=ItemCategory.startreleaseid,
+                end_col=ItemCategory.endreleaseid,
+            )
+        else:
+            q = filter_active_only(q, ItemCategory.endreleaseid)
+
+        q = q.order_by(ItemCategory.signature)
+        return [row[0] for row in q.all()]
+
+    def get_item_categories(
+        self,
+        release_id: Optional[int] = None,
+    ) -> List[Tuple[str, str]]:
+        """Return (code, signature) pairs for item categories."""
+        q = self.session.query(
+            ItemCategory.code,
+            ItemCategory.signature,
+        ).filter(
+            ItemCategory.code.isnot(None),
+            ItemCategory.signature.isnot(None),
+        )
+
+        if release_id is not None:
+            q = filter_by_release(
+                q, release_id=release_id,
+                start_col=ItemCategory.startreleaseid,
+                end_col=ItemCategory.endreleaseid,
+            )
+
+        q = q.order_by(ItemCategory.code, ItemCategory.signature)
+        return [(row[0], row[1]) for row in q.all()]

@@ -164,6 +164,14 @@ and the `references` parameter behaviour for traversing the dependency graph.
 
 Full specification: [06-api-messages.md](06-api-messages.md)
 
+### Project Setup & Conventions
+
+Defines the project layout, tooling, code quality standards, testing
+infrastructure, documentation, and CI/CD pipeline. All choices are aligned
+with [pysdmx](https://github.com/bis-med-it/pysdmx) for ecosystem consistency.
+
+Full specification: [07-project-setup.md](07-project-setup.md)
+
 ## 6. Technology Stack
 
 | Concern | Choice | Rationale |

@@ -1,7 +1,6 @@
 **/__pycache__
-database.db
-database.db-journal
-**/*.accdb
+*.py[cod]
+*$py.class
 
 # Build and distribution files
 build/
@@ -10,6 +9,7 @@ dist/
 .eggs/
 
 # Virtual environments
+.venv/
 venv/
 env/
 .env
@@ -32,13 +32,20 @@ poetry.lock
 .coverage
 htmlcov/
 
+# Documentation
+docs/_build/
+
+# Database files
+*.db
+*.db-journal
+**/*.accdb
+
 # Temporary files
 *.tmp
 *.temp
 
+# Legacy / development
 json_scripts/*
-
-docs/*
 development.py
 .antigravity/
 output/
