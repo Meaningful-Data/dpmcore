@@ -46,7 +46,6 @@ class Category(Base):
         name: Human-readable name.
         description: Long description.
         is_enumerated: Whether the category is enumerated.
-        is_super_category: Whether this is a super-category.
         is_active: Whether the category is currently active.
         is_external_ref_data: External reference-data flag.
         ref_data_source: Source URI for external ref data.
@@ -70,9 +69,6 @@ class Category(Base):
     is_enumerated: Mapped[Optional[bool]] = mapped_column(
         "IsEnumerated", Boolean
     )
-    is_super_category: Mapped[Optional[bool]] = mapped_column(
-        "IsSuperCategory", Boolean
-    )
     is_active: Mapped[Optional[bool]] = mapped_column(
         "IsActive", Boolean
     )
@@ -86,6 +82,12 @@ class Category(Base):
         "RowGUID",
         String(36),
         ForeignKey("Concept.ConceptGUID"),
+    )
+    created_release: Mapped[Optional[int]] = mapped_column(
+        "CreatedRelease", Integer
+    )
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID", Integer
     )
 
     concept: Mapped[Optional["Concept"]] = relationship(
@@ -157,6 +159,9 @@ class SubCategory(Base):
         "RowGUID",
         String(36),
         ForeignKey("Concept.ConceptGUID"),
+    )
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID", Integer
     )
 
     category: Mapped[Optional["Category"]] = relationship(
@@ -356,7 +361,6 @@ class Item(Base):
         item_id: Primary key.
         name: Human-readable name.
         description: Long description.
-        is_compound: Whether this is a compound item.
         is_property: Whether this item doubles as a property.
         is_active: Whether the item is currently active.
         row_guid: FK to Concept.
@@ -373,9 +377,6 @@ class Item(Base):
     description: Mapped[Optional[str]] = mapped_column(
         "Description", String(2000)
     )
-    is_compound: Mapped[Optional[bool]] = mapped_column(
-        "IsCompound", Boolean
-    )
     is_property: Mapped[Optional[bool]] = mapped_column(
         "IsProperty", Boolean
     )
@@ -386,6 +387,9 @@ class Item(Base):
         "RowGUID",
         String(36),
         ForeignKey("Concept.ConceptGUID"),
+    )
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID", Integer
     )
 
     concept: Mapped[Optional["Concept"]] = relationship(
@@ -537,6 +541,9 @@ class Property(Base):
         String(36),
         ForeignKey("Concept.ConceptGUID"),
     )
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID", Integer
+    )
 
     item: Mapped["Item"] = relationship(
         back_populates="property"
@@ -658,6 +665,9 @@ class Context(Base):
         "RowGUID",
         String(36),
         ForeignKey("Concept.ConceptGUID"),
+    )
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID", Integer
     )
 
     concept: Mapped[Optional["Concept"]] = relationship(

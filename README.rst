@@ -16,6 +16,7 @@ Optional extras:
 
 .. code-block:: bash
 
+   pip install dpmcore[migration]   # Access database migration (pandas)
    pip install dpmcore[data]        # Pandas support (semantic validation, scope calculation)
    pip install dpmcore[server]      # FastAPI REST server
    pip install dpmcore[django]      # Django integration
@@ -163,6 +164,34 @@ required.
        tables     = hierarchy.get_tables_for_module("F_01.01", release_id=5)
        details    = hierarchy.get_table_details("tC_01.00", release_id=5)
 
+**Migration --- import from Access:**
+
+.. code-block:: python
+
+   from dpmcore import connect
+
+   # Via DpmConnection (uses the connection's engine)
+   with connect("sqlite:///dpm.db") as db:
+       result = db.services.migration.migrate_from_access("/path/to/dpm.accdb")
+       print(f"Migrated {result.tables_migrated} tables, {result.total_rows} rows")
+
+.. code-block:: python
+
+   # Standalone usage with any SQLAlchemy engine
+   from sqlalchemy import create_engine
+   from dpmcore.services.migration import MigrationService
+
+   engine = create_engine("postgresql://user:pass@host/dpm_db")
+   service = MigrationService(engine)
+   result = service.migrate_from_access("/path/to/dpm.accdb")
+
+Or from the command line:
+
+.. code-block:: bash
+
+   pip install dpmcore[cli,migration]
+   dpmcore migrate --source /path/to/dpm.accdb --database sqlite:///dpm.db
+
 **Unified facade:**
 
 .. code-block:: python
@@ -279,6 +308,9 @@ Package Layout
    |   +-- explorer.py        ExplorerService
    |   +-- hierarchy.py       HierarchyService
    |   +-- dpm_xl.py          DpmXlService (facade)
+   |   +-- migration.py       MigrationService (Access import)
+   +-- cli/
+   |   +-- main.py            Click CLI (migrate, serve)
    +-- dpm_xl/                DPM-XL engine internals
    |   +-- grammar/           ANTLR4 grammar + generated parser
    |   +-- ast/               AST nodes, visitor, operands

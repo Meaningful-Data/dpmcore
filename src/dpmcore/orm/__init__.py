@@ -15,6 +15,7 @@ import dpmcore.orm.rendering  # noqa: F401
 import dpmcore.orm.variables  # noqa: F401
 import dpmcore.orm.operations  # noqa: F401
 import dpmcore.orm.packaging  # noqa: F401
+import dpmcore.orm.auxiliary  # noqa: F401
 
 __all__ = [
     "Base",

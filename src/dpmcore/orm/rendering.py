@@ -75,6 +75,9 @@ class Table(Base):
         String(36),
         ForeignKey("Concept.ConceptGUID"),
     )
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID", Integer
+    )
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
@@ -271,10 +274,16 @@ class Header(Base):
     is_key: Mapped[Optional[bool]] = mapped_column(
         "IsKey", Boolean
     )
+    is_attribute: Mapped[Optional[bool]] = mapped_column(
+        "IsAttribute", Boolean
+    )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
         String(36),
         ForeignKey("Concept.ConceptGUID"),
+    )
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID", Integer
     )
 
     table: Mapped[Optional["Table"]] = relationship(
@@ -456,6 +465,9 @@ class Cell(Base):
         "RowGUID",
         String(36),
         ForeignKey("Concept.ConceptGUID"),
+    )
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID", Integer
     )
 
     table: Mapped[Optional["Table"]] = relationship(
@@ -694,6 +706,9 @@ class TableGroup(Base):
         Integer,
         ForeignKey("TableGroup.TableGroupID"),
     )
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID", Integer
+    )
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
@@ -854,6 +869,9 @@ class TableAssociation(Base):
         "RowGUID",
         String(36),
         ForeignKey("Concept.ConceptGUID"),
+    )
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID", Integer
     )
 
     child_table_version: Mapped[

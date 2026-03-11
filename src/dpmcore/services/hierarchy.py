@@ -43,12 +43,6 @@ class HierarchyService:
     ) -> List[Dict[str, Any]]:
         """Return all frameworks, optionally filtered by release."""
         q = self.session.query(Framework)
-        if release_id is not None:
-            q = filter_by_release(
-                q, release_id=release_id,
-                start_col=Framework.startreleaseid,
-                end_col=Framework.endreleaseid,
-            )
         return [r.to_dict() for r in q.all()]
 
     def get_module_version(
@@ -59,14 +53,14 @@ class HierarchyService:
         """Return module version info for a given module code."""
         q = (
             self.session.query(ModuleVersion)
-            .join(Module, ModuleVersion.moduleid == Module.moduleid)
+            .join(Module, ModuleVersion.module_id == Module.module_id)
             .filter(Module.code == module_code)
         )
         if release_id is not None:
             q = filter_by_release(
                 q, release_id=release_id,
-                start_col=ModuleVersion.startreleaseid,
-                end_col=ModuleVersion.endreleaseid,
+                start_col=ModuleVersion.start_release_id,
+                end_col=ModuleVersion.end_release_id,
             )
         row = q.first()
         return row.to_dict() if row else None
@@ -83,8 +77,8 @@ class HierarchyService:
         if release_id is not None:
             q = filter_by_release(
                 q, release_id=release_id,
-                start_col=TableVersion.startreleaseid,
-                end_col=TableVersion.endreleaseid,
+                start_col=TableVersion.start_release_id,
+                end_col=TableVersion.end_release_id,
             )
         tv = q.first()
         if tv is None:
@@ -97,9 +91,9 @@ class HierarchyService:
             self.session.query(HeaderVersion)
             .join(
                 TableVersionHeader,
-                HeaderVersion.headervid == TableVersionHeader.headervid,
+                HeaderVersion.header_vid == TableVersionHeader.header_vid,
             )
-            .filter(TableVersionHeader.tablevid == tv.tablevid)
+            .filter(TableVersionHeader.table_vid == tv.table_vid)
         )
         result["headers"] = [h.to_dict() for h in headers_q.all()]
 
@@ -108,9 +102,9 @@ class HierarchyService:
             self.session.query(Cell)
             .join(
                 TableVersionCell,
-                Cell.cellid == TableVersionCell.cellid,
+                Cell.cell_id == TableVersionCell.cell_id,
             )
-            .filter(TableVersionCell.tablevid == tv.tablevid)
+            .filter(TableVersionCell.table_vid == tv.table_vid)
         )
         result["cells"] = [c.to_dict() for c in cells_q.all()]
 
@@ -126,19 +120,19 @@ class HierarchyService:
             self.session.query(TableVersion)
             .join(
                 ModuleVersionComposition,
-                TableVersion.tablevid == ModuleVersionComposition.tablevid,
+                TableVersion.table_vid == ModuleVersionComposition.table_vid,
             )
             .join(
                 ModuleVersion,
-                ModuleVersionComposition.modulevid == ModuleVersion.modulevid,
+                ModuleVersionComposition.module_vid == ModuleVersion.module_vid,
             )
-            .join(Module, ModuleVersion.moduleid == Module.moduleid)
+            .join(Module, ModuleVersion.module_id == Module.module_id)
             .filter(Module.code == module_code)
         )
         if release_id is not None:
             q = filter_by_release(
                 q, release_id=release_id,
-                start_col=ModuleVersion.startreleaseid,
-                end_col=ModuleVersion.endreleaseid,
+                start_col=ModuleVersion.start_release_id,
+                end_col=ModuleVersion.end_release_id,
             )
         return [r.to_dict() for r in q.all()]

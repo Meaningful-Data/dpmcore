@@ -15,7 +15,6 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
-    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -246,9 +245,6 @@ class User(Base):
     user_roles: Mapped[List["UserRole"]] = relationship(
         back_populates="user",
     )
-    changelogs: Mapped[List["Changelog"]] = relationship(
-        back_populates="user",
-    )
 
 
 class Role(Base):
@@ -420,7 +416,9 @@ class DpmAttribute(Base):
     dpm_class: Mapped[Optional["DpmClass"]] = relationship(
         back_populates="dpm_attributes"
     )
-    changelogs: Mapped[List["Changelog"]] = relationship(
+    changelog_attributes: Mapped[
+        List["ChangelogAttribute"]
+    ] = relationship(
         back_populates="dpm_attribute",
     )
     translations: Mapped[List["Translation"]] = relationship(
@@ -504,14 +502,14 @@ class Changelog(Base):
     Attributes:
         row_guid: Concept GUID (composite PK).
         class_id: FK to DpmClass (composite PK).
-        attribute_id: FK to DpmAttribute (composite PK).
         timestamp: Change timestamp (composite PK).
-        old_value: Previous value.
-        new_value: Updated value.
         change_type: Type of change.
         status: Change status.
-        user_id: FK to User.
+        user_email: Email of the user who made the change.
         release_id: FK to Release.
+        entity_id: Identifier of the changed entity.
+        entity_code: Code of the changed entity.
+        action_id: Action identifier (links to ChangelogAttribute).
     """
 
     __tablename__ = "ChangeLog"
@@ -525,14 +523,73 @@ class Changelog(Base):
         ForeignKey("DPMClass.ClassID"),
         primary_key=True,
     )
-    attribute_id: Mapped[int] = mapped_column(
+    timestamp: Mapped[int] = mapped_column(
+        "Timestamp", Integer, primary_key=True
+    )
+    change_type: Mapped[Optional[str]] = mapped_column(
+        "ChangeType", String(255)
+    )
+    status: Mapped[Optional[str]] = mapped_column(
+        "Status", String(1)
+    )
+    user_email: Mapped[Optional[str]] = mapped_column(
+        "UserEmail", String(255)
+    )
+    release_id: Mapped[Optional[int]] = mapped_column(
+        "ReleaseID", Integer, ForeignKey("Release.ReleaseID")
+    )
+    entity_id: Mapped[Optional[int]] = mapped_column(
+        "EntityID", Integer
+    )
+    entity_code: Mapped[Optional[str]] = mapped_column(
+        "EntityCode", String(255)
+    )
+    action_id: Mapped[int] = mapped_column(
+        "ActionID", Integer
+    )
+
+    dpm_class: Mapped[Optional["DpmClass"]] = relationship(
+        foreign_keys=[class_id]
+    )
+    release: Mapped[Optional["Release"]] = relationship(
+        foreign_keys=[release_id]
+    )
+    changelog_attributes: Mapped[
+        List["ChangelogAttribute"]
+    ] = relationship(
+        primaryjoin="Changelog.action_id == foreign(ChangelogAttribute.action_id)",
+        back_populates="changelog",
+    )
+
+
+# ------------------------------------------------------------------
+# ChangelogAttribute
+# ------------------------------------------------------------------
+
+
+class ChangelogAttribute(Base):
+    """Attribute-level detail for a Changelog action.
+
+    Attributes:
+        changelog_attribute_id: Primary key.
+        action_id: Action identifier linking to Changelog.
+        attribute_id: FK to DpmAttribute.
+        old_value: Previous value.
+        new_value: Updated value.
+    """
+
+    __tablename__ = "ChangeLogAttribute"
+
+    changelog_attribute_id: Mapped[int] = mapped_column(
+        "ChangeLogAttributeID", Integer, primary_key=True
+    )
+    action_id: Mapped[int] = mapped_column(
+        "ActionID", Integer
+    )
+    attribute_id: Mapped[Optional[int]] = mapped_column(
         "AttributeID",
         Integer,
         ForeignKey("DPMAttribute.AttributeID"),
-        primary_key=True,
-    )
-    timestamp: Mapped[int] = mapped_column(
-        "Timestamp", Integer, primary_key=True
     )
     old_value: Mapped[Optional[str]] = mapped_column(
         "OldValue", String(255)
@@ -540,30 +597,14 @@ class Changelog(Base):
     new_value: Mapped[Optional[str]] = mapped_column(
         "NewValue", String(255)
     )
-    change_type: Mapped[Optional[str]] = mapped_column(
-        "ChangeType", String(20)
-    )
-    status: Mapped[Optional[str]] = mapped_column(
-        "Status", String(1)
-    )
-    user_id: Mapped[Optional[int]] = mapped_column(
-        "UserID", Integer, ForeignKey("User.UserID")
-    )
-    release_id: Mapped[Optional[int]] = mapped_column(
-        "ReleaseID", Integer, ForeignKey("Release.ReleaseID")
-    )
 
-    dpm_class: Mapped[Optional["DpmClass"]] = relationship(
-        foreign_keys=[class_id]
-    )
     dpm_attribute: Mapped[Optional["DpmAttribute"]] = relationship(
         foreign_keys=[attribute_id]
     )
-    user: Mapped[Optional["User"]] = relationship(
-        foreign_keys=[user_id]
-    )
-    release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[release_id]
+    changelog: Mapped[Optional["Changelog"]] = relationship(
+        foreign_keys=[action_id],
+        primaryjoin="ChangelogAttribute.action_id == Changelog.action_id",
+        back_populates="changelog_attributes",
     )
 
 
@@ -712,6 +753,9 @@ class Subdivision(Base):
         String(36),
         ForeignKey("Concept.ConceptGUID"),
     )
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID", Integer
+    )
 
     document_version: Mapped[Optional["DocumentVersion"]] = relationship(
         back_populates="subdivisions"
@@ -838,8 +882,17 @@ class Release(Base):
         String(36),
         ForeignKey("Concept.ConceptGUID"),
     )
-    latest_variable_gen_time: Mapped[Optional[datetime]] = (
-        mapped_column("LatestVariableGenTime", DateTime)
+    error_date: Mapped[Optional[datetime]] = mapped_column(
+        "ErrorDate", DateTime
+    )
+    type: Mapped[Optional[str]] = mapped_column(
+        "Type", String(20)
+    )
+    error: Mapped[Optional[str]] = mapped_column(
+        "Error", String(4000)
+    )
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID", Integer
     )
 
     concept: Mapped[Optional["Concept"]] = relationship(

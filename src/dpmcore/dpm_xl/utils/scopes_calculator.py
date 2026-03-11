@@ -429,11 +429,11 @@ class OperationScopeService:
         else:
             submission_date = None
         operation_scope = OperationScope(
-            operationvid=self.operation_version_id,
-            isactive=1,  # Use 1 instead of True for PostgreSQL bigint compatibility
+            operation_vid=self.operation_version_id,
+            is_active=1,  # Use 1 instead of True for PostgreSQL bigint compatibility
             severity=severity_lower,
-            fromsubmissiondate=submission_date,
-            rowguid=str(uuid.uuid4()),
+            from_submission_date=submission_date,
+            row_guid=str(uuid.uuid4()),
         )
         self.session.add(operation_scope)
         return operation_scope
@@ -447,8 +447,8 @@ class OperationScopeService:
         """
         operation_scope_composition = OperationScopeComposition(
             operation_scope=operation_scope,
-            modulevid=module_vid,
-            rowguid=str(uuid.uuid4()),
+            module_vid=module_vid,
+            row_guid=str(uuid.uuid4()),
         )
         # Store module info as transient attribute for to_dict() access
         if module_info:
@@ -473,7 +473,7 @@ class OperationScopeService:
         else:
             for scope in operation_scopes:
                 composition_modules = [
-                    scope_comp.modulevid
+                    scope_comp.module_vid
                     for scope_comp in scope.operation_scope_compositions
                 ]
                 result = database_scopes.groupby("OperationScopeID").filter(

@@ -9,6 +9,7 @@ from dpmcore.dpm_xl.ast.operands import OperandsChecking
 from dpmcore.dpm_xl.semantic_analyzer import InputAnalyzer
 from dpmcore.dpm_xl.warning_collector import collect_warnings
 from dpmcore.errors import SemanticError
+from dpmcore.orm.infrastructure import Release
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -57,6 +58,15 @@ class SemanticService:
         failure.
         """
         try:
+            if release_id is not None:
+                exists = (
+                    self.session.query(Release.release_id)
+                    .filter(Release.release_id == release_id)
+                    .first()
+                )
+                if exists is None:
+                    raise SemanticError("1-21", release_id=release_id)
+
             ast = self._syntax.parse(expression)
             self.ast = ast
 

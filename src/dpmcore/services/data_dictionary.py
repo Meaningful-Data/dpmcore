@@ -56,7 +56,7 @@ class DataDictionaryService:
         """Return a single release by ID."""
         row = (
             self.session.query(Release)
-            .filter(Release.releaseid == release_id)
+            .filter(Release.release_id == release_id)
             .first()
         )
         return row.to_dict() if row else None
@@ -96,29 +96,29 @@ class DataDictionaryService:
             q = (
                 q.join(
                     ModuleVersionComposition,
-                    TableVersion.tablevid == ModuleVersionComposition.tablevid,
+                    TableVersion.table_vid == ModuleVersionComposition.table_vid,
                 )
                 .join(
                     ModuleVersion,
-                    ModuleVersionComposition.modulevid == ModuleVersion.modulevid,
+                    ModuleVersionComposition.module_vid == ModuleVersion.module_vid,
                 )
             )
             q = filter_by_date(
                 q, date,
-                ModuleVersion.fromreferencedate,
-                ModuleVersion.toreferencedate,
+                ModuleVersion.from_reference_date,
+                ModuleVersion.to_reference_date,
             )
         elif release_id:
             q = filter_by_release(
                 q, release_id=release_id,
-                start_col=TableVersion.startreleaseid,
-                end_col=TableVersion.endreleaseid,
+                start_col=TableVersion.start_release_id,
+                end_col=TableVersion.end_release_id,
             )
         elif release_code:
             q = filter_by_release(
                 q, release_code=release_code,
-                start_col=TableVersion.startreleaseid,
-                end_col=TableVersion.endreleaseid,
+                start_col=TableVersion.start_release_id,
+                end_col=TableVersion.end_release_id,
             )
 
         q = q.order_by(TableVersion.code)
@@ -136,8 +136,8 @@ class DataDictionaryService:
         if release_id is not None:
             q = filter_by_release(
                 q, release_id=release_id,
-                start_col=TableVersion.startreleaseid,
-                end_col=TableVersion.endreleaseid,
+                start_col=TableVersion.start_release_id,
+                end_col=TableVersion.end_release_id,
             )
         row = q.first()
         return row.to_dict() if row else None
@@ -158,11 +158,11 @@ class DataDictionaryService:
         if release_id is not None:
             q = filter_by_release(
                 q, release_id=release_id,
-                start_col=ItemCategory.startreleaseid,
-                end_col=ItemCategory.endreleaseid,
+                start_col=ItemCategory.start_release_id,
+                end_col=ItemCategory.end_release_id,
             )
         else:
-            q = filter_active_only(q, ItemCategory.endreleaseid)
+            q = filter_active_only(q, ItemCategory.end_release_id)
 
         q = q.order_by(ItemCategory.signature)
         return [row[0] for row in q.all()]
@@ -183,8 +183,8 @@ class DataDictionaryService:
         if release_id is not None:
             q = filter_by_release(
                 q, release_id=release_id,
-                start_col=ItemCategory.startreleaseid,
-                end_col=ItemCategory.endreleaseid,
+                start_col=ItemCategory.start_release_id,
+                end_col=ItemCategory.end_release_id,
             )
 
         q = q.order_by(ItemCategory.code, ItemCategory.signature)

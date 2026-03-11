@@ -211,27 +211,27 @@ class OperandsChecking(ASTTemplate, ABC):
             query = (
                 self.session.query(
                     TableVersion.code.label("Code"),
-                    TableVersion.startreleaseid.label("StartReleaseID"),
-                    TableVersion.endreleaseid.label("EndReleaseID"),
+                    TableVersion.start_release_id.label("StartReleaseID"),
+                    TableVersion.end_release_id.label("EndReleaseID"),
                     Header.direction.label("Direction"),
-                    Table.hasopenrows.label("HasOpenRows"),
-                    Table.hasopencolumns.label("HasOpenColumns"),
-                    Table.hasopensheets.label("HasOpenSheets"),
+                    Table.has_open_rows.label("HasOpenRows"),
+                    Table.has_open_columns.label("HasOpenColumns"),
+                    Table.has_open_sheets.label("HasOpenSheets"),
                 )
-                .join(Table, Table.tableid == TableVersion.tableid)
+                .join(Table, Table.table_id == TableVersion.table_id)
                 .join(
                     TableVersionHeader,
-                    TableVersion.tablevid == TableVersionHeader.tablevid,
+                    TableVersion.table_vid == TableVersionHeader.table_vid,
                 )
-                .join(Header, Header.headerid == TableVersionHeader.headerid)
+                .join(Header, Header.header_id == TableVersionHeader.header_id)
                 .filter(TableVersion.code.in_(table_codes))
                 .distinct()
             )
 
             query = filter_by_release(
                 query,
-                start_col=TableVersion.startreleaseid,
-                end_col=TableVersion.endreleaseid,
+                start_col=TableVersion.start_release_id,
+                end_col=TableVersion.end_release_id,
                 release_id=self.release_id,
             )
 

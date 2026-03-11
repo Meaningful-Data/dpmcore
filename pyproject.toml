@@ -38,6 +38,7 @@ server = ["fastapi>=0.100", "uvicorn[standard]>=0.20"]
 django = ["django>=4.2"]
 postgres = ["psycopg2-binary>=2.9,<3.0"]
 sqlserver = ["pyodbc>=5.1,<5.2"]
+migration = ["pandas>=2.1.4"]
 data = ["pandas>=2.1.4"]
 cli = ["click>=8.1", "rich>=13.7"]
 all = [
@@ -66,6 +67,7 @@ dev = [
     "pytest-asyncio>=0.21.1",
     "pytest-cov>=4.0.0",
     "pyroma>=4.2",
+    "httpx (>=0.28.1,<0.29.0)",
 ]
 docs = [
     "sphinx>=7.2.6",
@@ -107,6 +109,8 @@ lint.pydocstyle.convention = "google"
     "C901",
     "DTZ",
     "D100",
+    "D101",
+    "D102",
     "D103",
     "D104",
     "PERF",

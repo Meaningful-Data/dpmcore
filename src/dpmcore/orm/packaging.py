@@ -10,6 +10,7 @@ from datetime import date
 from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import (
+    Boolean,
     Date,
     ForeignKey,
     Integer,
@@ -64,6 +65,9 @@ class Framework(Base):
         String(36),
         ForeignKey("Concept.ConceptGUID"),
     )
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID", Integer
+    )
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
@@ -106,6 +110,12 @@ class Module(Base):
         "RowGUID",
         String(36),
         ForeignKey("Concept.ConceptGUID"),
+    )
+    is_document_module: Mapped[Optional[bool]] = mapped_column(
+        "isDocumentModule", Boolean
+    )
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID", Integer
     )
 
     framework: Mapped[Optional["Framework"]] = relationship(
@@ -199,6 +209,12 @@ class ModuleVersion(Base):
         "RowGUID",
         String(36),
         ForeignKey("Concept.ConceptGUID"),
+    )
+    is_reported: Mapped[Optional[bool]] = mapped_column(
+        "IsReported", Boolean
+    )
+    is_calculated: Mapped[Optional[bool]] = mapped_column(
+        "IsCalculated", Boolean
     )
 
     module: Mapped[Optional["Module"]] = relationship(

@@ -30,7 +30,7 @@ if TYPE_CHECKING:
         Property,
         SubCategory,
     )
-    from dpmcore.orm.modules import ModuleVersion
+    from dpmcore.orm.packaging import ModuleVersion
     from dpmcore.orm.variables import Variable
 
 
@@ -76,6 +76,9 @@ class Operation(Base):
         "RowGUID",
         String(36),
         ForeignKey("Concept.ConceptGUID"),
+    )
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID", Integer
     )
 
     group_operation: Mapped[

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
 from dpmcore.dpm_xl.utils.scopes_calculator import OperationScopeService
 from dpmcore.errors import SemanticError
+from dpmcore.orm.infrastructure import Release
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -40,6 +41,18 @@ class ScopeCalculatorService:
         self.session = session
         self._syntax = SyntaxService()
 
+    def _check_release_exists(self, release_id: Optional[int]) -> None:
+        """Raise SemanticError if *release_id* does not exist."""
+        if release_id is None:
+            return
+        exists = (
+            self.session.query(Release.release_id)
+            .filter(Release.release_id == release_id)
+            .first()
+        )
+        if exists is None:
+            raise SemanticError("1-21", release_id=release_id)
+
     def calculate_from_expression(
         self,
         expression: str,
@@ -54,6 +67,7 @@ class ScopeCalculatorService:
         :class:`OperationScopeService`.
         """
         try:
+            self._check_release_exists(release_id)
             ast = self._syntax.parse(expression)
             oc = OperandsChecking(
                 session=self.session,
@@ -79,7 +93,7 @@ class ScopeCalculatorService:
             mvids: List[int] = []
             for scope in all_scopes:
                 for comp in getattr(scope, "operation_scope_compositions", []):
-                    vid = comp.modulevid
+                    vid = comp.module_vid
                     if vid not in mvids:
                         mvids.append(vid)
 
@@ -106,6 +120,7 @@ class ScopeCalculatorService:
     ) -> ScopeResult:
         """Calculate scopes directly from table version IDs."""
         try:
+            self._check_release_exists(release_id)
             scope_svc = OperationScopeService(
                 operation_version_id=operation_version_id,
                 session=self.session,
@@ -121,7 +136,7 @@ class ScopeCalculatorService:
             mvids: List[int] = []
             for scope in all_scopes:
                 for comp in getattr(scope, "operation_scope_compositions", []):
-                    vid = comp.modulevid
+                    vid = comp.module_vid
                     if vid not in mvids:
                         mvids.append(vid)
 

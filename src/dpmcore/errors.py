@@ -151,6 +151,7 @@ centralised_messages: Dict[str, str] = {
         "Missing explicit {header} on the expression"
         " for table {table}"
     ),
+    "1-21": "Release {release_id} was not found.",
     # Structures
     "2-1": (
         "If preconditions are involved the result"

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from sqlalchemy import create_engine
+from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 # Ensure all ORM modules are imported so relationships resolve.
@@ -28,8 +28,9 @@ import dpmcore.orm  # noqa: F401
 class _ServiceAccessor:
     """Lazy container that instantiates services on first access."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, engine: Engine) -> None:
         self._session = session
+        self._engine = engine
         self._cache: Dict[str, Any] = {}
 
     # ------------------------------------------------------------------ #
@@ -108,6 +109,30 @@ class _ServiceAccessor:
             self._cache["hierarchy"] = HierarchyService(self._session)
         return self._cache["hierarchy"]
 
+    # ------------------------------------------------------------------ #
+    # Structure service
+    # ------------------------------------------------------------------ #
+
+    @property
+    def structure(self):
+        from dpmcore.services.structure import StructureService
+
+        if "structure" not in self._cache:
+            self._cache["structure"] = StructureService(self._session)
+        return self._cache["structure"]
+
+    # ------------------------------------------------------------------ #
+    # Migration (requires Engine, not Session)
+    # ------------------------------------------------------------------ #
+
+    @property
+    def migration(self):
+        from dpmcore.services.migration import MigrationService
+
+        if "migration" not in self._cache:
+            self._cache["migration"] = MigrationService(self._engine)
+        return self._cache["migration"]
+
 
 class DpmConnection:
     """A connection to a DPM database.
@@ -133,7 +158,7 @@ class DpmConnection:
         self.engine = create_engine(url, **engine_kwargs)
         self._session_factory = sessionmaker(bind=self.engine)
         self.session: Session = self._session_factory()
-        self.services = _ServiceAccessor(self.session)
+        self.services = _ServiceAccessor(self.session, self.engine)
 
     # ------------------------------------------------------------------ #
     # ORM access

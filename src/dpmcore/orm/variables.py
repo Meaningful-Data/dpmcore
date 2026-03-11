@@ -56,6 +56,9 @@ class Variable(Base):
         String(36),
         ForeignKey("Concept.ConceptGUID"),
     )
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID", Integer
+    )
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
@@ -292,6 +295,9 @@ class CompoundKey(Base):
         "RowGUID",
         String(36),
         ForeignKey("Concept.ConceptGUID"),
+    )
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID", Integer
     )
 
     concept: Mapped[Optional["Concept"]] = relationship(

@@ -10,6 +10,7 @@ from dpmcore.dpm_xl.utils.filters import filter_by_release
 from dpmcore.orm.operations import (
     OperandReference,
     OperandReferenceLocation,
+    OperationNode,
     OperationVersion,
 )
 from dpmcore.orm.packaging import (
@@ -52,8 +53,8 @@ class ExplorerService:
         if release_id is not None:
             q = filter_by_release(
                 q, release_id=release_id,
-                start_col=VariableVersion.startreleaseid,
-                end_col=VariableVersion.endreleaseid,
+                start_col=VariableVersion.start_release_id,
+                end_col=VariableVersion.end_release_id,
             )
         row = q.first()
         return row.to_dict() if row else None
@@ -72,20 +73,25 @@ class ExplorerService:
             )
             .join(
                 OperandReferenceLocation,
-                OperandReference.operandreferenceid
-                == OperandReferenceLocation.operandreferenceid,
+                OperandReference.operand_reference_id
+                == OperandReferenceLocation.operand_reference_id,
+            )
+            .join(
+                OperationNode,
+                OperandReference.node_id == OperationNode.node_id,
             )
             .join(
                 OperationVersion,
-                OperandReference.operationvid == OperationVersion.operationvid,
+                OperationNode.operation_vid
+                == OperationVersion.operation_vid,
             )
-            .filter(OperandReferenceLocation.variablevid == variable_vid)
+            .filter(OperandReference.variable_id == variable_vid)
         )
         if release_id is not None:
             q = filter_by_release(
                 q, release_id=release_id,
-                start_col=OperationVersion.startreleaseid,
-                end_col=OperationVersion.endreleaseid,
+                start_col=OperationVersion.start_release_id,
+                end_col=OperationVersion.end_release_id,
             )
         rows = q.all()
         return [
@@ -109,7 +115,7 @@ class ExplorerService:
         if release_id is not None:
             q = filter_by_release(
                 q, release_id=release_id,
-                start_col=TableVersion.startreleaseid,
-                end_col=TableVersion.endreleaseid,
+                start_col=TableVersion.start_release_id,
+                end_col=TableVersion.end_release_id,
             )
         return [r.to_dict() for r in q.all()]

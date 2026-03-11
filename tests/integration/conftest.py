@@ -4,12 +4,19 @@ This module provides:
 - Automatic marking of integration tests
 - Database fixtures with proper cleanup
 - Session management with nested transaction rollback pattern
+- Shared SQLite fixture for tests that need real DPM data
 """
+
+import os
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+
+FIXTURE_DB_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "fixtures", "test_data.db"
+)
 
 
 def pytest_collection_modifyitems(items):
@@ -20,41 +27,18 @@ def pytest_collection_modifyitems(items):
 
 
 @pytest.fixture(autouse=True)
-def cleanup_global_state():
-    """Reset global utils state after each test to prevent state leakage.
-
-    This fixture runs automatically for all integration tests and ensures
-    that the global database connection state in py_dpm.dpm.utils is
-    properly cleaned up after each test.
-    """
+def cleanup_caches():
+    """Clear module-level caches after each test to prevent state leakage."""
     yield
 
-    # Import utils module to access global state
-    import py_dpm.dpm.utils as utils
-    from sqlalchemy.orm import close_all_sessions
+    from dpmcore.dpm_xl.ast.operands import _HEADERS_CACHE
 
-    # Close all sessions first
-    if utils.sessionMakerObject is not None:
-        close_all_sessions()
-
-    # Dispose engine if it exists
-    if utils.engine is not None:
-        utils.engine.dispose()
-
-    # Reset all global state
-    utils.engine = None
-    utils.connection = None
-    utils.sessionMakerObject = None
-    utils._current_engine_url = None
+    _HEADERS_CACHE.clear()
 
 
 @pytest.fixture
 def memory_engine():
-    """Create an in-memory SQLite engine with StaticPool.
-
-    Using StaticPool ensures the same connection is reused across the session,
-    which is necessary for in-memory SQLite to maintain data between operations.
-    """
+    """Create an in-memory SQLite engine with StaticPool."""
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -66,47 +50,46 @@ def memory_engine():
 
 @pytest.fixture
 def memory_session(memory_engine):
-    """Create a session with nested transaction rollback pattern.
+    """Create a session with nested transaction rollback pattern."""
+    from dpmcore.orm import Base
 
-    This fixture creates all tables, starts a transaction, and rolls back
-    after the test completes. This ensures each test starts with a clean
-    database state.
-    """
-    from py_dpm.dpm.models import Base
-
-    # Create all tables
     Base.metadata.create_all(memory_engine)
 
-    # Create a connection and begin a transaction
     connection = memory_engine.connect()
     transaction = connection.begin()
 
-    # Create session bound to the connection
     Session = sessionmaker(bind=connection)
     session = Session()
 
     yield session
 
-    # Cleanup: close session, rollback transaction, close connection
     session.close()
     transaction.rollback()
     connection.close()
 
 
 @pytest.fixture
-def data_dict_api_memory():
-    """Create a DataDictionaryAPI instance with in-memory SQLite.
+def fixture_db_url():
+    """Provide a connection URL to the local SQLite fixture database.
 
-    This fixture provides a fully configured DataDictionaryAPI with
-    proper lifecycle management.
+    The fixture DB contains real DPM data and is used by tests that
+    require a populated database (semantic validation, release filters, etc.).
     """
-    from py_dpm.api.dpm.data_dictionary import DataDictionaryAPI
-    from py_dpm.dpm.models import Base
+    assert os.path.exists(FIXTURE_DB_PATH), (
+        f"Fixture DB not found at {FIXTURE_DB_PATH}. "
+        f"Copy it from pydpm/tests/fixtures/test_data.db."
+    )
+    return f"sqlite:///{os.path.abspath(FIXTURE_DB_PATH)}"
 
-    db_url = "sqlite:///:memory:"
-    api = DataDictionaryAPI(connection_url=db_url)
-    Base.metadata.create_all(api.session.bind)
 
-    yield api
+@pytest.fixture
+def fixture_session(fixture_db_url):
+    """Provide a SQLAlchemy session connected to the fixture database."""
+    engine = create_engine(fixture_db_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
 
-    api.session.close()
+    yield session
+
+    session.close()
+    engine.dispose()
