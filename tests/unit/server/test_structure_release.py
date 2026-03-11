@@ -100,19 +100,19 @@ def empty_client(engine):
 
 class TestListAllReleases:
     def test_default_returns_latest(self, client):
-        """Bare /structure/release defaults to version=~ (latest)."""
+        """Bare /structure/release defaults to release=~ (latest)."""
         resp = client.get("/api/v1/structure/release")
         assert resp.status_code == 200
         body = resp.json()
         assert "meta" in body
         assert "data" in body
         assert "releases" in body["data"]
-        # Default version is ~ (latest) → single most recent release
+        # Default release is ~ (latest) → single most recent release
         assert len(body["data"]["releases"]) == 1
         assert body["data"]["releases"][0]["code"] == "3.5-draft"
 
-    def test_all_versions(self, client):
-        """Explicit version=* returns all releases."""
+    def test_all_releases(self, client):
+        """Explicit release=* returns all releases."""
         resp = client.get("/api/v1/structure/release/*/*/*")
         assert resp.status_code == 200
         body = resp.json()
@@ -130,7 +130,7 @@ class TestListAllReleases:
 
 class TestFilterByOwner:
     def test_filter_by_eba_default_latest(self, client):
-        """Owner filter with default version=~ returns latest."""
+        """Owner filter with default release=~ returns latest."""
         resp = client.get("/api/v1/structure/release/EBA")
         assert resp.status_code == 200
         body = resp.json()
@@ -138,8 +138,8 @@ class TestFilterByOwner:
         assert len(releases) == 1
         assert releases[0]["code"] == "3.4"
 
-    def test_filter_by_eba_all_versions(self, client):
-        """Owner filter with version=* returns all for that owner."""
+    def test_filter_by_eba_all_releases(self, client):
+        """Owner filter with release=* returns all for that owner."""
         resp = client.get("/api/v1/structure/release/EBA/*/*")
         assert resp.status_code == 200
         body = resp.json()
@@ -164,7 +164,7 @@ class TestSingleRelease:
         assert body["data"]["release"]["code"] == "3.4"
 
 
-class TestVersionKeywords:
+class TestReleaseKeywords:
     def test_latest_stable(self, client):
         resp = client.get("/api/v1/structure/release/*/*/+")
         assert resp.status_code == 200
@@ -182,7 +182,7 @@ class TestVersionKeywords:
         assert len(releases) == 1
         assert releases[0]["code"] == "3.5-draft"
 
-    def test_all_versions(self, client):
+    def test_all_releases(self, client):
         resp = client.get("/api/v1/structure/release/*/*/*")
         assert resp.status_code == 200
         body = resp.json()

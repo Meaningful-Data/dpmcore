@@ -12,7 +12,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from dpmcore.server.envelope import envelope, error_envelope
-from dpmcore.server.params import StructureParams, parse_structure_params
+from dpmcore.server.params import (
+    StructureParams,
+    parse_structure_params,
+)
 
 # ------------------------------------------------------------------ #
 # Artefact type enum (for Swagger dropdown)
@@ -114,8 +117,8 @@ STRUCTURE_DESCRIPTION = (  # noqa: E501
     "or `*` (all) |\n"
     "| `id` | Artefact code, comma-separated list, "
     "or `*` (all) |\n"
-    "| `version` | `~` latest · `+` latest stable · "
-    "`*` all · literal version |\n\n"
+    "| `release` | `~` latest · `+` latest stable · "
+    "`*` all · literal release |\n\n"
     "**Query parameters**\n\n"
     "| Parameter | Default | Description |\n"
     "|-----------|---------|-------------|  \n"
@@ -155,7 +158,7 @@ def create_structure_router(
             "Organisation acronym, comma-separated, "
             "or * for all"
         ),
-        examples=["*"],
+        json_schema_extra={"default": "*"},
     )
     _id_path = Path(
         ...,
@@ -163,22 +166,22 @@ def create_structure_router(
             "Artefact code, comma-separated, "
             "or * for all"
         ),
-        examples=["*"],
+        json_schema_extra={"default": "*"},
     )
-    _version_path = Path(
+    _release_path = Path(
         ...,
         description=(
             "~ (latest) | + (latest stable) "
-            "| * (all) | literal version"
+            "| * (all) | literal release"
         ),
-        examples=["*"],
+        json_schema_extra={"default": "*"},
     )
 
     def _handler(
         artefact_type: ArtefactType = _type_path,  # noqa: B008
         owner: str = _owner_path,  # noqa: B008
         id: str = _id_path,  # noqa: B008
-        version: str = _version_path,  # noqa: B008
+        release: str = _release_path,  # noqa: B008
         detail: str = Query(  # noqa: B008
             "full",
             description="Response detail level",
@@ -214,7 +217,7 @@ def create_structure_router(
                 media_type="application/json",
             )
 
-        params = parse_structure_params(owner, id, version)
+        params = parse_structure_params(owner, id, release)
         handler = ARTEFACT_HANDLERS[type_value]
         return handler(
             session=session,
@@ -230,7 +233,7 @@ def create_structure_router(
     )
 
     router.add_api_route(
-        "/{artefact_type}/{owner}/{id}/{version}",
+        "/{artefact_type}/{owner}/{id}/{release}",
         _handler,
         methods=["GET"],
         tags=["Structure"],
@@ -256,7 +259,7 @@ def create_structure_router(
         artefact_type: ArtefactType = _type_path,  # noqa: B008
         owner: str = "*",
         id: str = "*",
-        version: str = "~",
+        release: str = "~",
         detail: str = Query(  # noqa: B008
             "full",
             description="Response detail level",
@@ -277,7 +280,7 @@ def create_structure_router(
             artefact_type=artefact_type,
             owner=owner,
             id=id,
-            version=version,
+            release=release,
             detail=detail,
             references=references,
             offset=offset,
@@ -327,8 +330,8 @@ def handle_release(
 
     svc = StructureService(session)
 
-    # Single release by code (non-wildcard id, no special version)
-    if params.is_single_id and not params.wants_all_versions:
+    # Single release by code (non-wildcard id, no special release)
+    if params.is_single_id and not params.wants_all_releases:
         owner = params.owners[0] if not params.is_owner_wildcard else None
         result = svc.get_release_by_code(
             params.ids[0], owner=owner, detail=detail,
@@ -374,3 +377,70 @@ def handle_release(
         offset=offset,
         limit=limit,
     )
+
+
+# ------------------------------------------------------------------ #
+# Category handler
+# ------------------------------------------------------------------ #
+
+
+@register_artefact("category")
+def handle_category(
+    *,
+    session: Session,
+    params: StructureParams,
+    detail: str,
+    references: str,
+    offset: int,
+    limit: int,
+) -> Any:
+    """Handle ``/structure/category/...`` requests."""
+    from dpmcore.services.structure import StructureService
+
+    svc = StructureService(session)
+
+    results, total = svc.query_categories(
+        params=params,
+        detail=detail,
+        offset=offset,
+        limit=limit,
+    )
+
+    if not results:
+        return Response(status_code=204)
+
+    data: Dict[str, Any] = {"categories": results}
+    if references == "all":
+        acronyms = list({
+            r.get("owner")
+            for r in results
+            if r.get("owner") is not None
+        })
+        if acronyms:
+            data["organisations"] = (
+                svc.get_release_organisations(
+                    _owner_ids_from_acronyms(svc, acronyms),
+                )
+            )
+
+    return envelope(
+        data,
+        total_count=total,
+        offset=offset,
+        limit=limit,
+    )
+
+
+def _owner_ids_from_acronyms(
+    svc: Any,
+    acronyms: List[str],
+) -> List[int]:
+    """Resolve acronyms to org IDs for get_release_organisations."""
+    from dpmcore.orm.infrastructure import Organisation
+
+    orgs = (
+        svc.session.query(Organisation)
+        .filter(Organisation.acronym.in_(acronyms))
+        .all()
+    )
+    return [o.org_id for o in orgs]
