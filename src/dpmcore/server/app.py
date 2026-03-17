@@ -70,7 +70,7 @@ def create_app(
 
     app = FastAPI(
         title="dpmcore",
-        version="1.0.0",
+        version="0.0.1",
         description=(
             "REST API for the Data Point Model (DPM) "
             "2.0 Refit metamodel. Provides SDMX-style "
