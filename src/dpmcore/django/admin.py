@@ -151,47 +151,11 @@ class CompositeChangeList(ChangeList):
 # ── Read-only base class ────────────────────────────────────────
 
 
-class ReadOnlyAdmin(admin.ModelAdmin):
-    """Base admin class that makes all fields read-only."""
+class DpmModelAdmin(admin.ModelAdmin):
+    """Base admin class for all DPM models."""
 
     list_per_page = 50
     show_full_result_count = False
-
-    def has_add_permission(
-        self,
-        request: HttpRequest,
-        obj: Any = None,
-    ) -> bool:
-        """Deny creation."""
-        return False
-
-    def has_change_permission(
-        self,
-        request: HttpRequest,
-        obj: Any = None,
-    ) -> bool:
-        """Deny edits."""
-        return False
-
-    def has_delete_permission(
-        self,
-        request: HttpRequest,
-        obj: Any = None,
-    ) -> bool:
-        """Deny deletion."""
-        return False
-
-    def get_readonly_fields(
-        self,
-        request: HttpRequest,
-        obj: Any = None,
-    ) -> list[str]:
-        """Mark all fields as read-only."""
-        return [
-            f.name
-            for f in self.model._meta.get_fields()
-            if hasattr(f, "column")
-        ]
 
     def get_changelist(
         self,
@@ -239,19 +203,19 @@ class ReadOnlyAdmin(admin.ModelAdmin):
 
 
 @admin.register(Concept)
-class ConceptAdmin(ReadOnlyAdmin):
+class ConceptAdmin(DpmModelAdmin):
     list_display = ("concept_guid", "class_id", "owner_id")
     search_fields = ("concept_guid",)
 
 
 @admin.register(ConceptRelation)
-class ConceptRelationAdmin(ReadOnlyAdmin):
+class ConceptRelationAdmin(DpmModelAdmin):
     list_display = ("concept_relation_id", "type")
     list_filter = ("type",)
 
 
 @admin.register(RelatedConcept)
-class RelatedConceptAdmin(ReadOnlyAdmin):
+class RelatedConceptAdmin(DpmModelAdmin):
     list_display = (
         "concept_guid",
         "concept_relation_id",
@@ -261,36 +225,36 @@ class RelatedConceptAdmin(ReadOnlyAdmin):
 
 
 @admin.register(Organisation)
-class OrganisationAdmin(ReadOnlyAdmin):
+class OrganisationAdmin(DpmModelAdmin):
     list_display = ("org_id", "name", "acronym")
     search_fields = ("name", "acronym")
 
 
 @admin.register(Language)
-class LanguageAdmin(ReadOnlyAdmin):
+class LanguageAdmin(DpmModelAdmin):
     list_display = ("language_code", "name")
     search_fields = ("name",)
 
 
 @admin.register(User)
-class UserAdmin(ReadOnlyAdmin):
+class UserAdmin(DpmModelAdmin):
     list_display = ("user_id", "name", "org_id")
     search_fields = ("name",)
 
 
 @admin.register(Role)
-class RoleAdmin(ReadOnlyAdmin):
+class RoleAdmin(DpmModelAdmin):
     list_display = ("role_id", "name")
     search_fields = ("name",)
 
 
 @admin.register(UserRole)
-class UserRoleAdmin(ReadOnlyAdmin):
+class UserRoleAdmin(DpmModelAdmin):
     list_display = ("user_id", "role_id")
 
 
 @admin.register(DataType)
-class DataTypeAdmin(ReadOnlyAdmin):
+class DataTypeAdmin(DpmModelAdmin):
     list_display = (
         "data_type_id",
         "code",
@@ -302,7 +266,7 @@ class DataTypeAdmin(ReadOnlyAdmin):
 
 
 @admin.register(DpmClass)
-class DpmClassAdmin(ReadOnlyAdmin):
+class DpmClassAdmin(DpmModelAdmin):
     list_display = (
         "class_id",
         "name",
@@ -314,7 +278,7 @@ class DpmClassAdmin(ReadOnlyAdmin):
 
 
 @admin.register(DpmAttribute)
-class DpmAttributeAdmin(ReadOnlyAdmin):
+class DpmAttributeAdmin(DpmModelAdmin):
     list_display = (
         "attribute_id",
         "name",
@@ -326,7 +290,7 @@ class DpmAttributeAdmin(ReadOnlyAdmin):
 
 
 @admin.register(Translation)
-class TranslationAdmin(ReadOnlyAdmin):
+class TranslationAdmin(DpmModelAdmin):
     list_display = (
         "concept_guid",
         "attribute_id",
@@ -337,7 +301,7 @@ class TranslationAdmin(ReadOnlyAdmin):
 
 
 @admin.register(Changelog)
-class ChangelogAdmin(ReadOnlyAdmin):
+class ChangelogAdmin(DpmModelAdmin):
     list_display = (
         "row_guid",
         "class_id",
@@ -350,7 +314,7 @@ class ChangelogAdmin(ReadOnlyAdmin):
 
 
 @admin.register(ChangelogAttribute)
-class ChangelogAttributeAdmin(ReadOnlyAdmin):
+class ChangelogAttributeAdmin(DpmModelAdmin):
     list_display = (
         "changelog_attribute_id",
         "action_id",
@@ -359,14 +323,14 @@ class ChangelogAttributeAdmin(ReadOnlyAdmin):
 
 
 @admin.register(Document)
-class DocumentAdmin(ReadOnlyAdmin):
+class DocumentAdmin(DpmModelAdmin):
     list_display = ("document_id", "code", "name", "type")
     search_fields = ("code", "name")
     list_filter = ("type",)
 
 
 @admin.register(DocumentVersion)
-class DocumentVersionAdmin(ReadOnlyAdmin):
+class DocumentVersionAdmin(DpmModelAdmin):
     list_display = (
         "document_vid",
         "document_id",
@@ -377,7 +341,7 @@ class DocumentVersionAdmin(ReadOnlyAdmin):
 
 
 @admin.register(Subdivision)
-class SubdivisionAdmin(ReadOnlyAdmin):
+class SubdivisionAdmin(DpmModelAdmin):
     list_display = (
         "subdivision_id",
         "number",
@@ -387,18 +351,18 @@ class SubdivisionAdmin(ReadOnlyAdmin):
 
 
 @admin.register(SubdivisionType)
-class SubdivisionTypeAdmin(ReadOnlyAdmin):
+class SubdivisionTypeAdmin(DpmModelAdmin):
     list_display = ("subdivision_type_id", "name")
     search_fields = ("name",)
 
 
 @admin.register(Reference)
-class ReferenceAdmin(ReadOnlyAdmin):
+class ReferenceAdmin(DpmModelAdmin):
     list_display = ("subdivision_id", "concept_guid")
 
 
 @admin.register(Release)
-class ReleaseAdmin(ReadOnlyAdmin):
+class ReleaseAdmin(DpmModelAdmin):
     list_display = (
         "release_id",
         "code",
@@ -412,7 +376,7 @@ class ReleaseAdmin(ReadOnlyAdmin):
 
 
 @admin.register(VariableGeneration)
-class VariableGenerationAdmin(ReadOnlyAdmin):
+class VariableGenerationAdmin(DpmModelAdmin):
     list_display = (
         "variable_generation_id",
         "status",
@@ -427,7 +391,7 @@ class VariableGenerationAdmin(ReadOnlyAdmin):
 
 
 @admin.register(Category)
-class CategoryAdmin(ReadOnlyAdmin):
+class CategoryAdmin(DpmModelAdmin):
     list_display = (
         "category_id",
         "code",
@@ -440,7 +404,7 @@ class CategoryAdmin(ReadOnlyAdmin):
 
 
 @admin.register(SubCategory)
-class SubCategoryAdmin(ReadOnlyAdmin):
+class SubCategoryAdmin(DpmModelAdmin):
     list_display = (
         "subcategory_id",
         "code",
@@ -451,7 +415,7 @@ class SubCategoryAdmin(ReadOnlyAdmin):
 
 
 @admin.register(SubCategoryVersion)
-class SubCategoryVersionAdmin(ReadOnlyAdmin):
+class SubCategoryVersionAdmin(DpmModelAdmin):
     list_display = (
         "subcategory_vid",
         "subcategory_id",
@@ -461,7 +425,7 @@ class SubCategoryVersionAdmin(ReadOnlyAdmin):
 
 
 @admin.register(SubCategoryItem)
-class SubCategoryItemAdmin(ReadOnlyAdmin):
+class SubCategoryItemAdmin(DpmModelAdmin):
     list_display = (
         "item_id",
         "subcategory_vid",
@@ -472,7 +436,7 @@ class SubCategoryItemAdmin(ReadOnlyAdmin):
 
 
 @admin.register(Item)
-class ItemAdmin(ReadOnlyAdmin):
+class ItemAdmin(DpmModelAdmin):
     list_display = (
         "item_id",
         "name",
@@ -484,7 +448,7 @@ class ItemAdmin(ReadOnlyAdmin):
 
 
 @admin.register(ItemCategory)
-class ItemCategoryAdmin(ReadOnlyAdmin):
+class ItemCategoryAdmin(DpmModelAdmin):
     list_display = (
         "item_id",
         "start_release_id",
@@ -495,7 +459,7 @@ class ItemCategoryAdmin(ReadOnlyAdmin):
 
 
 @admin.register(Property)
-class PropertyAdmin(ReadOnlyAdmin):
+class PropertyAdmin(DpmModelAdmin):
     list_display = (
         "property_id",
         "is_composite",
@@ -507,7 +471,7 @@ class PropertyAdmin(ReadOnlyAdmin):
 
 
 @admin.register(PropertyCategory)
-class PropertyCategoryAdmin(ReadOnlyAdmin):
+class PropertyCategoryAdmin(DpmModelAdmin):
     list_display = (
         "property_id",
         "start_release_id",
@@ -516,18 +480,18 @@ class PropertyCategoryAdmin(ReadOnlyAdmin):
 
 
 @admin.register(Context)
-class ContextAdmin(ReadOnlyAdmin):
+class ContextAdmin(DpmModelAdmin):
     list_display = ("context_id", "signature")
     search_fields = ("signature",)
 
 
 @admin.register(ContextComposition)
-class ContextCompositionAdmin(ReadOnlyAdmin):
+class ContextCompositionAdmin(DpmModelAdmin):
     list_display = ("context_id", "property_id", "item_id")
 
 
 @admin.register(CompoundItemContext)
-class CompoundItemContextAdmin(ReadOnlyAdmin):
+class CompoundItemContextAdmin(DpmModelAdmin):
     list_display = (
         "item_id",
         "start_release_id",
@@ -536,7 +500,7 @@ class CompoundItemContextAdmin(ReadOnlyAdmin):
 
 
 @admin.register(SupercategoryComposition)
-class SupercategoryCompositionAdmin(ReadOnlyAdmin):
+class SupercategoryCompositionAdmin(DpmModelAdmin):
     list_display = ("supercategory_id", "category_id")
 
 
@@ -544,7 +508,7 @@ class SupercategoryCompositionAdmin(ReadOnlyAdmin):
 
 
 @admin.register(Table)
-class TableAdmin(ReadOnlyAdmin):
+class TableAdmin(DpmModelAdmin):
     list_display = (
         "table_id",
         "is_abstract",
@@ -555,7 +519,7 @@ class TableAdmin(ReadOnlyAdmin):
 
 
 @admin.register(TableVersion)
-class TableVersionAdmin(ReadOnlyAdmin):
+class TableVersionAdmin(DpmModelAdmin):
     list_display = (
         "table_vid",
         "code",
@@ -567,7 +531,7 @@ class TableVersionAdmin(ReadOnlyAdmin):
 
 
 @admin.register(Header)
-class HeaderAdmin(ReadOnlyAdmin):
+class HeaderAdmin(DpmModelAdmin):
     list_display = (
         "header_id",
         "table_id",
@@ -578,7 +542,7 @@ class HeaderAdmin(ReadOnlyAdmin):
 
 
 @admin.register(HeaderVersion)
-class HeaderVersionAdmin(ReadOnlyAdmin):
+class HeaderVersionAdmin(DpmModelAdmin):
     list_display = (
         "header_vid",
         "header_id",
@@ -589,7 +553,7 @@ class HeaderVersionAdmin(ReadOnlyAdmin):
 
 
 @admin.register(Cell)
-class CellAdmin(ReadOnlyAdmin):
+class CellAdmin(DpmModelAdmin):
     list_display = (
         "cell_id",
         "table_id",
@@ -600,7 +564,7 @@ class CellAdmin(ReadOnlyAdmin):
 
 
 @admin.register(TableVersionCell)
-class TableVersionCellAdmin(ReadOnlyAdmin):
+class TableVersionCellAdmin(DpmModelAdmin):
     list_display = (
         "table_vid",
         "cell_id",
@@ -614,7 +578,7 @@ class TableVersionCellAdmin(ReadOnlyAdmin):
 
 
 @admin.register(TableVersionHeader)
-class TableVersionHeaderAdmin(ReadOnlyAdmin):
+class TableVersionHeaderAdmin(DpmModelAdmin):
     list_display = (
         "table_vid",
         "header_id",
@@ -626,7 +590,7 @@ class TableVersionHeaderAdmin(ReadOnlyAdmin):
 
 
 @admin.register(TableGroup)
-class TableGroupAdmin(ReadOnlyAdmin):
+class TableGroupAdmin(DpmModelAdmin):
     list_display = (
         "table_group_id",
         "code",
@@ -638,12 +602,12 @@ class TableGroupAdmin(ReadOnlyAdmin):
 
 
 @admin.register(TableGroupComposition)
-class TableGroupCompositionAdmin(ReadOnlyAdmin):
+class TableGroupCompositionAdmin(DpmModelAdmin):
     list_display = ("table_group_id", "table_id", "order")
 
 
 @admin.register(TableAssociation)
-class TableAssociationAdmin(ReadOnlyAdmin):
+class TableAssociationAdmin(DpmModelAdmin):
     list_display = (
         "association_id",
         "name",
@@ -655,7 +619,7 @@ class TableAssociationAdmin(ReadOnlyAdmin):
 
 
 @admin.register(KeyHeaderMapping)
-class KeyHeaderMappingAdmin(ReadOnlyAdmin):
+class KeyHeaderMappingAdmin(DpmModelAdmin):
     list_display = (
         "association_id",
         "foreign_key_header_id",
@@ -667,13 +631,13 @@ class KeyHeaderMappingAdmin(ReadOnlyAdmin):
 
 
 @admin.register(Variable)
-class VariableAdmin(ReadOnlyAdmin):
+class VariableAdmin(DpmModelAdmin):
     list_display = ("variable_id", "type")
     list_filter = ("type",)
 
 
 @admin.register(VariableVersion)
-class VariableVersionAdmin(ReadOnlyAdmin):
+class VariableVersionAdmin(DpmModelAdmin):
     list_display = (
         "variable_vid",
         "variable_id",
@@ -684,7 +648,7 @@ class VariableVersionAdmin(ReadOnlyAdmin):
 
 
 @admin.register(VariableCalculation)
-class VariableCalculationAdmin(ReadOnlyAdmin):
+class VariableCalculationAdmin(DpmModelAdmin):
     list_display = (
         "module_id",
         "variable_id",
@@ -695,13 +659,13 @@ class VariableCalculationAdmin(ReadOnlyAdmin):
 
 
 @admin.register(CompoundKey)
-class CompoundKeyAdmin(ReadOnlyAdmin):
+class CompoundKeyAdmin(DpmModelAdmin):
     list_display = ("key_id", "signature")
     search_fields = ("signature",)
 
 
 @admin.register(KeyComposition)
-class KeyCompositionAdmin(ReadOnlyAdmin):
+class KeyCompositionAdmin(DpmModelAdmin):
     list_display = ("key_id", "variable_vid")
 
 
@@ -709,7 +673,7 @@ class KeyCompositionAdmin(ReadOnlyAdmin):
 
 
 @admin.register(Operation)
-class OperationAdmin(ReadOnlyAdmin):
+class OperationAdmin(DpmModelAdmin):
     list_display = (
         "operation_id",
         "code",
@@ -721,7 +685,7 @@ class OperationAdmin(ReadOnlyAdmin):
 
 
 @admin.register(OperationVersion)
-class OperationVersionAdmin(ReadOnlyAdmin):
+class OperationVersionAdmin(DpmModelAdmin):
     list_display = (
         "operation_vid",
         "operation_id",
@@ -734,7 +698,7 @@ class OperationVersionAdmin(ReadOnlyAdmin):
 
 
 @admin.register(OperationVersionData)
-class OperationVersionDataAdmin(ReadOnlyAdmin):
+class OperationVersionDataAdmin(DpmModelAdmin):
     list_display = (
         "operation_vid",
         "error_code",
@@ -746,7 +710,7 @@ class OperationVersionDataAdmin(ReadOnlyAdmin):
 
 
 @admin.register(OperationNode)
-class OperationNodeAdmin(ReadOnlyAdmin):
+class OperationNodeAdmin(DpmModelAdmin):
     list_display = (
         "node_id",
         "operation_vid",
@@ -758,7 +722,7 @@ class OperationNodeAdmin(ReadOnlyAdmin):
 
 
 @admin.register(OperationScope)
-class OperationScopeAdmin(ReadOnlyAdmin):
+class OperationScopeAdmin(DpmModelAdmin):
     list_display = (
         "operation_scope_id",
         "operation_vid",
@@ -768,12 +732,12 @@ class OperationScopeAdmin(ReadOnlyAdmin):
 
 
 @admin.register(OperationScopeComposition)
-class OperationScopeCompositionAdmin(ReadOnlyAdmin):
+class OperationScopeCompositionAdmin(DpmModelAdmin):
     list_display = ("operation_scope_id", "module_vid")
 
 
 @admin.register(Operator)
-class OperatorAdmin(ReadOnlyAdmin):
+class OperatorAdmin(DpmModelAdmin):
     list_display = (
         "operator_id",
         "name",
@@ -785,7 +749,7 @@ class OperatorAdmin(ReadOnlyAdmin):
 
 
 @admin.register(OperatorArgument)
-class OperatorArgumentAdmin(ReadOnlyAdmin):
+class OperatorArgumentAdmin(DpmModelAdmin):
     list_display = (
         "argument_id",
         "operator_id",
@@ -798,7 +762,7 @@ class OperatorArgumentAdmin(ReadOnlyAdmin):
 
 
 @admin.register(OperandReference)
-class OperandReferenceAdmin(ReadOnlyAdmin):
+class OperandReferenceAdmin(DpmModelAdmin):
     list_display = (
         "operand_reference_id",
         "node_id",
@@ -808,7 +772,7 @@ class OperandReferenceAdmin(ReadOnlyAdmin):
 
 
 @admin.register(OperandReferenceLocation)
-class OperandReferenceLocationAdmin(ReadOnlyAdmin):
+class OperandReferenceLocationAdmin(DpmModelAdmin):
     list_display = (
         "operand_reference_id",
         "table",
@@ -823,13 +787,13 @@ class OperandReferenceLocationAdmin(ReadOnlyAdmin):
 
 
 @admin.register(Framework)
-class FrameworkAdmin(ReadOnlyAdmin):
+class FrameworkAdmin(DpmModelAdmin):
     list_display = ("framework_id", "code", "name")
     search_fields = ("code", "name")
 
 
 @admin.register(Module)
-class ModuleAdmin(ReadOnlyAdmin):
+class ModuleAdmin(DpmModelAdmin):
     list_display = (
         "module_id",
         "framework_id",
@@ -839,7 +803,7 @@ class ModuleAdmin(ReadOnlyAdmin):
 
 
 @admin.register(ModuleVersion)
-class ModuleVersionAdmin(ReadOnlyAdmin):
+class ModuleVersionAdmin(DpmModelAdmin):
     list_display = (
         "module_vid",
         "module_id",
@@ -852,7 +816,7 @@ class ModuleVersionAdmin(ReadOnlyAdmin):
 
 
 @admin.register(ModuleVersionComposition)
-class ModuleVersionCompositionAdmin(ReadOnlyAdmin):
+class ModuleVersionCompositionAdmin(DpmModelAdmin):
     list_display = (
         "module_vid",
         "table_id",
@@ -862,12 +826,12 @@ class ModuleVersionCompositionAdmin(ReadOnlyAdmin):
 
 
 @admin.register(ModuleParameters)
-class ModuleParametersAdmin(ReadOnlyAdmin):
+class ModuleParametersAdmin(DpmModelAdmin):
     list_display = ("module_vid", "variable_vid")
 
 
 @admin.register(OperationCodePrefix)
-class OperationCodePrefixAdmin(ReadOnlyAdmin):
+class OperationCodePrefixAdmin(DpmModelAdmin):
     list_display = (
         "operation_code_prefix_id",
         "code",
@@ -881,7 +845,7 @@ class OperationCodePrefixAdmin(ReadOnlyAdmin):
 
 
 @admin.register(AuxCellMapping)
-class AuxCellMappingAdmin(ReadOnlyAdmin):
+class AuxCellMappingAdmin(DpmModelAdmin):
     list_display = (
         "new_cell_id",
         "new_table_vid",
@@ -891,7 +855,7 @@ class AuxCellMappingAdmin(ReadOnlyAdmin):
 
 
 @admin.register(AuxCellStatus)
-class AuxCellStatusAdmin(ReadOnlyAdmin):
+class AuxCellStatusAdmin(DpmModelAdmin):
     list_display = (
         "table_vid",
         "cell_id",
@@ -902,7 +866,7 @@ class AuxCellStatusAdmin(ReadOnlyAdmin):
 
 
 @admin.register(ModelViolations)
-class ModelViolationsAdmin(ReadOnlyAdmin):
+class ModelViolationsAdmin(DpmModelAdmin):
     list_display = (
         "violation_code",
         "violation",
