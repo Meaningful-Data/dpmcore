@@ -301,11 +301,11 @@ class OperationScope(models.Model):
 class OperationScopeComposition(models.Model):
     """Association between OperationScope and ModuleVersion."""
 
-    id = models.AutoField(primary_key=True)
     operation_scope_id = models.ForeignKey(
         "OperationScope",
         on_delete=models.DO_NOTHING,
         db_column="OperationScopeID",
+        primary_key=True,
     )
     module_vid = models.ForeignKey(
         "ModuleVersion",
@@ -393,6 +393,9 @@ class OperatorArgument(models.Model):
         null=True,
         blank=True,
     )
+
+    def __str__(self) -> str:
+        return self.name or str(self.argument_id)
 
     class Meta:
         managed = False

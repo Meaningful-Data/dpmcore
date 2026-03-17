@@ -277,6 +277,9 @@ class HeaderVersion(models.Model):
         blank=True,
     )
 
+    def __str__(self) -> str:
+        return self.code or str(self.header_vid)
+
     class Meta:
         managed = False
         db_table = "HeaderVersion"
@@ -342,11 +345,11 @@ class Cell(models.Model):
 class TableVersionCell(models.Model):
     """Release-scoped cell configuration within a TableVersion."""
 
-    id = models.AutoField(primary_key=True)
     table_vid = models.ForeignKey(
         "TableVersion",
         on_delete=models.DO_NOTHING,
         db_column="TableVID",
+        primary_key=True,
     )
     cell_id = models.ForeignKey(
         "Cell",
@@ -404,11 +407,11 @@ class TableVersionCell(models.Model):
 class TableVersionHeader(models.Model):
     """Ordered header assignment within a TableVersion."""
 
-    id = models.AutoField(primary_key=True)
     table_vid = models.ForeignKey(
         "TableVersion",
         on_delete=models.DO_NOTHING,
         db_column="TableVID",
+        primary_key=True,
     )
     header_id = models.ForeignKey(
         "Header",
@@ -533,6 +536,9 @@ class TableGroup(models.Model):
         blank=True,
     )
 
+    def __str__(self) -> str:
+        return self.code or str(self.table_group_id)
+
     class Meta:
         managed = False
         db_table = "TableGroup"
@@ -542,11 +548,11 @@ class TableGroup(models.Model):
 class TableGroupComposition(models.Model):
     """Links Tables to TableGroups with ordering."""
 
-    id = models.AutoField(primary_key=True)
     table_group_id = models.ForeignKey(
         "TableGroup",
         on_delete=models.DO_NOTHING,
         db_column="TableGroupID",
+        primary_key=True,
     )
     table_id = models.ForeignKey(
         "Table",
@@ -667,6 +673,9 @@ class TableAssociation(models.Model):
         blank=True,
     )
 
+    def __str__(self) -> str:
+        return self.name or str(self.association_id)
+
     class Meta:
         managed = False
         db_table = "TableAssociation"
@@ -676,11 +685,11 @@ class TableAssociation(models.Model):
 class KeyHeaderMapping(models.Model):
     """Maps foreign-key headers to primary-key headers."""
 
-    id = models.AutoField(primary_key=True)
     association_id = models.ForeignKey(
         "TableAssociation",
         on_delete=models.DO_NOTHING,
         db_column="AssociationID",
+        primary_key=True,
     )
     foreign_key_header_id = models.ForeignKey(
         "Header",

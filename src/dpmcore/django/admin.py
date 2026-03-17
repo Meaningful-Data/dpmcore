@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Any, Sequence
+
 from django.contrib import admin
+from django.contrib.admin.utils import quote as admin_quote
+from django.contrib.admin.views.main import ChangeList
+from django.db import models
+from django.http import HttpRequest
+from django.urls import reverse
 
 from dpmcore.django.models.auxiliary import (
     AuxCellMapping,
@@ -91,6 +98,55 @@ admin.site.site_header = "DPM REFIT Administration"
 admin.site.site_title = "DPM Admin"
 admin.site.index_title = "DPM Data Browser"
 
+COMPOSITE_SEP = ","
+
+
+# ── Composite-key helpers ──────────────────────────────────────
+
+
+def _unique_fields(
+    model: type[models.Model],
+) -> tuple[str, ...]:
+    """Return the first unique_together tuple, or empty."""
+    ut = model._meta.unique_together
+    if ut:
+        return ut[0]
+    return ()
+
+
+def _composite_pk(
+    instance: models.Model,
+    fields: Sequence[str],
+) -> str:
+    """Build a comma-separated composite key string."""
+    values: list[str] = []
+    for name in fields:
+        field = instance._meta.get_field(name)
+        if field.is_relation:
+            values.append(str(getattr(instance, field.attname)))
+        else:
+            values.append(str(getattr(instance, name)))
+    return COMPOSITE_SEP.join(values)
+
+
+class CompositeChangeList(ChangeList):
+    """ChangeList that encodes composite keys in result URLs."""
+
+    def url_for_result(self, result: models.Model) -> str:
+        """Build a change-form URL using composite key if present."""
+        fields = _unique_fields(result.__class__)
+        if fields:
+            pk = _composite_pk(result, fields)
+            return reverse(
+                "admin:%s_%s_change"
+                % (
+                    result._meta.app_label,
+                    result._meta.model_name,
+                ),
+                args=(admin_quote(pk),),
+            )
+        return super().url_for_result(result)
+
 
 # ── Read-only base class ────────────────────────────────────────
 
@@ -101,33 +157,82 @@ class ReadOnlyAdmin(admin.ModelAdmin):
     list_per_page = 50
     show_full_result_count = False
 
-    def has_add_permission(self, request, obj=None):  # type: ignore[override]
+    def has_add_permission(
+        self,
+        request: HttpRequest,
+        obj: Any = None,
+    ) -> bool:
         """Deny creation."""
         return False
 
     def has_change_permission(
         self,
-        request,
-        obj=None,
-    ):
+        request: HttpRequest,
+        obj: Any = None,
+    ) -> bool:
         """Deny edits."""
         return False
 
     def has_delete_permission(
         self,
-        request,
-        obj=None,
-    ):
+        request: HttpRequest,
+        obj: Any = None,
+    ) -> bool:
         """Deny deletion."""
         return False
 
-    def get_readonly_fields(self, request, obj=None):
+    def get_readonly_fields(
+        self,
+        request: HttpRequest,
+        obj: Any = None,
+    ) -> list[str]:
         """Mark all fields as read-only."""
         return [
             f.name
             for f in self.model._meta.get_fields()
             if hasattr(f, "column")
         ]
+
+    def get_changelist(
+        self,
+        request: HttpRequest,
+        **kwargs: Any,
+    ) -> type[ChangeList]:
+        """Use composite-key aware change list."""
+        return CompositeChangeList
+
+    def get_object(
+        self,
+        request: HttpRequest,
+        object_id: str,
+        from_field: str | None = None,
+    ) -> models.Model | None:
+        """Decode composite keys for detail views."""
+        fields = _unique_fields(self.model)
+        if fields and COMPOSITE_SEP in str(object_id):
+            parts = str(object_id).split(COMPOSITE_SEP)
+            if len(parts) == len(fields):
+                lookup: dict[str, str] = {}
+                for name, value in zip(
+                    fields, parts, strict=True
+                ):
+                    field = self.model._meta.get_field(name)
+                    if field.is_relation:
+                        lookup[field.attname] = value
+                    else:
+                        lookup[name] = value
+                queryset = self.get_queryset(request)
+                try:
+                    return queryset.get(**lookup)
+                except (
+                    self.model.DoesNotExist,
+                    self.model.MultipleObjectsReturned,
+                    ValueError,
+                ):
+                    return None
+        return super().get_object(
+            request, object_id, from_field
+        )
 
 
 # ── Infrastructure (21 models) ──────────────────────────────────
@@ -186,14 +291,24 @@ class UserRoleAdmin(ReadOnlyAdmin):
 
 @admin.register(DataType)
 class DataTypeAdmin(ReadOnlyAdmin):
-    list_display = ("data_type_id", "code", "name", "is_active")
+    list_display = (
+        "data_type_id",
+        "code",
+        "name",
+        "is_active",
+    )
     search_fields = ("code", "name")
     list_filter = ("is_active",)
 
 
 @admin.register(DpmClass)
 class DpmClassAdmin(ReadOnlyAdmin):
-    list_display = ("class_id", "name", "type", "has_references")
+    list_display = (
+        "class_id",
+        "name",
+        "type",
+        "has_references",
+    )
     search_fields = ("name",)
     list_filter = ("type",)
 
@@ -216,6 +331,7 @@ class TranslationAdmin(ReadOnlyAdmin):
         "concept_guid",
         "attribute_id",
         "language_code",
+        "translator_id",
     )
     search_fields = ("translation",)
 
@@ -301,6 +417,8 @@ class VariableGenerationAdmin(ReadOnlyAdmin):
         "variable_generation_id",
         "status",
         "release_id",
+        "start_date",
+        "end_date",
     )
     list_filter = ("status",)
 
@@ -338,6 +456,7 @@ class SubCategoryVersionAdmin(ReadOnlyAdmin):
         "subcategory_vid",
         "subcategory_id",
         "start_release_id",
+        "end_release_id",
     )
 
 
@@ -354,7 +473,12 @@ class SubCategoryItemAdmin(ReadOnlyAdmin):
 
 @admin.register(Item)
 class ItemAdmin(ReadOnlyAdmin):
-    list_display = ("item_id", "name", "is_property", "is_active")
+    list_display = (
+        "item_id",
+        "name",
+        "is_property",
+        "is_active",
+    )
     search_fields = ("name",)
     list_filter = ("is_active", "is_property")
 
@@ -455,7 +579,12 @@ class HeaderAdmin(ReadOnlyAdmin):
 
 @admin.register(HeaderVersion)
 class HeaderVersionAdmin(ReadOnlyAdmin):
-    list_display = ("header_vid", "header_id", "code", "label")
+    list_display = (
+        "header_vid",
+        "header_id",
+        "code",
+        "label",
+    )
     search_fields = ("code", "label")
 
 
@@ -498,7 +627,12 @@ class TableVersionHeaderAdmin(ReadOnlyAdmin):
 
 @admin.register(TableGroup)
 class TableGroupAdmin(ReadOnlyAdmin):
-    list_display = ("table_group_id", "code", "name", "type")
+    list_display = (
+        "table_group_id",
+        "code",
+        "name",
+        "type",
+    )
     search_fields = ("code", "name")
     list_filter = ("type",)
 
@@ -555,6 +689,8 @@ class VariableCalculationAdmin(ReadOnlyAdmin):
         "module_id",
         "variable_id",
         "operation_vid",
+        "from_reference_date",
+        "to_reference_date",
     )
 
 
@@ -574,7 +710,12 @@ class KeyCompositionAdmin(ReadOnlyAdmin):
 
 @admin.register(Operation)
 class OperationAdmin(ReadOnlyAdmin):
-    list_display = ("operation_id", "code", "type", "source")
+    list_display = (
+        "operation_id",
+        "code",
+        "type",
+        "source",
+    )
     search_fields = ("code",)
     list_filter = ("type", "source")
 
@@ -586,9 +727,10 @@ class OperationVersionAdmin(ReadOnlyAdmin):
         "operation_id",
         "endorsement",
         "start_release_id",
+        "end_release_id",
     )
-    search_fields = ("description",)
-    list_filter = ("endorsement",)
+    search_fields = ("description", "expression")
+    list_filter = ("endorsement", "is_variant_approved")
 
 
 @admin.register(OperationVersionData)
@@ -632,7 +774,12 @@ class OperationScopeCompositionAdmin(ReadOnlyAdmin):
 
 @admin.register(Operator)
 class OperatorAdmin(ReadOnlyAdmin):
-    list_display = ("operator_id", "name", "symbol", "type")
+    list_display = (
+        "operator_id",
+        "name",
+        "symbol",
+        "type",
+    )
     search_fields = ("name", "symbol")
     list_filter = ("type",)
 
@@ -757,7 +904,6 @@ class AuxCellStatusAdmin(ReadOnlyAdmin):
 @admin.register(ModelViolations)
 class ModelViolationsAdmin(ReadOnlyAdmin):
     list_display = (
-        "id",
         "violation_code",
         "violation",
         "is_blocking",

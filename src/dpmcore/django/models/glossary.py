@@ -70,6 +70,7 @@ class Category(models.Model):
         managed = False
         db_table = "Category"
         app_label = "dpmcore_django"
+        verbose_name_plural = "categories"
 
     def __str__(self) -> str:
         return self.code or str(self.category_id)
@@ -119,10 +120,14 @@ class SubCategory(models.Model):
         blank=True,
     )
 
+    def __str__(self) -> str:
+        return self.code or str(self.subcategory_id)
+
     class Meta:
         managed = False
         db_table = "SubCategory"
         app_label = "dpmcore_django"
+        verbose_name_plural = "sub categories"
 
 
 class SubCategoryVersion(models.Model):
@@ -171,12 +176,12 @@ class SubCategoryVersion(models.Model):
 class SubCategoryItem(models.Model):
     """An Item within a SubCategoryVersion, with ordering."""
 
-    id = models.AutoField(primary_key=True)
     item_id = models.ForeignKey(
         "Item",
         on_delete=models.DO_NOTHING,
         db_column="ItemID",
         related_name="subcategory_items",
+        primary_key=True,
     )
     subcategory_vid = models.ForeignKey(
         "SubCategoryVersion",
@@ -287,11 +292,11 @@ class Item(models.Model):
 class ItemCategory(models.Model):
     """Release-versioned link between an Item and a Category."""
 
-    id = models.AutoField(primary_key=True)
     item_id = models.ForeignKey(
         "Item",
         on_delete=models.DO_NOTHING,
         db_column="ItemID",
+        primary_key=True,
     )
     start_release_id = models.ForeignKey(
         "Release",
@@ -342,6 +347,7 @@ class ItemCategory(models.Model):
         managed = False
         db_table = "ItemCategory"
         app_label = "dpmcore_django"
+        verbose_name_plural = "item categories"
         unique_together = (
             ("item_id", "start_release_id"),
         )
@@ -396,20 +402,24 @@ class Property(models.Model):
         blank=True,
     )
 
+    def __str__(self) -> str:
+        return str(self.property_id)
+
     class Meta:
         managed = False
         db_table = "Property"
         app_label = "dpmcore_django"
+        verbose_name_plural = "properties"
 
 
 class PropertyCategory(models.Model):
     """Release-versioned link between a Property and a Category."""
 
-    id = models.AutoField(primary_key=True)
     property_id = models.ForeignKey(
         "Property",
         on_delete=models.DO_NOTHING,
         db_column="PropertyID",
+        primary_key=True,
     )
     start_release_id = models.ForeignKey(
         "Release",
@@ -443,6 +453,7 @@ class PropertyCategory(models.Model):
         managed = False
         db_table = "PropertyCategory"
         app_label = "dpmcore_django"
+        verbose_name_plural = "property categories"
         unique_together = (
             ("property_id", "start_release_id"),
         )
@@ -473,6 +484,9 @@ class Context(models.Model):
         blank=True,
     )
 
+    def __str__(self) -> str:
+        return self.signature or str(self.context_id)
+
     class Meta:
         managed = False
         db_table = "Context"
@@ -482,11 +496,11 @@ class Context(models.Model):
 class ContextComposition(models.Model):
     """Maps Properties and Items within a Context."""
 
-    id = models.AutoField(primary_key=True)
     context_id = models.ForeignKey(
         "Context",
         on_delete=models.DO_NOTHING,
         db_column="ContextID",
+        primary_key=True,
     )
     property_id = models.ForeignKey(
         "Property",
@@ -519,11 +533,11 @@ class ContextComposition(models.Model):
 class CompoundItemContext(models.Model):
     """Release-versioned association of a compound Item."""
 
-    id = models.AutoField(primary_key=True)
     item_id = models.ForeignKey(
         "Item",
         on_delete=models.DO_NOTHING,
         db_column="ItemID",
+        primary_key=True,
     )
     start_release_id = models.ForeignKey(
         "Release",
@@ -565,12 +579,12 @@ class CompoundItemContext(models.Model):
 class SupercategoryComposition(models.Model):
     """Composition link between a super-category and a category."""
 
-    id = models.AutoField(primary_key=True)
     supercategory_id = models.ForeignKey(
         "Category",
         on_delete=models.DO_NOTHING,
         db_column="SuperCategoryID",
         related_name="supercategory_compositions",
+        primary_key=True,
     )
     category_id = models.ForeignKey(
         "Category",

@@ -6,9 +6,9 @@ from django.db import models
 class AuxCellMapping(models.Model):
     """Maps new cell/table identifiers to their old equivalents."""
 
-    id = models.AutoField(primary_key=True)
     new_cell_id = models.IntegerField(
         db_column="NewCellID",
+        primary_key=True,
     )
     new_table_vid = models.IntegerField(
         db_column="NewTableVID",
@@ -36,9 +36,9 @@ class AuxCellMapping(models.Model):
 class AuxCellStatus(models.Model):
     """Tracks the status and novelty of a cell."""
 
-    id = models.AutoField(primary_key=True)
     table_vid = models.IntegerField(
         db_column="TableVID",
+        primary_key=True,
     )
     cell_id = models.IntegerField(
         db_column="CellID",
@@ -60,19 +60,17 @@ class AuxCellStatus(models.Model):
         db_table = "Aux_CellStatus"
         app_label = "dpmcore_django"
         unique_together = (("table_vid", "cell_id"),)
+        verbose_name = "aux cell status"
+        verbose_name_plural = "aux cell statuses"
 
 
 class ModelViolations(models.Model):
     """Records structural or semantic violations."""
 
-    id = models.AutoField(
-        primary_key=True,
-    )
     violation_code = models.CharField(
         db_column="ViolationCode",
         max_length=10,
-        null=True,
-        blank=True,
+        primary_key=True,
     )
     violation = models.CharField(
         db_column="Violation",
@@ -220,3 +218,5 @@ class ModelViolations(models.Model):
         managed = False
         db_table = "ModelViolations"
         app_label = "dpmcore_django"
+        verbose_name = "model violation"
+        verbose_name_plural = "model violations"

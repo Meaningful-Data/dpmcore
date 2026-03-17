@@ -186,11 +186,11 @@ class ModuleVersion(models.Model):
 class ModuleVersionComposition(models.Model):
     """Links a ModuleVersion to its constituent Tables."""
 
-    id = models.AutoField(primary_key=True)
     module_vid = models.ForeignKey(
         "ModuleVersion",
         on_delete=models.DO_NOTHING,
         db_column="ModuleVID",
+        primary_key=True,
     )
     table_id = models.ForeignKey(
         "Table",
@@ -228,11 +228,11 @@ class ModuleVersionComposition(models.Model):
 class ModuleParameters(models.Model):
     """Parameter variable bound to a ModuleVersion."""
 
-    id = models.AutoField(primary_key=True)
     module_vid = models.ForeignKey(
         "ModuleVersion",
         on_delete=models.DO_NOTHING,
         db_column="ModuleVID",
+        primary_key=True,
     )
     variable_vid = models.ForeignKey(
         "VariableVersion",
@@ -250,6 +250,8 @@ class ModuleParameters(models.Model):
         managed = False
         db_table = "ModuleParameters"
         app_label = "dpmcore_django"
+        verbose_name = "module parameter"
+        verbose_name_plural = "module parameters"
         unique_together = (
             ("module_vid", "variable_vid"),
         )

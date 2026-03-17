@@ -116,6 +116,9 @@ class VariableVersion(models.Model):
         blank=True,
     )
 
+    def __str__(self) -> str:
+        return self.code or str(self.variable_vid)
+
     class Meta:
         managed = False
         db_table = "VariableVersion"
@@ -125,11 +128,11 @@ class VariableVersion(models.Model):
 class VariableCalculation(models.Model):
     """Link between a Module, Variable, and OperationVersion."""
 
-    id = models.AutoField(primary_key=True)
     module_id = models.ForeignKey(
         "Module",
         on_delete=models.DO_NOTHING,
         db_column="ModuleID",
+        primary_key=True,
     )
     variable_id = models.ForeignKey(
         "Variable",
@@ -192,6 +195,9 @@ class CompoundKey(models.Model):
         blank=True,
     )
 
+    def __str__(self) -> str:
+        return self.signature or str(self.key_id)
+
     class Meta:
         managed = False
         db_table = "CompoundKey"
@@ -201,11 +207,11 @@ class CompoundKey(models.Model):
 class KeyComposition(models.Model):
     """Association between CompoundKey and VariableVersion."""
 
-    id = models.AutoField(primary_key=True)
     key_id = models.ForeignKey(
         "CompoundKey",
         on_delete=models.DO_NOTHING,
         db_column="KeyID",
+        primary_key=True,
     )
     variable_vid = models.ForeignKey(
         "VariableVersion",

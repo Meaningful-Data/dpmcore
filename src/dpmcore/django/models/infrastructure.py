@@ -55,6 +55,9 @@ class ConceptRelation(models.Model):
         blank=True,
     )
 
+    def __str__(self) -> str:
+        return self.type or str(self.concept_relation_id)
+
     class Meta:
         managed = False
         db_table = "ConceptRelation"
@@ -64,11 +67,11 @@ class ConceptRelation(models.Model):
 class RelatedConcept(models.Model):
     """Association between a Concept and a ConceptRelation."""
 
-    id = models.AutoField(primary_key=True)
     concept_guid = models.ForeignKey(
         "Concept",
         on_delete=models.DO_NOTHING,
         db_column="ConceptGUID",
+        primary_key=True,
     )
     concept_relation_id = models.ForeignKey(
         "ConceptRelation",
@@ -215,11 +218,11 @@ class Role(models.Model):
 class UserRole(models.Model):
     """Many-to-many link between User and Role."""
 
-    id = models.AutoField(primary_key=True)
     user_id = models.ForeignKey(
         "User",
         on_delete=models.DO_NOTHING,
         db_column="UserID",
+        primary_key=True,
     )
     role_id = models.ForeignKey(
         "Role",
@@ -311,6 +314,8 @@ class DpmClass(models.Model):
         managed = False
         db_table = "DPMClass"
         app_label = "dpmcore_django"
+        verbose_name = "DPM class"
+        verbose_name_plural = "DPM classes"
 
     def __str__(self) -> str:
         return self.name or str(self.class_id)
@@ -342,20 +347,25 @@ class DpmAttribute(models.Model):
         blank=True,
     )
 
+    def __str__(self) -> str:
+        return self.name or str(self.attribute_id)
+
     class Meta:
         managed = False
         db_table = "DPMAttribute"
         app_label = "dpmcore_django"
+        verbose_name = "DPM attribute"
+        verbose_name_plural = "DPM attributes"
 
 
 class Translation(models.Model):
     """Multilingual text translation."""
 
-    id = models.AutoField(primary_key=True)
     concept_guid = models.ForeignKey(
         "Concept",
         on_delete=models.DO_NOTHING,
         db_column="ConceptGUID",
+        primary_key=True,
     )
     attribute_id = models.ForeignKey(
         "DpmAttribute",
@@ -401,10 +411,10 @@ class Translation(models.Model):
 class Changelog(models.Model):
     """Change tracking entry."""
 
-    id = models.AutoField(primary_key=True)
     row_guid = models.CharField(
         db_column="RowGUID",
         max_length=36,
+        primary_key=True,
     )
     class_id = models.ForeignKey(
         "DpmClass",
@@ -538,6 +548,9 @@ class Document(models.Model):
         blank=True,
     )
 
+    def __str__(self) -> str:
+        return self.name or self.code or str(self.document_id)
+
     class Meta:
         managed = False
         db_table = "Document"
@@ -581,6 +594,9 @@ class DocumentVersion(models.Model):
         null=True,
         blank=True,
     )
+
+    def __str__(self) -> str:
+        return self.code or str(self.document_vid)
 
     class Meta:
         managed = False
@@ -645,6 +661,9 @@ class Subdivision(models.Model):
         blank=True,
     )
 
+    def __str__(self) -> str:
+        return self.number or str(self.subdivision_id)
+
     class Meta:
         managed = False
         db_table = "Subdivision"
@@ -671,6 +690,9 @@ class SubdivisionType(models.Model):
         blank=True,
     )
 
+    def __str__(self) -> str:
+        return self.name or str(self.subdivision_type_id)
+
     class Meta:
         managed = False
         db_table = "SubdivisionType"
@@ -680,11 +702,11 @@ class SubdivisionType(models.Model):
 class Reference(models.Model):
     """Link between a Subdivision and a Concept."""
 
-    id = models.AutoField(primary_key=True)
     subdivision_id = models.ForeignKey(
         "Subdivision",
         on_delete=models.DO_NOTHING,
         db_column="SubdivisionID",
+        primary_key=True,
     )
     concept_guid = models.ForeignKey(
         "Concept",
