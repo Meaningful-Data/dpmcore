@@ -35,16 +35,16 @@ documentation = "https://meaningful-data.github.io/dpmcore"
 
 [project.optional-dependencies]
 server = ["fastapi>=0.100", "uvicorn[standard]>=0.20"]
-django = ["django>=4.2"]
+django = ["django>=5.2"]
 postgres = ["psycopg2-binary>=2.9,<3.0"]
-sqlserver = ["pyodbc>=5.1,<5.2"]
+sqlserver = ["pyodbc>=5.1,<5.2", "mssql-django>=1.5"]
 migration = ["pandas>=2.1.4"]
 data = ["pandas>=2.1.4"]
 cli = ["click>=8.1", "rich>=13.7"]
 all = [
     "fastapi>=0.100",
     "uvicorn[standard]>=0.20",
-    "django>=4.2",
+    "django>=5.2",
     "psycopg2-binary>=2.9,<3.0",
     "pyodbc>=5.1,<5.2",
     "pandas>=2.1.4",
@@ -68,6 +68,8 @@ dev = [
     "pytest-cov>=4.0.0",
     "pyroma>=4.2",
     "httpx (>=0.28.1,<0.29.0)",
+    "pytest-django>=4.8",
+    "django-stubs>=5.0",
 ]
 docs = [
     "sphinx>=7.2.6",
@@ -105,6 +107,8 @@ lint.mccabe.max-complexity = 10
 lint.pydocstyle.convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
+"src/dpmcore/django/models/*" = ["D105", "D106"]
+"src/dpmcore/django/admin.py" = ["D101"]
 "tests/*" = [
     "C901",
     "DTZ",
