@@ -122,6 +122,20 @@ class _ServiceAccessor:
         return self._cache["structure"]
 
     # ------------------------------------------------------------------ #
+    # Layout exporter
+    # ------------------------------------------------------------------ #
+
+    @property
+    def layout_exporter(self):
+        from dpmcore.services.layout_exporter import LayoutExporterService
+
+        if "layout_exporter" not in self._cache:
+            self._cache["layout_exporter"] = LayoutExporterService(
+                self._session,
+            )
+        return self._cache["layout_exporter"]
+
+    # ------------------------------------------------------------------ #
     # Migration (requires Engine, not Session)
     # ------------------------------------------------------------------ #
 

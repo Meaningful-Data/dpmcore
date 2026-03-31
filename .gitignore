@@ -49,3 +49,5 @@ json_scripts/*
 development.py
 .antigravity/
 output/
+input/
+*.xlsx

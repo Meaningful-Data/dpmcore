@@ -109,3 +109,73 @@ def serve(database: str, host: str, port: int) -> None:
 
     app = create_app(database)
     uvicorn.run(app, host=host, port=port)
+
+
+@main.command("export-layout")
+@click.option(
+    "--database",
+    required=True,
+    help="SQLAlchemy database URL (e.g. sqlite:///dpm.db).",
+)
+@click.option(
+    "--module",
+    "module_code",
+    default=None,
+    help="Module version code to export (e.g. FINREP9).",
+)
+@click.option(
+    "--tables",
+    "table_codes",
+    default=None,
+    help="Comma-separated table codes (e.g. F_01.01,F_01.02).",
+)
+@click.option(
+    "--release",
+    "release_code",
+    default=None,
+    help="Release code filter (e.g. 4.2).",
+)
+@click.option(
+    "--output",
+    "output_path",
+    default=None,
+    type=click.Path(),
+    help="Output file path (.xlsx).",
+)
+@click.option("--no-annotate", is_flag=True, help="Disable annotations.")
+@click.option("--no-comments", is_flag=True, help="Disable cell comments.")
+def export_layout(
+    database: str,
+    module_code: str | None,
+    table_codes: str | None,
+    release_code: str | None,
+    output_path: str | None,
+    no_annotate: bool,
+    no_comments: bool,
+) -> None:
+    """Export annotated table layouts to Excel."""
+    if not module_code and not table_codes:
+        raise click.UsageError("Provide --module or --tables.")
+
+    from dpmcore.connection import connect
+    from dpmcore.services.layout_exporter.models import ExportConfig
+
+    config = ExportConfig(
+        annotate=not no_annotate,
+        add_cell_comments=not no_comments,
+        add_header_comments=not no_comments,
+    )
+
+    with connect(database) as db:
+        svc = db.services.layout_exporter
+        if module_code:
+            path = svc.export_module(
+                module_code, release_code, output_path, config,
+            )
+        else:
+            codes = [c.strip() for c in table_codes.split(",")]  # type: ignore[union-attr]
+            path = svc.export_tables(
+                codes, release_code, output_path, config,
+            )
+
+    click.echo(f"Exported to {path}")
