@@ -222,9 +222,9 @@ class ExcelLayoutWriter:
 
             # Column code row
             if cfg.show_code_row and not ch.is_abstract and col_code_row:
-                code_cell = ws.cell(
-                    row=col_code_row, column=excel_col, value=ch.code,
-                )
+                code_cell = ws.cell(row=col_code_row, column=excel_col)
+                code_cell.value = ch.code
+                code_cell.number_format = "@"  # text format
                 code_cell.fill = _GREY_FILL
                 code_cell.border = _BORDER_ALL
                 code_cell.alignment = Alignment(horizontal="center")
@@ -298,9 +298,10 @@ class ExcelLayoutWriter:
 
             # Row code column
             if cfg.show_code_column and not rh.is_abstract:
-                ws.cell(
-                    row=excel_row, column=row_code_col, value=rh.code,
-                ).border = _BORDER_ALL
+                code_cell = ws.cell(row=excel_row, column=row_code_col)
+                code_cell.value = rh.code
+                code_cell.number_format = "@"  # text format
+                code_cell.border = _BORDER_ALL
 
             # Header tooltip
             if cfg.add_header_comments and rh.categorisations:
@@ -394,79 +395,102 @@ class ExcelLayoutWriter:
         num_visible_cols: int,
     ) -> None:
         """Write dimensional annotations below and to the right of the grid."""
-        # Collect all dimension IDs used
-        all_dims = layout.dimension_ids
-        if not all_dims:
-            return
+        # Build per-axis dimension lists: only include dimensions that have
+        # at least one value on that axis.
+        col_dims = _collect_axis_dimensions(layout.columns)
+        row_dims = _collect_axis_dimensions(layout.rows)
 
+        # Assign colors consistently across both axes
+        all_dim_ids = dict(col_dims + row_dims)  # dedup, preserves order
         dim_color_map: dict[int, str] = {}
-        for i, (pid, _) in enumerate(all_dims):
+        for i, pid in enumerate(all_dim_ids):
             dim_color_map[pid] = _DIM_COLORS[i % len(_DIM_COLORS)]
 
         # --- Column annotations (below the data grid) ---
-        ann_start_row = data_start_row + len(layout.rows) + 1
+        if col_dims:
+            ann_start_row = data_start_row + len(layout.rows) + 1
 
-        for dim_idx, (prop_id, dim_label) in enumerate(all_dims):
-            ann_row = ann_start_row + dim_idx
-            color = dim_color_map[prop_id]
+            for dim_idx, (prop_id, dim_label) in enumerate(col_dims):
+                ann_row = ann_start_row + dim_idx
+                color = dim_color_map[prop_id]
 
-            # Dimension label
-            label_cell = ws.cell(
-                row=ann_row, column=data_start_col - 1, value=dim_label,
-            )
-            label_cell.font = Font(bold=True, size=9, color=color)
-            label_cell.alignment = Alignment(horizontal="right")
+                # Dimension label
+                label_cell = ws.cell(
+                    row=ann_row, column=data_start_col - 1, value=dim_label,
+                )
+                label_cell.font = Font(bold=True, size=9, color=color)
+                label_cell.alignment = Alignment(horizontal="right")
 
-            # Member values per column
-            for ch in layout.columns:
-                if ch.is_abstract:
-                    continue
-                col_offset = col_positions[ch.header_id]
-                excel_col = data_start_col - 1 + col_offset
+                # Member values per column
+                for ch in layout.columns:
+                    if ch.is_abstract:
+                        continue
+                    col_offset = col_positions[ch.header_id]
+                    excel_col = data_start_col - 1 + col_offset
 
-                member = _find_member(ch.categorisations, prop_id)
-                if member:
-                    mc = ws.cell(
-                        row=ann_row, column=excel_col, value=member.member_label,
-                    )
-                    mc.font = Font(size=9, color=color)
-                    mc.alignment = Alignment(
-                        horizontal="center", wrap_text=True,
-                    )
+                    member = _find_member(ch.categorisations, prop_id)
+                    if member:
+                        mc = ws.cell(
+                            row=ann_row, column=excel_col,
+                            value=member.member_label,
+                        )
+                        mc.font = Font(size=9, color=color)
+                        mc.alignment = Alignment(
+                            horizontal="center", wrap_text=True,
+                        )
 
         # --- Row annotations (to the right of the data grid) ---
-        ann_start_col = data_start_col + num_visible_cols + 1
+        if row_dims:
+            ann_start_col = data_start_col + num_visible_cols + 1
 
-        for dim_idx, (prop_id, dim_label) in enumerate(all_dims):
-            ann_col = ann_start_col + dim_idx
-            color = dim_color_map[prop_id]
+            for dim_idx, (prop_id, dim_label) in enumerate(row_dims):
+                ann_col = ann_start_col + dim_idx
+                color = dim_color_map[prop_id]
 
-            # Dimension label (in header area)
-            label_cell = ws.cell(
-                row=data_start_row - 1, column=ann_col, value=dim_label,
-            )
-            label_cell.font = Font(bold=True, size=9, color=color)
-            label_cell.alignment = Alignment(
-                horizontal="left", vertical="bottom", wrap_text=True,
-            )
+                # Dimension label (in header area)
+                label_cell = ws.cell(
+                    row=data_start_row - 1, column=ann_col, value=dim_label,
+                )
+                label_cell.font = Font(bold=True, size=9, color=color)
+                label_cell.alignment = Alignment(
+                    horizontal="left", vertical="bottom", wrap_text=True,
+                )
 
-            # Member values per row
-            for rh in layout.rows:
-                if rh.is_abstract:
-                    continue
-                excel_row = row_positions[rh.header_id]
+                # Member values per row
+                for rh in layout.rows:
+                    if rh.is_abstract:
+                        continue
+                    excel_row = row_positions[rh.header_id]
 
-                member = _find_member(rh.categorisations, prop_id)
-                if member:
-                    mc = ws.cell(
-                        row=excel_row, column=ann_col,
-                        value=member.member_label,
-                    )
-                    mc.font = Font(size=9, color=color)
-                    mc.alignment = Alignment(horizontal="left")
+                    member = _find_member(rh.categorisations, prop_id)
+                    if member:
+                        mc = ws.cell(
+                            row=excel_row, column=ann_col,
+                            value=member.member_label,
+                        )
+                        mc.font = Font(size=9, color=color)
+                        mc.alignment = Alignment(horizontal="left")
 
-            # Set annotation column width
-            ws.column_dimensions[get_column_letter(ann_col)].width = 25
+                # Set annotation column width
+                ws.column_dimensions[get_column_letter(ann_col)].width = 25
+
+
+def _collect_axis_dimensions(
+    headers: list[LayoutHeader],
+) -> list[tuple[int, str]]:
+    """Collect dimensions that have at least one value on this axis.
+
+    Returns a sorted list of (property_id, dimension_label) for dimensions
+    that appear in at least one non-abstract header's categorisations.
+    """
+    seen: dict[int, str] = {}
+    for h in headers:
+        if h.is_abstract:
+            continue
+        for dm in h.categorisations:
+            if dm.property_id not in seen:
+                seen[dm.property_id] = dm.dimension_label
+    return sorted(seen.items())
 
 
 def _find_member(

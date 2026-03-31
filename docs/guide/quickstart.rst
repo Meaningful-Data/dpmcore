@@ -41,6 +41,9 @@ All services are available through ``db.services``:
        # Migration (from Access)
        result = db.services.migration.migrate_from_access("/path/to/dpm.accdb")
 
+       # Table layout export (to Excel)
+       db.services.layout_exporter.export_module("FINREP9", output_path="finrep.xlsx")
+
 Standalone service usage
 ------------------------
 

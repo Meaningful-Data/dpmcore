@@ -38,10 +38,14 @@ def build_layout_headers(
         if hv.property_id and hv.property_id in property_cats:
             cats.append(property_cats[hv.property_id])
 
+        # Zero-pad numeric codes to 4 digits (matching EBA convention)
+        raw_code = hv.code or ""
+        code = raw_code.zfill(4) if raw_code.isdigit() else raw_code
+
         lh = LayoutHeader(
             header_id=tvh.header_id,
             header_vid=tvh.header_vid or hv.header_vid,
-            code=hv.code or "",
+            code=code,
             label=hv.label or "",
             direction=direction,
             order=tvh.order or 0,
