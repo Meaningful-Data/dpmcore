@@ -148,7 +148,7 @@ class TestDetectAlternativeDependencies:
         svc = Svc(MagicMock())
         if uri_map is not None:
             svc._get_module_uri = (
-                lambda module_vid, release_id=None: (
+                lambda module_vid, release_id=None, mv=None: (
                     uri_map.get(module_vid)
                 )
             )
@@ -260,7 +260,7 @@ class TestDetectCrossModuleDependencies:
         Svc, SR = _load_module()
         svc = Svc(MagicMock())
         svc._get_module_uri = (
-            lambda module_vid, release_id=None: (
+            lambda module_vid, release_id=None, mv=None: (
                 f"http://uri/mod_{module_vid}"
             )
         )
@@ -383,3 +383,173 @@ class TestDetectCrossModuleDependencies:
             operation_code="v1",
         )
         assert "alternative_dependencies" in info
+
+
+class TestGetModuleUri:
+    """Test URI resolution helper."""
+
+    def test_returns_none_for_missing_module(self):
+        Svc, _ = _load_module()
+        svc = Svc(MagicMock())
+        q = svc.session.query.return_value
+        q.filter.return_value.first.return_value = None
+        assert svc._get_module_uri(999) is None
+
+    def test_constructs_uri_correctly(self):
+        Svc, _ = _load_module()
+        svc = Svc(MagicMock())
+
+        mv = MagicMock()
+        mv.code = "COREP"
+        mv.start_release_id = 5
+        mv.module = MagicMock()
+        mv.module.framework = MagicMock()
+        mv.module.framework.code = "CRR"
+
+        release = MagicMock()
+        release.code = "3.4"
+
+        q = svc.session.query.return_value
+        q.filter.return_value.first.side_effect = [
+            mv,
+            release,
+        ]
+
+        uri = svc._get_module_uri(10, release_id=5)
+        expected = (
+            "http://www.eba.europa.eu/eu/fr/xbrl/crr"
+            "/fws/crr/3.4/mod/corep"
+        )
+        assert uri == expected
+
+    def test_skips_query_when_mv_provided(self):
+        Svc, _ = _load_module()
+        svc = Svc(MagicMock())
+
+        mv = MagicMock()
+        mv.code = "COREP"
+        mv.start_release_id = 5
+        mv.module = MagicMock()
+        mv.module.framework = MagicMock()
+        mv.module.framework.code = "CRR"
+
+        release = MagicMock()
+        release.code = "3.4"
+
+        q = svc.session.query.return_value
+        # Only one query (for Release), not two
+        q.filter.return_value.first.return_value = release
+
+        uri = svc._get_module_uri(
+            10, release_id=5, mv=mv
+        )
+        assert uri is not None
+        assert "corep" in uri
+
+    def test_returns_none_when_no_framework(self):
+        Svc, _ = _load_module()
+        svc = Svc(MagicMock())
+
+        mv = MagicMock()
+        mv.module = MagicMock()
+        mv.module.framework = None
+
+        assert (
+            svc._get_module_uri(10, mv=mv) is None
+        )
+
+
+def _load_ast_generator():
+    """Load ASTGeneratorService bypassing ORM chain."""
+    # Need extra stubs for ast_generator imports
+    for mod_name in [
+        "dpmcore.dpm_xl.utils.serialization",
+        "dpmcore.services.scope_calculator",
+        "dpmcore.services.semantic",
+    ]:
+        if mod_name not in sys.modules:
+            sys.modules[mod_name] = MagicMock()
+
+    mod_name = "dpmcore.services.ast_generator"
+    if mod_name in sys.modules:
+        del sys.modules[mod_name]
+
+    spec = importlib.util.spec_from_file_location(
+        mod_name,
+        "src/dpmcore/services/ast_generator.py",
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[mod_name] = mod
+    spec.loader.exec_module(mod)
+    return mod.ASTGeneratorService
+
+
+class TestMergeCrossDeps:
+    """Test cross-instance dependency merging."""
+
+    def test_new_dep_appended(self):
+        Cls = _load_ast_generator()
+        existing = []
+        new = [
+            {
+                "modules": [{"URI": "http://a"}],
+                "affected_operations": ["v1"],
+            }
+        ]
+        Cls._merge_cross_deps(existing, new)
+        assert len(existing) == 1
+
+    def test_duplicate_uri_merges_operations(self):
+        Cls = _load_ast_generator()
+        existing = [
+            {
+                "modules": [{"URI": "http://a"}],
+                "affected_operations": ["v1"],
+            }
+        ]
+        new = [
+            {
+                "modules": [{"URI": "http://a"}],
+                "affected_operations": ["v2"],
+            }
+        ]
+        Cls._merge_cross_deps(existing, new)
+        assert len(existing) == 1
+        assert existing[0]["affected_operations"] == [
+            "v1",
+            "v2",
+        ]
+
+    def test_different_uris_both_kept(self):
+        Cls = _load_ast_generator()
+        existing = [
+            {
+                "modules": [{"URI": "http://a"}],
+                "affected_operations": ["v1"],
+            }
+        ]
+        new = [
+            {
+                "modules": [{"URI": "http://b"}],
+                "affected_operations": ["v2"],
+            }
+        ]
+        Cls._merge_cross_deps(existing, new)
+        assert len(existing) == 2
+
+    def test_duplicate_op_not_added_twice(self):
+        Cls = _load_ast_generator()
+        existing = [
+            {
+                "modules": [{"URI": "http://a"}],
+                "affected_operations": ["v1"],
+            }
+        ]
+        new = [
+            {
+                "modules": [{"URI": "http://a"}],
+                "affected_operations": ["v1"],
+            }
+        ]
+        Cls._merge_cross_deps(existing, new)
+        assert existing[0]["affected_operations"] == ["v1"]

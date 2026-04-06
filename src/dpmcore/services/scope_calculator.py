@@ -49,7 +49,7 @@ class ScopeCalculatorService:
         session: An open SQLAlchemy session.
     """
 
-    def __init__(self, session: "Session") -> None:
+    def __init__(self, session: "Session") -> None:  # noqa: D107
         self.session = session
         self._syntax = SyntaxService()
 
@@ -244,11 +244,15 @@ class ScopeCalculatorService:
         is_cross = scope_result.is_cross_module
 
         if not is_cross or scope_result.has_error:
-            alternative_deps = self.detect_alternative_dependencies(
-                scope_results=[scope_result],
-                primary_module_vid=primary_module_vid,
-                release_id=release_id,
-            )
+            alternative_deps: List[List[str]] = []
+            if not scope_result.has_error:
+                alternative_deps = (
+                    self.detect_alternative_dependencies(
+                        scope_results=[scope_result],
+                        primary_module_vid=primary_module_vid,
+                        release_id=release_id,
+                    )
+                )
             return {
                 "intra_instance_validations": (
                     []
@@ -283,14 +287,18 @@ class ScopeCalculatorService:
                 continue
 
             uri = self._get_module_uri(
-                module_vid=vid, release_id=release_id
+                module_vid=vid,
+                release_id=release_id,
+                mv=mv,
             )
             if not uri:
                 continue
 
             module_entry: Dict[str, Any] = {"URI": uri}
             if mv.version_number:
-                module_entry["module_version"] = mv.version_number
+                module_entry["module_version"] = (
+                    mv.version_number
+                )
 
             from_date = mv.from_reference_date
             to_date = mv.to_reference_date
@@ -452,19 +460,27 @@ class ScopeCalculatorService:
         self,
         module_vid: int,
         release_id: Optional[int] = None,
+        mv: Optional[Any] = None,
     ) -> Optional[str]:
         """Resolve a module VID to its EBA taxonomy URI.
 
-        Constructs a URI of the form:
-        ``http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/
-        {framework}/{release}/mod/{module}``
+        Constructs a URI of the form::
+
+            http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/
+            {framework}/{release}/mod/{module}
+
+        When *mv* is supplied the DB lookup is skipped.
         """
         try:
-            mv = (
-                self.session.query(ModuleVersion)
-                .filter(ModuleVersion.module_vid == module_vid)
-                .first()
-            )
+            if mv is None:
+                mv = (
+                    self.session.query(ModuleVersion)
+                    .filter(
+                        ModuleVersion.module_vid
+                        == module_vid
+                    )
+                    .first()
+                )
             if not mv or not mv.module:
                 return None
 
@@ -476,29 +492,32 @@ class ScopeCalculatorService:
             if not module_code:
                 return None
 
-            # Determine release code
-            effective_release_id = release_id or mv.start_release_id
+            effective_release_id = (
+                release_id or mv.start_release_id
+            )
             release_row = (
                 self.session.query(Release.code)
                 .filter(
-                    Release.release_id == effective_release_id
+                    Release.release_id
+                    == effective_release_id
                 )
                 .first()
             )
             if not release_row or not release_row.code:
                 return None
 
-            uri = (
-                "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/"
+            return (
+                "http://www.eba.europa.eu/eu/fr/xbrl/crr"
+                "/fws/"
                 f"{framework.code.lower()}/"
                 f"{release_row.code}/mod/"
                 f"{module_code.lower()}"
             )
-            return uri
 
         except Exception as exc:
             logger.warning(
-                "Failed to resolve URI for module VID %s: %s",
+                "Failed to resolve URI for module VID"
+                " %s: %s",
                 module_vid,
                 exc,
             )
