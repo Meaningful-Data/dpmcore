@@ -14,10 +14,21 @@ from typing import (
 )
 
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
-from dpmcore.dpm_xl.utils.scopes_calculator import OperationScopeService
+from dpmcore.dpm_xl.utils.scopes_calculator import (
+    OperationScopeService,
+)
 from dpmcore.errors import SemanticError
-from dpmcore.orm.infrastructure import Release
-from dpmcore.orm.packaging import ModuleVersion
+from dpmcore.orm.glossary import Property
+from dpmcore.orm.infrastructure import DataType, Release
+from dpmcore.orm.packaging import (
+    ModuleVersion,
+    ModuleVersionComposition,
+)
+from dpmcore.orm.rendering import (
+    TableVersion,
+    TableVersionCell,
+)
+from dpmcore.orm.variables import Variable, VariableVersion
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -231,17 +242,33 @@ class ScopeCalculatorService:
         primary_module_vid: int,
         operation_code: Optional[str] = None,
         release_id: Optional[int] = None,
+        time_shifts: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """Build dependency information for a scope result.
 
+        Args:
+            scope_result: The computed scope result.
+            primary_module_vid: VID of the primary module.
+            operation_code: Current operation code (if any).
+            release_id: Optional release filter.
+            time_shifts: Optional mapping of table codes to
+                ref-period strings (e.g. ``{"C_01.00": "T-1Q"}``).
+                Tables not present default to ``"T"``.
+
         Returns a dict with:
-        - ``intra_instance_validations``: operation codes for
-          intra-module validations.
-        - ``cross_instance_dependencies``: list of external module
-          dependency dicts.
-        - ``alternative_dependencies``: pairs of alternative modules.
+        - ``intra_instance_validations``
+        - ``cross_instance_dependencies``
+        - ``alternative_dependencies``
+        - ``dependency_modules``
         """
+        empty_result: Dict[str, Any] = {
+            "intra_instance_validations": [],
+            "cross_instance_dependencies": [],
+            "alternative_dependencies": [],
+            "dependency_modules": {},
+        }
         is_cross = scope_result.is_cross_module
+        ts = time_shifts or {}
 
         if not is_cross or scope_result.has_error:
             alternative_deps: List[List[str]] = []
@@ -254,12 +281,12 @@ class ScopeCalculatorService:
                     )
                 )
             return {
+                **empty_result,
                 "intra_instance_validations": (
                     []
                     if is_cross or not operation_code
                     else [operation_code]
                 ),
-                "cross_instance_dependencies": [],
                 "alternative_dependencies": alternative_deps,
             }
 
@@ -268,15 +295,18 @@ class ScopeCalculatorService:
         )
         if not valid_vids:
             return {
+                **empty_result,
                 "intra_instance_validations": (
-                    [operation_code] if operation_code else []
+                    [operation_code]
+                    if operation_code
+                    else []
                 ),
-                "cross_instance_dependencies": [],
-                "alternative_dependencies": [],
             }
 
-        # Build cross_instance_dependencies from valid external modules
+        # Build cross_instance_dependencies and dependency_modules
         cross_deps: List[Dict[str, Any]] = []
+        dep_modules: Dict[str, Any] = {}
+
         for vid in sorted(valid_vids):
             mv = (
                 self.session.query(ModuleVersion)
@@ -294,7 +324,22 @@ class ScopeCalculatorService:
             if not uri:
                 continue
 
-            module_entry: Dict[str, Any] = {"URI": uri}
+            # Collect tables for this external module
+            tables_dict = self._get_module_tables(
+                vid, release_id
+            )
+
+            # Determine ref_period: most specific (non-T) wins
+            ref_period = "T"
+            for tbl_code in tables_dict:
+                rp = ts.get(tbl_code)
+                if rp and rp != "T":
+                    ref_period = rp
+
+            module_entry: Dict[str, Any] = {
+                "URI": uri,
+                "ref_period": ref_period,
+            }
             if mv.version_number:
                 module_entry["module_version"] = (
                     mv.version_number
@@ -319,6 +364,18 @@ class ScopeCalculatorService:
                 }
             )
 
+            # dependency_modules entry
+            dep_modules[uri] = {
+                "tables": tables_dict,
+                "variables": {
+                    k: v
+                    for tbl in tables_dict.values()
+                    for k, v in tbl.get(
+                        "variables", {}
+                    ).items()
+                },
+            }
+
         alternative_deps = self.detect_alternative_dependencies(
             scope_results=[scope_result],
             primary_module_vid=primary_module_vid,
@@ -329,6 +386,7 @@ class ScopeCalculatorService:
             "intra_instance_validations": [],
             "cross_instance_dependencies": cross_deps,
             "alternative_dependencies": alternative_deps,
+            "dependency_modules": dep_modules,
         }
 
     # ------------------------------------------------------------------ #
@@ -456,6 +514,104 @@ class ScopeCalculatorService:
     # Helpers
     # ------------------------------------------------------------------ #
 
+    def _get_module_tables(
+        self,
+        module_vid: int,
+        release_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Return tables for a module with their variables.
+
+        Returns::
+
+            {table_code: {"variables": {var_id: type_code},
+                          "open_keys": {}}}
+        """
+        # Get table codes + VIDs for this module
+        tv_rows = (
+            self.session.query(
+                TableVersion.code,
+                TableVersion.table_vid,
+            )
+            .join(
+                ModuleVersionComposition,
+                TableVersion.table_vid
+                == ModuleVersionComposition.table_vid,
+            )
+            .filter(
+                ModuleVersionComposition.module_vid
+                == module_vid
+            )
+            .all()
+        )
+
+        table_vids = [
+            r.table_vid for r in tv_rows if r.table_vid
+        ]
+        vid_to_code = {
+            r.table_vid: r.code
+            for r in tv_rows
+            if r.code
+        }
+
+        # Batch-fetch variables for all tables at once
+        variables_by_tvid: Dict[int, Dict[str, str]] = {
+            tvid: {} for tvid in table_vids
+        }
+        if table_vids:
+            var_rows = (
+                self.session.query(
+                    TableVersionCell.table_vid,
+                    Variable.variable_id,
+                    DataType.code,
+                )
+                .select_from(TableVersionCell)
+                .join(
+                    VariableVersion,
+                    TableVersionCell.variable_vid
+                    == VariableVersion.variable_vid,
+                )
+                .join(
+                    Variable,
+                    VariableVersion.variable_id
+                    == Variable.variable_id,
+                )
+                .join(
+                    Property,
+                    VariableVersion.property_id
+                    == Property.property_id,
+                )
+                .join(
+                    DataType,
+                    Property.data_type_id
+                    == DataType.data_type_id,
+                )
+                .filter(
+                    TableVersionCell.table_vid.in_(
+                        table_vids
+                    )
+                )
+                .distinct()
+                .all()
+            )
+            for row in var_rows:
+                tvid = row[0]
+                var_id = str(row[1])
+                type_code = row[2] or ""
+                if tvid in variables_by_tvid:
+                    variables_by_tvid[tvid][var_id] = (
+                        type_code
+                    )
+
+        tables: Dict[str, Any] = {}
+        for tvid, code in vid_to_code.items():
+            tables[code] = {
+                "variables": variables_by_tvid.get(
+                    tvid, {}
+                ),
+                "open_keys": {},
+            }
+        return tables
+
     def _get_module_uri(
         self,
         module_vid: int,
@@ -464,13 +620,18 @@ class ScopeCalculatorService:
     ) -> Optional[str]:
         """Resolve a module VID to its EBA taxonomy URI.
 
-        Constructs a URI of the form::
+        Resolution order:
 
-            http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/
-            {framework}/{release}/mod/{module}
+        1. Static CSV mapping by module code + version.
+        2. Dynamic construction from DB metadata.
 
-        When *mv* is supplied the DB lookup is skipped.
+        When *mv* is supplied the initial DB lookup is
+        skipped.
         """
+        from dpmcore.data import (
+            get_module_schema_ref_by_version,
+        )
+
         try:
             if mv is None:
                 mv = (
@@ -484,12 +645,21 @@ class ScopeCalculatorService:
             if not mv or not mv.module:
                 return None
 
-            framework = mv.module.framework
-            if not framework or not framework.code:
-                return None
-
             module_code = mv.code
             if not module_code:
+                return None
+
+            # 1. Try static CSV mapping by version
+            if mv.version_number:
+                static = get_module_schema_ref_by_version(
+                    module_code, mv.version_number
+                )
+                if static:
+                    return static.removesuffix(".json")
+
+            # 2. Dynamic construction
+            framework = mv.module.framework
+            if not framework or not framework.code:
                 return None
 
             effective_release_id = (

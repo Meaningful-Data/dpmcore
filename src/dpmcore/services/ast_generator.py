@@ -182,7 +182,10 @@ class ASTGeneratorService:
                         release_id=release_id,
                     )
                     if not sr.has_error:
-                        scope_pairs.append((item, sr))
+                        ts = self._extract_time_shifts(ast)
+                        scope_pairs.append(
+                            (item, sr, ts)
+                        )
 
             dependency_info = self._build_dependency_info(
                 scope_pairs=scope_pairs,
@@ -196,7 +199,12 @@ class ASTGeneratorService:
                 "error": None,
             }
             if dependency_info is not None:
-                response["dependency_info"] = dependency_info
+                response["dependency_information"] = (
+                    dependency_info["dependency_information"]
+                )
+                response["dependency_modules"] = (
+                    dependency_info["dependency_modules"]
+                )
 
             return response
 
@@ -216,9 +224,10 @@ class ASTGeneratorService:
         """Build dependency_info from collected scope results.
 
         Args:
-            scope_pairs: list of ``(item_tuple, ScopeResult)``
-                pairs so each scope result stays matched to
-                its originating expression/operation code.
+            scope_pairs: list of
+                ``(item_tuple, ScopeResult, time_shifts)``
+                triples so each scope result stays matched
+                to its originating expression/operation code.
             primary_module_vid: the primary module VID.
             release_id: optional release filter.
 
@@ -237,9 +246,10 @@ class ASTGeneratorService:
 
         all_intra: List[str] = []
         all_cross: List[Dict[str, Any]] = []
+        all_dep_modules: Dict[str, Any] = {}
         all_scope_results: List[ScopeResult] = []
 
-        for item, sr in scope_pairs:
+        for item, sr, ts in scope_pairs:
             all_scope_results.append(sr)
             op_code = (
                 item[1] if len(item) > 1 else None
@@ -251,6 +261,7 @@ class ASTGeneratorService:
                     primary_module_vid=primary_module_vid,
                     operation_code=op_code,
                     release_id=release_id,
+                    time_shifts=ts,
                 )
             )
             all_intra.extend(
@@ -264,6 +275,10 @@ class ASTGeneratorService:
                     "cross_instance_dependencies", []
                 ),
             )
+            self._merge_dep_modules(
+                all_dep_modules,
+                current.get("dependency_modules", {}),
+            )
 
         alt_deps = (
             self._scope_calc
@@ -275,9 +290,12 @@ class ASTGeneratorService:
         )
 
         return {
-            "intra_instance_validations": all_intra,
-            "cross_instance_dependencies": all_cross,
-            "alternative_dependencies": alt_deps,
+            "dependency_information": {
+                "intra_instance_validations": all_intra,
+                "cross_instance_dependencies": all_cross,
+                "alternative_dependencies": alt_deps,
+            },
+            "dependency_modules": all_dep_modules,
         }
 
     @staticmethod
@@ -321,3 +339,78 @@ class ASTGeneratorService:
                             if op not in ops:
                                 ops.append(op)
                         break
+
+    @staticmethod
+    def _merge_dep_modules(
+        existing: Dict[str, Any],
+        new: Dict[str, Any],
+    ) -> None:
+        """Merge *new* dependency_modules into *existing*.
+
+        Avoids table duplicates within each module URI.
+        """
+        for uri, data in new.items():
+            if uri not in existing:
+                existing[uri] = data
+            else:
+                for tbl, tbl_data in data.get(
+                    "tables", {}
+                ).items():
+                    existing[uri].setdefault(
+                        "tables", {}
+                    ).setdefault(tbl, tbl_data)
+                existing[uri].setdefault(
+                    "variables", {}
+                ).update(data.get("variables", {}))
+
+    @staticmethod
+    def _extract_time_shifts(ast: Any) -> Dict[str, str]:
+        """Extract per-table time shifts from an AST.
+
+        Returns a mapping of table codes to ref-period
+        strings (e.g. ``{"C_01.00": "T-1Q"}``).
+        """
+        from dpmcore.dpm_xl.ast.template import ASTTemplate
+
+        time_shifts: Dict[str, str] = {}
+        current_period = ["t"]
+
+        class _Extractor(ASTTemplate):
+            def visit_TimeShiftOp(self, node: Any) -> None:
+                prev = current_period[0]
+                pi = node.period_indicator
+                sn = node.shift_number
+                if "-" in str(sn):
+                    current_period[0] = f"t+{pi}{sn}"
+                else:
+                    current_period[0] = f"t-{pi}{sn}"
+                self.visit(node.operand)
+                current_period[0] = prev
+
+            def visit_VarID(self, node: Any) -> None:
+                if node.table and current_period[0] != "t":
+                    time_shifts[node.table] = (
+                        current_period[0]
+                    )
+
+        def _to_ref_period(internal: str) -> str:
+            if internal.startswith("t+"):
+                ind = internal[2]
+                num = internal[3:]
+                if num.startswith("-"):
+                    return f"T{num}{ind}"
+                return f"T+{num}{ind}"
+            if internal.startswith("t-"):
+                ind = internal[2]
+                num = internal[3:]
+                return f"T-{num}{ind}"
+            return "T"
+
+        try:
+            _Extractor().visit(ast)
+            return {
+                t: _to_ref_period(p)
+                for t, p in time_shifts.items()
+            }
+        except Exception:
+            return {}

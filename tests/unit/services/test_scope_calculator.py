@@ -16,6 +16,18 @@ import pytest
 @pytest.fixture(autouse=True)
 def _patch_orm(monkeypatch):
     """Prevent ORM import chain on Python 3.10."""
+    # Stub dpmcore.data so static CSV lookup returns None
+    data_stub = MagicMock()
+    data_stub.get_module_schema_ref_by_version = (
+        MagicMock(return_value=None)
+    )
+    data_stub.get_module_schema_ref = MagicMock(
+        return_value=None
+    )
+    monkeypatch.setitem(
+        sys.modules, "dpmcore.data", data_stub
+    )
+
     for mod_name in [
         "dpmcore",
         "dpmcore.connection",
@@ -25,6 +37,7 @@ def _patch_orm(monkeypatch):
         "dpmcore.orm.operations",
         "dpmcore.orm.rendering",
         "dpmcore.orm.variables",
+        "dpmcore.orm.glossary",
         "dpmcore.errors",
         "dpmcore.dpm_xl",
         "dpmcore.dpm_xl.ast",
@@ -264,6 +277,9 @@ class TestDetectCrossModuleDependencies:
                 f"http://uri/mod_{module_vid}"
             )
         )
+        svc._get_module_tables = (
+            lambda module_vid, release_id=None: {}
+        )
         return svc, SR
 
     def test_intra_module_returns_op_code(self):
@@ -383,6 +399,116 @@ class TestDetectCrossModuleDependencies:
             operation_code="v1",
         )
         assert "alternative_dependencies" in info
+
+    def test_ref_period_from_time_shifts(self):
+        """ref_period uses time_shifts when provided."""
+        svc, SR = self._make_svc()
+        svc._get_module_tables = (
+            lambda vid, release_id=None: {
+                "C_01.00": {
+                    "variables": {},
+                    "open_keys": {},
+                }
+            }
+        )
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+
+        q = svc.session.query.return_value
+        q.filter.return_value.first.return_value = mv
+
+        sr = SR(
+            existing_scopes=[_scope([10, 20])],
+            new_scopes=[],
+            is_cross_module=True,
+        )
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+            time_shifts={"C_01.00": "T-1Q"},
+        )
+        dep = info["cross_instance_dependencies"][0]
+        assert dep["modules"][0]["ref_period"] == "T-1Q"
+
+    def test_ref_period_defaults_to_t(self):
+        """ref_period defaults to T when no time shifts."""
+        svc, SR = self._make_svc()
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+
+        q = svc.session.query.return_value
+        q.filter.return_value.first.return_value = mv
+
+        sr = SR(
+            existing_scopes=[_scope([10, 20])],
+            new_scopes=[],
+            is_cross_module=True,
+        )
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+        )
+        dep = info["cross_instance_dependencies"][0]
+        assert dep["modules"][0]["ref_period"] == "T"
+
+    def test_dependency_modules_in_output(self):
+        """dependency_modules dict is populated."""
+        svc, SR = self._make_svc()
+        svc._get_module_tables = (
+            lambda vid, release_id=None: {
+                "T_01": {
+                    "variables": {"v1": "x"},
+                    "open_keys": {},
+                }
+            }
+        )
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+
+        q = svc.session.query.return_value
+        q.filter.return_value.first.return_value = mv
+
+        sr = SR(
+            existing_scopes=[_scope([10, 20])],
+            new_scopes=[],
+            is_cross_module=True,
+        )
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+        )
+        dm = info["dependency_modules"]
+        assert "http://uri/mod_20" in dm
+        assert "T_01" in dm["http://uri/mod_20"]["tables"]
+        assert dm["http://uri/mod_20"]["variables"] == {
+            "v1": "x"
+        }
+
+    def test_empty_dependency_modules_when_not_cross(self):
+        """dependency_modules is empty for intra-module."""
+        svc, SR = self._make_svc()
+        sr = SR(
+            existing_scopes=[_scope([10])],
+            new_scopes=[],
+            is_cross_module=False,
+        )
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+        )
+        assert info["dependency_modules"] == {}
 
 
 class TestGetModuleUri:
