@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from dpmcore.services.layout_exporter import models, processing, queries
 from dpmcore.services.layout_exporter.excel_writer import ExcelLayoutWriter
 from dpmcore.services.layout_exporter.models import (
+    DimensionMember,
     ExportConfig,
     TableLayout,
 )
@@ -124,14 +125,17 @@ class LayoutExporterService:
         # Load all headers
         raw_headers = queries.load_headers(self.session, tv.table_vid)  # type: ignore[attr-defined]
 
-        # Collect context_ids and property_ids for batch loading
+        # Collect context_ids, property_ids, and subcategory_vids for batch loading
         context_ids: set[int] = set()
         property_ids: set[int] = set()
+        subcategory_vids: set[int] = set()
         for tvh, header, hv in raw_headers:
             if hv.context_id:
                 context_ids.add(hv.context_id)
             if hv.property_id:
                 property_ids.add(hv.property_id)
+            if hv.subcategory_vid:
+                subcategory_vids.add(hv.subcategory_vid)
 
         # Batch load categorisations
         context_cats = queries.load_categorisations(
@@ -140,10 +144,13 @@ class LayoutExporterService:
         property_cats = queries.load_property_as_categorisation(
             self.session, property_ids,
         )
+        subcategory_info = queries.load_subcategory_info(
+            self.session, subcategory_vids,
+        )
 
         # Build sorted headers
         columns, rows, sheets = processing.build_layout_headers(
-            raw_headers, context_cats, property_cats,
+            raw_headers, context_cats, property_cats, subcategory_info,
         )
 
         # Load cells
@@ -155,9 +162,53 @@ class LayoutExporterService:
             if tvc.variable_vid:
                 variable_vids.add(tvc.variable_vid)
 
+        # Also collect key variable VIDs from open-row key columns
+        for col in columns:
+            if col.key_variable_vid:
+                variable_vids.add(col.key_variable_vid)
+
         dp_cats = queries.load_dp_categorisations(
             self.session, variable_vids,
         )
+        variable_info = queries.load_variable_info(
+            self.session, variable_vids,
+        )
+
+        # Populate key variable fields on open-row key columns
+        for col in columns:
+            if col.key_variable_vid and col.key_variable_vid in variable_info:
+                v_id, dtype, prop_name = variable_info[col.key_variable_vid]
+                col.key_variable_id = v_id
+                col.key_data_type_code = dtype
+                col.key_property_name = prop_name
+
+        # Build synthetic key dimension annotations for key columns
+        key_variable_vids: set[int] = {
+            col.key_variable_vid for col in columns if col.key_variable_vid
+        }
+        if key_variable_vids:
+            key_vid_prop_ids = queries.load_key_variable_property_ids(
+                self.session, key_variable_vids,
+            )
+            key_prop_ids = set(key_vid_prop_ids.values())
+            key_prop_cats = queries.load_property_as_categorisation(
+                self.session, key_prop_ids,
+            )
+            for col in columns:
+                if col.key_variable_vid and col.key_variable_vid in key_vid_prop_ids:
+                    prop_id = key_vid_prop_ids[col.key_variable_vid]
+                    atm_dm = key_prop_cats.get(prop_id)
+                    if atm_dm:
+                        col.key_categorisations = [
+                            DimensionMember(
+                                property_id=atm_dm.property_id,
+                                dimension_label=atm_dm.member_label,
+                                dimension_code=atm_dm.member_code,
+                                domain_code=atm_dm.domain_code,
+                                member_label="",
+                                member_code="",
+                            ),
+                        ]
 
         # Build cell data
         row_ids = {h.header_id for h in rows}
@@ -171,6 +222,7 @@ class LayoutExporterService:
 
         cells = processing.build_cells(
             raw_cells, row_ids, col_ids, sheet_ids, dp_cats,
+            variable_info,
         )
 
         return processing.build_table_layout(tv, columns, rows, sheets, cells)

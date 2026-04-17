@@ -20,6 +20,7 @@ def build_layout_headers(
     raw_headers: list[tuple[Any, ...]],
     context_cats: dict[int, list[DimensionMember]],
     property_cats: dict[int, DimensionMember],
+    subcategory_info: Optional[dict[int, tuple[str, str, str]]] = None,
 ) -> tuple[list[LayoutHeader], list[LayoutHeader], list[LayoutHeader]]:
     """Convert raw (TableVersionHeader, Header, HeaderVersion) tuples
     into sorted LayoutHeader lists for each axis.
@@ -27,6 +28,7 @@ def build_layout_headers(
     Returns (columns, rows, sheets).
     """
     by_direction: dict[str, list[LayoutHeader]] = {"x": [], "y": [], "z": []}
+    subcat = subcategory_info or {}
 
     for tvh, header, hv in raw_headers:
         direction = header.direction.lower()
@@ -42,6 +44,11 @@ def build_layout_headers(
         raw_code = hv.code or ""
         code = raw_code.zfill(4) if raw_code.isdigit() else raw_code
 
+        # SubCategory info (for Z-axis sheet headers)
+        sc_code, sc_desc, sc_cat = ("", "", "")
+        if hv.subcategory_vid and hv.subcategory_vid in subcat:
+            sc_code, sc_desc, sc_cat = subcat[hv.subcategory_vid]
+
         lh = LayoutHeader(
             header_id=tvh.header_id,
             header_vid=tvh.header_vid or hv.header_vid,
@@ -54,6 +61,10 @@ def build_layout_headers(
             parent_header_id=tvh.parent_header_id,
             parent_first=bool(tvh.parent_first) if tvh.parent_first is not None else True,
             categorisations=cats,
+            subcategory_code=sc_code,
+            subcategory_description=sc_desc,
+            subcategory_cat_code=sc_cat,
+            key_variable_vid=hv.key_variable_vid,
         )
         by_direction.setdefault(direction, []).append(lh)
 
@@ -138,6 +149,7 @@ def build_cells(
     col_ids: set[int],
     sheet_ids: set[int],
     dp_cats: dict[int, list[DimensionMember]],
+    variable_info: Optional[dict[int, tuple[int, str]]] = None,
 ) -> dict[tuple[int, int, Optional[int]], CellData]:
     """Build the cell dictionary from raw (TableVersionCell, Cell) tuples.
 
@@ -145,27 +157,39 @@ def build_cells(
     Only includes cells whose headers are in the provided sets.
     """
     cells: dict[tuple[int, int, Optional[int]], CellData] = {}
+    var_info = variable_info or {}
 
     for tvc, cell in raw_cells:
         row_id = cell.row_id
         col_id = cell.column_id
         sheet_id = cell.sheet_id
 
-        if row_id not in row_ids or col_id not in col_ids:
+        # For open-row tables row_ids is empty and row_id is None
+        if row_ids and row_id not in row_ids:
+            continue
+        if col_id not in col_ids:
             continue
         if sheet_id and sheet_id not in sheet_ids:
             continue
 
         vvid = tvc.variable_vid
+        cats = dp_cats.get(vvid, []) if vvid else []
+
+        # Get variable ID, data type, and property name from variable info
+        v_id, data_type, prop_name = var_info.get(vvid, (None, "", "")) if vvid else (None, "", "")
+
         cd = CellData(
             row_header_id=row_id,
             col_header_id=col_id,
             sheet_header_id=sheet_id,
             variable_vid=vvid,
+            variable_id=v_id,
             is_excluded=bool(tvc.is_excluded),
             is_void=bool(tvc.is_void) if tvc.is_void is not None else False,
             sign=tvc.sign or "",
-            dp_categorisations=dp_cats.get(vvid, []) if vvid else [],
+            data_type_code=data_type,
+            domain_label=prop_name,
+            dp_categorisations=cats,
         )
         cells[(row_id, col_id, sheet_id)] = cd
 
@@ -202,4 +226,5 @@ def build_table_layout(
         max_col_depth=max_col_depth,
         max_row_depth=max_row_depth,
         dimension_ids=dimension_ids,
+        is_open_row=not rows,
     )

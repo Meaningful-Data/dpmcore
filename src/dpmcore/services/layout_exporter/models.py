@@ -38,6 +38,15 @@ class LayoutHeader:
     depth: int = 0
     sort_key: str = ""
     categorisations: list[DimensionMember] = field(default_factory=list)
+    subcategory_code: str = ""
+    subcategory_description: str = ""
+    subcategory_cat_code: str = ""
+    # Open-row key column fields (populated for IsKey columns)
+    key_variable_vid: Optional[int] = None
+    key_variable_id: Optional[int] = None
+    key_data_type_code: str = ""
+    key_property_name: str = ""
+    key_categorisations: list["DimensionMember"] = field(default_factory=list)
 
 
 @dataclass
@@ -48,9 +57,12 @@ class CellData:
     col_header_id: int
     sheet_header_id: Optional[int]
     variable_vid: Optional[int]
-    is_excluded: bool
-    is_void: bool
+    variable_id: Optional[int] = None
+    is_excluded: bool = False
+    is_void: bool = False
     sign: str = ""
+    data_type_code: str = ""
+    domain_label: str = ""
     dp_categorisations: list[DimensionMember] = field(default_factory=list)
 
 
@@ -63,7 +75,7 @@ class ExportConfig:
     add_cell_comments: bool = True
     show_code_row: bool = True
     show_code_column: bool = True
-    show_abstract_header_codes: bool = True
+    show_abstract_header_codes: bool = False
 
 
 @dataclass
@@ -82,3 +94,4 @@ class TableLayout:
     max_col_depth: int = 0
     max_row_depth: int = 0
     dimension_ids: list[tuple[int, str]] = field(default_factory=list)
+    is_open_row: bool = False
