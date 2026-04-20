@@ -1,0 +1,156 @@
+Code,Name,Description,IsEnumerated,IsActive,IsExternalRefData,RefDataSource,RowGUID,CreatedRelease,OwnerID,CategoryID
+"BA","Base items","Defines the basic conceptual meaning of a data point. 
+Identifies the framework in which a data point is included. For FINREP, it indicates in which group of element of the financial statement should be included the data point (e.g. assets, liabilities, equity, income, expenses). For COREP, it indicates whether the data point should be computed in the numerator (own funds) or the denominator (exposures) of the Pillar I solvency ratio. 
+It may determine whether the data point has a ""debit"" or a ""credit"" attribute.",-1,-1,0,,"{0E40D86D-889C-498E-AE6646398E615CEE}",1,1012,110
+"MC","Main category","Specifies the nature of the item reported (i.e. answers the question: what is reported?). 
+For financial instruments, defines the instrument (e.g. deposits, debt securities issued...) or range of instruments reported. 
+It should be defined for each data point.",-1,-1,0,,"{6006CB2B-1EA7-494D-A09DC33C30EB1856}",1,1012,120
+"AP","Approach","Approach used for the calculation of capital requirements (or exposure value in LR)",-1,-1,0,,"{D2F44CAE-72B1-4E06-BECA81F2187324E0}",1,1012,130
+"BT","Boolean total","Dimensions having only two values (usually denoted true and false)",-1,-1,0,,"{3DEB1863-B1F0-4741-95A044ED72734CDD}",1,1012,140
+"CG","Collateral/Guarantees","Defines the terms and conditions of the collateral and guarantees",-1,-1,0,,"{4513CC8A-E09E-4FCA-8F1EB0B66991813E}",1,1012,150
+"OF","Computability in own funds","Specifies the way in which the item computes in own funds",-1,-1,0,,"{DE738DA7-C17B-448D-8689E4BEFDA5D00B}",1,1012,160
+"CI","Callability of the instruments","For instruments on which a call option has been incorporated, it indicates whether they meet the conditions to qualify for inclusion in own funds.",-1,-1,0,,"{D3A3EE3A-4C85-4912-922ADA6912FD11AB}",1,1012,170
+"CP","Credit protection","Concepts related with the application of Credit Risk Mitigation techniques.",-1,-1,0,,"{10577230-A5ED-4D44-8BC5A002174125E0}",1,1012,180
+"CQ","Credit quality","Defines the credit quality of the exposures according to the Credit Quality Steps scale",-1,-1,0,,"{2988C5A4-D842-471B-9A424F78D16B7818}",1,1012,190
+"CT","Counterparty","Party other than the reporting institution in a contract or transaction.",-1,-1,0,,"{C3733221-4DFC-4FE9-AFE5E4920723C6D4}",1,1012,200
+"CU","Currency","Currency",-1,-1,0,,"{7C19C707-F219-4F21-845147FDA0B808FA}",1,1012,210
+"EC","Exposure classes","Defines the exposure class for capital requirement purposes",-1,-1,0,,"{B020A042-9DEC-4229-91C04E18F60B49B6}",1,1012,220
+"ER","External ratings","Concepts related with external credit ratings.",-1,-1,0,,"{ACA0B747-5750-4262-8497E82FEA7B0122}",1,1012,230
+"ET","Event type","Defines the type of event that has generated an operational loss.",-1,-1,0,,"{AE5B2366-AA5B-47E3-83800003D76D32CE}",1,1012,240
+"GA","Geographical area","Geographical area",-1,-1,0,,"{9E2552A3-86D5-4CA1-B415C2E01D54D749}",1,1012,250
+"IM","Impairment","Concepts related with monitoring credit quality of financial assets and off-balance sheet items (e.g. past due, impaired, defaulted)",-1,-1,0,,"{6A46F167-0EAB-4E75-82DC99B5F51FF8ED}",1,1012,260
+"MA","Type of market","Defines the type of market on which reported instruments are traded. It includes the fair value hierarchy.",-1,-1,0,,"{9E02EB16-FADD-4A6F-84CADFB2CA484094}",1,1012,270
+"NC","NACE code","NACE classification of economic activities",-1,-1,0,,"{1DF8729F-5681-48D2-B6F9E6E03E6F5821}",1,1012,280
+"PC","Percentages","Percentages",-1,-1,0,,"{5BC770E3-E7C0-4A0A-A008AF94571FE34A}",1,1012,300
+"PI","Positions in the instrument","Defines the position (long/short) taken in the instrument, as well as the aggregation level related to the market risk capital requirement calculations (gross/net).",-1,-1,0,,"{DBEBC123-C4B8-4520-B09E48A689C3AD4D}",1,1012,310
+"PL","Portfolio","Defined the portfolios reported. It comprises both accounting portfolios (e.g. Available-for-sale) and prudential portfolios (e.g. trading book).",-1,-1,0,,"{A0A26533-B853-4187-A8678D092CFFA31C}",1,1012,320
+"RF","Reference period","Defines a relative time point (reference date or period) to which the data refers.",-1,-1,0,,"{70781722-CF22-46F8-99620C16A149DE0A}",1,1012,330
+"PU","Purpose","Purpose of the contract or transaction.",-1,-1,0,,"{2CCFC8A9-9533-4172-813445B96ACF5FE9}",1,1012,340
+"RP","Related parties/Relationships","Defines the relationship between the reporting institution with an entity or a person; in particular, it specifies the type of related party.",-1,-1,0,,"{B861019C-EB2B-431B-A54BB1FD321EC44F}",1,1012,350
+"RS","Role in the securitisation process","Defines the role played by the reporting entity in the securitisation process.",-1,-1,0,,"{6CF29817-85B8-4B1F-AA6377675BCBE437}",1,1012,360
+"TR","Type of risk","Indicates the type of risk arising from exposures or transactions (e.g. credit risk or market risk).",-1,-1,0,,"{7BA2B162-99D4-483A-886FBB8B66C23ED7}",1,1012,370
+"RT","Risk transfer treatment","Type of risk transfer (synthetic or transitional securitisations) and accounting treatment of the transaction",-1,-1,0,,"{2255F0AA-4619-4D22-BA2756EBD96443BC}",1,1012,380
+"ST","Securitisation structure","Tranche of the exposure in the securitisation structure",-1,-1,0,,"{48AA4ACF-B502-4776-8B8F919421C70DBB}",1,1012,390
+"TA","Type of activity","Defines the type of activity reported (e.g. asset management or custody)",-1,-1,0,,"{A8A0108E-FA7E-4A53-AC683BCF9024BC7C}",1,1012,400
+"TI","Time interval","Time bands (e.g. > 60 days <= 90 days).",-1,-1,0,,"{252D3A1C-D672-4051-9B284AE6B9B108BF}",1,1012,410
+"UE","Underlying exposures in securitisations","Underlying exposures in securitisations",-1,-1,0,,"{E2C0C066-4115-4AD1-BEBB577BEB012124}",1,1012,420
+"TP","Correlation Trading Portfolio","CTP or non-CTP",-1,-1,0,,"{134C3F31-89DF-4181-A16EEC25C3B1DD79}",1,1012,440
+"LQ","Liquidity","Defines different liquidity-related conditions of assets and liabilities",-1,-1,0,,"{CD89A039-88FF-4775-88C5DB9FC80CF214}",1,1012,450
+"LE","Legal entity","An association, corporation, partnership, proprietorship, trust, or individual that has legal standing in the eyes of law",0,-1,0,,"{71F0FD66-3D5C-4591-AD292CF00B0EAFCC}",1,1012,460
+"SY","Security","Financial instrument that represents: an ownership position in a publicly-traded corporation (stock), a creditor relationship with governmental body or a corporation (bond), or rights to ownership as represented by an option.",0,-1,0,,"{7F26C9DA-37B5-4979-ABCB179D2B0EA117}",1,1012,470
+"SE","Securitisation","Pool of individual assets packaged as a security",0,-1,0,,"{C0CE3642-B7D0-4A56-8893A11768BC0416}",1,1012,480
+"ID","Integers","Integers",0,-1,0,,"{76135860-5100-442C-847219C289A96EB0}",1,1012,490
+"CS","Contingent scenario","Defines the contingent scenarios whose impact is reported",-1,-1,0,,"{492B5A1D-5759-42BC-80CA452099FA6177}",1,1012,500
+"SC","Scope of consolidation","Different scopes of consolidation of reporting when different from CRR scope",-1,-1,0,,"{B9A0F0D5-B20D-4310-8DAD52764793331A}",1,1012,510
+"CB","Covered bond","Name or unambiguous abbreviation of a covered bond issuing entity and the designation of a covered bond",0,-1,0,,"{2ABAE312-26C9-42B4-AE318F996F1BF4D3}",1,1012,520
+"CC","Clients code","Code of individual clients or group of connected clients",0,-1,0,,"{6DCFADD8-0C81-42B5-A9E6E996EF1F10B2}",1,1012,530
+"AS","Accounting standard","The accounting standard used to prepare figures or reports",-1,-1,0,,"{16F3B947-7AE7-4C92-86963A2B9552BD99}",1,1012,540
+"ZZ","Code Lists","Codes for use in various metrics",-1,-1,0,,"{6E22B300-8DCC-49CD-AB3F82D65CB76827}",1,1012,600
+"IS","Identification String","String used as an artificial identifier",0,-1,0,,"{B8AD9D45-BF80-427A-A6E640561545464B}",1,1012,610
+"DT","Date","Date",0,-1,0,,"{28B3BDEA-948E-4EE9-BD5192AEE95B7253}",1,1012,620
+"CA","Currency conversion approach","Indicates how monetary values should be reported i.e. if they should be converted to a single reporting currency, or reported as-is in the underlying currency",-1,-1,0,,"{44F26BB6-F940-43FB-957525D0165982DC}",1,1012,630
+"IA","Interval of amounts","Indicates sizes of amounts intervals",-1,-1,0,,"{9721DE06-CD81-4D50-AC2319F1505AA651}",1,1012,632
+"EN","Entity","An association, corporation, partnership, proprietorship, trust, or individual",-1,-1,0,,"{EAADDD13-7DDA-4C80-BCCF752F0A90D98E}",1,1012,633
+"OL","Own funds and elegible liabilities","Own funds and elegible liabilities",-1,-1,0,,"{AE8AEFF7-0DA1-457D-A43F863365B0ED33}",1,1012,634
+"CR","Contracts/Transactions","Defines contracts or transactions",0,-1,0,,"{37E24FDA-BE56-4936-BF46F88395EEEB7E}",1,1012,635
+"EA","ESG classification","ESG",-1,-1,0,,"{1FB5AD21-3179-4D7E-A5540C0D9CC3C1BC}",1,1012,636
+"_PR","Properties","Contains Items which are counterparts of Properties.",-1,-1,0,,"{F8D60235-EEB5-49B2-B9010B020E0FF56E}",1,1012,1002
+"_NA","Not applicable","Contains Items which do not belong to any specified Category such as those that are typically used only in dropdowns on Headers or Variables. It is also linked by Properties that do not belong to any real Category. Such enumerated Properties can refer to Items from Categories: ""Not applicable"", ""Properties"" and in such case they can also use Items of other Categories, in particular by being linked to such mixed SubCategory.",0,-1,0,,"{A526D965-641A-42E1-BAC128BF80AD37E1}",1,1012,1003
+"_TE","Templates","Contains Items which are Templates for purposes of resembling filing indicator variables in the model.",-1,-1,0,,"{95B00C5B-1C39-4AB2-917469AD47F7D673}",1,1012,1004
+"CO","Contracts/Transactions","Information related with Contracts. The difference to CR Category is that this is enumerated ",-1,-1,0,,"{8D48EC77-89D5-455C-9C2E3E6DB1920631}",2,1012,1006
+"qAI","Accounting items","Concepts related with accounting statements",-1,-1,0,,"{CDAE625B-4CEF-5845-A714511E44EADFD1}",3,1012,1007
+"qCA","Currency conversion approach","Indicates how monetary values should be reported i.e. if they should be converted to a single reporting currency, or reported as-is in the underlying currency",-1,-1,0,,"{37CD0707-02DB-674E-82DE88E3E360939B}",3,1012,1009
+"qCG","Collateralization and guarantees characteristics","Defines the terms and conditions of the collateral and guarantees",-1,-1,0,,"{C4B31028-50BE-334D-9B9E9E3CBB3FB188}",3,1012,1010
+"qCM","Calculations",,-1,-1,0,,"{3F9F1E9F-A5BA-3742-9CD7D4F3C0C864F4}",3,1012,1011
+"qCO","Codes",,-1,-1,0,,"{A6B0150A-628C-0641-BDF0DF67037DE08A}",3,1012,1012
+"qCQ","Credit quality","Defines the credit quality of the exposures according to the Credit Quality Steps scale",-1,-1,0,,"{D5163D5B-8A39-8044-A78A3655C7E4812E}",3,1012,1013
+"qCS","Contingent scenario","Defines the contingent scenarios whose impact is reported",-1,-1,0,,"{7BC1BA1B-D5F6-EF40-9601BF6BE812B4FB}",3,1012,1014
+"qCP","Credit protection","Concepts related with the application of Credit Risk Mitigation techniques.",-1,-1,0,,"{679E33E7-5A43-8148-BBEABDEEE6C36DEC}",3,1012,1015
+"qFF","Financial flows",,-1,-1,0,,"{6F5796D5-0849-5845-B9D05C24F9E2A504}",3,1012,1017
+"qFI","Financial Instruments",,-1,-1,0,,"{EA26DCA9-5058-EE48-BDC8BD51CA4CE650}",3,1012,1018
+"qFN","Financial instruments and Non-financial items","Supercategory for concepts covering both categories",-1,-1,0,,"{D850EBF4-AA39-3E47-8A778F202B42F275}",3,1012,1019
+"qIG","Geographical areas and International Organisations","Supercategory for concepts covering both categories",-1,-1,0,,"{52A31496-DD54-1540-B8A5CF3BA3A4FBA6}",3,1012,1021
+"qIM","Impairment","Concepts related with monitoring credit quality of financial assets and off-balance sheet items (e.g. past due, impaired, defaulted)",-1,-1,0,,"{D5DE356A-29CE-4341-9A24B5D806C696E5}",3,1012,1022
+"qIO","International Organisations",,-1,-1,0,,"{4555F0F7-25D9-6D47-AEBDF5A11A62DEFE}",3,1012,1023
+"qLR","Liquidity regulatory items",,-1,-1,0,,"{3EDA1FA6-48B3-5743-A9EAAF90E72E17FC}",3,1012,1024
+"qMA","Type of market","Defines the type of market on which reported instruments are traded. It includes the fair value hierarchy.",-1,-1,0,,"{CD11A9EE-2D70-0549-88A0CFF70394847C}",3,1012,1025
+"qNF","Non-financial items",,-1,-1,0,,"{EB77D9D1-C4EB-074A-961ED11FD301DA0B}",3,1012,1028
+"qOI","Ordering interval",,-1,-1,0,,"{68879A09-022D-F447-9E5671080641EEF5}",3,1012,1029
+"qOR","Capital regulatory items",,-1,-1,0,,"{1F081E0A-55CB-7943-B0366C0E90AFBCFC}",3,1012,1030
+"qPC","Percentages","Percentages",-1,-1,0,,"{C091ECB1-8B37-2345-BCAEDD6F9B1143CB}",3,1012,1031
+"qPI","Positions in the instrument","Defines the position (long/short) taken in the instrument, as well as the aggregation level related to the market risk capital requirement calculations (gross/net).",-1,-1,0,,"{2346F63A-736A-F64D-B9432A8AF69252DB}",3,1012,1032
+"qPR","Product characteristics",,-1,-1,0,,"{70E9B911-7A40-F048-865B85E1C635480E}",3,1012,1033
+"qRF","Reference period","Defines a relative time point (reference date or period) to which the data refers.",-1,-1,0,,"{6874A572-8026-3943-A182A1C32051EC16}",3,1012,1034
+"qRP","Related parties/Relationships","Defines the relationship between the reporting institution with an entity or a person; in particular, it specifies the type of related party.",-1,-1,0,,"{C87B03C5-CF7F-AC43-9F621AF2249C884D}",3,1012,1035
+"qSR","Sectors",,-1,-1,0,,"{23C903F0-2E49-8A48-83B10BC959F2FD87}",3,1012,1036
+"qTA","Type of Activity","Defines the type of activity reported (e.g. asset management or custody)",-1,-1,0,,"{6203CBD2-6AC3-3745-990F5A80986539E2}",3,1012,1037
+"qTI","Time interval","Time bands (e.g. > 60 days <= 90 days).",-1,-1,0,,"{0658C3AB-CF40-A141-A7A537652E46FE6B}",3,1012,1038
+"qAO","Accounting items & Own funds",,-1,-1,0,,"{9836AD85-D86A-4E4B-B65179017B080D1D}",3,1012,1039
+"qPY","Payments",,-1,-1,0,,"{654CF35C-5946-6F48-830E52B13F295233}",3,1012,1040
+"qRE","Resolution",,-1,-1,0,,"{E945EBBC-FAE6-AD4E-941E50B5935CB390}",3,1012,1041
+"qRO","Resolution & Own funds",,-1,-1,0,,"{04F227CA-2277-B945-85924F8339100BBA}",3,1012,1042
+"qEC","Exposure classes","Defines the exposure class for capital requirement purposes",-1,-1,0,,"{967A9912-00E9-3F42-A80DAB560387C381}",3,1012,1043
+"qSE","Sectors and Exposure classes",,-1,-1,0,,"{83D7E3D8-79A1-CF4E-BC8D77EBE5C176C1}",3,1012,1044
+"qES","Sectors and Types of Entity",,-1,-1,0,,"{CE858A87-A8B7-AE42-B9B6394D943EBE89}",3,1012,1045
+"qSX","Sectors, Exposure classes and Types of Entity",,-1,-1,0,,"{AA962F81-7767-CE4C-821F5671776827CD}",3,1012,1046
+"qTE","Type of Entity",,-1,-1,0,,"{A2EC585E-39AB-A749-B352F3CC1C919188}",3,1012,1047
+"qAP","Approach","Approach used for the calculation of capital requirements (or exposure value in LR)",-1,-1,0,,"{E5165D7B-BF38-F44B-BEF9CA451D8C59DC}",3,1012,1048
+"qET","Event type",,-1,-1,0,,"{B79F1FED-976A-4341-8FABD43A69F6421B}",3,1012,1049
+"qPL","Portfolio","Defined the portfolios reported. It comprises both accounting portfolios (e.g. Available-for-sale) and prudential portfolios (e.g. trading book).",-1,-1,0,,"{C6CDE4D6-C08E-2345-989324040F36CDB0}",3,1012,1050
+"qPO","Portfolio & Own funds",,-1,-1,0,,"{A064A9B1-F511-1041-A70CD0BA40ADB074}",3,1012,1051
+"qDT","Dates",,0,-1,0,,"{DDD59EF3-D3A6-0F40-AE0D9BAC01B4FEEE}",3,1012,1052
+"qIS","Identifiers",,0,-1,0,,"{0ECDBCB8-D71E-7F43-9FE16066DDFE5B6D}",3,1012,1053
+"qAF","AI, FI","Accounting items and Financial instruments",-1,-1,0,,"{CF831721-5074-974C-9FC83290732BED34}",3,1012,1054
+"qAG","AI, FI, Collateral and Guarantees",,-1,-1,0,,"{D8D59866-7FA7-B24D-BBF276E7D6A18007}",3,1012,1055
+"qAT","AI, FI,TA",,-1,-1,0,,"{FB0F2D5C-D9B1-464A-95A776D1C0823FCC}",3,1012,1056
+"qAS","Accounting standard",,-1,-1,0,,"{E1E27A65-CE4D-2343-BDEBA22479DD3C45}",3,1012,1057
+"qAX","AI, NF, TA, TR","Accounting items, Non-financial items, Type of activity and Type of risk",-1,-1,0,,"{EB774037-75E8-ED47-A70F0C4819B217A7}",3,1012,1058
+"qCN","Contracts",,-1,-1,0,,"{41DD60EE-B53C-714B-ACB3C4FBDC0BE936}",3,1012,1059
+"qTR","Type of risk",,-1,-1,0,,"{7B57BDE0-0063-E24C-B8948285689143E8}",3,1012,1060
+"qTP","Transitional provisions",,-1,-1,0,,"{57DB5208-D984-9B40-9466A099A27B5F93}",3,1012,1061
+"qST","Securitisations",,-1,-1,0,,"{0FE7BA08-4BE6-084D-974B49B239E0CA0B}",3,1012,1062
+"qSM","Staff/Management structure",,-1,-1,0,,"{4782100B-A609-9C4A-85A97F5589366958}",3,1012,1063
+"qSC","Scope of consolidation",,-1,-1,0,,"{900C660D-FD19-6448-AD83203C686F0D81}",3,1012,1064
+"qPZ","AI, FI, PL","Accounting items, Financial instruments and Portfolio",-1,-1,0,,"{3E6BDFB7-3644-8A4F-B507C79A95E5E7F5}",3,1012,1065
+"qOP","OR, PR","Capital regulatory items and Product characteristics",-1,-1,0,,"{76E76542-00F9-8049-A6F4201EBD655536}",3,1012,1066
+"qNI","NF, IM, AI","Non-financial items, Impairment and Accounting Items
+",-1,-1,0,,"{E6BE6662-820E-3745-A740A2DA86DC2E73}",3,1012,1067
+"qAZ","AI, FI, PI","Accounting items, Financial instruments and Positions in the instrument",-1,-1,0,,"{201A98A2-7521-4949-857C32CAEF7CFD85}",3,1012,1068
+"qFA","FI, OR, AI","Financial Instruments, Capital regulatory items and Accounting Items",-1,-1,0,,"{866DE53E-8A0E-2741-ACC9D9C8ADC321D0}",3,1012,1069
+"qFP","FI, PI","Financial instruments and Positions in the instrument",-1,-1,0,,"{C28889D4-0F7E-AB4A-B3C73BB99073C35D}",3,1012,1070
+"qFT","FI, TA","Financial instruments and Type of activity",-1,-1,0,,"{8CA88B5E-9A42-F346-886366B838F1404F}",3,1012,1071
+"qCY","Markets in crypto-assets regulatory items","elements covering the scope of Regulation (EU) 2023/1114, known as MiCA (Markets in Crypto-assets).",-1,-1,0,,"{A18914B2-4D3D-9B48-BD966162F1039B41}",3,1012,1072
+"qAV","AI, ET","Accounting items & Type of events",-1,-1,0,,"{7EA1EC0A-CDB2-4A40-AF96001BED4A7551}",3,1012,1073
+"qIT","Time interval supercategory","Provisional supercategory for enumerations that cover items from old glossary (not yet reviewed) and new glossary (already reviewed)",-1,-1,0,,"{81D79D97-3EF6-AC4D-A25D3BE03DB8693B}",3,1012,1074
+"qQC","Credit quality supercategory","Provisional supercategory for enumerations that cover items from old glossary (not yet reviewed) and new glossary (already reviewed)",-1,-1,0,,"{9ACD0A47-C51D-9B45-9A2BC160E335E6B5}",3,1012,1075
+"qMI","Impairment supercategory","Provisional supercategory for enumerations that cover items from old glossary (not yet reviewed) and new glossary (already reviewed)",-1,-1,0,,"{55C4F7DB-591C-2045-9331E19D4D684363}",3,1012,1076
+"qEE","EC, TE","Exposure classes and Types of Entity",-1,-1,0,,"{1094473C-05F1-F646-B574D5E92724DC45}",3,1012,1078
+"qAE","Exposure classes and Approaches",,-1,-1,0,,"{227FD203-054B-694F-B5190D5A9CFC92C4}",3,1012,1081
+"qRR","Risk parameters",,-1,-1,0,,"{C2DA484A-17E3-5C46-B0036F613E1250A0}",4,1012,1082
+"qRM","Risk measure",,-1,-1,0,,"{3B4D2E65-3180-6C4C-976B421BF743736E}",4,1012,1083
+"qAB","AI, CG","Accounting items and Collateral and Guarantees",-1,-1,0,,"{756D483B-E7D8-D748-AB890230CA4449E6}",4,1012,1084
+"qIR","Financial instruments and Resolution","Supercategory for concepts covering instruments linked with resolution concepts",-1,-1,0,,"{6942505E-4F8B-574C-ABD3F4143678499B}",4,1012,1085
+"qBT","Boolean total",,-1,-1,0,,"{7670BADD-2FE5-4A42-881581869169296D}",5,1012,1086
+"qCC","Clients code",,0,-1,0,,"{A9A3D4C1-4FAE-FB49-82DA87212AB15583}",5,1012,1088
+"qER","External ratings",,-1,-1,0,,"{C61987F7-6928-F64B-8D5E2B90C9316488}",5,1012,1090
+"qIA","Interval of amounts",,-1,-1,0,,"{2EB7B389-AC6E-884D-B630B61ED5C0417D}",5,1012,1091
+"qID","Integers",,0,-1,0,,"{4DCCC4C9-9BE8-9F4B-923620AD14873A46}",5,1012,1092
+"qLE","Legal entity",,0,-1,0,,"{32CE6236-FF21-A24F-B6C424FF2B750444}",5,1012,1093
+"qSY","Security",,0,-1,0,,"{B2B48834-AB94-2045-B5E0D55D539C52A4}",5,1012,1095
+"qQI","Quantity intervals",,-1,-1,0,,"{2E33AE56-2EE3-6D48-9268752B24652CB0}",5,1012,1096
+"qRY","Related parties/Relationships, Scope of consolidat",,-1,-1,0,,"{A0308656-8DD3-F547-BC75768621BFDD2B}",5,1012,1097
+"qNO","Accounting items & Non-financial items",,-1,-1,0,,"{94DF6CA3-88EF-EB4B-BCBB81092B0532AF}",5,1012,1098
+"qJF","Sources for risk calculation inputs",,-1,-1,0,,"{236E09C9-0599-ED48-8E18A6C8E08310D8}",5,1012,1099
+"qRB","Resolution, own funds and type of entities",,-1,-1,0,,"{E9FA90D0-6218-694A-9F13C097B1BEA6DB}",5,1012,1100
+"qVR","Event types and relationships",,-1,-1,0,,"{7C0BE42B-BF67-5642-A8B36273C5008DF9}",5,1012,1101
+"qAC","Account items, Financial instruments & Resolution",,-1,-1,0,,"{CCD4DAE8-6489-1C41-A74C9AC09E85BF70}",5,1012,1102
+"qTM","Sectors, Market, Contracts & Type of entity",,-1,-1,0,,"{E953CA4E-6D9E-E646-8C8D133089CDBBBB}",5,1012,1103
+"qRC","Resolution & Contracts",,-1,-1,0,,"{982136D6-C327-384E-8D04458759DE0966}",5,1012,1104
+"qPT","Payments & Type of entity",,-1,-1,0,,"{277D2509-FF18-6945-A5695EFF3E1686E5}",5,1012,1105
+"qEX","Sectors, Types of Entity, Related parties/Relation",,-1,-1,0,,"{114F3152-6546-B341-B068809298285096}",5,1012,1106
+"qTZ","Type of activty, Markets and Financial instruments",,-1,-1,0,,"{9D76887B-E2F2-6B40-A7A704320CBC89AE}",5,1012,1107
+"qAW","Account items, Financial instruments,Resolution&OF",,-1,-1,0,,"{0E6AFD54-922B-5D40-86C118E1A2BF405B}",5,1012,1108
+"qCX","Scope of consolidation and Calculations",,-1,-1,0,,"{1CC1734B-222E-964D-99CC3D4162140C8C}",5,1012,1109
+"qTU","qAI, qFI, qSR & qTA",,-1,-1,0,,"{461F68F8-7D21-0746-989585B50A5E76DD}",5,1012,1111
+"qCR","Contracts/Transactions",,0,-1,0,,"{E35FCAAB-EFA7-6D4A-A5A6A38F705543D8}",5,1012,1112
+"qTT","Type of Entity and Type of Activity",,-1,-1,0,,"{3402A674-5602-034C-812D95421B027A62}",5,1012,1113

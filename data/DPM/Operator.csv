@@ -1,0 +1,39 @@
+Name,Symbol,Type,OperatorID
+"Unary plus","+","Numeric",1
+"Addition","+","Numeric",2
+"Division","/","Numeric",3
+"Unary minus","-","Numeric",4
+"Subtraction","-","Numeric",5
+"Absolute value","abs","Numeric",6
+"Numeric minimum","min","Numeric",7
+"Multiplication","*","Numeric",8
+"Numeric maximum","max","Numeric",9
+"Square root","sqrt","Numeric",10
+"Aggregate maximum","max_aggr","Aggregate",11
+"Aggregate minimum","min_aggr","Aggregate",12
+"Equal to","=","Comparison",13
+"Less than equal to","<=","Comparison",14
+"Greater than equal to",">=","Comparison",15
+"Element of","in","Comparison",16
+"Is null","isnull","Comparison",17
+"Greater than",">","Comparison",18
+"Less than","<","Comparison",19
+"Not equal to","!=","Comparison",20
+"Match characters","match","Comparison",21
+"And","and","Logical",22
+"Or","or","Logical",23
+"Not","not","Logical",24
+"Exclusive or","xor","Logical",25
+"Sum","sum","Aggregate",26
+"Count","count","Aggregate",27
+"Where","where","Clause",28
+"Get","get","Clause",29
+"If then else","if-then-else","Conditional",30
+"Filter","filter","Conditional",31
+"Time shift","time_shift","Time",32
+"Rename","rename","Clause",33
+"RenameNode","node","Clause",34
+"Grouping clause","group by","Clause",35
+"Persistent assignment","<-","Assignment",36
+"Parenthesis Expression","()","Logical",37
+"Sub","sub","Clause",38

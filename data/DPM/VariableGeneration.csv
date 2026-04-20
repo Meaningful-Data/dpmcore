@@ -1,0 +1,358 @@
+StartDate,EndDate,Status,ReleaseID,Error,VariableGenerationID
+"03/13/24 05:56:11","03/13/24 05:56:21","failed",2,"Variables generation process can not be launched: There are blocking model violations.",1
+"03/14/24 11:16:30","03/14/24 11:16:41","failed",2,"Variables generation process can not be launched: There are blocking model violations.",2
+"03/14/24 15:08:56","03/14/24 15:09:18","failed",2,"Variables generation process can not be launched: There are blocking model violations.",3
+"03/14/24 15:40:23","03/14/24 15:40:36","failed",2,"Variables generation process can not be launched: There are blocking model violations.",4
+"03/14/24 15:45:28","03/14/24 15:45:39","failed",2,"Variables generation process can not be launched: There are blocking model violations.",5
+"03/14/24 17:05:22","03/14/24 17:05:33","failed",2,"Variables generation process can not be launched: There are blocking model violations.",6
+"03/15/24 08:43:14","03/15/24 08:43:24","failed",2,"Variables generation process can not be launched: There are blocking model violations.",7
+"03/15/24 10:16:38","03/15/24 10:16:49","failed",2,"Variables generation process can not be launched: There are blocking model violations.",8
+"03/15/24 13:08:47","03/15/24 13:08:58","failed",2,"Variables generation process can not be launched: There are blocking model violations.",9
+"03/15/24 15:00:43","03/15/24 15:04:50","failed",2,"Variables generation process failed: There are blocking model violations.",10
+"03/18/24 09:00:14","03/18/24 09:04:50","failed",2,"Variables generation process failed: There are blocking model violations.",11
+"03/18/24 09:07:58","03/18/24 09:12:35","failed",2,"Variables generation process failed: There are blocking model violations.",12
+"03/18/24 10:10:17","03/18/24 10:13:37","failed",2,"Variables generation process failed: There are blocking model violations.",13
+"03/18/24 10:17:54","03/18/24 10:19:43","success",2,,14
+"03/19/24 15:55:12","03/19/24 15:55:31","failed",2,"Variables generation process can not be launched: There are blocking model violations.",15
+"03/20/24 10:45:34","03/20/24 10:45:46","failed",2,"Variables generation process can not be launched: There are blocking model violations.",16
+"03/20/24 10:52:05","03/20/24 10:54:12","success",2,,17
+"03/20/24 11:34:48","03/20/24 11:36:46","success",2,,18
+"03/20/24 14:39:22","03/20/24 14:41:13","success",2,,19
+"03/27/24 17:01:29","03/27/24 17:01:50","failed",2,"Variables generation process can not be launched: There are blocking model violations.",20
+"04/05/24 14:01:31","04/05/24 14:01:47","failed",2,"Variables generation process can not be launched: There are blocking model violations.",21
+"04/05/24 15:10:55","04/05/24 15:15:01","success",2,,22
+"04/05/24 15:43:55","04/05/24 15:46:26","success",2,,23
+"04/05/24 16:05:04","04/05/24 16:07:11","success",2,,24
+"04/05/24 16:24:47","04/05/24 16:25:03","failed",2,"Variables generation process can not be launched: There are blocking model violations.",25
+"04/05/24 16:46:55","04/05/24 16:50:04","success",2,,26
+"04/05/24 16:57:04","04/05/24 16:59:10","success",2,,27
+"04/22/24 18:11:56","04/22/24 18:12:13","failed",2,"Variables generation process can not be launched: There are blocking model violations.",28
+"04/22/24 18:17:04","04/22/24 18:17:15","failed",2,"Variables generation process can not be launched: There are blocking model violations.",29
+"04/22/24 18:18:26","04/22/24 18:18:38","failed",2,"Variables generation process can not be launched: There are blocking model violations.",30
+"04/23/24 11:26:53","04/23/24 11:28:55","success",2,,31
+"06/12/24 07:41:31","06/12/24 07:42:20","failed",2,"Variables generation process can not be launched: There are blocking model violations.",32
+"06/12/24 08:02:25","06/12/24 08:04:43","success",2,,33
+"06/12/24 08:19:20","06/12/24 08:21:32","success",2,,34
+"06/12/24 15:37:00","06/12/24 15:39:08","success",2,,35
+"08/06/24 13:17:57","08/06/24 13:18:10","failed",3,"Variables generation process can not be launched: There are blocking model violations.",36
+"08/06/24 13:18:14","08/06/24 13:18:24","failed",3,"Variables generation process can not be launched: There are blocking model violations.",37
+"08/06/24 13:18:31","08/06/24 13:18:40","failed",3,"Variables generation process can not be launched: There are blocking model violations.",38
+"08/06/24 13:19:08","08/06/24 13:19:17","failed",3,"Variables generation process can not be launched: There are blocking model violations.",39
+"08/06/24 13:19:40","08/06/24 13:19:49","failed",3,"Variables generation process can not be launched: There are blocking model violations.",40
+"08/08/24 06:58:35","08/08/24 06:58:46","failed",3,"Variables generation process can not be launched: There are blocking model violations.",41
+"08/08/24 18:11:41","08/08/24 18:11:49","failed",3,"Variables generation process can not be launched: There are blocking model violations.",42
+"08/09/24 10:13:59","08/09/24 10:14:08","failed",3,"Variables generation process can not be launched: There are blocking model violations.",43
+"08/09/24 11:01:17","08/09/24 11:01:26","failed",3,"Variables generation process can not be launched: There are blocking model violations.",44
+"08/09/24 11:07:36","08/09/24 11:07:45","failed",3,"Variables generation process can not be launched: There are blocking model violations.",45
+"08/09/24 16:32:19","08/09/24 16:32:27","failed",3,"Variables generation process can not be launched: There are blocking model violations.",46
+"08/12/24 16:22:39","08/12/24 16:22:48","failed",3,"Variables generation process can not be launched: There are blocking model violations.",47
+"08/14/24 08:23:38","08/14/24 08:23:49","failed",3,"Variables generation process can not be launched: There are blocking model violations.",48
+"08/14/24 16:17:04","08/14/24 16:17:17","failed",3,"Variables generation process can not be launched: There are blocking model violations.",49
+"08/16/24 08:51:35","08/16/24 08:51:45","failed",3,"Variables generation process can not be launched: There are blocking model violations.",50
+"08/16/24 08:51:52","08/16/24 08:52:00","failed",3,"Variables generation process can not be launched: There are blocking model violations.",51
+"08/16/24 09:41:02","08/16/24 09:41:44","success",3,,52
+"08/16/24 09:47:09","08/16/24 09:47:36","success",3,,53
+"08/20/24 14:45:13","08/20/24 14:45:27","failed",3,"Variables generation process can not be launched: There are blocking model violations.",54
+"08/20/24 15:45:59","08/20/24 15:46:09","failed",3,"Variables generation process can not be launched: There are blocking model violations.",55
+"08/20/24 16:28:02","08/20/24 16:36:38","failed",3,"Variables generation process failed: There are blocking model violations.",56
+"08/21/24 06:23:23","08/21/24 06:29:50","failed",3,"Variables generation process failed: There are blocking model violations.",57
+"08/22/24 05:31:37","08/22/24 05:31:51","failed",3,"Variables generation process can not be launched: There are blocking model violations.",58
+"08/22/24 05:31:57","08/22/24 05:32:09","failed",3,"Variables generation process can not be launched: There are blocking model violations.",59
+"08/22/24 05:40:01","08/22/24 05:45:03","failed",3,"Variables generation process failed: There are blocking model violations.",60
+"08/22/24 12:36:30","08/22/24 12:41:33","failed",3,"Variables generation process failed: There are blocking model violations.",61
+"08/22/24 15:26:32","08/22/24 15:31:35","failed",3,"Variables generation process failed: There are blocking model violations.",62
+"08/22/24 15:33:59","08/22/24 15:39:01","failed",3,"Variables generation process failed: There are blocking model violations.",63
+"08/23/24 05:54:39","08/23/24 05:59:57","failed",3,"Variables generation process failed: There are blocking model violations.",64
+"08/23/24 08:15:00","08/23/24 08:15:12","failed",3,"Variables generation process can not be launched: There are blocking model violations.",65
+"08/23/24 08:15:21","08/23/24 08:15:32","failed",3,"Variables generation process can not be launched: There are blocking model violations.",66
+"08/23/24 08:22:22","08/23/24 08:27:18","failed",3,"Variables generation process failed: There are blocking model violations.",67
+"08/23/24 10:11:22","08/23/24 10:11:34","failed",3,"Variables generation process can not be launched: There are blocking model violations.",68
+"08/23/24 10:11:39","08/23/24 10:11:49","failed",3,"Variables generation process can not be launched: There are blocking model violations.",69
+"08/23/24 11:35:52","08/23/24 11:40:46","failed",3,"Variables generation process failed: There are blocking model violations.",70
+"08/23/24 14:03:41","08/23/24 14:08:39","failed",3,"Variables generation process failed: There are blocking model violations.",71
+"08/23/24 16:22:46","08/23/24 16:27:43","failed",3,"Variables generation process failed: There are blocking model violations.",72
+"08/23/24 17:50:01","08/23/24 17:54:58","failed",3,"Variables generation process failed: There are blocking model violations.",73
+"08/23/24 18:16:12","08/23/24 18:21:09","failed",3,"Variables generation process failed: There are blocking model violations.",74
+"08/26/24 13:35:13","08/26/24 13:40:14","failed",3,"Variables generation process failed: There are blocking model violations.",75
+"08/26/24 15:57:14","08/26/24 15:57:26","failed",3,"Variables generation process can not be launched: There are blocking model violations.",76
+"08/26/24 15:57:28","08/26/24 15:57:40","failed",3,"Variables generation process can not be launched: There are blocking model violations.",77
+"08/26/24 15:57:47","08/26/24 15:57:58","failed",3,"Variables generation process can not be launched: There are blocking model violations.",78
+"08/26/24 15:59:46","08/26/24 15:59:57","failed",3,"Variables generation process can not be launched: There are blocking model violations.",79
+"08/26/24 16:18:05","08/26/24 16:18:16","failed",3,"Variables generation process can not be launched: There are blocking model violations.",80
+"08/26/24 16:32:27","08/26/24 16:32:38","failed",3,"Variables generation process can not be launched: There are blocking model violations.",81
+"08/26/24 16:32:42","08/26/24 16:32:53","failed",3,"Variables generation process can not be launched: There are blocking model violations.",82
+"08/26/24 16:33:04","08/26/24 16:33:14","failed",3,"Variables generation process can not be launched: There are blocking model violations.",83
+"08/26/24 16:39:28","08/26/24 16:44:19","failed",3,"Variables generation process failed: There are blocking model violations.",84
+"08/27/24 10:07:40","08/27/24 10:12:34","failed",3,"Variables generation process failed: There are blocking model violations.",85
+"08/27/24 10:12:55","08/27/24 10:17:49","failed",3,"Variables generation process failed: There are blocking model violations.",86
+"08/27/24 18:54:58","08/27/24 18:55:10","failed",3,"Variables generation process can not be launched: There are blocking model violations.",87
+"08/27/24 18:55:17","08/27/24 18:55:29","failed",3,"Variables generation process can not be launched: There are blocking model violations.",88
+"08/28/24 08:03:48","08/28/24 08:08:42","failed",3,"Variables generation process failed: There are blocking model violations.",89
+"08/28/24 11:10:06","08/28/24 11:10:19","failed",3,"Variables generation process can not be launched: There are blocking model violations.",90
+"08/28/24 11:10:24","08/28/24 11:10:36","failed",3,"Variables generation process can not be launched: There are blocking model violations.",91
+"08/28/24 11:24:09","08/28/24 11:29:01","failed",3,"Variables generation process failed: There are blocking model violations.",92
+"08/28/24 16:10:25","08/28/24 16:15:19","failed",3,"Variables generation process failed: There are blocking model violations.",93
+"08/28/24 16:16:04","08/28/24 16:20:57","failed",3,"Variables generation process failed: There are blocking model violations.",94
+"08/29/24 09:45:46","08/29/24 09:45:58","failed",3,"Variables generation process can not be launched: There are blocking model violations.",95
+"08/29/24 10:20:57","08/29/24 10:25:49","failed",3,"Variables generation process failed: There are blocking model violations.",96
+"08/29/24 11:42:23","08/29/24 11:47:15","failed",3,"Variables generation process failed: There are blocking model violations.",97
+"08/29/24 12:59:24","08/29/24 13:04:18","failed",3,"Variables generation process failed: There are blocking model violations.",98
+"08/29/24 15:33:17","08/29/24 15:38:10","failed",3,"Variables generation process failed: There are blocking model violations.",99
+"08/29/24 15:39:50","08/29/24 15:44:43","failed",3,"Variables generation process failed: There are blocking model violations.",100
+"08/29/24 16:22:40","08/29/24 16:27:34","failed",3,"Variables generation process failed: There are blocking model violations.",101
+"08/29/24 16:45:12","08/29/24 16:50:05","failed",3,"Variables generation process failed: There are blocking model violations.",102
+"08/29/24 17:02:36","08/29/24 17:07:30","failed",3,"Variables generation process failed: There are blocking model violations.",103
+"08/30/24 11:11:24","08/30/24 11:11:37","failed",3,"Variables generation process can not be launched: There are blocking model violations.",104
+"08/30/24 11:22:22","08/30/24 11:22:34","failed",3,"Variables generation process can not be launched: There are blocking model violations.",105
+"08/30/24 11:22:38","08/30/24 11:22:49","failed",3,"Variables generation process can not be launched: There are blocking model violations.",106
+"08/30/24 11:26:22","08/30/24 11:31:15","failed",3,"Variables generation process failed: There are blocking model violations.",107
+"08/30/24 13:26:38","08/30/24 13:26:51","failed",3,"Variables generation process can not be launched: There are blocking model violations.",108
+"08/30/24 13:32:58","08/30/24 13:37:52","failed",3,"Variables generation process failed: There are blocking model violations.",109
+"08/30/24 14:01:54","08/30/24 14:06:49","failed",3,"Variables generation process failed: There are blocking model violations.",110
+"08/30/24 14:20:33","08/30/24 14:33:39","success",3,,111
+"08/30/24 14:36:25","08/30/24 14:47:29","success",3,,112
+"09/02/24 18:03:07","09/02/24 18:10:33","failed",3,"Variables generation process failed: There are blocking model violations.",113
+"09/02/24 18:29:47","09/02/24 18:41:18","success",3,,114
+"09/02/24 18:42:08","09/02/24 18:56:18","success",3,,115
+"09/03/24 13:22:48","09/03/24 13:33:11","success",3,,116
+"09/04/24 19:43:18","09/04/24 19:50:36","failed",3,"Variables generation process failed: There are blocking model violations.",117
+"09/05/24 06:35:09","09/05/24 06:40:24","failed",3,"Variables generation process failed: There are blocking model violations.",118
+"09/05/24 08:12:34","09/05/24 08:18:39","failed",3,"Variables generation process failed: There are blocking model violations.",119
+"09/05/24 16:30:14","09/05/24 16:30:36","failed",3,"Variables generation process can not be launched: There are blocking model violations.",120
+"09/05/24 16:31:05","09/05/24 16:31:25","failed",3,"Variables generation process can not be launched: There are blocking model violations.",121
+"09/05/24 16:36:40","09/05/24 16:41:20","failed",3,"Variables generation process failed: There are blocking model violations.",122
+"09/05/24 18:17:49","09/05/24 18:26:10","success",3,,123
+"09/05/24 19:44:52",,"failed",3,"could not extract ResultSet; nested exception is org.hibernate.exception.GenericJDBCException: could not extract ResultSet",124
+"09/06/24 08:29:22","09/06/24 08:37:54","success",3,,125
+"09/06/24 09:21:40","09/06/24 09:30:12","success",3,,126
+"09/09/24 14:53:10","09/09/24 15:01:46","success",3,,127
+"09/09/24 15:23:18","09/09/24 15:31:52","success",3,,128
+"09/11/24 19:18:52","09/11/24 19:25:37","failed",3,"Variables generation process failed: There are blocking model violations.",129
+"09/11/24 20:10:52","09/11/24 20:18:07","success",3,,130
+"09/11/24 20:19:57","09/11/24 20:28:37","success",3,,131
+"09/18/24 10:09:50","09/18/24 10:19:10","success",3,,132
+"10/03/24 15:45:06","10/03/24 15:45:39","failed",3,"Variables generation process can not be launched: There are blocking model violations.",133
+"10/03/24 15:51:47","10/03/24 16:01:06","success",3,,134
+"11/08/24 16:09:32","11/08/24 16:14:54","failed",3,"Variables generation process failed: There are blocking model violations.",135
+"11/09/24 10:54:12","11/09/24 10:54:40","failed",3,"Variables generation process can not be launched: There are blocking model violations.",136
+"11/09/24 10:57:59","11/09/24 11:01:33","failed",3,"Variables generation process failed: There are blocking model violations.",137
+"11/09/24 11:17:32","11/09/24 11:21:06","failed",3,"Variables generation process failed: There are blocking model violations.",138
+"11/09/24 12:38:26","11/09/24 12:41:57","failed",3,"Variables generation process failed: There are blocking model violations.",139
+"11/09/24 12:45:39","11/09/24 12:49:13","failed",3,"Variables generation process failed: There are blocking model violations.",140
+"11/09/24 12:54:08","11/09/24 12:57:46","failed",3,"Variables generation process failed: There are blocking model violations.",141
+"11/10/24 18:47:29","11/10/24 18:51:03","failed",3,"Variables generation process failed: There are blocking model violations.",142
+"11/10/24 19:15:35","11/10/24 19:19:10","failed",3,"Variables generation process failed: There are blocking model violations.",143
+"11/11/24 14:02:15","11/11/24 14:02:44","failed",3,"Variables generation process can not be launched: There are blocking model violations.",144
+"11/11/24 14:08:40","11/11/24 14:12:19","failed",3,"Variables generation process failed: There are blocking model violations.",145
+"11/11/24 15:00:36","11/11/24 15:05:10","failed",3,"Variables generation process failed: There are blocking model violations.",146
+"11/11/24 15:00:36","11/11/24 15:08:23","failed",3,"Variables generation process failed: There are blocking model violations.",147
+"11/11/24 15:16:58","11/11/24 15:20:35","failed",3,"Variables generation process failed: There are blocking model violations.",148
+"11/11/24 15:28:02","11/11/24 15:36:41","success",3,,149
+"11/11/24 15:48:54","11/11/24 15:49:12","failed",3,"Variables generation process can not be launched: There are blocking model violations.",150
+"11/12/24 09:52:53","11/12/24 09:53:04","failed",3,"Variables generation process can not be launched: There are blocking model violations.",151
+"11/12/24 10:17:19","11/12/24 10:17:32","failed",3,"Variables generation process can not be launched: There are blocking model violations.",152
+"11/12/24 14:35:45","11/12/24 14:42:20","success",3,,153
+"11/13/24 22:18:33","11/13/24 22:25:28","success",3,,154
+"11/14/24 11:54:31","11/14/24 12:01:18","success",3,,155
+"11/18/24 09:34:40","11/18/24 09:41:34","success",3,,156
+"11/18/24 09:44:33","11/18/24 09:51:24","success",3,,157
+"11/19/24 20:35:42","11/19/24 20:40:35","failed",3,"Variables generation process failed: There are blocking model violations.",158
+"11/19/24 20:48:26","11/19/24 20:48:52","failed",3,"Variables generation process can not be launched: There are blocking model violations.",159
+"11/19/24 20:50:43","11/19/24 20:54:17","failed",3,"Variables generation process failed: There are blocking model violations.",160
+"11/19/24 20:56:39","11/19/24 21:02:16","success",3,,161
+"11/19/24 21:02:54","11/19/24 21:09:48","success",3,"502 BAD_GATEWAY ""Error occurred while expression variant generation process.""",162
+"11/20/24 09:55:40","11/20/24 10:02:40","success",3,,163
+"11/20/24 20:21:10","11/20/24 20:25:25","success",3,,164
+"11/21/24 09:56:06","11/21/24 10:00:05","success",3,,165
+"11/21/24 13:40:21","11/21/24 13:40:44","failed",3,"Variables generation process can not be launched: There are blocking model violations.",166
+"11/21/24 13:43:40","11/21/24 13:47:36","success",3,"502 BAD_GATEWAY ""Error occurred while expression variant generation process.""",167
+"11/21/24 15:48:52","11/21/24 15:52:49","success",3,,168
+"12/04/24 15:06:54","12/04/24 15:10:50","success",3,,169
+"01/16/25 08:00:09","01/16/25 08:00:23","failed",4,"Variables generation process can not be launched: There are blocking model violations.",170
+"01/16/25 08:00:42","01/16/25 08:00:50","failed",4,"Variables generation process can not be launched: There are blocking model violations.",171
+"01/22/25 07:49:36","01/22/25 07:49:46","failed",4,"Variables generation process can not be launched: There are blocking model violations.",172
+"01/24/25 11:46:00","01/24/25 11:46:08","failed",4,"Variables generation process can not be launched: There are blocking model violations.",173
+"01/26/25 20:28:25","01/26/25 20:28:33","failed",4,"Variables generation process can not be launched: There are blocking model violations.",174
+"01/27/25 15:01:04","01/27/25 15:01:12","failed",4,"Variables generation process can not be launched: There are blocking model violations.",175
+"01/28/25 14:52:16","01/28/25 14:52:25","failed",4,"Variables generation process can not be launched: There are blocking model violations.",176
+"01/30/25 07:12:04","01/30/25 07:12:13","failed",4,"Variables generation process can not be launched: There are blocking model violations.",177
+"01/30/25 09:59:27","01/30/25 09:59:35","failed",4,"Variables generation process can not be launched: There are blocking model violations.",178
+"01/30/25 13:41:51","01/30/25 13:41:58","failed",4,"Variables generation process can not be launched: There are blocking model violations.",179
+"01/30/25 13:59:25","01/30/25 13:59:32","failed",4,"Variables generation process can not be launched: There are blocking model violations.",180
+"01/30/25 14:04:48","01/30/25 14:07:05","success",4,,181
+"01/30/25 17:10:43","01/30/25 17:17:26","success",4,,182
+"01/30/25 17:17:48","01/30/25 17:19:19","success",4,,183
+"01/31/25 11:02:04","01/31/25 11:03:37","success",4,,184
+"01/31/25 22:13:18","01/31/25 22:13:26","failed",4,"Variables generation process can not be launched: There are blocking model violations.",185
+"02/02/25 22:55:21","02/02/25 22:55:28","failed",4,"Variables generation process can not be launched: There are blocking model violations.",186
+"02/02/25 22:56:09","02/02/25 22:56:15","failed",4,"Variables generation process can not be launched: There are blocking model violations.",187
+"02/03/25 00:21:32","02/03/25 00:21:38","failed",4,"Variables generation process can not be launched: There are blocking model violations.",188
+"02/04/25 09:22:44","02/04/25 09:22:52","failed",4,"Variables generation process can not be launched: There are blocking model violations.",189
+"02/04/25 14:57:52","02/04/25 14:57:58","failed",4,"Variables generation process can not be launched: There are blocking model violations.",190
+"02/05/25 10:12:00","02/05/25 10:12:07","failed",4,"Variables generation process can not be launched: There are blocking model violations.",191
+"02/05/25 16:24:42","02/05/25 16:25:01","failed",4,"Variables generation process can not be launched: There are blocking model violations.",192
+"02/06/25 08:32:40","02/06/25 08:32:50","failed",4,"Variables generation process can not be launched: There are blocking model violations.",193
+"02/06/25 08:36:13","02/06/25 08:37:18","failed",4,"Variables generation process failed: There are blocking model violations.",194
+"02/06/25 09:08:25","02/06/25 09:10:16","success",4,,195
+"02/06/25 16:00:20","02/06/25 16:07:41","success",4,,196
+"02/06/25 16:24:26","02/06/25 16:32:04","success",4,,197
+"02/10/25 12:01:03","02/10/25 12:01:14","failed",4,"Variables generation process can not be launched: There are blocking model violations.",198
+"02/10/25 13:17:18","02/10/25 13:17:27","failed",4,"Variables generation process can not be launched: There are blocking model violations.",199
+"02/10/25 15:31:40","02/10/25 15:31:48","failed",4,"Variables generation process can not be launched: There are blocking model violations.",200
+"02/10/25 15:31:56","02/10/25 15:32:04","failed",4,"Variables generation process can not be launched: There are blocking model violations.",201
+"02/10/25 15:35:12","02/10/25 15:35:20","failed",4,"Variables generation process can not be launched: There are blocking model violations.",202
+"02/10/25 15:39:58","02/10/25 15:41:49","success",4,,203
+"02/11/25 15:18:41","02/11/25 15:20:34","success",4,,204
+"02/12/25 13:35:09","02/12/25 13:35:17","failed",4,"Variables generation process can not be launched: There are blocking model violations.",205
+"02/12/25 13:50:24","02/12/25 13:50:32","failed",4,"Variables generation process can not be launched: There are blocking model violations.",206
+"02/12/25 13:53:16","02/12/25 13:53:24","failed",4,"Variables generation process can not be launched: There are blocking model violations.",207
+"02/12/25 13:58:08","02/12/25 13:58:16","failed",4,"Variables generation process can not be launched: There are blocking model violations.",208
+"02/12/25 13:59:06","02/12/25 14:06:33","success",4,,209
+"02/13/25 16:37:33","02/13/25 16:37:48","failed",4,"Variables generation process can not be launched: There are blocking model violations.",210
+"02/13/25 16:41:19","02/13/25 16:42:51","failed",4,"Variables generation process failed: There are blocking model violations.",211
+"02/13/25 17:24:07","02/13/25 17:24:17","failed",4,"Variables generation process can not be launched: There are blocking model violations.",212
+"02/13/25 17:24:45","02/13/25 17:24:53","failed",4,"Variables generation process can not be launched: There are blocking model violations.",213
+"02/13/25 17:28:14","02/13/25 17:28:22","failed",4,"Variables generation process can not be launched: There are blocking model violations.",214
+"02/13/25 17:28:57","02/13/25 17:29:05","failed",4,"Variables generation process can not be launched: There are blocking model violations.",215
+"02/13/25 17:33:28","02/13/25 17:33:36","failed",4,"Variables generation process can not be launched: There are blocking model violations.",216
+"02/13/25 17:35:44","02/13/25 17:35:52","failed",4,"Variables generation process can not be launched: There are blocking model violations.",217
+"02/13/25 17:36:48","02/13/25 17:36:56","failed",4,"Variables generation process can not be launched: There are blocking model violations.",218
+"02/13/25 17:38:01","02/13/25 17:38:09","failed",4,"Variables generation process can not be launched: There are blocking model violations.",219
+"02/13/25 17:41:15","02/13/25 17:41:24","failed",4,"Variables generation process can not be launched: There are blocking model violations.",220
+"02/13/25 17:52:19","02/13/25 17:53:35","failed",4,"Variables generation process failed: There are blocking model violations.",221
+"02/14/25 08:26:57","02/14/25 08:29:21","success",4,,222
+"02/14/25 11:48:17","02/14/25 11:48:29","failed",4,"Variables generation process can not be launched: There are blocking model violations.",223
+"02/14/25 11:57:44","02/14/25 12:05:10","success",4,,224
+"02/14/25 16:03:33","02/14/25 16:11:03","success",4,,225
+"02/17/25 11:40:57","02/17/25 11:47:29","failed",4,"Variables generation process failed: There are blocking model violations.",226
+"02/17/25 14:00:49","02/17/25 14:00:59","failed",4,"Variables generation process can not be launched: There are blocking model violations.",227
+"02/17/25 14:01:07","02/17/25 14:01:16","failed",4,"Variables generation process can not be launched: There are blocking model violations.",228
+"02/17/25 14:05:59","02/17/25 14:08:17","success",4,,229
+"02/19/25 09:00:21","02/19/25 09:00:35","failed",4,"Variables generation process can not be launched: There are blocking model violations.",230
+"02/19/25 09:04:38","02/19/25 09:04:46","failed",4,"Variables generation process can not be launched: There are blocking model violations.",231
+"02/19/25 09:19:20","02/19/25 09:26:17","success",4,,232
+"02/19/25 16:31:28","02/19/25 16:38:24","success",4,,233
+"02/20/25 09:18:05","02/20/25 09:19:42","success",4,,234
+"02/21/25 11:38:25","02/21/25 11:38:37","failed",4,"Variables generation process can not be launched: There are blocking model violations.",235
+"02/21/25 14:34:41","02/21/25 14:34:49","failed",4,"Variables generation process can not be launched: There are blocking model violations.",236
+"02/21/25 14:37:56","02/21/25 14:38:04","failed",4,"Variables generation process can not be launched: There are blocking model violations.",237
+"02/21/25 14:42:56","02/21/25 14:43:04","failed",4,"Variables generation process can not be launched: There are blocking model violations.",238
+"02/21/25 14:44:49","02/21/25 14:44:57","failed",4,"Variables generation process can not be launched: There are blocking model violations.",239
+"02/21/25 15:01:37","02/21/25 15:02:39","failed",4,"Variables generation process failed: There are blocking model violations.",240
+"02/21/25 15:09:09","02/21/25 15:09:20","failed",4,"Variables generation process can not be launched: There are blocking model violations.",241
+"02/21/25 15:11:46","02/21/25 15:13:27","success",4,,242
+"02/21/25 15:15:17","02/21/25 15:22:02","success",4,,243
+"02/24/25 10:06:02","02/24/25 10:06:11","failed",4,"Variables generation process can not be launched: There are blocking model violations.",244
+"02/24/25 14:44:10","02/24/25 14:50:59","success",4,,245
+"02/27/25 06:50:35","02/27/25 06:57:26","success",4,,246
+"02/27/25 07:17:07","02/27/25 07:23:55","success",4,,247
+"02/27/25 16:56:02","02/27/25 16:57:48","success",4,,248
+"02/27/25 17:10:49","02/27/25 17:12:30","success",4,,249
+"03/03/25 16:39:30",,"failed",4,"Could not roll back JPA transaction; nested exception is org.hibernate.TransactionException: Unable to rollback against JDBC Connection",250
+"03/03/25 16:50:49","03/03/25 16:57:54","success",4,,1250
+"03/03/25 17:13:03","03/03/25 17:14:33","success",4,,1251
+"03/06/25 19:00:57","03/06/25 19:01:06","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1252
+"03/07/25 07:44:07","03/07/25 07:44:23","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1253
+"03/07/25 10:12:37","03/07/25 10:12:43","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1254
+"03/07/25 10:13:21","03/07/25 10:15:00","success",4,,1255
+"03/07/25 12:46:05","03/07/25 12:53:12","success",4,,1256
+"03/11/25 13:19:38","03/11/25 13:21:07","success",4,,1257
+"04/23/25 08:57:29","04/23/25 08:57:42","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1258
+"04/23/25 12:50:34","04/23/25 12:50:41","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1259
+"04/23/25 12:58:44","04/23/25 12:58:51","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1260
+"04/23/25 13:24:33","04/23/25 13:24:39","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1261
+"04/23/25 13:38:41","04/23/25 13:38:48","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1262
+"04/23/25 13:58:48","04/23/25 13:58:55","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1263
+"04/23/25 14:54:32","04/23/25 14:54:40","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1264
+"04/23/25 14:57:04","04/23/25 14:57:11","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1265
+"04/23/25 15:22:06","04/23/25 15:22:13","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1266
+"04/23/25 15:35:46","04/23/25 15:35:53","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1267
+"04/23/25 15:45:50","04/23/25 15:45:57","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1268
+"04/23/25 15:57:33","04/23/25 15:57:40","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1269
+"04/23/25 16:35:25","04/23/25 16:35:32","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1270
+"04/23/25 16:37:43","04/23/25 16:39:14","success",4,,1271
+"04/23/25 16:45:40","04/23/25 16:47:06","success",4,,1272
+"04/25/25 11:39:19","04/25/25 11:39:27","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1273
+"04/25/25 11:40:35","04/25/25 11:47:10","success",4,,1274
+"04/25/25 14:14:36","04/25/25 14:16:03","success",4,,1275
+"04/25/25 14:16:19","04/25/25 14:17:47","success",4,,1276
+"05/14/25 10:28:45","05/14/25 10:29:04","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1277
+"05/14/25 10:49:09","05/14/25 10:49:17","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1278
+"05/14/25 10:52:39","05/14/25 10:52:46","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1279
+"05/14/25 12:39:14","05/14/25 12:39:22","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1280
+"05/15/25 12:02:38","05/15/25 12:02:51","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1281
+"05/15/25 12:14:47","05/15/25 12:14:52","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1282
+"05/15/25 12:20:19","05/15/25 12:20:24","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1283
+"05/15/25 12:39:40","05/15/25 12:39:45","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1284
+"05/15/25 12:54:10","05/15/25 12:54:15","failed",4,"Variables generation process can not be launched: There are blocking model violations.",1285
+"05/15/25 13:06:51","05/15/25 13:08:04","success",4,,1286
+"05/15/25 13:26:07","05/15/25 13:27:07","success",4,,1287
+"07/09/25 18:45:05","07/09/25 18:48:12","failed",5,"Variables generation process failed: There are blocking model violations.",1288
+"07/10/25 07:46:23","07/10/25 07:48:35","failed",5,"Variables generation process failed: There are blocking model violations.",1289
+"07/10/25 11:23:20","07/10/25 11:23:36","failed",5,"Variables generation process can not be launched: There are blocking model violations.",1290
+"07/10/25 11:24:09","07/10/25 11:24:19","failed",5,"Variables generation process can not be launched: There are blocking model violations.",1291
+"07/15/25 16:01:02","07/15/25 16:01:13","failed",5,"Variables generation process can not be launched: There are blocking model violations.",1292
+"07/16/25 15:27:34","07/16/25 15:27:42","failed",5,"Variables generation process can not be launched: There are blocking model violations.",1293
+"07/16/25 15:27:46","07/16/25 15:27:56","failed",5,"Variables generation process can not be launched: There are blocking model violations.",1294
+"07/16/25 17:36:21","07/16/25 17:38:05","failed",5,"Variables generation process failed: There are blocking model violations.",1295
+"07/16/25 17:50:32","07/16/25 17:52:18","failed",5,"Variables generation process failed: There are blocking model violations.",1296
+"07/17/25 13:15:23","07/17/25 13:17:15","failed",5,"Variables generation process failed: There are blocking model violations.",1297
+"07/17/25 15:24:59","07/17/25 15:27:04","failed",5,"Variables generation process failed: There are blocking model violations.",1298
+"07/18/25 11:35:32","07/18/25 11:35:41","failed",5,"Variables generation process can not be launched: There are blocking model violations.",1299
+"07/18/25 11:50:13","07/18/25 11:52:04","failed",5,"Variables generation process failed: There are blocking model violations.",1300
+"07/18/25 12:45:38","07/18/25 12:47:26","failed",5,"Variables generation process failed: There are blocking model violations.",1301
+"07/18/25 13:14:21","07/18/25 13:16:04","failed",5,"Variables generation process failed: There are blocking model violations.",1302
+"07/18/25 13:23:13","07/18/25 13:31:52","success",5,,1303
+"07/22/25 16:10:16","07/22/25 16:10:25","failed",5,"Variables generation process can not be launched: There are blocking model violations.",1304
+"07/23/25 10:08:00","07/23/25 10:12:59","success",5,,1305
+"07/27/25 21:40:08","07/27/25 21:43:19","failed",5,"Variables generation process failed: There are blocking model violations.",1306
+"07/28/25 12:38:26","07/28/25 12:40:09","failed",5,"Variables generation process failed: There are blocking model violations.",1307
+"07/28/25 16:17:34","07/28/25 16:19:18","failed",5,"Variables generation process failed: There are blocking model violations.",1308
+"07/29/25 08:55:55","07/29/25 08:57:38","failed",5,"Variables generation process failed: There are blocking model violations.",1309
+"07/29/25 10:47:26","07/29/25 10:49:28","failed",5,"Variables generation process failed: There are blocking model violations.",1310
+"07/29/25 13:16:11","07/29/25 13:18:14","failed",5,"Variables generation process failed: There are blocking model violations.",1311
+"07/29/25 14:01:33","07/29/25 14:06:07","success",5,,1312
+"07/29/25 15:23:49","07/29/25 15:28:44","success",5,,1313
+"07/29/25 15:56:27","07/29/25 15:56:38","failed",5,"Variables generation process can not be launched: There are blocking model violations.",1314
+"07/29/25 16:06:05","07/29/25 16:10:58","success",5,,1315
+"08/01/25 15:01:15","08/01/25 15:04:30","failed",5,"Variables generation process failed: There are blocking model violations.",1316
+"08/01/25 19:01:59","08/01/25 19:03:41","failed",5,"Variables generation process failed: There are blocking model violations.",1317
+"08/01/25 19:10:51","08/01/25 19:14:27","success",5,,1318
+"08/01/25 19:24:48","08/01/25 19:29:51","success",5,,1319
+"08/07/25 16:07:22","08/07/25 16:10:33","failed",5,"Variables generation process failed: There are blocking model violations.",1320
+"08/07/25 16:36:51","08/07/25 16:40:27","success",5,,1321
+"08/08/25 07:31:09","08/08/25 07:36:15","success",5,,1322
+"09/26/25 19:09:46","09/26/25 19:16:09","failed",5,"Variables generation process failed: There are blocking model violations.",1323
+"09/29/25 15:07:43","09/29/25 15:10:20","failed",5,"Variables generation process failed: There are blocking model violations.",1324
+"09/29/25 17:59:20","09/29/25 18:01:46","failed",5,"Variables generation process failed: There are blocking model violations.",1325
+"09/29/25 18:12:06","09/29/25 18:14:31","failed",5,"Variables generation process failed: There are blocking model violations.",1326
+"09/29/25 18:49:56","09/29/25 18:52:22","failed",5,"Variables generation process failed: There are blocking model violations.",1327
+"09/29/25 19:07:23","09/29/25 19:12:08","success",5,,1328
+"09/29/25 19:12:56","09/29/25 19:19:12","success",5,"could not execute batch; SQL [delete from OperationVersion where OperationVID=?]; constraint [null]; nested exception is org.hibernate.exception.ConstraintViolationException: could not execute batch",1329
+"09/30/25 08:12:17","09/30/25 08:18:11","success",5,"could not execute batch; SQL [delete from OperationVersion where OperationVID=?]; constraint [null]; nested exception is org.hibernate.exception.ConstraintViolationException: could not execute batch",1330
+"10/02/25 08:49:47","10/02/25 08:53:43","failed",5,"Variables generation process failed: There are blocking model violations.",1331
+"10/02/25 13:20:08","10/02/25 13:24:31","success",5,,1332
+"10/02/25 18:06:32","10/02/25 18:12:14","success",5,,1333
+"10/08/25 15:14:27","10/08/25 15:18:14","failed",5,"Variables generation process failed: There are blocking model violations.",1334
+"10/08/25 15:32:38","10/08/25 15:37:04","success",5,,1335
+"10/08/25 15:44:36","10/08/25 15:50:28","success",5,,1336
+"10/13/25 18:24:40","10/13/25 18:28:30","failed",5,"Variables generation process failed: There are blocking model violations.",1337
+"10/13/25 18:51:32","10/13/25 18:53:55","failed",5,"Variables generation process failed: There are blocking model violations.",1338
+"10/13/25 19:02:06","10/13/25 19:04:30","failed",5,"Variables generation process failed: There are blocking model violations.",1339
+"10/14/25 08:33:48","10/14/25 08:36:05","failed",5,"Variables generation process failed: There are blocking model violations.",1340
+"10/14/25 18:02:07","10/14/25 18:04:31","failed",5,"Variables generation process failed: There are blocking model violations.",1341
+"10/14/25 18:19:14","10/14/25 18:21:36","failed",5,"Variables generation process failed: There are blocking model violations.",1342
+"10/14/25 19:06:48","10/14/25 19:09:10","failed",5,"Variables generation process failed: There are blocking model violations.",1343
+"10/14/25 19:17:04","10/14/25 19:21:42","success",5,,1344
+"10/14/25 19:22:05","10/14/25 19:28:10","success",5,,1345
+"10/22/25 06:24:33","10/22/25 06:30:36","success",5,,1346
+"10/23/25 15:51:09","10/23/25 15:57:17","success",5,,1347
+"10/23/25 18:09:52","10/23/25 18:16:05","success",5,,1348
+"11/04/25 15:03:44","11/04/25 15:09:36","success",5,,1349
+"11/08/25 15:28:11","11/08/25 15:33:54","success",5,,1350
+"11/10/25 14:02:44","11/10/25 14:08:27","success",5,,1351
+"11/10/25 17:03:07","11/10/25 17:08:55","success",5,,1352
+"11/12/25 16:12:12","11/12/25 16:18:13","success",5,,1353
+"11/13/25 18:22:26","11/13/25 18:26:05","failed",5,"Variables generation process failed: There are blocking model violations.",1354
+"11/13/25 18:31:46","11/13/25 18:36:08","success",5,,1355
+"02/09/26 08:42:08","02/09/26 08:42:48","success",1010000003,,1010000002

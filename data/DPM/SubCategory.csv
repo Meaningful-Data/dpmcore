@@ -1,0 +1,1166 @@
+CategoryID,Code,Name,Description,RowGUID,OwnerID,SubCategoryID
+130,"AP1","Hierarchy for approaches for credit risk","Approaches used for calculating capital requirements for credit risk.","{5F6F7F44-FB94-4EC1-95F3711DD9FA8F1B}",1012,10
+130,"AP10","Hierarchy for the approaches applicable for operational risk","Lists all the possible approaches applicable for operational risk.","{B8A688C3-C517-4875-8FCCBB94F9A81EE9}",1012,45
+130,"AP11","Hierarchy for the approaches applicable for CVA risk","Lists all the possible approaches applicable for CVA risk.","{E62D4B42-7837-4F74-BE66BDFE2DD4F475}",1012,80
+130,"AP2","Hierarchy for the different methods to calculate risk weights for securitisation exposures","According to the CRR, there are different methods to determine risk weights for securitisation exposures. The CRR clearly describes the methods and the sequence of application. These hierarchy lists the possible methods to determine risk weights (separate dimension in the domain AP)","{B9E91075-4B0B-45CB-AB7CCB0BEEC4F477}",1012,110
+130,"AP22","Alternative hierarchy for approaches for credit risk","Approaches used for calculating capital requirements for the credit risk for securitisation positions and equity positions in the IRB. There is no differentiation in foundation and advanced IRB for these exposure classes.","{B6424CB2-CCFE-4F24-B979E2F83DFC0FEA}",1012,170
+130,"AP5","Hierarchy for the approaches for market risk","This hierarchy includes the different approaches for market risk","{0940F67A-7E55-41C9-B9FC6A33A464CEA7}",1012,195
+130,"AP7","Methods to determine risk weights in the IRB approach","There are different possibilities in the IRB approach (excluding equity and securitisation positions) how risk weights are determined. These hierarchy lists the possible methods to determine risk weights (separate dimension in the domain AP)","{8C04F1CC-2C1A-4415-889395D9A4C658CE}",1012,315
+130,"AP8","Methods to determine risk weights in the IRB approach for equity exposures",,"{A448B03E-883B-4567-B926EA81E85AD38B}",1012,355
+130,"AP9","Hierarchy for approach for options","Hierarchy shows the approaches used to calculate own funds requirements for risks other than delta risks.","{7050ABD7-5863-45FA-A169DC389B159E95}",1012,390
+130,"AP23","Options for ""Approach used for the securitised exposures""",,"{85E33361-E9C1-4086-87B55F9BCDF79963}",1012,425
+1002,"AT1","Hierarchy for the calculation of RWA in the Standardised Approach","This hierarchy shows the calculation of the RWA for the SA except positions assigned to the exposure class securitisation. The single steps were taken from the template CR SA, beginning with the Original exposure pre conversion factors to the risk weighted exposure amount.","{E3794327-E2F2-4D32-A5A8CE6EBDF0753B}",1012,445
+1002,"AT101","Components of ""All reclassifications"" (I)","Components of ""All reclassifications"" (I)","{92F2F75A-37E4-4AB4-95D34A819990AF1A}",1012,515
+1002,"AT102","Components of ""All reclassifications"" (II)","Components of ""All reclassifications"" (II)","{01D57EFB-BDB4-44FF-86EE6FF96E9FCFA0}",1012,540
+1002,"AT105","Hierarchy for computable amount","Lists the different types of computable amount. Applicable in CA4 template for detailed breakdowns of holdings.","{791A42A6-E1AD-4571-857C2B47BADC1F35}",1012,570
+1002,"AT107","Hierarchy for amounts used for the calculation of own funds","Shows the different features of the grandfathered instruments not constituting state aid.","{1187D1A1-B491-4B32-A3D2D8E51ABC9CDB}",1012,620
+1002,"AT2","Hierarchy for calculating RWA in the IRB approach","This hierarchy shows the calculation of the RWA for the IRB, all exposure class except equities and other non-credit risk related items. The single steps were taken from the template CR IRB EQU.","{F7A88D1A-D7F0-468D-8F4AA2C9D0072DF0}",1012,735
+1002,"AT3","Hierarchy for calculating RWA in the IRB approach, applicable just for equities","This hierarchy shows the calculation of the RWA for the IRB, exposure class equities. The single steps were taken from the template CR IRB EQU.","{DDD58A22-EDD8-4363-8375E6378086D7BD}",1012,775
+1002,"AT4","Hierarchy for the calculation of RWA in the Standardised Approach for securitisation positions","This hierarchy shows the calculation of the RWA for the SA, exposure class securitisation. The single steps were taken from the template CR SEC SA.","{8AC2D82B-66C7-4D10-8E64EB80D2F14A40}",1012,800
+1002,"AT40","Hierarchy for breakdown of current period (flow) (I)","Breakdown between additions and reversals","{E3D849EA-F2AA-4843-8AF1B60CCC9B98BA}",1012,905
+1002,"AT47","Hierarchy for calculating changes in defined benefit obligations",,"{66220115-7D2B-402B-A624713F726372A0}",1012,925
+1002,"AT5","Hierarchy for the calculation of RWA in the IRB-Approach for securitisation positions","This hierarchy shows the calculation of the RWA for the IRB, exposure class securitisation. The single steps were taken from the template CR SEC IRB.","{B2E08256-8691-4C3A-B7636B76FD3DCC46}",1012,985
+1002,"AT73","Hierarchy for the impact of correction of errors and changes in accounting policies according to IAS 8","Hierarchy for the impact of correction of errors and changes in accounting policies according to IAS 8","{C9D43EAE-6D67-429C-9B6CEAFE2D63F1AA}",1012,1115
+1002,"AT83","Hierarchy for goodwill included in the carrying amount",,"{3F23BF54-BD60-41B9-894898C88CFB6772}",1012,1180
+1002,"AT87","Hierarchy for gross carrying amount",,"{88954B4B-CED4-486F-9CD7D50617C7A60C}",1012,1195
+1002,"AT90","Hierarchy for calculating changes in provisions",,"{CA2A1D9C-5CB2-4658-9DE3C337EEFA7D09}",1012,1250
+140,"BT1","Hierarchy for the breakdown between owners of the parent and non-controlling interests","Hierarchy for the breakdown between owners of the parent and non-controlling interests","{732C3F35-7925-4222-9211486505D7DD16}",1012,1285
+380,"RT2","Hierarchy for transferred financial assets",,"{A53543E8-E684-4D73-92F92D9B4C109598}",1012,1305
+170,"CI1","Hierarchy for Grandfathered Instruments not constituting state aid","Shows the different features of the grandfathered instruments not constituting state aid.","{99700E5E-1368-4CDE-8E7DD47698241AE7}",1012,1340
+180,"CP1","Hierarchy for breakdown of CRM techniques","Breakdown of CRM techniques","{9743E556-D58A-4E36-A696E9F6CD2BABAC}",1012,1375
+190,"CQ1","Hierarchy for CQS used for securitisations in the IRB","List all possible CQS which are used for calculating RW for securitisation positions of the IRB","{FD222147-B8DE-4197-B05EA0A70CDD44CD}",1012,1530
+190,"CQ2","Hierarchy for CQS used for securitisations in the SA",,"{9E3B8BFB-2BAB-4DEA-9779E25EDBBBABC7}",1012,1600
+200,"CT1","Hierarchy to describe financial entities","The differentiation is used in the IRB - exposures to large regulated and unregulated entities have to apply a higher correlation when calculating the risk weight","{DBDEBC03-9E96-4C06-A5867EF68AD1AE18}",1012,1635
+200,"CT15","Hierarchy with the basic breakdown for counterparty sectors","Basic breakdown for counterparty sector","{42D488B8-CE9F-4E4D-BA566D60566B8FDF}",1012,1655
+200,"CT32","Hierarchy with breakdown for ""Counterparties other than financial corporations""","Breakdown for ""Counterparties other than financial corporations""","{697F75A8-BEDD-49CD-AD87D07AC5B99E14}",1012,1700
+200,"CT42","Breakdown of exposures treated and NOT treated as sovereigns","Breakdown of exposures treated and NOT treated as sovereigns for LR calibration purposes","{76B6925F-C687-45AB-A9A85A24314BF4C1}",1012,1730
+210,"CU1","Hierarchy to describe a set of currencies","The set of currencies is used for reporting purposes - those currencies have to be reported separately in the MKR SA FX template.","{00F14441-AD83-494B-8DDBC1D5E2CD03AB}",1012,1775
+210,"CU2","Hierarchy for the currencies in the MKR SA TDI template","Generally, the own funds requirements for interest rate risk have to be calculated for currencies separately. This set of currencies is used for reporting purposes - a separate dimension has to be reported for each of those currencies.","{58B31F38-EF5D-4856-88AA93170A84E8B3}",1012,1960
+220,"EC1","Hierarchy for the exposure classes in the IRB approach","Lists all exposure and sub-exposure classes of the IRB approach. For each of those exposure classes a separate dimension has to be reported. Exception - equity and securitisation, because for those exposures exists a separate template. Additionally, other non credit-obligation assets are reported","{BDFC8D3F-2FA5-4C74-BE5073FC5D367F64}",1012,2090
+220,"EC2","Exposure classes in the SA","Hierarchy shows the exposure classes used in the SA. The differentiation to the IRB will be made by using the dimension Approach.","{15C2A69E-BD24-411B-BD62CEDB12D111F7}",1012,2160
+220,"EC3","Exposure classes in the SA (2)","Lists all exposure and sub-exposure classes of the SA approach used in LR templates","{803D1A6A-0B17-4333-9D50872C2FD61EA0}",1012,2255
+220,"EC4","Hierarchy for the exposure classes in the IRB approach (2)","Lists all exposure and sub-exposure classes of the IRB approach used in LR templates","{C0B6C273-1B65-41C0-88D317F48EE69BC8}",1012,2370
+220,"EC5","Exposure classes in the SA (3)","Lists all exposure and sub-exposure classes of the SA approach used in LR templates","{3E384AA7-57EE-4256-B3AB5A3DB95D6911}",1012,2450
+220,"EC6","Hierarchy for exposure classes used in template CR GB1a and CR GB 1b","Shows the exposure classes explicitly used for the breakdown of SA exposures in the CR GB 1 (without exposure class items representing securitisation exposures). Hierarchy is applicable to dimension exposure class (EC) and exposure class before reassignment (ECB)","{5772DD95-D012-4875-AACCEE4B51481591}",1012,2470
+220,"EC7","Hierarchy for exposure classes used in template CR GB2","Shows the exposure classes explicitly used for the breakdown of IRB exposures in the CR GB 2 (without exposure class items representing securitisation exposures and other non-credit obligations).","{672026CF-A3E8-4421-A2E14962E7541F29}",1012,2560
+230,"ER1","Hierarchy for the usage of ratings","Hierarchy shows the different sorts of ratings used in the CRR and their relationships.","{6B566E36-F6EE-4859-B61DD34AB4955C77}",1012,2620
+240,"ET1","Categories of event types for operational risk","Categorisation is used for loss event type classification for operational risk","{80DAAC44-ECEA-49CB-AC895FDF45281F8F}",1012,2675
+250,"GA1","Hierarchies for the markets in the MKR SA EQU template","Generally, the own funds requirements for equity risk have to be calculated for currencies separately. This set of currencies is used for reporting purposes - a separate sheet has to be reported for each of those countries.","{74EA9675-466F-4DBC-8C2DD7D80C35B30C}",1012,2720
+260,"IM30","Hierarchy for allowances",,"{EAF653AF-55B0-4DB4-BE49E8D7C6AAA566}",1012,2935
+260,"IM31","Hierarchy for performing and non-performing exposures","Shows the breakdown of exposures between performing and non-performing","{7A589750-C1DB-46E9-AF3699C170680889}",1012,2975
+260,"IM32","Breakdown for exposures with forbearance measures","Breakdown for exposures with forbearance measures","{9C99A3CF-8EDE-4FCA-AABAB264EB9E1A54}",1012,2995
+260,"IM33","Hierarchy for general allowances",,"{A85B4F70-B143-4BB3-A526262DC5AA2C38}",1012,3020
+120,"MC1","Hierarchy for the breakdown of All assets (I)","Breakdown of All assets (I)","{A1E826CE-7E79-4861-BE3EDCFB34ABE3A2}",1012,3040
+120,"MC10","All equity, all liabilities","All equity, all liabilities","{DFA8AB17-6CAA-4B81-9E71D5237AECFB41}",1012,3180
+120,"MC100","Hierarchy for Deductible DTA that rely on future profitability and arise from temporary differences and Equity Instruments","Hierarchy for Deductible DTA that rely on future profitability and arise from temporary differences and Equity Instruments","{E89D8508-3467-4BB0-9CBCDC17E25BDD74}",1012,3200
+120,"MC101","Alternative hierarchy for the composition of holdings","Alternative hierarchy, showing the composition of holdings for own funds.","{1BE773E7-B1FC-4F21-ADD1C23C144F234F}",1012,3220
+120,"MC102","Hierarchy for grandfathered instruments",,"{8B772304-C9C2-4F37-9A4BB011A028E212}",1012,3275
+120,"MC103","Hierarchy for the elements of ""Retained earnings, Profit or Loss""","Elements of ""Retained earnings, Profit or Loss""","{0BB35438-856D-45AB-9436D94FE53391BD}",1012,3295
+120,"MC104","Hierarchy for prudential filters",,"{5A9A0DA5-0FA4-434B-A81B52995FF4BF0D}",1012,3315
+120,"MC11","Hierarchy for securitisation instruments",,"{92A03378-6384-49A5-96E3E6D9C78D0036}",1012,3350
+120,"MC121","Hierarchy for Financial instruments subject to market risk (debt instruments of the trading book)","List the different instruments which are subject to interest rate risk (trading book). Shows, how these are related and which of them are explicitly mentioned in COREP templates","{097D79EF-600B-49AF-A4DE45928F320749}",1012,3370
+120,"MC123","Hierarchy for Financial instruments subject to market risk (banking book and trading book instruments for foreign exchange risk)","List the different instruments which are subject to foreign-exchange risk (banking book and trading book). Shows, how these are related and which of them are explicitly mentioned in COREP templates","{937A0310-0044-4729-BE381D4AC9C04681}",1012,3465
+120,"MC124","Hierarchy for Financial instruments subject to market risk (banking book and trading book instruments for commodities risk)","List the different instruments which are subject to market risk (banking book and trading book instruments for commodities risk). Shows, how these are related and which of them are explicitly mentioned in COREP templates","{4C4A9A44-2D81-4A15-888DF8E12E09E790}",1012,3545
+120,"MC128","Hierarchy for Financial instruments subject to market risk (trading book for equity risk)","List the different instruments which are subject to market risk (trading book). Shows, how these are related and which of them are explicitly mentioned in COREP templates","{57E6393A-2A3C-4EEF-8071DDABDB4A5B6F}",1012,3585
+120,"MC13","Hierarchy for instruments subject to securitisation credit risk treatment","List the different instruments which are subject to securitisation credit risk treatment. Shows, how these are related and which of them are explicitly mentioned in COREP templates","{6577A178-3B4E-44AF-B0794FF042896ABA}",1012,3635
+120,"MC130","Hierarchy for Financial instruments subject to market risk (trading book instruments for CTP)","List the different instruments which can be assigned to the correlation trading portfolio.","{EF5AE734-3201-45F3-986D79FA584E3AE3}",1012,3665
+120,"MC133","Hierarchy for other reserves",,"{637EB4E3-E25D-4B51-B14387F2BBB21928}",1012,3710
+120,"MC134","Hierarchy for Revaluation reserves",,"{7402A91A-E7AF-452E-979B3B96BC09DB42}",1012,3735
+120,"MC135","Hierarchy for Fair value reserves",,"{FB740DA2-2022-4BF1-91CC437A4DA52042}",1012,3765
+120,"MC14","Hierarchy for instruments subject to credit risk","List the different instruments which are subject to credit risk. Shows, how these are related and which of them are explicitly mentioned in COREP templates","{20704771-C21F-4082-B044F42110FD9C93}",1012,3795
+120,"MC15","Hierarchy for Asset encumbrance","Shows the breakdown used for the encumbered assets","{6C097203-6953-4E8F-B06D0AC60249BDAF}",1012,3865
+120,"MC16","Breakdown of Debt securities, Loans and advances","Breakdown of Debt securities, Loans and advances","{3E41AA19-3866-42AB-96BB530916954AB3}",1012,3900
+120,"MC18","Hierarchy for derivatives",,"{8FA089F3-FDAF-45D8-B267405B7CCC819B}",1012,3920
+120,"MC2","Equity instruments issued",,"{A3725B23-B18F-49E8-B9CF78C2148CBF12}",1012,3955
+120,"MC21","Hierarchy for collateral received",,"{E7C28AAE-8B22-43AF-8F0E649692B86122}",1012,3990
+120,"MC22","Hierarchy for collateral received",,"{865DF051-7C85-4324-8751A0B4352D0047}",1012,4015
+120,"MC23","Hierarchy for the breakdown of ""Derivatives, Securities financial transactions""","Breakdown of ""Derivatives, Securities financial transactions""","{BB1CDB2A-62CF-4F88-8A923FC53220BD6B}",1012,4055
+120,"MC24","Hierarchy for deferred tax liabilities",,"{0A0A1E34-9F87-4BCC-9EE338EA53057DC4}",1012,4080
+120,"MC27","Hierarchy for types of derivatives transactions in FINREP (I)","Types of derivatives transactions in FINREP (I)","{8D3576D9-3B46-4D8B-8EE3BF10F7C2C091}",1012,4115
+120,"MC28","Hierarchy for types of derivatives transactions in FINREP (II)","Types of derivatives transactions in FINREP (II)","{76727A3D-15BA-44F2-ACCF2A85C240B8D8}",1012,4145
+120,"MC29","Derivatives sold and purchased",,"{26050779-E49A-4326-BB1C061E8B467783}",1012,4165
+120,"MC3","Hierarchy for the breakdown of All liabilities","Breakdown of All liabilities","{6FEBEC08-8214-4E44-9A8C60DB53A4DE7B}",1012,4185
+120,"MC30","Hierarchy for deferred tax assets",,"{6E88E37B-CE4A-40B8-BA67B23E4A81BE3B}",1012,4325
+120,"MC33","Off-balance sheet exposures subject to credit risk",,"{D265DB47-FFC0-41B8-BCE54ACC9E50989C}",1012,4350
+120,"MC34","Loan commitments, financial guarantees and other commitments received",,"{04D4E9DA-AF56-4463-A7F60F115E5081B9}",1012,4380
+120,"MC41","Hierarchy for the composition of ""Assets other than Derivatives, Equity instruments, Debt securities, Loans and advances""","Composition of ""Assets other than Derivatives, Equity instruments, Debt securities, Loans and advances""","{DF77553F-541B-427E-9CB3887CE72B9BE5}",1012,4405
+120,"MC45","Hierarchy for the breakdown of All assets (II)","Breakdown of All assets (II)","{5CA018B5-FB3E-442D-94ED7E4DB95924D1}",1012,4440
+120,"MC48","Hierarchy for breakdown of All assets (V)","Breakdown of All assets (V)","{85F0ECEA-9A6E-42E2-BD6171ED2E472617}",1012,4465
+120,"MC49","Components of ""Derivatives, Debt securities, Loans and advances""","Components of ""Derivatives, Debt securities, Loans and advances""","{A2E93CAB-1672-4FA4-AB085BAFEDE29894}",1012,4490
+120,"MC51","Provisions",,"{A06312CC-079A-420D-926C8D9A9E279304}",1012,4515
+120,"MC59","Components of ""Derivatives, Deposits, Debt securities issued, Other financial liabilities""","Components of ""Derivatives, Deposits, Debt securities issued, Other financial liabilities""","{969974BB-0699-4B12-AF6E9ADC792B001D}",1012,4565
+120,"MC61","All equity",,"{89CBC1CA-EA2D-486C-BB46AFF6C65195EB}",1012,4595
+120,"MC62","Relationship between Qualifying revolving and Unconditionally cancellable commitments","Relationship between Qualifying revolving and Unconditionally cancellable commitments for LR calibration purposes","{C3FC22C5-826E-46BC-B6A7F3ADBB9BAD9F}",1012,4755
+120,"MC63","TBD",,"{6E563619-84EA-40C6-B1FBE4AB07543BB7}",1012,4780
+120,"MC65","TBD",,"{C7F88488-4480-4989-81FD685D2095AF5C}",1012,4805
+120,"MC66","Hierarchy for breakdown of All liabilities","Breakdown of All liabilities","{BB61EFCE-3311-46EE-9C475AF4320C2B07}",1012,4835
+120,"MC67","Components of ""Equity instruments, Debt securities, Loans and advances, Deposits, Debt securities issued, Other financial liabilities""","Components of "" Equity instruments, Debt securities, Loans and advances, Deposits, Debt securities issued, Other financial liabilities""","{5382978F-6140-4B69-98BE2A3E68C0537F}",1012,4870
+120,"MC69","Components of ""Derivatives, Equity instruments, Debt securities, Loans and advances, Short positions, Deposits, Debt securities issued, Other financial liabilities""","Components of ""Derivatives, Equity instruments, Debt securities, Loans and advances, Short positions, Deposits, Debt securities issued, Other financial liabilities""","{4AB14B9D-0A97-47FF-ABCAFBBB1B486192}",1012,4910
+120,"MC72","Hierarchy for the breakdown of All assets (III)","Breakdown of All Assets (III)","{36FD9E2B-BAE0-400A-936D8334A016887A}",1012,4965
+120,"MC77","Profit & Loss account structure","Profit & Loss account structure","{EE8F7D19-8B1B-4A3D-83268EBD924B64CB}",1012,5005
+120,"MC78","Components of ""Derivatives, Equity Instruments""","Components of ""Derivatives, Equity Instruments""","{194FC746-25EC-446A-81CF4D7E040A2EEA}",1012,5190
+120,"MC85","Hierarchy for the breakdown of All assets (IV)","Breakdown of All assets (IV)","{AD3767D3-3B19-4017-AC8B41858DB55E87}",1012,5210
+120,"MC91","Hierarchy for the breakdown of All equity (I)","Breakdown of All equity (I)","{6872D594-D3F5-45E2-A9EC7BD9CC0014DF}",1012,5260
+120,"MC92","Composition of Profit or loss other comprehensive income","Composition of Profit or loss other comprehensive income","{68EC444C-87DF-4D66-8F252DCE510F73A1}",1012,5280
+120,"MC93","Components of ""Profit or loss, Profit or loss other comprehensive income""","Components of ""Profit or loss, Profit or loss other comprehensive income""","{3DC85DEB-BF9F-4525-99137843269A7F8A}",1012,5305
+120,"MC95","Breakdown of Deferred tax liabilities non deductible from deferred tax assets that rely on future profitability","Breakdown of Deferred tax liabilities non deductible from deferred tax assets that rely on future profitability","{7D99902D-AF0B-4C37-84716FE3FF7B57AE}",1012,5325
+120,"MC96","Composition of ""Deferred tax assets that rely on future profitability and do not arise from temporary differences net of associated tax liabilities""","""Deferred tax assets that rely on future profitability and do not arise from temporary differences net of associated tax liabilities""","{40916435-A1C7-4897-B3C6BD7083B8F0D0}",1012,5350
+120,"MC98","Hierarchy for intangible assets",,"{3C39E1F2-9BF9-4D4F-BC0D1DFE7C34EC60}",1012,5370
+120,"MC99","Hierarchy for ""Equity instruments and subordinated financial assets""","Equity instruments and subordinated financial assets","{A74DC689-201F-4194-8572AF5D1CF4AAD2}",1012,5390
+160,"OF5","Hierarchy for the determination of eligible capital","Eligible capital is <= the total own funds, because the T2 capital can only be considered to one third.","{18AB8787-CCAE-4C9F-8716F17FEF20A668}",1012,5410
+160,"OF6","Hierarchy for the determination of total own funds",,"{DF1A49F7-27B9-475F-99B78CD284D3BCC5}",1012,5445
+160,"OF7","Hierarchy for transitional own funds items","Own funds items which are only regarded transitionally as own funds are included in those members.","{57C87165-3FBD-4AA2-920DB8552F70B1F9}",1012,5470
+300,"PC1","Hierarchy for breakdown of on and on-balance sheet exposures for LR calibration purposes","Effective Risk Weights of on and off-balance sheet exposures in the banking book for LR calibration purposes","{EF7CF1C2-7433-4E7E-B00B2A56DCF1B3DF}",1012,5495
+310,"PI1","Hierarchy for the position in instruments","Shows the different positions possible in the respective instruments. It is only applicable for market risk.","{1E2A50AF-C64B-456A-B40DB2591A285283}",1012,5545
+320,"PL11","Breakdown of financial assets for FBE and NPE templates",,"{C79F7679-DEB7-4B31-85758F80A38E736E}",1012,5575
+320,"PL2","Hierarchy for banking/trading book",,"{57B6C20C-D5A1-49A9-989009999FCD30D4}",1012,5595
+320,"PL20","Hierarchy for accounting portfolios for equity instruments subject to impairment",,"{9D1F5B4B-E552-4556-BE1C6CDC31B1B167}",1012,5615
+320,"PL21","Hierarchy for accounting portfolios for debt instruments subject to impairment",,"{E3293791-3A21-4FA1-8D4FF69E9C83C861}",1012,5660
+320,"PL25","Hierarchy for accounting portfolios for trading financial instruments",,"{7401A1BE-BD6F-4EEA-A76865F9FBAFC498}",1012,5695
+320,"PL26","Hierarchy for Trading financial instruments (GAAP)",,"{0C104130-9B7E-44B0-A63C11CE0A061E4D}",1012,5725
+320,"PL27","Hierarchy for accounting portfolios for non-trading financial instruments (GAAP)",,"{2C09D9A7-E458-4219-978E0787AE40E207}",1012,5745
+320,"PL43","Hierarchy for accounting portfolios for financial assets subject to impairment",,"{BF55EA34-23BB-4F28-8E7F263D72C3AD6F}",1012,5780
+320,"PL5","Hierarchy for Measurement for Intangible assets other than Goodwill",,"{398731B7-7B28-4E49-B5CDF59391BDFCC7}",1012,5840
+320,"PL50","Hierarchy for accounting portfolios for financial assets non-subject to impairment",,"{B23B6F84-E0FF-46F1-B9A781B5CC890DCA}",1012,5860
+320,"PL51","Hierarchy for accounting portfolios for financial liabilities designated at fair value through profit or loss",,"{519BC79E-9CB7-49A0-9A5819C3D1D1CAC1}",1012,5905
+320,"PL54","Hierarchy for Accounting portfolios of financial assets",,"{B20BFB71-60AB-4C27-98A1725D7D8FB6B7}",1012,5930
+320,"PL60","Hierarchy for accounting portfolios not measured at fair value through profit or loss for financial instruments",,"{BA7D3083-8A99-4162-AEAF43A902E3B4FE}",1012,6005
+320,"PL71","Hierarchy for accounting portfolios for asset and liabilities designated at fair value through profit or loss",,"{3FB4769C-0941-4AE2-B09AC8CF0949AD88}",1012,6050
+320,"PL75","Hierarchy for Property, plant and equipment",,"{B8B69061-2C47-4322-9F53AFAAF968950D}",1012,6070
+320,"PL76","Hierarchy for investment property",,"{D09FDF85-EDC1-4ECC-A8BDF1E78D7B5EF7}",1012,6090
+320,"PL82","Hierarchy for hedge accounting, interest risk",,"{EFAF3EDA-7598-4A01-B279D1A8656C83EA}",1012,6110
+320,"PL86","Hierarchy for fair value model for investment property and property, plan and equipment",,"{F1081E99-A9BB-4922-ADE7E44C335C8684}",1012,6125
+320,"PL91","Hierarchy for hedge accounting",,"{FBAB2D99-4FC8-4C90-9F2E0FB96C05D230}",1012,6145
+320,"PL96","Hierarchy for financial instruments designated at fair value through profit or loss. Accounting mismatch",,"{CC8F20A5-B168-43C1-A5C514A80EF196AD}",1012,6180
+320,"PL97","Hierarchy for financial instruments designated at fair value through profit or loss. Evaluation on a fair value basis",,"{62F57AE9-64E5-46A3-84A3FF4E1B51E4E4}",1012,6200
+320,"PL98","Hierarchy for financial instruments designated at fair value through profit or loss. Hybrids contracts designated",,"{0BCBEE21-5A83-40EF-867A4BD879B4293F}",1012,6220
+320,"PL99","Options for ""solvency treatment of the securitisation""",,"{D302A261-BD00-4C4C-B60E64150F99A065}",1012,6240
+340,"PU23","Hierarchy for purposes of loans",,"{32AFFA55-52BE-4188-855863AD31CB33A3}",1012,6265
+350,"RP1","Hierarchy for related parties","Especially used for own funds items. Different treatments are connected with the fact whether the counterpart is an entity of the financial sector or not.","{721FF050-6A8E-43F6-81C496661F168A13}",1012,6290
+350,"RP61","Breakdown of All related parties/All relationships","Breakdown of All related parties/All relationships","{30947C5D-31C0-4AB7-B4B5A9E05E922D02}",1012,6310
+360,"RS1","Options for ""Role in the securitisation process""",,"{9AB9CC6A-6011-4747-87D2409067531290}",1012,6355
+350,"RP2","Options for ""Group structure""",,"{BE5D9D71-FD8F-48F8-82FE503BCC45F899}",1012,6380
+380,"RT3","Types of Risk Transfer transaction",,"{91485D86-65BB-4762-98B959435BA982EB}",1012,6400
+400,"TA1","Hierarchy for business lines","Lists the business lines applicable for operational risk.","{ECBDEB4C-B1EF-4182-B94991B7B02537AE}",1012,6440
+400,"TA88","Hierarchy for types of activities","Types of activities that generate fee and commission income and expenses","{ADF14834-AE24-403B-821497D68C571C7C}",1012,6495
+400,"TA95","Relation between Total Custody and Custody entrusted to other entities","Relation between Total Custody and Custody entrusted to other entities","{8ED9F357-1C01-495B-9A7CCD13424D1420}",1012,6620
+410,"TI1","Hierarchy for time intervals applicable for settlement/delivery risk","The applicable percentage increases with the time interval. The percentage has to be multiplied with the price difference.","{88BB8FB7-66E5-4026-BD3ABDC03D79B203}",1012,6635
+410,"TI2","Hierarchy for time intervals applicable for free deliveries",,"{5E34AE8F-FEF3-4DDE-A8CCD9EA8FD83CB0}",1012,6670
+440,"TP1","Hierarchy for correlation trading portfolio","List of possible values to be reported for Securitisation Details","{87CB3F76-01C2-4F65-A3D7A26C75D003BC}",1012,6690
+440,"TP2","Options for ""Correlation Trading Portfolio""",,"{8135FB73-E652-4A08-A07DB605203FFBA8}",1012,6710
+370,"TR1","Risk types - general hierarchy","Describes the interrelations between the different types of risk in the CRR.","{4BE77CE1-9062-4729-A8109428F5E2F9B3}",1012,6725
+370,"TR2","Alternative Hierarchy for market risk","Alternative hierarchy necessary for banks using internal models.","{201EB61D-AE3E-468D-9BE3FA2C179EC2A7}",1012,6860
+370,"TR31","Hierarchy for types of risks",,"{4D46DD26-80AB-4B01-A73B6434222E2E70}",1012,6885
+420,"UE1","Hierarchy for underlyings of securitisation positions",,"{F2E7B475-114B-4277-AD0A4E9960B1846B}",1012,6920
+420,"UE2","Hierarchy for underlyings of securitisation positions",,"{05DCF83C-4A83-4E1E-A919E3C8887BC95F}",1012,6950
+420,"UE3","Options for ""Type of Securitisation""",,"{9C27DBF7-C18E-4FC5-83A7FD2868B12096}",1012,7010
+200,"CT20","Size of the counterparty",,"{C3E894B2-8F4E-427C-938B1DFB41875A0B}",1012,7080
+200,"CT16","Options for ""Sector of the counterparty""",,"{E40197A2-A24D-49DE-B008AC83137AC353}",1012,7100
+250,"GA4","All countries and other",,"{83AEC0C0-0901-4BE0-8E39EC1FB9CBA295}",1012,7520
+180,"CP2","Hierarchy for breakdown of CRM techniques with substitution effects","Breakdown of CRM techniques with substitution effects","{B2FA677F-48A2-40BD-946A4D938E50D0FE}",1012,9255
+120,"MC79","Hierarchy for instruments subject to securitisation credit risk treatment","List the different instruments which are subject to securitisation credit risk treatment. Shows, how these are related and which of them are explicitly mentioned in COREP templates","{EA52ECE4-28E8-4040-8AFD06D665E610C2}",1012,9300
+410,"TI3","Hierarchy for time intervals applicable for LE maturity buckets",,"{D8646162-851C-4875-A11ECA4A88BECADB}",1012,9330
+220,"EC8","Hierarchy for SA exposure classes excluding securitisation exposure class",,"{6D968890-3EEC-42B3-8A916FD31CA295D6}",1012,9460
+220,"EC9","Hierarchy for IRB exposure classes excluding equities, securitisations and other non-credit-obligation assets",,"{7EE639C6-D0CE-4391-81E78B8FB5982014}",1012,9555
+280,"NC1","Level 1 and 2 NACE codes",,"{345D1FE7-898A-4999-9533EA04B4B71F1E}",1012,9605
+510,"SC1","Individual / Prudential Consolidation Scope","Lists allowed values for the 'Reporting level' metric","{D7106A0F-795F-4532-9D232D52A58F11E5}",1012,10150
+510,"SC2","Consolidation Scope",,"{98186641-1400-43AB-9F2F825658A71ABA}",1012,10165
+600,"ZZ1","Accounting treatment of the securitisation","Lists allowed values for the 'Accounting treatment of the securitisation' metric","{45403B46-5D1D-4450-99AA966F280EA807}",1012,10210
+600,"ZZ2","Retention applied","Lists allowed values for the 'Retention applied' metric","{4088245A-4835-41F8-A7B88998AA70A2A3}",1012,10235
+600,"ZZ4","Institution company structure","Lists allowed values for the 'Institution company structure' metric","{4B37BC2C-0818-4670-A5214405AC41FF8F}",1012,10295
+600,"ZZ8","Type of counterparty","Lists allowed values for the 'Type of counterparty' metric","{592ED341-F684-47E8-A9DD483F9E77B5C6}",1012,10370
+600,"ZZ9","Exposure to individual client or group of clients","Lists allowed values for the ""Group or Individual"" metric","{3B243606-4DEC-4623-B5AE810F74746D5C}",1012,10385
+540,"AS1","Accounting standard",,"{A26209FF-32A6-4E31-90FA608205C7317A}",1012,10400
+130,"AP25","Derivative add-on calculation methods",,"{6EB1B664-41E7-427E-A74B1E0953D47DB2}",1012,10415
+250,"GA5","All countries applicable for open axis tables","All countries applicable for open axis tables (for reference dates to 2014-09-29)","{DAF2D755-9A98-4721-AB0C5702B4CBEB21}",1012,10440
+210,"CU3","Currencies applicable for open axis tables","Currencies applicable for open axis tables (for reference dates to 2014-09-29)","{6CDF7F48-F0E7-425A-9A35762F821DFA87}",1012,11695
+130,"AP6","Partial use",,"{55B399E8-1DD9-48BE-ACA1F06B3ACD3549}",1012,12515
+120,"MC12","Primary asset class of the cover pool","Describes the primary asset class of a cover pool according to categories specified in Art. 129 (1)","{75B096EF-D784-4BC5-A75940E82BA6C0E8}",1012,12535
+140,"BT2","Hierarchy for the classification of the location of the location of the activities","Hierarchy for the classification of the location of the location of the activities","{B2A9AE1E-72AD-4DE7-BAB215159D0399B1}",1012,12538
+150,"CG1","Hierarchy for the split between secured and unsecured assets/liabilities","Hierarchy for the split between secured and unsecured assets/liabilities","{86C5E092-B6E3-463D-AE6DE09FD516D273}",1012,12539
+200,"CT52","Hierarchy for the classification of the counterparty by size between SMEs and Other than SMEs","Hierarchy for the classification of the counterparty by size between SMEs and Other than SMEs","{FAB75640-6D34-4755-997569AFF75D0CB0}",1012,12540
+120,"MC17","Hierarchy for the classification of loans between mortgage loans and the rest of loans","Hierarchy for the classification of loans between mortgage loans and the rest of loans","{D5A520A2-0A31-4F0D-BE224AF975CFC2A3}",1012,12541
+410,"TI4","Hierarchy for time intervals applicable for Funding plans","Hierarchy for time intervals applicable for Funding plans","{36380808-120F-4F1B-A881919547BB0C9F}",1012,12542
+130,"AP3","Hierarchy for SME supporting factor","Lists all the possible approaches applicable for CVA risk.","{B81A00C9-2DCC-4ECB-B43CE2703ED25A92}",1012,12543
+190,"CQ3","Hierarchy for CQS used for AMML (Concentration of counterbalancing capacity)",,"{8CF5AEA9-09E9-4B6D-B2E0E7B61FBBF3A0}",1012,12544
+200,"CT45","Hierarchy of the largest counterparties for C 67.00 (additional Monitoring metrics for Liquidity)",,"{51AC2F71-C176-4A62-B46E327E9CEE6146}",1012,12545
+220,"EC10","Hierarchy for IRB exposure classes excluding securitisations and other non-credit-obligation assets",,"{8E26508C-F785-4A4F-A7A24CE03A2490F4}",1012,12546
+250,"GA6","Hierarchy for the markets in the CR IP Losses template","Hierarchy for the markets in the CR IP Losses template","{59F600C0-F133-4953-A6335EB77BB5F366}",1012,12547
+120,"MC25","Hierarchy for product types for AMML (concentration of counterbalancing capacity by issuer/counterparty)",,"{D06BD629-B468-4134-8F6030419EE8833B}",1012,12548
+120,"MC50","Hierarchy for loss intervals applicable for operational losses","Hierarchy for loss intervals applicable for operational losses","{773C998A-1B68-4EC1-A170B1CDBE4AA63B}",1012,12550
+120,"MC52","Provisions",,"{8FA3EADA-92D2-41A4-A113990CE5A97640}",1012,12551
+600,"ZZ10","Accounting treatment group structure","Lists allowed values for the ""Accounting consolidation code (IFRS Group)"" and ""Accounting consolidation code (CRR Group)"" metrics","{5F312DF2-9EC4-41B6-A20B2AF5B29547D9}",1012,12552
+130,"AP4","Hierarchy for the approaches for market risk commodities","This hierarchy includes the different approaches for market risk for commodity risk","{9B26944B-861E-4E9B-8F49046551DF483C}",1012,12553
+450,"LQ1",,,"{B1D9749A-F3BE-4E32-A8D217FE9849984B}",1012,12555
+120,"MC19",,,"{BA161684-3E36-4638-894C18412C669919}",1012,12556
+130,"AP12","Hierarchy for the Methodologies for Var/Stressed VaR calculation used in C 107.1.a template","Hierarchy for the Methodologies for Var/Stressed VaR calculation used in C 107.1.a template","{48E4D794-F263-4D21-98BDAEC73C07B3D4}",1012,12557
+130,"AP13","Hierarchy for VaR data weighting applied for VaR calculation used in C 107.1.a template","Hierarchy for VaR/SVaR data weighting applied for VaR and SVaR calculation used in C 107.1.a template","{E9472AF0-3D26-43A8-861ED6AAB94D1E1E}",1012,12558
+130,"AP14","Hierarchy used for Sources of LGDd applied for IRC calculation used in C 109.1.a and C 110.1.a templates","Hierarchy used for Sources of LGDd applied for IRC calculation used in C 109.1.a and C 110.1.a templates","{02FC00F6-F9BC-4CA6-AF7031D5DE15565D}",1012,12559
+130,"AP26","Hierarchy for the Regulatory Approach used in C 101 (SBP) template","Hierarchy for the Regulatory Approach used in C 101 (SBP) template","{250AD48C-A010-4493-87CAA486E183FA33}",1012,12560
+220,"EC11","Hierarchy for the Exposure class used in C 101 (SBP) template","Hierarchy for the Exposure class used in C 101 (SBP) template","{031D86D4-8029-446E-AEF4643C89FE77E3}",1012,12562
+260,"IM20","Hierarchy for Default Status used in C 101-103 (SBP) templates","Hierarchy for Default Status used in C 101 (SBP) template","{B995ABCC-F4AD-4C4A-B3891EA8B51C544C}",1012,12563
+410,"TI5","Hierarchy for Length of observation period applied for VaR and SVaR calculation used in C 107.1.a template","Hierarchy for Length of observation period applied for VaR and SVaR calculation used in C 107.1.a template","{00DCA629-BB76-4394-BF3DB56728E4BF92}",1012,12566
+410,"TI6","Computation of 10 day Horizon applied for Var/Stressed VaR calculation used in C 107.1.a template","Hierarchy for the Liquidity Horizon applied for Var/Stressed VaR calculation used in C 107.1.a template","{A1A11A7C-C8C6-4E96-B2DF9238D1479789}",1012,12567
+410,"TI7","Hierarchy for the Liquidity Horizon applied for IRC and CT calculation used in C 109.2 and C 110.2 templates","Hierarchy for the Liquidity Horizon applied for IRC and CT calculation used in C 109.2 and C 110.2 templates","{D128195D-2D67-4A30-A121D23BF7A78828}",1012,12568
+600,"ZZ11","Hierarchy for the Source of PDs applied for IRC and CT calculation used in C 109.2 and C 110.2 templates","Hierarchy for the Source of PDs applied for IRC and CT calculation used in C 109.2 and C 110.2 templates","{EDB04E2F-89A5-48DE-A3BED22379008DBE}",1012,12569
+600,"ZZ12","Hierarchy for Number of modelling factors applied for IRC calculation used in C 109.1.a template","Hierarchy for Number of modelling factors applied for IRC calculation used in C 109.1.a template","{E7656EFE-6072-419D-8DEF69511F1C0083}",1012,12570
+450,"LQ2","Hierarchy of asset liquidity levels",,"{D34ECD33-3E99-497B-8E0ED66E321A6FE6}",1012,12572
+450,"LQ3","Higher outflows hierarchy",,"{FF415B3C-2609-44A0-B57FC93F974D07A0}",1012,12573
+120,"MC106",,,"{589E9E44-39CB-4AD2-8F0A5E53BC15226C}",1012,12574
+130,"AP27","Hierarchy for new CCB template (C 09.03)",,"{0BBD6BD2-656F-4770-BCED488A24C5AEE3}",1012,12575
+120,"MC31","Hierarchy for contract clauses",,"{AC0EA7D6-1FF9-4DC7-A99112E601377E55}",1012,12576
+320,"PL21_1","Hierarchy for accounting portfolios for debt instruments subject to impairment",,"{3B727FE9-6D9F-40D1-B7365A2C643D2992}",1012,12579
+320,"PL50_1","Hierarchy for accounting portfolios for financial assets non-subject to impairment",,"{8D68A02D-DC5D-45A7-9ECF37E46DDEE966}",1012,12580
+320,"PL60_1","Hierarchy for accounting portfolios not measured at fair value through profit or loss for financial instruments",,"{670A7BA2-37B7-46C9-8E4CCE93C144ECDC}",1012,12581
+320,"PL30","Hierarchy for designation for financial instruments designated at fair value through profit or loss",,"{8EA5D760-C26A-4EF3-BA8420E66229B228}",1012,12582
+320,"PL31","Hierarchy for Investments in subsidiaries, joint ventures and associates",,"{2FE4F6AE-66A6-4ACD-B66C78D5C0F55D5F}",1012,12584
+320,"PL32","Hierarchy for Accounting portfolios for trading financial instruments",,"{8B87ABF4-5F61-4017-A61782B82CA78AF5}",1012,12585
+320,"PL33","Hierarchy for Non-trading non-derivative financial assets measured at a cost-based method",,"{4467752A-D4A3-4604-9E34DCB9008ABED8}",1012,12586
+320,"PL34","Hierarchy for Other non-trading non-derivative financial assets",,"{2E408376-9EBE-45C2-A5E8DF8D1313B9FF}",1012,12587
+320,"PL35","Hierarchy for Hedge accounting",,"{C663BBF4-BB96-4AB8-BC3F3F3859B1BECD}",1012,12588
+320,"PL36","Hierarchy for Financial assets at amortised cost",,"{384064AA-75C1-4A98-9CF1CC920F801333}",1012,12589
+320,"PL37","Hierarchy for Financial assets at fair value through other comprehensive income",,"{CB4DE697-0340-4292-8AA994D6F9A4AD49}",1012,12590
+320,"PL38","Hierarchy for Financial assets other than Held for trading and Trading Financial Assets",,"{C5C46AA9-7717-4555-BB4CF4F8C0EFA144}",1012,12591
+320,"PL39","Hierarchy for Accounting portfolios for financial assets other than classified as held for sale",,"{3F61F817-D81A-428D-95E3B052F0AAC694}",1012,12592
+320,"PL40","Hierarchy for Accounting portfolios for financial liabilities other than classified as held for sale",,"{080E3178-13D3-493C-BC9F368DC3059F43}",1012,12593
+320,"PL41","Hierarchy for Accounting portfolios for financial and non-financial assets",,"{CB851912-4223-48B1-8EFCA8D5C655A298}",1012,12594
+320,"PL42","Hierarchy for Non-trading non-derivative financial assets measured at fair value to equity",,"{42477786-DF7B-4891-94FF35D83D92CB9F}",1012,12595
+320,"PL44","Hierarchy for Accounting portfolios for financial assets measured at cost based methods",,"{FC43937A-26DB-43C3-A994356DCA574F32}",1012,12596
+320,"PL45","Hierarchy for Accounting portfolios for financial assets measured at fair value through e",,"{0D271374-6DA2-4B3F-BE28273E6134C33D}",1012,12597
+320,"PL46","Hierarchy for Accounting portfolios for financial assets at fair value or strict LOCOM not",,"{873B5867-3401-4878-A9BAA05245C553B9}",1012,12598
+120,"MC136","Hierarchy for types of hedge",,"{BD3732B2-182E-42B5-8D76A32D2919FC52}",1012,12599
+120,"MC137","Hierarchy for micro hedges (individual instrument/net position)",,"{AAF63627-4D0B-4034-AC41DCC70E4F25C1}",1012,12600
+120,"MC138","Hierarchy for micro hedges (continued/discontinued)",,"{31E56162-2440-4CF5-840C0AD8DE4F5676}",1012,12601
+120,"MC139","Hierarchy for economic hedges",,"{89A6BECC-366C-4A24-AF55C7783423840F}",1012,12602
+260,"IM30_1","Hierarchy for allowances",,"{60CD47C9-B094-442C-B1C77D43B52E509C}",1012,12603
+260,"IM33_1","Hierarchy for general allowances",,"{A4423A3E-34C3-4FB3-BBF0CC4A4D0E349F}",1012,12604
+320,"PL54_1","Hierarchy for Accounting portfolios of financial assets",,"{693DBAEF-A13C-4930-AA59D7F15175FA89}",1012,12605
+240,"ET2","Event types leading to operational risk loss","Categorisation of type of event leading to operational risk loss","{CD2E32E0-817C-4526-B03F8F043D0E1643}",1012,12608
+370,"TR31_1","Hierarchy for types of risks","(Equity risk was added)","{A9D45574-89BF-40A2-83D861C45581986F}",1012,12611
+350,"RP61_1","Breakdown of All related parties","Breakdown of Not Applicable/All relationships & All related parties","{9420A7EA-1F66-4858-92C3DE979D829C3D}",1012,12612
+600,"ZZ15","Interval numbers for observations","Lists allowed values for the 'Number of price observations (interval)' metric in Prudent Valuation","{BAFF570F-1B5A-4085-81D66D848BF1D3B4}",1012,12619
+600,"ZZ16","Options for risk category","Lists allowed values for the 'Type of risk' metric in Prudent Valuation","{9AF384E5-54FA-4F86-8224814BFE142754}",1012,12620
+600,"ZZ17","Hierarchy for Article 7 CRR waiver",,"{516EA7C0-9777-4339-8921038C20550019}",1012,12622
+600,"ZZ19","Name of Deposit Guarantee Scheme (DGS)",,"{84E0EF6B-A386-4A2A-B484FE82ED39A7D0}",1012,12624
+600,"ZZ20","Hierarchy for qualitative impact assessments",,"{B5E71E60-F89A-4681-9462DE668A6A35A4}",1012,12625
+400,"TA2","Hierarchy for critical functions",,"{91580FC9-D310-4D02-A45867E6815C33A6}",1012,12626
+600,"ZZ22","Hierarchy for service types (Resolution)",,"{785E7297-6A33-4C21-ACCC00EABA6660AD}",1012,12627
+600,"ZZ24","Hierarchy for modes of participation in a financial market infrastructure",,"{0C4ABD86-F599-435D-8D7C7A1F21A6FA10}",1012,12629
+600,"ZZ25","Hierarchy for types of information systems",,"{2D3B740F-7D8F-44A7-8101D761C14F632E}",1012,12630
+250,"GA7","Hierarchy for EU Member states (excl. EEA countries)",,"{2AD81A61-18F8-4D16-B8DF6159B94F5F27}",1012,12631
+600,"ZZ26","Status of an entity in a resolution plan",,"{103D8631-5A95-4C45-84E071415D5A7164}",1012,12632
+600,"ZZ28","Ranking in insolvency (master scale)",,"{E2407EC6-6A8A-4201-9695017554334894}",1012,12634
+600,"ZZ29","Hierarchy for collateralisation status",,"{F974D9D4-A7C4-4987-86935D55A7244486}",1012,12635
+600,"ZZ30","Hierarchy for type of contractual terms of a financial instrument",,"{7FBEF6B0-334C-40CE-87C0F6B7CDEB5080}",1012,12636
+600,"ZZ31","Hierarchy for types of events that trigger the activation of a guarantee or financial support",,"{3B2BEE34-939B-4F6D-9E3DE9CBB6F72DCC}",1012,12637
+600,"ZZ32","Hierarchy for links to SRB aggregate LDT template (columns / counterparties)",,"{24551DFB-8280-40A3-B656140698435127}",1012,12638
+600,"ZZ34","Hierarchy for type of placement of securities issued",,"{28A2FFF6-1403-4FA4-81DA417B582EE77C}",1012,12640
+600,"ZZ35","Hierarchy for Master agreements",,"{CF107400-E4AF-4629-94AB6D3B2D8BECD0}",1012,12641
+410,"TI8","Hierarchy for estimated time for substitutability (Resolution)",,"{490E6891-1602-41E5-919E31C71C8BD347}",1012,12642
+410,"TI9","Hierarchy for estimated time for access to contracts (Resolution)",,"{B53AD5D8-9820-4230-BCA9E5E0F16BEC7A}",1012,12643
+600,"ZZ36","Hierarchy for assessment whether contract is resolution-proof",,"{C1BCF2E8-1EC7-4049-BDEE1CB7F21ADADF}",1012,12644
+160,"OF8","Hierarchy for declaration of qualification as own funds (Resolution)",,"{B65FB135-F193-4147-B5FD73D7CF8FB26A}",1012,12645
+120,"MC73","Hierarchy for type of guarantees (received or provided)",,"{5A2493EB-A594-41DB-A1E3731C1B9F2427}",1012,12646
+600,"ZZ37","Hierarchy for recognition of bail-in powers",,"{6959B78C-F8B1-4118-9C1B4390F0323DBB}",1012,12648
+200,"CT16_1","Options for ""Sector of the counterparty""","Add of Members","{6786C007-6827-4DC1-9293DBF8E3818B13}",1012,12653
+600,"ZZ13_1","Hierarchy for the Rationale for exclusion used in C 106.00 (SBP) templates","Hierarchy for the Rationale for exclusion used in C 106.00 (SBP) templates","{B738B3A1-72FC-4FE2-A5C8AF46D9FE1AE9}",1012,12655
+510,"SC1_1","Consolidation Scope including Resolution","Lists allowed values for the 'Reporting level' metric from 2.8","{C175E13A-B7FC-4409-904E7C8202DADC5C}",1012,12656
+420,"UE4_1","Options for ""Type of underlying""",,"{91682067-23D1-4A65-B537FE5D33619408}",1012,12659
+600,"ZZ38","Hierarchy for scope of issuance - securitisation",,"{89448177-A8AE-4040-80FE6856F5063172}",1012,12661
+600,"ZZ39","Originator's call options included in transaction",,"{9816C127-659A-4D07-AC0736DB00DD88CC}",1012,12662
+350,"RP3","Relationship of lending entity with issuing entity",,"{39FB2EAA-249F-4B69-BC3CA440DF9DD438}",1012,12663
+1002,"AT99","Hierarchy for type of identifier",,"{D0D09619-FB2B-444F-A5EBB36A6B4E6D8A}",1012,12664
+190,"CQ4","Hierarchy for CQS used for securitisations",,"{A192AFE4-0608-4058-9E77F5D83E4DE0B0}",1012,12665
+600,"ZZ33_1","Hierarchy for coupon types of debt instruments",,"{BF6F156A-2AEB-4181-B990F693F30AEB2C}",1012,12666
+120,"MC74_1","Hierarchy for types of instrument in resolution templates",,"{523CFC79-AA5C-4C0A-9704BAEC715721CB}",1012,12667
+120,"MC35","Hierarchy for types of financial liabilities (other than securities issued and deposits)",,"{CA8A091A-2E01-44E3-BEFAEB3E599AD541}",1012,12668
+600,"ZZ40","Hierarchy for resolution stay recognition (reporting entity)",,"{42A71EC1-9E10-4239-8C8F8F47DDADA17D}",1012,12669
+600,"ZZ41","Hierarchy for resolution stay recognition (counterparty)",,"{DEE6F74C-D5CA-47C0-AC385D2C32CA1ED6}",1012,12670
+120,"MC36","Hierarchy for type of non-financial liabilities",,"{45447740-8B8D-47C8-B389B25FDB857CF0}",1012,12671
+210,"CU3_4","Currencies applicable for open axis tables","Currencies applicable for open axis tables (for reference dates from ????-??-??))","{237236A2-B76B-4F72-B59B2E0D459BD875}",1012,12674
+250,"GA4_1","All countries and other",,"{6B9ED9E5-11B4-4B01-AC8A7617FDA4DB6A}",1012,12675
+600,"ZZ42","Hierarchy for impact and substitutability analyses in SRB CF templates (size, market share indicators)",,"{9CB8D471-EFB0-44F7-B37A445691E49E7D}",1012,12677
+600,"ZZ43","Hierarchy for impact and substitutability analyses in SRB CF templates (crossborder indicators)",,"{1BA48056-8A1F-4A78-A3D903CFB18392E0}",1012,12678
+600,"ZZ44","Hierarchy for impact and substitutability analyses in SRB CF templates (market concentration indicator)",,"{19B3E944-93AB-4DA9-A38F05F99C39ACB1}",1012,12679
+600,"ZZ45","Hierarchy for impact and substitutability analyses in SRB CF templates (time to substitution indicator)",,"{FBD1BC16-4BF4-4F75-8E8064FB229BC4A2}",1012,12680
+600,"ZZ46","Hierarchy for impact and substitutability analyses in SRB CF templates (legal barriers indicator)",,"{322FA140-9B33-46F2-BF9669CAD8FCA5E2}",1012,12681
+600,"ZZ47","Hierarchy for impact and substitutability analyses in SRB CF templates (operational requirements indicator)",,"{2CDC0957-8212-4978-A20BECC76487436D}",1012,12682
+510,"SC3","Type of report","Lists allowed values for the 'Reporting level' metric from 2.9","{0993214B-B992-4308-AA0CA242E7346840}",1012,12684
+380,"RT5","Options for ""Significant Risk Transfer""",,"{1BFD995C-DD10-4744-929E6B56DE3F0F8F}",1012,12685
+633,"EN1","Financial market infrastructures",,"{1EEAB9D6-82B2-4D9D-A15F0DBA08D5004D}",1012,12686
+250,"GA8","All countries applicable for open axis tables","Countries applicable for open axis tables (Resoution open tables)","{2505EC25-B94B-4DA1-B345632D8E8FE38D}",1012,12688
+600,"ZZ23_1","Hierarchy for financial market infrastructure system types",,"{FD03C9A7-6DDC-4E0F-9C0C6683B5671050}",1012,12689
+600,"ZZ49","Hierarchy for Article 7 or 10 CRR waiver",,"{04155AE7-A418-424F-A617C672B23B3183}",1012,12691
+600,"ZZ51","Hierarchy for type of financial interconnection in resolution templates (Liabilities)",,"{BB3FC130-3ED5-4515-BDAB2D2B32555117}",1012,12693
+600,"ZZ52","Hierarchy for type of financial interconnection in resolution templates (Commitments and guarantees received)",,"{CFF7F265-FA31-488B-8D70BE3DBBC1119A}",1012,12694
+600,"ZZ53","Hierarchy for type of financial interconnection in resolution templates (Commitments and guarantees received, derivatives)",,"{03672DFB-5B11-4776-AF954BE84AB8F07A}",1012,12695
+130,"AP28","Methods to determine the SVaR (period)","Hierarchy for the Methodologies for Var/Stressed VaR calculation used in C 107.1.a template","{4C475A27-F2F4-4915-87C76B7C5A79EA3E}",1012,12696
+600,"ZZ54","Hierarchy for the Source of transitiomn matrices used in C 109.2 and C 110.2 templates","Hierarchy for the Source of transition matrices used in C 109.2 and C 110.2 templates","{9D6002B1-E4A7-491B-930668284C070229}",1012,12697
+320,"PL44_1","Hierarchy for Accounting portfolios for financial assets measured at cost based methods",,"{93464C99-3068-4380-8FDA7A8A3FF529A8}",1012,12698
+320,"PL48","Hierarchy for financial assets other than Held for trading and Trading Financial Assets (aggregate portfolios)",,"{2ED9FD0E-1CD9-4FA6-A4EA79888EDCD8FB}",1012,12699
+632,"IA1","Remuneration payment bands",,"{FAAF8409-9EC7-4C28-9671F57752DD2DAF}",1012,12701
+632,"IA2","High Earners payment bands",,"{6D5FEAC4-B0E7-4FBF-9B622EA4F0CB760D}",1012,12702
+250,"GA9","Hierarchy for EU Member states (incl. EEA countries)",,"{67DAE42C-698D-46D1-93B095329A1853B0}",1012,12703
+240,"ET3","Type of fraud","Type of fraud in Fraudulent Payments","{A27CD98C-2567-4FF3-A87A54E499F64267}",1012,12704
+400,"TA31","Type of initiation of payments","Type of initiation of payments","{864636C0-3C9F-4041-B5668383A4902E62}",1012,12707
+260,"IM40","Hierarchy for Impaiment Stage (SBP)",,"{1854892F-8356-42F6-9F10FCADD7365D4E}",1012,12710
+600,"ZZ56","Economic scenario to calculate the IFRS 9 PD","The benchmark (SBP) economic scenario used by the institution to calculate the IFRS 9 PD. The scenario ID shall be expressed as a value between 0 and 5.The economic scenario 1 shall be the baseline scenario. The economic scenarios 2 to 5 shall be ranked according to their severity, from the most favourable (number 2) to the most severe (number 5).","{6916029A-6548-4DD6-8045DD410BC67B25}",1012,12712
+140,"BT3","Type of Entity Code (LEI code or Non-LEI code)",,"{AA8DCA7E-D2C1-41F0-8E84621A99DF748E}",1012,12720
+130,"AP29","Method for calculating exposure values at consolidated level (CCR)",,"{F7928485-1C27-4150-B60484320C592E3C}",1012,12721
+130,"AP24_1","Derivative treatment",,"{F57BF037-249B-4728-9AE0B3608323C358}",1012,12723
+370,"TR5","Delta, vega and curvature risk",,"{DD13ADDD-CA6D-4057-BD4ABBDF63B85AE7}",1012,12726
+600,"ZZ6_2","Institution Type","Lists allowed values for the 'Institution type' metric","{04ABBBBB-7301-4A96-84C819CC36D321E6}",1012,12728
+250,"GA5_3","All countries applicable for open axis tables","Countries applicable for open axis tables","{8B6C07E6-F3F0-453C-804A611C3FD983DC}",1012,12729
+600,"ZZ58","Type of counterparty for CCR","Lists allowed values for the 'Type of counterparty for CCR' metric","{B48F8545-9AE5-4702-98117F36FE7A847D}",1012,12730
+600,"ZZ14_1","Type of entity","Lists allowed values for the 'Type of entity' metric","{4E3044AD-C231-4275-885BDECFACBB3E69}",1012,12731
+400,"TA3","Type of specialised lending exposure",,"{CFA82EFF-2EC7-4841-8AE9B031B7C872A9}",1012,12736
+250,"GA1_1","Hierarchies for the markets in the MKR SA EQU template","Generally, the own funds requirements for equity risk have to be calculated for currencies separately. This set of currencies is used for reporting purposes - a separate sheet has to be reported for each of those countries.","{703034FF-7AE4-4AF2-9F07358975DA43AB}",1012,12737
+250,"GA6_2","Hierarchy for the markets in the CR IP Losses template","Hierarchy for the markets in the CR IP Losses template (All countries included)","{C6D26D71-2A9B-437D-8A898503C056305C}",1012,12740
+250,"GA7_1","Hierarchy for EU Member states (excl. EEA countries)",,"{6EC9DA37-E28D-420D-A356BA0E7CDF220A}",1012,12741
+250,"GA4_2","All countries and other",,"{3FBB9F7A-5336-41D0-BB54D65559B903AB}",1012,12742
+250,"GA8_1","All countries applicable for open axis tables","Countries applicable for open axis tables (Resolution open tables)","{F50AC73D-8B2C-4476-A060CFAE53C88E2C}",1012,12743
+320,"PL87","Exposure class and Approach for prudential purposes",,"{0291D846-51AB-4B5E-B67681957A4773DB}",1012,12748
+633,"EN2","External Credit Assessment Institution (ECAI)",,"{5635A8BF-89F2-475B-8BAA1F47CEF2A933}",1012,12749
+200,"CT53","Type of creditor (resolution)",,"{EC3A9147-38F3-42A2-B92DFCA1E1831DD1}",1012,12750
+634,"OL1","Own funds and eligible liabilities for the purposes of external MREL/TLAC",,"{C92CB195-9A4F-45E0-B7FEE79502881E53}",1012,12752
+600,"ZZ59","Notification type for impracticability of contractual recognition of bail-in",,"{6CFAC7B0-508B-46E6-839CEBA6CC6154DD}",1012,12753
+120,"MC84","Liability type for impracticability of contractual recognition of bail-in",,"{19D27F49-DC48-40C5-AF5538D886E9AC37}",1012,12754
+600,"ZZ61","Type of institution",,"{AF3DFBA9-28D8-4CB1-81EED8E4AE06A865}",1012,12758
+130,"AP61","Internal or external MREL",,"{DC3CB316-58EF-4DB9-BAEDBBC53E7264E4}",1012,12759
+120,"MC81","Type of waiver of BRRD",,"{64746F0E-71E0-4E06-A9575403964865B7}",1012,12760
+120,"MC82","Type of resolution strategy",,"{155EBD87-BE9F-4016-8B6E1DFF30ACAA33}",1012,12761
+120,"MC83","Type of resolution tool",,"{1EA50A4E-05FD-423C-9336211E85C2F447}",1012,12762
+600,"ZZ62","Conditions of impracticability",,"{644A1C89-A059-4951-91D00F37230750F4}",1012,12763
+634,"OL2","Own funds and eligible liabilities for the purposes of internal MREL/TLAC",,"{0C352050-D14B-4F6D-9869C499E8D095D2}",1012,12764
+210,"CU4","Currencies (only currencies)",,"{D974F2AD-895E-49E5-B720BFD17B9B26B4}",1012,12765
+634,"OL3","Type of own funds or eligible liabilities for meeting the MREL/TLAC requirement",,"{1CF9B929-B91F-4B48-B822C9CB384A0FC7}",1012,12766
+600,"ZZ80","Type of Investment Firm counterparty","Lists allowed values for the 'Type of IF counterparty' metric","{6A3C1DF8-0A34-44E7-81DCAB22A74B60A4}",1012,12768
+250,"GA10_2","All countries SBP",,"{3D53F973-6B86-446C-8460D919DBCD45FE}",1012,12769
+600,"ZZ63","Type of valuation model (SBP)",,"{BDF2CA35-9B81-4F6C-A7E24AB194013607}",1012,12770
+600,"ZZ64","Definition of sensitivity to risk factors (SBP)",,"{06122805-C580-4EC7-83EA37C8494C1046}",1012,12771
+370,"TR6","Risk class (type of risk)",,"{C5C8567B-075C-41BB-B3409980F8A2F71A}",1012,12773
+500,"CS1","Correlation scenario",,"{60E353F2-EE30-4D5D-93F2E802A40AD160}",1012,12774
+600,"ZZ55_1","Qualitative Stage 2 Trigger set (SBP)",,"{93CF38C2-2ECF-48CF-B82C46D71B723681}",1012,12776
+600,"ZZ66","Type of excess spread in a securitisation transaction",,"{7713D8B5-42A8-4C24-BEE61767AE018FD7}",1012,12777
+600,"ZZ67","Type of amortisation system in a securitisation transaction",,"{87C5AA99-9951-4A08-A58B48CDFF248D36}",1012,12778
+600,"ZZ68","Type of collateralisation of the credit protection agreement for a securitisation",,"{6560F8E8-17F2-47A6-B024268593CF610A}",1012,12779
+380,"RT4_1","Options for ""Type of issuance""",,"{CC806A84-8242-4D47-A8E2B18A8F4C1D17}",1012,12780
+120,"MC26_2","Hierarchy for product types for AMML (concentration of funding by counterparty)"," Add of CBM,IGUWF and IDSWF","{39ECA584-855C-450E-A35C285010569288}",1012,12781
+600,"ZZ65_1","Risk factor identifiers (SBP)",,"{17C0D3EC-6004-4BBC-B41DD74DFFF6F813}",1012,12782
+600,"ZZ27_1","Links to SRB aggregate LDT template (rows / liability types)",,"{C34C86AA-D451-418A-81CE8BA1ABF5A031}",1012,12783
+600,"ZZ50_1","Hierarchy for type of financial interconnection in resolution templates (Liabilities, own funds, guarantees)",,"{B147F065-4E01-455B-948ADD0FE8A0D0F3}",1012,12784
+120,"MC70","Type of remuneration",,"{86F5CC2D-CED7-4C79-AA1AEC0FD9AAD76F}",1012,12785
+120,"MC75","Forms of remuneration for credit institutions",,"{605C8274-79D0-4AB4-9677A73470CE1527}",1012,12786
+120,"MC76","Forms of remuneration for investment firms",,"{AD391AC8-FD8E-4521-89D2043EABBC2B82}",1012,12787
+350,"RP5","Type of identified staff",,"{91F5B5E7-765F-4911-B7EAB644F62BF525}",1012,12789
+600,"ZZ69","Article to file for 2 IPUs requests",,"{B21C023F-3F7A-4C47-9B6E91FF5394C116}",1012,12790
+600,"ZZ70","Type of entity (IPU)",,"{51F4BDEF-1999-4162-B9C4CCB5503B3033}",1012,12791
+250,"GA30","Hierarchy for EU Competent Authorities (incl. EEA countries)",,"{DD24E168-F044-41B4-8B924984F20B6C83}",1012,12792
+600,"ZZ74","IPU status",,"{D6CFC2C0-C7FC-4D9C-B01B0EB48D0D8106}",1012,12793
+120,"MC37","Hierarchy for types of instruments (loans/bonds)",,"{7BB406BA-109F-456E-8CAE7F3CF9AA76EA}",1012,12797
+200,"CT54","Hierarchy for counterparties and instruments",,"{56837236-A79A-411D-8BBC3581E31B5848}",1012,12798
+200,"CT55","IEA sectors for potential climate change transition risk",,"{2630C1C7-0D7D-40A6-84157790CBB037BC}",1012,12801
+280,"NC40","NACE codes for potential climate change transition risk",,"{293C7DDC-1175-42A5-8E759BDA3AA662C3}",1012,12802
+280,"NC50","NACE codes full granularity (level 1 to 4)",,"{9B061332-32BC-4A92-86F911B49E16A084}",1012,12803
+190,"CQ5","Credit Quality Step assigned to non-securitisation instruments subject to credit spread risk",,"{F85AA571-CF3C-432E-B1BC45DC64D41421}",1012,12804
+320,"PL49","Market risk, default risk charge - buckets and sub-buckets for instruments other than securitisations and securitisations that are not included in the ACTP",,"{0507A55C-9B5D-400E-8253A9A7909ABC87}",1012,12805
+120,"MC38","Risk classes in market risk, default risk charge",,"{78D52F03-A912-45AC-9E569BBEE298BCDA}",1012,12806
+190,"CQ6","Credit quality steps of instruments subject to the default risk charge (DRC) (Market risk)",,"{345A7A25-376F-4480-91A126D4C62394B0}",1012,12807
+120,"MC39","Hierarchy of instruments for the purposes of identifying the regulatory LGD to be considered in the Default risk charge (DRC) (Market risk)",,"{C6A6FBD9-3AEE-474C-AC9B3FCCDE3F4F1B}",1012,12808
+310,"PI3","Hierarchy for positions in the instrument for the purposes of the default risk charge (DRC) (Market risk)",,"{074F4A31-F2C2-4E0D-9F08B7776C9CBE98}",1012,12809
+130,"AP16","Approach used for the purpose of the SOT (NII/EVE)",,"{5E588203-DB73-459F-8D79D70D0FF4A6FF}",1012,12810
+130,"AP17","IRRBB approach required by the Competent Authority",,"{115B3BF4-A24E-4779-99D1C61238AD6799}",1012,12811
+600,"ZZ810","Methodology (NII)",,"{21062DD8-1D4A-417A-810A5A9DA1F9E275}",1012,12812
+600,"ZZ811","Conditional Cash Flows (NII)",,"{6ADED761-C0F6-4CC3-8C808EB5D7A56760}",1012,12813
+370,"TR8","Option risk (NII)",,"{35BAE2A1-1C59-40FE-8576BD1F8CC583B2}",1012,12814
+370,"TR9","Basis risk (NII)",,"{00F138D0-F342-40BF-B7CC60FA1E143929}",1012,12815
+600,"ZZ812","Methodology (EVE)",,"{0DDEA722-F491-4917-BA1A23095297F98E}",1012,12816
+600,"ZZ813","Conditional Cash Flows (EVE)",,"{8898468E-0E42-41C1-95871403133F9B0E}",1012,12817
+600,"ZZ814","Commercial margins/other spread components (EVE)",,"{182DF23A-2ED8-4846-99D2BC5698343552}",1012,12820
+600,"ZZ815","Penalty fees from loan prepayments",,"{87E167E1-3513-4E57-B6AC1AF3881C4171}",1012,12821
+600,"ZZ816","Pension obligations/pension plan assets",,"{CFB06F99-2E60-450C-B5DAC70DD9CC602D}",1012,12822
+260,"IM51","Non-performing exposures",,"{0597BDBA-A934-45F0-9BAD4B7EE2B3B367}",1012,12823
+120,"MC141","Fixed rate loan committments",,"{85B36ACC-8F73-41AC-94DADBBC13F6F7FD}",1012,12824
+370,"TR12","Risk of prepayment",,"{03AA2DFA-6093-4619-88211E696D55DD0D}",1012,12825
+370,"TR13","Risk of early redemption",,"{7A91D1E0-12DE-4430-9020972CEDAF9F56}",1012,12826
+600,"ZZ818","General approach for NMD modelling",,"{73B65315-4A89-4BFC-90C16280FA8EAE13}",1012,12827
+600,"ZZ819","Identification of core component NMD balances",,"{529E913C-727E-4672-A6F275D838840F17}",1012,12828
+600,"ZZ820","NMD core component balances (slotting of core component balances)",,"{E9107ED8-F051-4324-9E0518C03A38130C}",1012,12829
+600,"ZZ821","5-year NMD repricing cap on IRRBB risk management",,"{C20391A6-7939-4AF2-84F6849B4B3DFE5D}",1012,12830
+600,"ZZ822","Exemptions to the 5-year NMD repricing cap",,"{CC6DF2DC-AAA5-48A7-8E2D330188999FC5}",1012,12831
+600,"ZZ823","Modelling of operational NMDs from financial customers",,"{05956BD2-3C31-4D9A-B8A0FD5CE6C651F6}",1012,12832
+600,"ZZ824","Changes in balance sheet structure due to interest rates",,"{359CDFAF-2FDE-47A6-ADD0339491A567E0}",1012,12833
+500,"CS2","IRRBB mitigation and hedging strategies (EVE)",,"{FC1D6309-158D-419B-9F78EBD49470CD97}",1012,12834
+600,"ZZ825","SOT on NII risk measure under the IMS Approach - PTR of Retail Term deposits",,"{F06328B6-306F-4F94-BE6CF355441113FC}",1012,12835
+370,"TR14","Materiality of basis risk",,"{D169225C-5525-48B4-B1FE5FF5A9853E86}",1012,12836
+600,"ZZ827","CSRBB",,"{FC5F30EA-B8E3-41B4-890947DAB560492B}",1012,12837
+600,"ZZ828","Risk-free yield curve (discounting in EVE SOT)",,"{1ED29E77-F665-4225-B0FFBDB7915E408F}",1012,12838
+600,"ZZ829","Risk-free yield curve (internal risk measures of EVE)",,"{6BF3D466-18C5-4688-84D644071612EAB0}",1012,12839
+600,"ZZ830","Change of material assumptions (EVE)",,"{620CCD56-8A66-41AB-BE727CE72941BD6B}",1012,12840
+600,"ZZ831","Change of material assumptions (NII)",,"{4B0938D8-F591-40A6-B22DB59DE799315C}",1012,12841
+600,"ZZ832","Post-shock interest rate floor (NII/EVE)",,"{CC20B354-2654-4390-AADDE4AF6641427B}",1012,12842
+370,"TR10","Option risk (EVE)",,"{DF1A91A4-1706-46DE-A598F196B5476FA5}",1012,12858
+370,"TR11","Basis risk (EVE)",,"{76147E54-CCED-492B-BB25254B18B63206}",1012,12859
+500,"CS3","IRRBB mitigation and hedging strategies (NII)",,"{88662486-B91C-4839-A565B83976547F5C}",1012,12860
+120,"MC142","Total assets for the purpose of IRRBB",,"{AAF2345E-9B10-4963-89D038F574A8D64F}",1012,12861
+200,"CT56","Counterparties for the purpose of IRRBB",,"{F9B19C00-B69F-4743-BB6A8966D035C188}",1012,12862
+120,"MC143","Total liabilities for the purpose of IRRBB",,"{9763EF00-9743-4550-A9DE30820D24A712}",1012,12864
+600,"ZZ826","SOT on NII risk measure under the IMS Approach - PTR of Fixed Retail Loans",,"{D1CDFE20-E1D8-4EF6-96D87D24503F56C2}",1012,12865
+210,"CU5","Currencies applicable for open axis tables (including All currencies)","Currencies applicable for open axis tables including  ""All currencies""","{38394E56-F399-4F57-9C53DA87122EDA1D}",1012,12866
+400,"TA2_WITHOUT_X92","Hierarchy for critical functions_Without_x92","_Without_x92","{16786E4C-BB1A-4D8F-A47028F59F7A5BA0}",1012,19626
+210,"CU3_4_WITHOUT_X0","Currencies applicable for open axis tables_Without_x0","Currencies applicable for open axis tables (for reference dates from ????-??-??))_Without_x0
+This hierarchy has been updated in v3.5 to remove Croatian Kuna -> given they moved to euro","{B8ECA7D4-8C2D-467D-B9761D7F63BB878B}",1012,19674
+250,"GA5_3_WITHOUT_X0","All countries applicable for open axis tables_Without_x0","Countries applicable for open axis tables_Without_x0","{E15D7430-97A6-44C3-BA024D5676E39874}",1012,19729
+250,"GA6_2_WITHOUT_X0","Hierarchy for the markets in the CR IP Losses template_Without_x0","Hierarchy for the markets in the CR IP Losses template (All countries included)_Without_x0","{56CCD4AA-82F0-4FDF-8CEAAE86BB1A5046}",1012,19740
+250,"GA8_1_WITHOUT_X0","All countries applicable for open axis tables_Without_x0","Countries applicable for open axis tables (Resolution open tables)_Without_x0","{CD063364-6034-43B8-B9CBD5889088E27A}",1012,19743
+600,"ZZ50_1_WITHOUT_X327","Hierarchy for type of financial interconnection in resolution templates (Liabilities, own funds, guarantees)_Without_x327","_Without_x327","{B1F8E8E6-5727-4E39-B4073EDB3DC2EC37}",1012,19784
+280,"NC50_WITHOUT_X0","NACE codes full granularity (level 1 to 4)_Without_x0","_Without_x0","{4A6D95D1-6707-4F04-8EA19BA2B693E8B9}",1012,19803
+320,"PL49_WITHOUT_X0","Market risk, default risk charge - buckets and sub-buckets for instruments other than securitisations and securitisations that are not included in the ACTP_Without_x0","_Without_x0","{773FD9E5-ECC5-4423-B84F9EA806E87C72}",1012,19805
+120,"MC38_WITHOUT_X0","Risk classes in market risk, default risk charge_Without_x0","_Without_x0","{AD0E2ADF-F76D-4162-AA5C8CF7AA9FD6DE}",1012,19806
+190,"CQ6_WITHOUT_X0","Credit quality steps of instruments subject to the default risk charge (DRC) (Market risk)_Without_x0","_Without_x0","{F0123BAF-C757-4DEA-9549C09D45778E48}",1012,19807
+120,"MC39_WITHOUT_X0","Hierarchy of instruments for the purposes of identifying the regulatory LGD to be considered in the Default risk charge (DRC) (Market risk)_Without_x0","_Without_x0","{74CFE725-04DD-4CE6-98ECC74C91590053}",1012,19808
+310,"PI3_WITHOUT_X0","Hierarchy for positions in the instrument for the purposes of the default risk charge (DRC) (Market risk)_Without_x0","_Without_x0","{7D1F038F-7916-4EFD-9D1F7735F6B088DC}",1012,19809
+210,"CU5_WITHOUT_X1","Currencies applicable for open axis tables (including All currencies)_Without_x1","Currencies applicable for open axis tables including  ""All currencies""_Without_x1","{3EBB6306-41E7-4DF6-BE96471B1C19BF65}",1012,19866
+210,"CU","Currency","Currency","{A0DDF7E1-877C-4A3B-A82107DFF45679E3}",1012,19867
+200,"CT6","Type of entity maintaining the register of information ICT TPP","Financial entities set out in Article 2 of the Regulation(EU) 2022_2554 (DORA) and other items used for reporting values","{1C2F1674-4AE8-4CD7-A8C8B03ACA01EEC4}",1012,19869
+200,"CT61","Type of entity within the scope of the register of information","Financial entities set out in Article 2 of the Regulation(EU) 2022_2554 (DORA) and other items used for reporting values","{C4974E26-50E2-41EA-9C92B674E5EF6844}",1012,19870
+350,"RP8","Role of an entity within and outside a group","To define the role of an entity inside and outside a group. Used for DORA reporting of registry of information -> entities in scope of the register. ","{FA2B09C3-8D8F-4D4B-A790160A2EAB21FB}",1012,19871
+350,"RP7","Offsetting group",,"{23D676C6-E6C1-41D7-85721769F4164C35}",1012,19872
+600,"ZZ75","Hierarchy of type of governance systems for diversity benchmarking purposes",,"{F8206452-114E-449A-91C582AC3EA01CB2}",1012,19873
+320,"PL52","Scope of positions that the ASA own funds requirements are calculated for",,"{A311B74A-87F6-4A00-ABA20FEBF5F3BB72}",1012,19874
+200,"CT57","Hierarchy of category of the institution/investment firm for diversity benchmarking purposes",,"{6A2D79AD-8394-412B-86FCF5B5D09A8FA2}",1012,19875
+120,"MC40","Scope of economic profit and loss",,"{A20FD74A-79B4-4476-B6113004FAD996DA}",1012,19877
+200,"CT7","Type of legal entity",,"{89044FCA-7D2C-4305-ADE086C0BB2D75B8}",1012,19878
+600,"ZZ76","Hierarchy for Yes/No/Not applicable",,"{B9247ABE-3615-4FD4-8F82A79DF688DF79}",1012,19879
+1006,"CO1","Type of ICT contractual arrangement",,"{0712ADE3-510B-4D97-9F4E70E96D489873}",1012,19882
+400,"TA4","Type of ICT services",,"{5E22F59E-0117-482B-A8ED5E584F105546}",1012,19883
+1006,"CO2","Reason of the termination or ending of the ICT contractual arrangement",,"{8EF59E93-C3F0-42C0-A1AC8096560999EA}",1012,19884
+130,"AP30","Approach for calculating own funds requirements for market risk applied as of the reference date",,"{D69267F3-379A-4479-8C96477B4266FA26}",1012,19885
+600,"ZZ91","Level of reliance on the ICT service",,"{D9566EA0-15A8-494C-B1F1E365044EA7B8}",1012,19886
+600,"ZZ92","Data Sensitiveness",,"{5459F887-7D18-447B-AD9CE5762C707873}",1012,19887
+600,"ZZ77","Hierarchy for consideration of non-binary directors in diversity policy",,"{2B0CB182-C032-43B8-89D8691A011C2AA5}",1012,19888
+600,"ZZ840","Colour of the zone that the desk is assigned to according to the profit and loss attribution test (PLAT)",,"{E6222F90-C514-416D-BB7F835A92DDCA69}",1012,19889
+600,"ZZ841","Compliance with back-testing requirements",,"{5DA329B6-F191-43BE-81338D79C2A50A09}",1012,19890
+140,"BT4","yes/no type of answer",,"{E2825798-9A2C-4643-8C1E35B38C8DC6E5}",1012,19891
+600,"ZZ842","Traded risks - Default risk",,"{03B0C259-C53F-4E4E-9B9234C71FA342F4}",1012,19892
+600,"ZZ843","Traded risks - General interest rate risk (GIRR)",,"{92ED6299-BB16-41A9-9E0156DB4DE79044}",1012,19894
+600,"ZZ844","Traded risks - Equity risk",,"{8A584A88-CA15-4029-9013EE461E232181}",1012,19895
+600,"ZZ845","Traded risks - Commodities risk",,"{B26983E0-6E8A-4B9B-AEE852B059F0DE94}",1012,19896
+600,"ZZ846","Traded risks - Foreign exchange (FX) risk",,"{A56F6BEB-1FD4-4CBD-BDC3AE624AB0EA62}",1012,19898
+600,"ZZ847","Traded risks - Credit spread risk",,"{5C370870-51FF-4D3F-A565A3B550BB835C}",1012,19899
+600,"ZZ79","Status of prior permission",,"{B57E9617-AF40-4565-A96562A9C00063B0}",1012,19900
+600,"ZZ81","Hierarchy for scope of members for gender diversity target set",,"{2EC28697-5FE4-4A6B-8759AAA9A06B2007}",1012,19901
+600,"ZZ93","Branch/not a branch ",,"{2D8EC3AC-580D-43DC-A968664EE1B2F085}",1012,19902
+600,"ZZ82","Hierarchy for Yes/No",,"{4FB2762C-5DA6-414C-B4CF9337A9D17E2C}",1012,19903
+140,"BT6","Hierarchy of type of ID code for investor/lender/buyer/provider/insured party/cedent",,"{92586787-6D26-4EB4-BB75B364AA43AE59}",1012,19904
+140,"BT7","Hierarchy of type of ID code for issuer/borrower/seller/beneficiary/insurer/reinsurer",,"{750278B8-C571-4B57-804A4BCDC74EBB51}",1012,19905
+140,"BT8","Hierarchy of type of transaction (Insurance-reinsurance)",,"{7EC80291-9896-4A2F-86011CEB27F0C25F}",1012,19906
+140,"BT9","Hierarchy of type of ID code for revenue side within group",,"{55828BDA-3B93-4938-A0E083A23E2A2EC6}",1012,19907
+140,"BT10","Hierarchy of type of ID code for expense side within group",,"{688F0712-FE1F-4E54-BC98DDF5FCA9838D}",1012,19908
+140,"BT11","Hierarchy of type of ID code for external counterparty of the financial conglomerate",,"{E7418538-80CC-4BF9-ADBA2AA3C64EA35E}",1012,19909
+140,"BT12","Hierarchy of type of ID code for the entity of the financial conglomerate related to the exposure",,"{67179975-D541-47E0-A37AD1672B3C37B4}",1012,19910
+280,"NC2","Hierarchy of sector of external counterparty",,"{163DF143-F8D4-4754-97C74263D6613E4A}",1012,19911
+600,"ZZ94","Hierarchy of sector of the investor/lender/buyer/provider/insured party/cedent",,"{2C467003-9A1B-488A-9EACDD611EBB59F3}",1012,19912
+600,"ZZ95","Hierarchy of sector of the issuer/borrower/seller/beneficiary/insurer/reinsurer",,"{B3A2AE71-D983-4F1D-BFAEAE302288A818}",1012,19913
+600,"ZZ96","Hierarchy of type of ID code for instrument",,"{3F422522-6082-43AC-A19257B30EA5DF59}",1012,19914
+600,"ZZ97","Hierarchy of type of instrument (Equity-type transactions, debt and asset transfers)",,"{95E47D6C-6F51-49B9-BAAF183854DFE048}",1012,19915
+600,"ZZ98","Hierarchy of subcategory type of instrument (Equity-type transactions, debt and asset transfers)",,"{7B4A500D-6B9B-48C1-A748586DAE0E282F}",1012,19916
+600,"ZZ99","Hierarchy of type of instrument (Derivatives)",,"{0B3FFDA8-805A-4B23-8F2E687BE9295C30}",1012,19917
+600,"ZZ100","Hierarchy of type of protection",,"{9CA2B99F-22A4-4F7E-86ADDFA1C5B272CC}",1012,19918
+600,"ZZ101","Hierarchy of purpose of the instrument ",,"{D3E0016B-9099-471B-A1DB27AB535C2786}",1012,19919
+600,"ZZ102","Hierarchy of type of ID code of the asset/liability underlying the derivative",,"{F5A2EC82-894E-40B3-94CD3ACD123A7468}",1012,19920
+600,"ZZ103","Hierarchy of type of off-balance sheet or contingent liability intra-group transaction",,"{014A7C2F-CE21-454E-913CA2F24BC1F322}",1012,19921
+600,"ZZ104","Hierarchy of type of reinsurance transaction",,"{160ECF62-853F-48C3-8ECA05FB33DF2A25}",1012,19922
+600,"ZZ105","Hierarchy of line of business being reinsured",,"{686B9C89-5410-4887-A725F07479922D10}",1012,19923
+600,"ZZ106","Hierarchy of sector of the revenue side within group",,"{79B2F50A-89D8-4016-9C058BB16F62090D}",1012,19924
+600,"ZZ107","Hierarchy of sector of the expense side within group",,"{A5665CB7-7C85-41CA-8076105D37BA2C45}",1012,19925
+600,"ZZ108","Hierarchy of type of P&L transaction",,"{9CC236CC-FB4C-44B1-8BB841ED8D950174}",1012,19926
+600,"ZZ109","Hierarchy of instrument of the P&L transaction",,"{10E33ACE-F2FD-45B4-B6F59EAD4C8B7115}",1012,19927
+140,"BT13","Hierarchy for alternatives for ICT third-party service providers",,"{4BE7DD0F-9089-432F-80C2118C5B411AF8}",1012,19928
+600,"ZZ110","Hierarchy for the substitutability of the ICT third-party service provider ",,"{173958CA-EFFC-4EA1-83D1C58E14FEE3FF}",1012,19929
+600,"ZZ111","Hierarchy for reasons for substitutability assessment outcome",,"{86CBB5AD-0613-4AB8-8B49F9F07C71532D}",1012,19930
+600,"ZZ112","Hierarchy for possibility of reintegration of the contracted ICT service",,"{F23769D0-46C4-4D08-BCECA7B946C299DF}",1012,19931
+600,"ZZ113","Hierarchy for impact of service discontinuing",,"{29DBD401-EBE3-411E-BF38C40457F5CF8A}",1012,19932
+600,"ZZ114","Hierarchy for impact of function discontinuing",,"{2E8D9B71-D34A-47C4-8B6D2BAE36E99404}",1012,19933
+400,"TA5","Hierarchy for type of licenced activity",,"{61B7015E-A5BF-4B56-AA5BCD5422AFCC8A}",1012,19934
+140,"BT14","Hierarchy for criticality or importance assessment of the function",,"{3134C4AF-4DE6-4B2E-90029C3FE3927186}",1012,19938
+600,"ZZ117","Recognition of extraordinary circumstances",,"{9E4FDB76-B546-4413-8CAC22C19281B1A4}",1012,19939
+600,"ZZ848","Traded risks - Risk types other than GIRR, equity risk, commodities risk, FX risk, CSR, default risk",,"{CF3A088F-955C-4596-9001FD905DA9887C}",1012,19940
+600,"ZZ849"," Traded types of instruments - Cash instruments",,"{E41C3FCE-7FB8-4CE0-89821235A96B1626}",1012,19942
+600,"ZZ850","Traded types of instruments - Forwards",,"{C3CCD1C3-2605-41BC-9F91301A09CB7E92}",1012,19943
+600,"ZZ851","Traded types of instruments - Futures",,"{6A7BEFBE-E136-4951-8ED2B8E38506990D}",1012,19944
+600,"ZZ852","Traded types of instruments - Plain vanilla options",,"{026BF240-E3CC-445F-9919EDC058569DFE}",1012,19945
+600,"ZZ853","Traded types of instruments - Complex options",,"{FBD8DB9A-3B78-4660-A5BEFD554890B77B}",1012,19946
+600,"ZZ854","Traded types of instruments - Asset-backed instruments",,"{744E79BB-7406-41CA-BD891F07258D82DE}",1012,19947
+600,"ZZ855","Traded types of instruments - Mortgage-backed securities",,"{CF9444DE-96CB-4232-B827FF1503DE0B0D}",1012,19948
+600,"ZZ856","Traded types of instruments - Interest rate swaps",,"{3ECCE120-18A5-4D14-8D6A6C1EF7B60B25}",1012,19949
+600,"ZZ857","Traded types of instruments - FX swaps",,"{5BBADE42-A88C-4DB8-94A9DC1D57DFC7AC}",1012,19950
+600,"ZZ858","Traded types of instruments - Credit default swaps",,"{EB47D457-C0CF-4518-B67EF30CE188B02C}",1012,19951
+600,"ZZ859","Traded types of instruments - Other types of instruments",,"{F8525FF9-B637-40B5-9A4B2DC26D436253}",1012,19952
+250,"GA5_3_WITHOUT_X0-X1","Countries ","Countries applicable for drop down or open axis tables
+not containing x0 (not applicable) and x1 (all countries). it is linked with GA5_3 by also removing x1 from the hierarchy","{9EAFBCE1-7CEE-4C0B-92285AB2041EA324}",1012,19969
+120,"MC150","Hierarchy to select the set of risk factors (broad category of risk factors) that the data refers to","Relevant for the FRTB AIMA","{BA0BE128-A0CD-47C5-A92C8BEF3D0E330B}",1012,19970
+120,"MC151","Hierarchy to identify overshootings","Article 325bf CRR; Used in the context of FRTB AIMA","{E3BD50D7-615B-44A6-9CDFB39168A7A210}",1012,19971
+120,"MC152","Hierarchy to specify whether overshootings were excluded","Article 325bf CRR; used in the context of FRTB AIMA","{80DDBD67-FF91-421C-9418818227AF9A22}",1012,19972
+250,"GA5_4","Countries","Countries applicable for drop down or open axis tables
+not containing x0 (not applicable) and x1 (all countries). it is linked with GA5_3 by also removing x1 from the hierarchy
+
+NOTE: this Subcategory should have been a new version of GA5_3 (however because of migration, we needed to create a new one)
+for future reference please consider this subcategory is the same with  GA5_3_WITHOUT_X0&X1","{0296151D-BCC1-4B08-A5DF944C0ABC5697}",1012,19975
+350,"RP6","Hierarchy of management structure",,"{CC6233AA-414D-4708-A8F3BF6D5F8FA3B8}",1012,19976
+350,"RP9","Type of genders for diversity benchmarking purposes",,"{A75F7DC0-7543-4955-881CAFA4115D0D4A}",1012,19977
+350,"RP10","Hierarchy for educational background",,"{6FF74018-72F3-447E-B5E92129065D7802}",1012,19978
+600,"ZZ118","Hierarchy for professional background",,"{437693D7-2029-4293-B3C510395B8977BE}",1012,19980
+280,"NC3","NACE codes (level 1) WITH_x0",,"{716DF72A-0438-4533-B88C33CBCB12F221}",1012,19981
+250,"GA5_5","Countries","Countries applicable for drop down or open axis tables not containing x0 (not applicable) but containing x1 (all countries).","{29175757-A27E-4066-877A164A94CAE8EC}",1012,19982
+1007,"new_AI0","SubCategory_Base",,"{4811475B-FCA1-AC40-93B541BB3AC9AC61}",1012,19983
+1009,"new_CA1","Hierarchy_Base",,"{D26AF5C5-290A-B340-8A3E02F05514EF2E}",1012,19984
+1010,"new_CG0","SubCategory_Base",,"{D85E5DDE-76CD-0841-AF92B5B6FDE73907}",1012,19985
+1010,"new_CG1","SubCategory_1",,"{71BDDA37-F7A9-B841-AB08789AE45314A6}",1012,19986
+1010,"new_CG2","SubCategory_2",,"{87FF1C8B-4CB9-694C-8E9FDA793774106D}",1012,19987
+1010,"new_CG3","SubCategory_3",,"{93522FF1-F391-A14E-A15CFB126F16ED3B}",1012,19988
+1011,"new_CM0","SubCategory_Base",,"{FBA12FA0-D192-8A42-9E8E552744A9BB47}",1012,19989
+1012,"new_CO0","Hierarchy_Base",,"{1DEB1DD0-9BD1-5C49-BC588B403076BCAC}",1012,19991
+1012,"new_CO1","Hierarchy_1",,"{E0BC89E5-43FF-5843-B1501361E854E21B}",1012,19992
+1013,"new_CQ0","Hierarchy_Base",,"{202C5CCE-0BC6-CD49-928FCFF2FE4EC2E3}",1012,19994
+1013,"new_CQ1","Hierarchy_1",,"{C67A2679-CA6B-3344-8D0A45BDB7F33F8B}",1012,19995
+1013,"new_CQ2","Hierarchy_2",,"{140CB4B7-7A80-F342-93A1079EE13BC846}",1012,19996
+1013,"new_CQ3","Hierarchy_3",,"{849D0595-C00A-3B4C-B12759611E0ED042}",1012,19997
+1013,"new_CQ4","Hierarchy_4",,"{BBA11B3D-06B0-E349-BAD13FCD950C7296}",1012,19998
+1013,"new_CQ5","Hierarchy_5",,"{0DFCD3A3-D631-5445-AF8706EC2DC996BE}",1012,19999
+1013,"new_CQ6","Hierarchy_6",,"{B6178883-DC49-2442-BCF2E20C5BD35812}",1012,20000
+1013,"new_CQ7","hierarchy for CQS used in ALMM","for ei350","{B599BA45-D052-144F-8101DE47FD1EA2E9}",1012,20001
+1013,"new_CQ8","Hierarchy_8",,"{32F9CBE0-4752-9149-93D888BB2AA473F0}",1012,20002
+1014,"new_CS0","Hierarchy_Base",,"{18C90AB3-BD16-5D4A-909CCFE5DEF410AC}",1012,20003
+1017,"new_FF0","Hierarchy_Base",,"{555EFBEA-EBFA-BA4B-BE6289A55D113D3E}",1012,20004
+1017,"new_FF1","Hierarchy_1",,"{F2242AB1-9705-1145-B81B7AC5E6AD551F}",1012,20005
+1017,"new_FF2","Hierarchy_2",,"{22C392D5-84F3-2A48-9B0889EE10459FC9}",1012,20006
+1018,"new_FI0","Hierarchy_Base",,"{1578EF54-20A0-7946-91BA874FECC4AF84}",1012,20007
+1018,"new_FI1","Hierarchy_1",,"{BAA19F68-FFD0-3B44-B40F74C1AF3242CB}",1012,20008
+1018,"new_FI2","Hierarchy_2",,"{E16A51B4-D3D1-E947-90C32D9439FC370A}",1012,20009
+1018,"new_FI3","Hierarchy_3",,"{7DCBAF28-8DD4-1446-87094707B3D223E7}",1012,20010
+1018,"new_FI4","Hierarchy_4",,"{B7ADCFE2-5083-CE41-B59657008ECB5D3B}",1012,20011
+1018,"new_FI5","Hierarchy_5",,"{7433B8F2-7CCD-FB4D-B22F2E1FD6F1C3B3}",1012,20013
+1018,"new_FI6","Hierarchy_6",,"{1CFD78B5-CF2A-8C45-A437134005F7E2EC}",1012,20014
+1018,"new_FI7"," Hierarchy_7",,"{B9CB9118-145F-A74D-844DED691E6B0E43}",1012,20016
+1018,"new_FI8","Hierarchy_8",,"{ED5D0DDA-0EBF-744F-99081EA03F70CEDC}",1012,20019
+1018,"new_FI9","Hierarchy_9",,"{C0CD43A7-8D01-7E4F-9E80930158E5A292}",1012,20021
+1018,"new_FI10","Hierarchy_10",,"{9BE836A7-1B8D-F149-8576985AE367986D}",1012,20023
+1018,"new_FI11","Hierarchy_11",,"{2902372E-BB96-AF45-962D46614CDCECCD}",1012,20025
+1018,"new_FI12","Hierarchy_12",,"{F9D178EF-73F2-5240-9111252608BAC22D}",1012,20026
+1018,"new_FI13","Hierarchy_13",,"{E32B8544-F94D-434F-BF0697F1F35CC5E4}",1012,20027
+1018,"new_FI14","Hierarchy_14",,"{088186B1-1BD9-D24B-979290B1C8DAC150}",1012,20028
+1018,"new_FI15","Hierarchy_15",,"{73D1A430-48E7-574F-9CD7EFE75730726C}",1012,20029
+1018,"new_FI16","Hierarchy_16",,"{24DC7873-E032-9248-8CA93608E5A77F63}",1012,20030
+1018,"new_FI17","Hierarchy_17",,"{3207FE92-1F1A-544D-A6F80F440E36AB02}",1012,20031
+1018,"new_FI18","Hierarchy_18",,"{749E194F-6BF1-8645-BD6F014155471BE2}",1012,20032
+1018,"new_FI19","Hierarchy_19",,"{E3AD0400-5EB4-3542-B38B1CA306D6D141}",1012,20033
+1018,"new_FI20","Hierarchy_20",,"{F4491D16-8053-C844-9CB18E72EDE72030}",1012,20034
+1018,"new_FI21","Hierarchy_21",,"{C766B5B5-7DC7-FD44-97A2CBB7617914DC}",1012,20036
+1018,"new_FI22","Hierarchy_22",,"{B804ABFE-1E74-334C-85FD72C2E5BA9241}",1012,20037
+1018,"new_FI23","Hierarchy_23",,"{E5DCCE74-340A-E94D-927C35D3F143A557}",1012,20038
+1018,"new_FI25","Hierarchy_25",,"{73199735-24A1-4A42-A0F83D7F96DFBC0E}",1012,20040
+1018,"new_FI26","Hierarchy_26",,"{1FB0CD89-B34D-F145-BC1D32864B2A32AD}",1012,20041
+1018,"new_FI27","Hierarchy_27",,"{A1412A71-8EB4-EE48-96051D852FFE1384}",1012,20042
+1018,"new_FI28","Hierarchy_28",,"{2652F9E8-1268-4342-BC32D2F3365EFBC5}",1012,20043
+1018,"new_FI29","Hierarchy_29",,"{9FA0D678-63D4-C841-A16D08A06B4FA114}",1012,20044
+1022,"new_IM0","Hierarchy_Base",,"{8B94D11A-DED9-8344-B8B1BBF25CAE3694}",1012,20046
+1018,"new_FI31","Hierarchy_31",,"{189FE699-86F1-224C-AFEF95F8B09BD14B}",1012,20047
+1018,"new_FI32","Hierarchy_32",,"{2420A559-8E6B-3E4C-A35CE04FF26F381A}",1012,20048
+1024,"new_LR1","Hierarchy_1",,"{5D273BAB-D355-8448-8D54EC1847DC6DD8}",1012,20049
+1024,"new_LR2","Hierarchy_2",,"{3F243169-F6ED-8343-886FCD5AEF7AD212}",1012,20050
+1024,"new_LR3","Hierarchy_3",,"{8228FC07-83B0-D043-86461CF194B37D7A}",1012,20051
+1024,"new_LR4","Hierarchy_4",,"{04E45E42-942F-604A-8A6897F4AB5ECB0A}",1012,20052
+1024,"new_LR5","Hierarchy_5",,"{3C5DE901-E372-8D4C-8970B6FFF3A03E61}",1012,20053
+1018,"new_FI33","Hierarchy_33",,"{334F704E-3B5B-F846-A5610E70F08DD22C}",1012,20054
+1018,"new_FI34","Hierarchy_34",,"{E407F5A0-9685-E743-AB2201085FF3872F}",1012,20055
+1018,"new_FI35","Hierarchy_35",,"{B7B6F4EC-FAC3-DA41-B3039BDEC8CDF94B}",1012,20056
+1018,"new_FI37","Hierarchy_37",,"{E5DEECBC-2A0D-E54A-B5701492B5DE301D}",1012,20058
+1018,"new_FI38","Hierarchy_38",,"{25C4B565-C96C-784E-A363C233B51757AB}",1012,20059
+1018,"new_FI39","Hierarchy_39",,"{2C04DBB6-476E-A447-8D9ED0EE7D107538}",1012,20060
+1018,"new_FI40","Hierarchy_40",,"{429C2C18-AE99-664D-BB9DD77805374F57}",1012,20061
+1018,"new_FI41","Hierarchy_41",,"{8138C2D8-0DED-A540-920AD40484E02897}",1012,20062
+1018,"new_FI42","Hierarchy_42",,"{328F669C-A909-074A-8E9C19B44FF509AF}",1012,20063
+1018,"new_FI43","Hierarchy_43",,"{35C23382-38B9-AB40-936AC52877649255}",1012,20064
+1018,"new_FI44","Hierarchy_44","for ei359 enumeration","{50AC75BA-1959-DF4A-86B4972FD2D76D0F}",1012,20065
+1018,"new_FI47","Hierarchy_47",,"{BF909534-747B-554F-BCBB0CC6253CF883}",1012,20067
+1018,"new_FI48","Hierarchy_48",,"{20CD060C-777A-0441-A2EA4BA637A88610}",1012,20068
+1018,"new_FI49","Hierarchy_49",,"{E511AFE8-090D-1F44-A414EF2AA4735CA4}",1012,20069
+1018,"new_FI50","Hierarchy_50",,"{E5EE12E6-3167-AC4C-AF00027B3F1611E2}",1012,20070
+1018,"new_FI52","Hierarchy_52",,"{4539E1D8-1201-8140-8C69464D946A1639}",1012,20072
+1018,"new_FI54","Hierarchy_54",,"{5AE61D28-5704-1344-87387FAFA53EC1EB}",1012,20074
+1018,"new_FI55","Hierarchy_55",,"{57789963-C951-CF42-9F7460BF0C433A9B}",1012,20075
+1018,"new_FI56","Hierarchy_56",,"{5FB73954-8F0F-3847-9CD646C6C87BF441}",1012,20076
+1025,"new_MA0","Hierarchy_Base",,"{C84A514D-F72A-134E-9383B0C6AE7C601A}",1012,20077
+1025,"new_MA1","Hierarchy_1",,"{97A9B328-82B9-5540-A5C59596745FD93B}",1012,20078
+1028,"new_NF0","Hierarchy_Base",,"{FEF94A71-7F03-C24B-B05375F73C839001}",1012,20080
+1028,"new_NF1","Hierarchy_1",,"{36257504-FD67-224F-87E5556C95D9C2FA}",1012,20081
+1023,"new_OI0","Hierarchy_Base",,"{BE2A7ECE-29FD-174F-BFB003F490C80E7E}",1012,20082
+1030,"new_OR0","Subcategory_Base",,"{1731C4A4-D552-9842-98E03ACF1EB88CC8}",1012,20083
+1032,"new_PI1","Hierarchy_1",,"{D2EE36F8-7631-244A-B77FD8AC50D4E28E}",1012,20084
+1032,"new_PI2","Hierarchy_2",,"{69DA8631-5302-FC4B-8A56212D2AF6A4BD}",1012,20085
+1032,"new_PI3","Hierarchy_3",,"{6CCD4297-93CA-B242-B23305BA537080C9}",1012,20086
+1038,"new_TI0","Hierarchy_Base",,"{C8412252-E53C-2845-B841EB4BB4E16030}",1012,20087
+1037,"new_TA0","Hierarchy_Base",,"{6B036EE9-F6A7-5C49-B85D9EC2CA89FE77}",1012,20088
+1037,"new_TA1","Hierarchy_1",,"{10F97A79-456C-3C44-A7A13E845B150816}",1012,20089
+1037,"new_TA2","Hierarchy_2",,"{D6357D23-500F-A149-ACD5E4AD87E4794C}",1012,20090
+1037,"new_TA3","Hierarchy_3",,"{90B00003-456C-594E-B9FF3CAD5A59828E}",1012,20091
+1037,"new_TA4","Hierarchy_4",,"{198D8195-FECD-AB4F-B09759185DF3C910}",1012,20092
+1037,"new_TA7","Hierarchy_7",,"{44811EF8-AD7F-5949-9CB56EB478F6A192}",1012,20095
+1036,"new_SR0","Hierarchy_Base",,"{73EDF2BC-D939-9245-9A1A47D079B58F16}",1012,20096
+1036,"new_SR1","Hierarchy_1",,"{AFB2119E-5BB6-F645-84FBFC2D4C2F4434}",1012,20097
+1036,"new_SR2","Hierarchy_2",,"{9E339BBA-BD89-2C4D-846CB02E3DB7FB7A}",1012,20098
+1036,"new_SR3","Hierarchy_3",,"{07028F45-6E76-6D4F-9A79412A59F3D852}",1012,20099
+1036,"new_SR4","Hierarchy_4",,"{280421EF-5374-B742-A982D024B86AAD6B}",1012,20100
+1036,"new_SR5","Hierarchy_5",,"{A657CB53-9394-C34F-86659C2EBC6E4D7B}",1012,20101
+1036,"new_SR6","Hierarchy_6",,"{8BE7EE15-2E16-104D-B1E4000A24293F44}",1012,20102
+1036,"new_SR7","Options for ""Sector of the counterparty""","for previous ei219 enumeration; now for property new_DBE","{3061A4DF-F706-8947-BC5DDC11E5D9058D}",1012,20103
+1036,"new_SR8","Hierarchy_8",,"{36152538-1C0F-1C4B-9E5DDB04EE9DFDAC}",1012,20104
+1036,"new_SR9","Hierarchy_9",,"{ACA84818-24E8-D644-A7B3727E076B3D4D}",1012,20105
+1036,"new_SR10","Hierarchy_10",,"{D06C648D-26B5-9146-A7AE28845FB9AE01}",1012,20106
+1036,"new_SR11","Hierarchy_11",,"{29EB3960-BDEB-5C44-96927B13B0EE2461}",1012,20107
+1036,"new_SR12","Hierarchy_12",,"{D02F34DF-63AC-4543-8E259595A565518C}",1012,20108
+1036,"new_SR14","Hierarchy_14",,"{BFB2681C-3E8B-1F41-97935192E576E0F0}",1012,20110
+1036,"new_SR15","Hierarchy_15",,"{44E69FCD-9865-1C41-A694C13F17A8C700}",1012,20111
+1036,"new_SR16","Hierarchy_16",,"{190DDDF8-628E-1949-92D1E4231D3E95D6}",1012,20112
+1036,"new_SR17","Hierarchy_17",,"{3C6A853D-B9D3-BE41-BD82FD3D4F86BF99}",1012,20113
+1036,"new_SR18","Hierarchy_18",,"{3DDFE695-9444-CC43-BC5DF1CE001BDC74}",1012,20114
+1036,"new_SR19","Hierarchy_19",,"{4322FE31-ADAF-4A4B-A940FA38A590EE70}",1012,20115
+1036,"new_SR20","Hierarchy_20",,"{28BAB099-1BA2-AA4F-8BE5F0100E94C8F1}",1012,20116
+1036,"new_SR21","Hierarchy_21",,"{1AF0B6DC-456B-1B41-AAD2DCE55B9A96C4}",1012,20117
+1036,"new_SR22","Hierarchy_22",,"{5C2F07D0-F967-354F-9420B45F202951F9}",1012,20118
+1035,"new_RP0","Hierarchy_Base",,"{C683A8EF-092E-5941-BA49ED9CD6BD0387}",1012,20119
+1035,"new_RP1","Hierarchy_1",,"{375C4FFA-B51A-A948-844202BA2BEB3BA6}",1012,20120
+1035,"new_RP4","Hierarchy_4",,"{ED5180D3-15D6-2D4A-A4ED8668A1906B99}",1012,20123
+1035,"new_RP6","Hierarchy_6",,"{1916238F-6EC4-0247-9343DFBF13697D5F}",1012,20125
+1035,"new_RP8","Hierarchy_8",,"{14E71303-95DF-6044-97B2FA8F0F714AFC}",1012,20127
+1034,"new_RF0","Hierarchy_Base",,"{54801932-E3FA-DE42-86C5E6EF408EF20B}",1012,20128
+1031,"new_PC0","Hierarchy_Base",,"{82F6BDC4-0917-FE4D-BFA5F4FAF2C9365F}",1012,20129
+1031,"new_PC1","Hierarchy_1",,"{CCBF9490-EB2B-F34A-A567D88EBC263622}",1012,20130
+1031,"new_PC2","Hierarchy_2",,"{09DE7EB9-35A7-D945-B5EB038B28AADB91}",1012,20131
+1031,"new_PC3","Hierarchy_3",,"{AE0BFFC4-C608-F44C-A76ED75C637FE3AB}",1012,20132
+1033,"new_PR0","Hierarchy_Base",,"{C4ED6C3D-FF15-1845-A7829FF0797D1591}",1012,20133
+1033,"new_PR1","Hierarchy_1",,"{6F1E1749-D6B8-274D-ADFCB4370B4A2BF6}",1012,20134
+1033,"new_PR2","Hierarchy_2",,"{F831335D-492D-4647-A7C7ADB512835058}",1012,20135
+1033,"new_PR3","Hierarchy_3",,"{A9D1D5AE-2661-484F-B36CDF66BDC68440}",1012,20136
+1033,"new_PR4","Hierarchy_4",,"{69CDB7F9-8AC8-BD4A-922B1600294D85BE}",1012,20137
+1033,"new_PR5","Hierarchy_5",,"{CE8366E6-0A6C-8242-9BC5D77E06CD0715}",1012,20138
+1033,"new_PR6","Hierarchy_6",,"{69A58490-7BAF-2348-A286F2B031DA5B4B}",1012,20139
+1007,"new_AI1","SubCategory_1",,"{B8657B6C-CA5F-3640-94D34BBFA1EA59CF}",1012,20143
+1007,"new_AI2","Subcategory_2",,"{6C9ED4A7-90C9-D543-B45441DC9A45C374}",1012,20144
+1007,"new_AI3","Subcategory_3",,"{7FD9670C-A85C-844D-8F7097A386B1A1B2}",1012,20145
+1007,"new_AI4","SubCategory_4",,"{71F46A54-A8E1-FF4D-ADFEBD2BBF8FCBA7}",1012,20146
+1007,"new_A5","SubCategory_5",,"{6EB5E9AF-5440-DE4D-A975507456444263}",1012,20147
+1007,"new_AI6","SubCategory_6",,"{42FE0F03-30BF-D647-9FEFF97BB9F1D65F}",1012,20148
+260,"test","testing",,"{4FEE323E-2F7E-0B45-8441173B424CA941}",1012,20151
+1051,"new_PO0","Subcategory 0",,"{4E51E356-4059-BA48-8867EF399B759471}",1012,20153
+1074,"new_IT0","Subcategory 0",,"{99779ECA-FC8F-744A-B12CF143A6912791}",1012,20154
+1074,"new_IT1","Subcategory 1",,"{CA4EA8BD-EC81-CC46-B34B19D9FE585CAB}",1012,20155
+1045,"new_ES0","Subcategory 0",,"{8184091B-3845-0248-98990E7F829DAF0D}",1012,20160
+1039,"AO_1","Approach for calculating the Financial component (FC)","Hierarchy used as a drop down list, institutions reporting here if they have used the accounting approach or the PBA approach when computing the FC","{964146D4-73ED-0E42-8F07E0B489DE5C99}",1012,20162
+1072,"CY1","Basic hierarchy for crypto assets",,"{30925F63-9D9A-4E4A-B0F2279EA95F436C}",1012,20164
+1072,"CY2","Type of the token based on currencies referenced","Type of the token based on currencies referenced (token references only official currencies / token references only other than official currencies / token references to both official currencies and other than official currencies)","{A138AA9E-04B5-7345-BB411B76BE3267DD}",1012,20165
+1072,"CY3","Significance of the token","Significance of the token based on Articles 43 and 56 of Regulation (EU) 2023/1114 (Significant/Non-significant)","{796F1F0A-4FE1-9642-9F974970418A9EAA}",1012,20166
+210,"CU6","List of EU currencies, without total",,"{3C663F9B-5619-F54A-8DDCDED96F5F4A66}",1012,20167
+1019,"new_FN1","Hierarchy for product types for AMML (concentration of counterbalancing capacity by issuer/counterparty)","used for old ei358","{1C11C419-FDEE-8444-B45071B6B50C0FE9}",1012,20168
+210,"CU7","Currency in which the transaction / contract is denominated","Currency in which the transaction / contract is denominated, including All currencies for the aggregated total item.","{5ACE3985-F26F-5141-B0F552DD9D8430ED}",1012,20169
+1018,"new_FI57","Type of financial instruments in the reserve of assets","The types of financial instruments in the reserve of assets as categorised in section X in Annex of ITS under Article 22(7) of Regulation (EU) 2023/1114.","{34C5DFEB-A0B4-EF4C-B00812CCBCC1F129}",1012,20170
+1030,"new_OR1","Regulatory assessment of type of entity",,"{F6AC9548-822D-E64E-B4BE3A9E27ABF41E}",1012,20172
+1043,"qEC1","Primary asset class of the cover pool",,"{75C97CD1-C54E-6145-A378513BC9A1FA5D}",1012,20173
+1041,"RE1","Type of waiver of BRRD",,"{EADDAABE-28E0-5F44-A8DA4AFD594E014B}",1012,20174
+1041,"RE4","Type of resolution strategy",,"{626DB940-41A5-B246-A03D7EB0D30DCE04}",1012,20175
+1041,"RE5","Type of resolution tool",,"{98B86F67-C378-924D-8CF6FB1F746EDC7D}",1012,20176
+1071,"FT1","Liability type for impracticability of contractual recognition of bail-in",,"{CB618498-066B-AA4E-BEF497850C6A45BD}",1012,20177
+1010,"CG4"," type of guarantees (received or provided)",,"{2AFAB128-D28A-474B-932BACA0BAC17B60}",1012,20178
+1018,"FI81","Types of instrument in resolution templates",,"{D6CAEEB7-E88D-C44A-8E661468B596C361}",1012,20180
+1018,"FI73","Types of financial liabilities (other than securities issued and deposits","types of financial liabilities (other than securities issued and deposits)","{14CBB4D5-4739-4245-8D94B5647600D8D9}",1012,20182
+1007,"AI24","Type of non-financial liabilities",,"{ED30BB6B-DBA9-2948-A60D56A5D524E886}",1012,20183
+1007,"new_AI7","SubCategory_7",,"{C7825493-4510-C34A-8FB0FD18E52CB979}",1012,20184
+1007,"new_AI8","SubCategory_8",,"{37398A0A-EF85-6343-BB8FB97F17F92378}",1012,20185
+1007,"new_AI9","SubCategory_9",,"{2C590259-BF7D-424A-8C2635A9FF39DA60}",1012,20186
+1007,"new_AI10","SubCategory_10",,"{4B77D2DE-4052-DA49-BEFC353C846624E4}",1012,20187
+1007,"new_AI11","SubCategory_11",,"{0FB9E263-5D00-264B-83D69104F575F0D1}",1012,20188
+1007,"new_AI12","SubCategory_12",,"{DBC52CAA-46D9-384D-AF2E449DB1E1C070}",1012,20189
+1007,"new_AI13","SubCategory_13",,"{1CA1CA7C-2665-664B-A19CF95BD189BBBE}",1012,20190
+1007,"new_AI14","SubCategory_14",,"{987E75F2-118B-F74D-A3AD7F4648BE31CC}",1012,20191
+1007,"new_AI15","SubCategory_15",,"{3D557C83-6848-8141-8B11C5B9A675A9A7}",1012,20192
+1007,"new_AI16","SubCategory_16",,"{5AAC1DA9-7F52-FF4C-987E00DA8785FFD3}",1012,20193
+1007,"new_AI17","SubCategory_17",,"{9EA4A359-9398-6B4F-A4E3F31CB193C73D}",1012,20194
+1007,"new_AI18","SubCategory_18",,"{BF197F3E-353C-A14D-96B5D402E6C08DF2}",1012,20195
+1007,"new_AI19","SubCategory_19",,"{703F3FF5-9F0D-4E4A-8977313960AB0876}",1012,20196
+1007,"new_AI20","SubCategory_20",,"{3ACC8077-785E-CE45-AB407CFE72F6879F}",1012,20197
+1007,"new_AI21","SubCategory_21",,"{893651F1-69F2-F54F-8CDE85A801505067}",1012,20198
+1007,"new_AI22","SubCategory_22",,"{2604C24E-DCDD-FF4C-BA7B04ACB8DEFB5E}",1012,20199
+1007,"new_AI23","SubCategory_23",,"{72569D68-551C-8B49-89CBBA74D41B2389}",1012,20200
+1007,"new_AI24","SubCategory_24",,"{218F4FD0-7302-B540-8DB7A607C34BE1E9}",1012,20201
+1007,"new_AI25","SubCategory_25",,"{D398E8F5-B33D-8540-B552DD56BEFC8058}",1012,20202
+1007,"new_AI26","SubCategory_26",,"{13582BDE-1E79-1946-9D22FB342D6E6EE1}",1012,20203
+1007,"new_AI27","SubCategory_27",,"{1B791C74-7230-F748-A8756D0091B93889}",1012,20204
+1007,"new_AI28","SubCategory_28",,"{63295305-BD04-3847-AEFAC9C69B80715D}",1012,20205
+1007,"new_AI29","SubCategory_29",,"{51EF04FF-CE3E-BF4D-A7BE0843B88072CE}",1012,20206
+1007,"new_AI30","SubCategory_30",,"{9EBA88E4-337B-CA45-8D9943E1D65A1C29}",1012,20207
+1007,"new_AI31","SubCategory_31",,"{5DB06C25-3D78-F44F-9F33885ECA770495}",1012,20208
+1007,"new_AI34","SubCategory_34",,"{C54F86D5-E5A1-2148-A62757AB36148E61}",1012,20211
+1007,"new_AI35","SubCategory_35",,"{551D9058-3649-D84D-93761513C578C602}",1012,20212
+1007,"new_AI36","SubCategory_36",,"{BA6EB7C7-ED60-C141-A8F76299102C3514}",1012,20213
+1007,"new_AI37","SubCategory_37",,"{0CB77F79-491C-974B-97C12C7F2BAD12CD}",1012,20214
+1007,"new_AI38","SubCategory_38",,"{DED5112F-23E2-1547-B88DD2359DEF79D7}",1012,20215
+1007,"new_AI39","SubCategory_39",,"{6687D87B-7C3D-304A-BD3548769594024F}",1012,20216
+1007,"new_AI40","SubCategory_40",,"{786C3E60-B29D-854D-925014791F43A362}",1012,20217
+1007,"new_AI41","SubCategory_41",,"{B06FEDD7-4DDA-DA41-9EF5E99C682D0AB8}",1012,20218
+1007,"new_AI42","SubCategory_42",,"{A4ACE460-F936-C649-A77B05669D4D8188}",1012,20219
+1007,"new_AI43","SubCategory_43",,"{21BEE00F-7077-844B-A8C4FD4606A884E2}",1012,20220
+1007,"new_AI44","SubCategory_44",,"{4B674389-33CC-CF4E-8097A8D5FA563F61}",1012,20221
+1007,"new_AI46","SubCategory_46",,"{DEC6CF91-7A88-8040-92932548C6D48712}",1012,20223
+1007,"new_AI47","SubCategory_47",,"{A733A08D-ACEF-E34C-B28E0CBA759B8542}",1012,20224
+1007,"new_AI48","SubCategory_48",,"{094889C7-45B0-AF43-9C2E0FDC910443B4}",1012,20225
+1007,"new_AI49","SubCategory_49",,"{26F68E8C-5333-E541-B6AF33E539DA3264}",1012,20226
+1007,"new_AI50","SubCategory_50",,"{E3255D91-B267-604B-88E8C5CA953434A8}",1012,20227
+1007,"new_AI51","SubCategory_51",,"{D42A34F2-67DC-5449-AEE0C5C0BC137095}",1012,20228
+1007,"new_AI52","SubCategory_52",,"{B2700CA1-BD55-184E-844985B595A0A403}",1012,20229
+1007,"new_AI53","SubCategory_53",,"{EEE04F7D-52F0-7D47-A542647AD969361E}",1012,20230
+1007,"new_AI54","SubCategory_54",,"{3D96ED0A-7876-1849-BB0B47A9988DF0F1}",1012,20231
+1007,"new_AI55","SubCategory_55",,"{200853F4-5EF0-2040-90F9EDE1F69C94AA}",1012,20232
+1007,"new_AI56","SubCategory_56",,"{68D007FF-A3D3-544D-8BD6379D66380252}",1012,20233
+1007,"new_AI57","SubCategory_57",,"{DB05FB68-55C2-154B-BD2232FB51B91E17}",1012,20234
+1007,"new_AI58","SubCategory_58",,"{920C6814-AB97-0E4D-93D3327343C4B5B9}",1012,20235
+1007,"new_AI59","SubCategory_59",,"{9DA44614-FE37-224A-A9CDD144634B4D6B}",1012,20236
+1007,"AI60","SubCategory_60",,"{F164654C-0CFD-7646-A042C84D2C964DF9}",1012,20237
+1007,"new_AI61","SubCategory_61",,"{4E3815E3-44F1-644D-82BBB905DF395B42}",1012,20238
+1007,"new_AI62","SubCategory_62",,"{73CF98BC-B9A4-D84B-9559C47EC7941148}",1012,20239
+1007,"new_AI63","SubCategory_63",,"{729C3D6E-C32E-B24D-BC76631B076CA9C2}",1012,20240
+1007,"new_AI64","SubCategory_64",,"{4E4B23EB-A604-FB40-B411BAB7192DAA8E}",1012,20241
+1048,"new_AP0","SubCategory_Base",,"{ACB4C547-0959-3142-98084D65146E4E15}",1012,20244
+1048,"new_AP1","SubCategory_1",,"{CF4337AA-4388-D040-A82843C8E7790039}",1012,20245
+1048,"new_AP2","SubCategory_2",,"{98DF8F62-6AF6-764A-B95D7B0925D7BDB5}",1012,20246
+1048,"new_AP3","SubCategory_3",,"{E987D56B-146E-5B4F-84CAF4C2AAAF5EFB}",1012,20247
+1010,"new_CG6","SubCategory_6",,"{3C47F101-4272-6D45-976C16C44510A558}",1012,20253
+1010,"new_CG7","SubCategory_7",,"{DEF21FF5-5961-0042-93715C1BA3C1ED82}",1012,20254
+1010,"new_CG8","SubCategory_8",,"{7955A69B-E139-C145-BD9D0F57CFC67BE0}",1012,20255
+1010,"new_CG9","SubCategory_9",,"{92202238-B389-524D-879D6D5F72A536E3}",1012,20256
+1010,"new_CG10","SubCategory_10",,"{72E0AB74-0AB8-2142-B141355DA537969D}",1012,20257
+1007,"AI_agg_65","Other ASF liabilities",,"{D523C74D-DEA8-AA43-AF4E9E93C9579DB3}",1012,20262
+1007,"AI_agg_66","All assets, all liabilities",,"{3A06089A-56C3-4F4E-90049D6C47EF6078}",1012,20263
+1007,"AI_agg_67","Liabilities, equity, off balance sheet items",,"{C00815B0-716F-294B-A3E8DEE6F3DEA878}",1012,20264
+1007,"AI_agg_68","Liabilities and Equity",,"{1CBC8A8F-6DAB-6B47-9624FE63DA226994}",1012,20265
+1007,"AI_agg_69","Liabilities, off balance sheet items",,"{DC64D888-E958-974E-9FAEE688B068CFE8}",1012,20266
+1007,"AI_agg_70","Assets, off balance sheet items",,"{FB69E965-44E3-374F-867756D3E3506D39}",1012,20267
+1007,"AI_agg_71","Retained earnings, Profit eligible",,"{8699F9AD-7E87-0E46-B323242004D0B5AC}",1012,20268
+1007,"AI_agg_72","Paid up capital, Share premium, Retained earnings, Accumulated other comprehensive income, Other reserves, Funds for general banking risks",,"{D7F93F24-B4C2-7E4F-B33D93E7009766C4}",1012,20269
+1007,"AI_agg_73","Assets, liabilities, off balance sheet items",,"{A505C6B1-2BB5-F141-B840E34654354096}",1012,20270
+1007,"AI_agg_74","Paid up capital and share premium",,"{D06588AB-3C9C-AB4A-9BB9F012FEFFD5FF}",1012,20271
+1007,"AI_agg_75","Tangible assets, Intangible assets",,"{F77DD2AB-67F5-CF44-9A5A91DBBAF0ECD1}",1012,20272
+1007,"AI_agg_76","Interest and dividend ",,"{84893BCF-30C8-4F43-B3765511CF967484}",1012,20273
+1007,"AI_agg_77","Fee and commission income, income other than interest/dividend/fee and commission income",,"{541C0760-B716-FA47-A86CFD08E980B1F3}",1012,20274
+1036,"SR_agg_1","Regional governments or local authorities ",,"{FE908CE9-22B7-1E4D-87FB1B5828EC2017}",1012,20285
+1010,"CG_agg_1","Non guaranteed or guaranteed by other entities than a Deposit Guarantee Scheme or assimilated",,"{F0EE91CC-2D38-3E4D-87807BA9C2208315}",1012,20288
+1036,"SR_agg_2","Central governments or central banks",,"{648BE88E-44E5-B44E-BF411468F720BB06}",1012,20289
+1047,"TE_agg_1","Credit unions, personal investment companies and deposit brokers",,"{602A3FE2-9BD0-9E42-AF7479E0A0A67DF1}",1012,20292
+1036,"SR_agg_3","Central governments or central banks, regional governments and local authorities and Public sector entities",,"{D684CE84-C924-7C43-B81341CB113D06C0}",1012,20293
+1018,"FI_agg_1","Debt securities, Loans and advances",,"{301B7C96-A636-8D49-AEFFC346D292D040}",1012,20294
+1069,"FA_agg_1","Trade date payables, deferred tax, minority interests, derivatives and other liabilities",,"{47CB78CB-3BE6-834F-A7A1B9440E45BAA9}",1012,20297
+1010,"CG_agg_2","Collateral received, collateral given",,"{40B77798-52AF-0F44-8EBCA4EB2B4973D4}",1012,20300
+1018,"FI_agg_2","Cash balances at central banks and demand deposits at credit institutions",,"{CC0892C8-E3CF-0C43-AB8F05A6FF3075E2}",1012,20301
+1018,"FI_agg_3","Cash, cash balances at central banks and demand deposits at credit institutions",,"{B12075EE-C5F0-FD42-BBD6E1151AF18BBF}",1012,20302
+1018,"FI_agg_4","Loans and advances other than operational deposits and SFTs with financial costumers",,"{3FD525BF-9009-8F4E-A6578A67888FF938}",1012,20303
+1037,"TA_agg_1","Secured lending and capital market driven transactions",,"{931CBCE9-8CE3-4F42-B6ABA4594C23EF95}",1012,20304
+1018,"FI_agg_5","Current accounts / overnight deposits",,"{5695596A-6B27-6D49-9E0E40C4AFE803BC}",1012,20305
+1018,"FI_agg_6","Equity Instruments, debt securities",,"{9ADF6C0A-26EC-6B40-B897C864B257C9F6}",1012,20306
+1036,"SR_agg_4","Central governments, regional governments and local authorities and Public sector entities",,"{406BE5DD-3CE3-FA41-B9DB719DEF28E4E9}",1012,20309
+1036,"SR_agg_5","Non-financial corporations and households",,"{33DD5456-17C9-9E43-858DD213DE5D3F4A}",1012,20310
+1036,"SR_agg_6","Central banks, general governments",,"{EFD8FC82-F241-DE40-848BD7436C717208}",1012,20312
+1036,"SR_agg_7","Central banks and credit institutions",,"{4F4FA639-BA45-B944-9C163B5A70ECFA99}",1012,20313
+1036,"SR_agg_8","Central governments, central banks and Public Sector Entities",,"{15ED28E1-EB94-5746-8ABEF78BD7648D73}",1012,20316
+1018,"FI_agg_7","Derivatives, Debt securities, Loans and advances, Equity instruments",,"{B142297D-1453-C949-9B7AC7D1D16B9FBD}",1012,20318
+1018,"FI_agg_8","Derivatives, Debt securities, Loans and advances, including own debt securities issued",,"{C7FB3250-1581-8845-A1D3740066938569}",1012,20319
+1018,"FI_agg_9","Deposits, Debt securities issued, Other financial liabilities",,"{0FFB6BE0-07FC-5D42-ACF9D9485DA9AC5C}",1012,20320
+1018,"FI_agg_10","Deposits, Debt securities issued",,"{A7EB8D3A-CCC3-564B-868965D615DEAE8F}",1012,20321
+1063,"SM_agg_1","Remuneration paid in shares and share-linked instruments",,"{6F553C39-17CF-C243-BFA1C6169DF7C00A}",1012,20322
+1039,"AO_agg_3","Deductible deferred tax assets that rely on future profitability and arise from temporary differences and CET1 instruments of financial sector entities where the institution has a significant investment",,"{33FCB118-079F-5341-940FB96794632268}",1012,20323
+1018,"FI_agg_11","Derivatives, Securities financing transactions",,"{21A9C9D8-658B-5D4F-A7723B1411AB9C3E}",1012,20324
+1030,"OR_agg_1","Credit risk adjustments, additional value adjustments and other own funds reductions",,"{CAA6682E-D0E4-3140-98129A552104D24B}",1012,20325
+1018,"FI_agg_12","Securities financing transactions, Derivatives and long settlement transactions",,"{888BDFAE-C7AD-174A-AB21CC8372CD3F61}",1012,20326
+1018,"FI_agg_13","Securitisation positions and nth-to-default credit derivatives included in the alternative correlation trading portfolio (ACTP), instruments that generate pay-offs that cannot be replicated",,"{E36798BD-D47F-C34B-A8FAF4A7DD6FBADD}",1012,20327
+1030,"OR_agg_2","Eligible minority interest and Qualifying own funds instruments included in consolidated level of capital ",,"{A2BAA40D-38AC-BB4D-86F9467FD60A7DF2}",1012,20328
+1018,"FI_agg_14","Loans and advances other than reverse repurchase loans from Counterparties other than households, non-financial corporations and financial corporations and Financial instruments other than loans and advances and debt securities",,"{7BA6E1F0-1119-D74B-ADB347643E102CE6}",1012,20330
+1018,"FI_agg_15","Cash on hand, Loans and advances",,"{DD514553-5D7C-E749-919C5510BCE8587C}",1012,20331
+1018,"FI_agg_16","Options and warrants",,"{7787DBE1-13D0-B944-9912656CAB37CD6B}",1012,20332
+1018,"FI_agg_17","Equity instruments, debt securities, loans and advances",,"{91DF4998-5DE8-634B-BBC47CB516C51CBF}",1012,20334
+1011,"CM_agg_1","Netting sets, after mark-to-market adjustments, collateral offset and estimated close-out amounts",,"{B76D76B1-698B-5F4E-8FFF64DF75484EF8}",1012,20335
+1011,"CM_agg_2","Netting sets, after mark-to-market adjustments",,"{205D8BEF-2589-014F-99354D6DBB7A2FD8}",1012,20336
+1011,"CM_agg_3","Netting sets, after mark-to-market adjustments and collateral offset",,"{5B5FBF44-DB7D-7E4E-A3B819EFE6D0290D}",1012,20337
+1018,"FI_agg_18","Deposits, Other financial liabilities",,"{712436C1-1DA6-7046-88AC03C01F31CEDE}",1012,20338
+1018,"FI_agg_19","Derivatives, Deposits, Debt securities issued, Other financial liabilities",,"{4084780D-F949-304E-802CCD0F62670197}",1012,20339
+1018,"FI_agg_20","Equity instruments, Debt securities, Loans and advances, Deposits, Debt securities issued, Other financial liabilities",,"{6CB0F58D-7867-EE42-ACD5CCFB79FF5EFE}",1012,20342
+1018,"FI_agg_21","Repurchase agreements and financial liabilities other than deposits from households, non-financial corporations and financial corporations, and financial liabilities other that debt securities issued ",,"{EF46F9CD-7FB5-7A49-87086B7374D8E2E3}",1012,20344
+1018,"FI_agg_22","Cash and cash balances at central banks",,"{4C3E60DD-8C49-D749-8554F7D6987203EF}",1012,20346
+1018,"FI_agg_23","Derivatives, Debt securities, Loans and advances",,"{5C857C84-781B-BB44-811233B0EEB14164}",1012,20347
+1018,"FI_agg_24","Loans and advances, debt securities",,"{6066071A-8A73-0148-ABDEAB30FB336A41}",1012,20348
+1018,"FI_agg_25","Loans and advances, other financial liabilities",,"{01193E02-CD76-B245-87B9FE1160AEA295}",1012,20349
+1018,"FI_agg_26","Derivatives, Deposits, Debt securities issued",,"{5FBF65D9-E833-5648-A767E51D9E1258E0}",1012,20350
+1018,"FI_agg_27","Derivatives, Deposits, Debt securities issued, Equity instruments issued",,"{2FC36F80-9939-FC45-AA2D2B80CD943A08}",1012,20351
+1018,"FI_agg_28","Transferable securities, money-market instruments, units in collective investment undertakings and derivatives",,"{81D919FC-F3EA-0549-89D2532593F3A8B2}",1012,20353
+1018,"FI_agg_29","Transferable securities, money-market instruments, units in collective investment undertakings and exchange traded options",,"{00C5235D-5CB4-2049-916C5E9CD888F726}",1012,20354
+1018,"FI_agg_30","Derivatives, debt securities, equity instruments",,"{68A383E9-E3BE-AD47-B58E1A9A3D601265}",1012,20355
+1050,"PL_agg_1","Banking and trading book",,"{C20F3699-E936-804F-B8CA09F7232FD1B8}",1012,20356
+1030,"OR_agg_3","Significant Investment and Non-Significant Investment",,"{BEEF2389-C300-D24D-9C9D14DCF3C3E972}",1012,20357
+1050,"PL_agg_2","Non-trading financial assets mandatorily at fair value through profit or loss, financial assets designated at fair value through profit or loss or from non-trading financial assets measured at fair value through profit or loss",,"{11E06313-28C2-5947-891C3FCDD6335E3E}",1012,20358
+1050,"PL_agg_3","Financial assets at fair value through other comprehensive income, non-trading non-derivative financial assets measured at fair value to equity",,"{60DE840C-D415-CC4F-98258F5EAEC3D7C9}",1012,20359
+1050,"PL_agg_4","Financial liabilities held for trading, trading financial liabilities",,"{C5EC9BDD-060F-7E42-9D11E1E945474C8D}",1012,20360
+1050,"PL_agg_5","Accounting portfolios for financial assets under IFRS, Accounting portfolios for financial assets under GAAP, Accounting portfolios for financial liabilities other than classified as held for sale",,"{7D18001D-5F09-8E43-8BACEA964A565C32}",1012,20361
+1050,"PL_agg_6","Trading financial assets, Trading financial liabilities",,"{8265DEC9-66EF-2D47-8CEEE3E4C2327273}",1012,20362
+1050,"PL_agg_7","Financial assets designated at fair value through profit or loss, Financial liabilities designated at fair value through profit or loss",,"{FB699442-7BB2-6A46-A36C5AF99B01D165}",1012,20363
+1050,"PL_agg_8","Available-for-sale financial assets, Trading financial assets",,"{92085088-41C9-1947-B16F99604A1CD717}",1012,20364
+1018,"FI_agg_31","Deposits other than repurchase agreement from Counterparties other than households, non-financial corporations and financial corporations and financial instruments other than deposits, and debt securities issued",,"{ADCB06D0-1932-4E4F-970DE9B3DE62D85F}",1012,20365
+1030,"new_OR4","Subcategory 4",,"{0A34F12A-81F3-904E-8E11BC911984C85B}",1012,20366
+1030,"new_OR5","Subcategory 5",,"{4E5CE7A7-2C4A-DE4B-B4E30FB42E22D8C2}",1012,20367
+1030,"new_OR6","Subcategory 6",,"{F1B50A20-DBCC-DA42-9C55040B1F5E3319}",1012,20369
+1012,"new_CO2","Type of code to identify the ICT third-party service provider",,"{26A768B1-76EB-EC40-806E21C8D80D8D2C}",1012,20370
+250,"GA5_6","Countries","Countries applicable for drop down or open axis tables
+contains: GA5_4 + x0 (not applicable) 
+DOES NOT contain x2(all countries)
+","{C569FCEB-5563-234D-BEC8B33E9E354879}",1012,20371
+1081,"qAE0","Subcategory 0",,"{BA4F0156-5A46-804D-B745E06DF39CAA29}",1012,20372
+1081,"qAE1","Subcategory 1",,"{397CA009-3309-A041-B3B3D709DDC067C7}",1012,20373
+1043,"qEC2","Subcategory 2",,"{6CC7FB18-519E-9A4A-9BC69248A83D4338}",1012,20374
+1043,"qEC3","Subcategory 3",,"{1B408053-AA92-6445-B5CA813CED4C7A20}",1012,20376
+1043,"qEC4","Subcategory 4",,"{BC652F56-426E-684E-82873E0F7A930390}",1012,20377
+130,"qAP31","Method for calculating exposure values at consolidated level in CCR 1",,"{E56A5F75-6683-4B42-AE26120F0DC45590}",1012,20378
+1060,"qTR_agg_1","Systematic and Idosyncratic components",,"{077BA094-D07F-7240-806F6886A2BC2225}",1012,20380
+1033,"qPR_agg_1","Single-name and Multi-names transactions",,"{BC0241BA-3FF7-A244-B20DFB0ED91CB66C}",1012,20381
+1043,"qEC13","Other items for CCR disclosures",,"{C57711F3-A055-9D48-90220C675D045AA1}",1012,20382
+420,"UE5","Hierarchy for underlyings of securitisation positions (disclosures)",,"{7500CF9D-184F-B94E-B72A44A9A4854D12}",1012,20383
+1054,"qAF_agg_1","Debt securities, loans and advances, funding facilities",,"{195A5753-6CF2-714B-BF97D9EC380151E4}",1012,20384
+1024,"qLR_agg_1","Meeting requirements of stable and derogated stable deposits",,"{BDF0805C-48B0-9842-852F1B2503440F18}",1012,20385
+1024,"qLR_agg_2","Meeting requirements of higher outflows rates and other specifi retail deposits",,"{FF0DED3D-97D2-A448-A519BDE8CEA9F357}",1012,20386
+400,"TA6","Hierarchy for type of initiation of payments",,"{1591288D-E6A4-4E4D-9F6CEB81D9A5FFD8}",1012,20387
+1072,"new_CY4","Issuer`s designation as gatekeeper of core platform services","The indication of the issuer, whether the significance criteria specified in Article 43(1)(d) of Regulation (EU) 2023/1114 are met or not.","{2F0BC0B3-45FA-2D47-948197577D707358}",1012,20388
+1072,"new_CY5","Issuance of other ART or EMT","The indication of the issuer, whether following the significance criteria specified in Article 43(1)(g) of Regulation (EU) 2023/1114 more than one asset-referenced token and/or e-money token is issued by the issuer.","{90DE5AA4-3C04-D24B-B8CD1CAC0A65E4E5}",1012,20389
+1072,"new_CY6","Provision of crypto-asset service by the issuer","The indication of the issuer, whether following the significance criteria specified in Article 43(1)(g) of Regulation (EU) 2023/1114 the issuer provides at least one crypto-asset service.","{A0353036-B11A-5242-82782EFC4E360936}",1012,20390
+1012,"new_CO3","Type of code for qualifying holders/holdings",,"{B2CA0C7B-651C-CC4D-92490420DE999E0F}",1012,20391
+1072,"new_CY7","Qualifying holders/holdings",,"{D8AACEF9-26D4-F64E-A82C8B4C80F3B87E}",1012,20392
+370,"TR15","General risk for debt instruments, specific risk for debt instruments other than securitisations",,"{E0C740F7-704C-5A4E-9058F12170CCF5CC}",1012,20394
+1064,"SC1","Internal TLAC scope of consolidation",,"{90001E34-4D0E-E445-9ADF7DC97DDC5318}",1012,20395
+1064,"SC2","Internal MREL scope of consolidaion",,"{857EEEAF-1A2E-F14B-8F942DB01DEA7FBD}",1012,20396
+1084,"qAB_agg_1","Initial margin and contributions to CCP default fund",,"{E01121A1-7056-D44C-8F174127D2D46AA9}",1012,20397
+1083,"qRM1","Components of the own funds requirements when using internal models for market risk",,"{DCB5955A-4DD8-3542-A8AD20759D202A30}",1012,20398
+1030,"new_OR7","Subcategory 7",,"{6D02A48A-8A63-2F4E-BF990AD4F2137C3E}",1012,20399
+1064,"SC3","Methods of accounting consolidation",,"{C36F0B77-090A-CB44-A445CF4ED2840303}",1012,20400
+1061,"new_TP1","Full phased-in or transitional definition",,"{D91E68F1-57D8-BD4C-8689C2090412C1B3}",1012,20401
+1030,"new_OR8","Type of transitional provision",,"{014AE157-A51E-6F4F-BD896738FE90140B}",1012,20402
+1081,"qAE2","Subcategory 2",,"{D21776DB-DB65-E04D-A3CDD3A635FFBDDA}",1012,20403
+1036,"new_SR23","Hierarchy_23",,"{5D0DEABA-5828-A649-BD4258CFB186952E}",1012,20404
+1064,"SC4","Methods of prudential consolidation","It refers to the different methods of prudential consolidation: full, proportional, equity method, deducted, neither consolidated not deducted","{FE333C96-0BCB-BA4D-AC4E58D54155F621}",1012,20405
+1064,"SC5","Scope of consolidation ","It specifies the scope of consolidation for G-SIBs that is different from the CRR scope of consolidation","{D8A735B0-FCCF-3940-9259D4B06CB45C5E}",1012,20406
+1043,"qEC5","Exposures to subordinated debt, Equity exposures","Aggregation of two exposure classes","{71ED0925-6680-5C45-A8229FEAE7E71390}",1012,20407
+1043,"qEC6","Exposures to regional governments or local authorities, exposures to public sector entities","Aggregation of two exposure classes","{88321C16-8357-1B4C-89CF79B464D0E0C1}",1012,20408
+1043,"qEC7","Exposures secured by mortgages on residential immovable property-non-IPRE",,"{CAA9EA98-83EE-454C-890B7AE77E47BCF0}",1012,20409
+1043,"qEC8"," Exposures secured by mortgages on residential immovable property-IPRE",,"{34E11924-1156-954B-980D84BE1464B007}",1012,20410
+1043,"qEC9","Exposures secured by mortgages on commercial immovable property-non-IPRE",,"{ACA293BB-2429-5C4D-9EBC6D989167DBE2}",1012,20411
+1043,"qEC10","Exposures secured by mortgages on commercial immovable property-IPRE",,"{140B883A-6B62-074C-9F0766A91F108F43}",1012,20412
+1081,"qAE3","Corporates without own estimates of LGD or conversion factors",,"{82F8EB35-AC82-E94C-962BA460F4146B13}",1012,20413
+1081,"qAE4","Corporates with own estimates of LGD or conversion factors",,"{9E26E695-C94B-ED4E-8C27C35F968C7B4C}",1012,20414
+180,"CP3","Other eligible collaterals under IRB approach",,"{E1C81129-7238-3743-BA7DC025794AA884}",1012,20415
+1036,"new_SR24","Regional governments or local authorities and public sector entities",,"{0E160D6F-6CEC-8941-944BCAB0EBB839ED}",1012,20416
+1018,"new_FI58","Listed equity instruments, other securities ",,"{B106CE71-EF76-034E-BBCC27AAC7D5414A}",1012,20417
+1018,"new_FI59","Cross-border claims, local claims  in foreign currency and local currency of foreign affiliates",,"{C47DE218-4C0F-2C43-9162CE8458366E63}",1012,20418
+1018,"new_FI60","Foreign liabilities",,"{89A84577-6697-6349-8C6CA7BEBC55D32F}",1012,20419
+1018,"new_FI61","Derivatives, securities financing transactions, deposits, securities, undrawn committed lines",,"{22A7C815-2D73-B642-8A34B3A6B45C6C8B}",1012,20420
+1018,"new_FI62","Derivatives, securities financing transactions, deposits, other loans, securities, undrawn committed lines",,"{89887366-D364-A44E-AC712AD58E855BED}",1012,20421
+1018,"new_FI63","Cash balances at central banks and demand deposits at credit institutions, loans and advances",,"{3A797830-AAB3-D448-88BFC090FC3159FF}",1012,20422
+1030,"new_OR9"," Global or Other systemically important institutions (G-SIIs or OSIIs)",,"{081F5619-ABF4-5749-B468A42FBCCDFBBD}",1012,20423
+1030,"new_OR10","CET1 and T1 Capital ",,"{B4340903-2365-2E4C-BD6FDE472CEFC579}",1012,20424
+1065,"qPZ_agg_1","Cash balances at central banks and demand deposits at credit institutions, accounting portfolio for financial assets other than classified as held for sale, excluding financial assets held for trading and trading financial assets",,"{8886945C-4E38-F743-ADBB2AD43816C165}",1012,20425
+1065,"qPZ_agg_2","Cash balances at central banks and demand deposits at credit institutions, accounting portfolio for financial assets subject to impairment",,"{906A231A-CEC3-6A49-B103821E5366332D}",1012,20426
+1065,"qPZ_agg_3","Cash balances at central banks and demand deposits at credit institutions, accounting portfolio for financial assets other than held for trading and trading financial assets",,"{71086F76-2181-CF4A-B71165AF499EB2E2}",1012,20427
+1050,"PL_agg_9","Financial assets at fair value through profit or loss",,"{47349310-4BEC-F947-A1C3BE79186A3752}",1012,20428
+1051,"new_PO1","Not subjec to own funds requirements or subject to deduction from own funds",,"{395DB429-6F3E-2345-95B1FFDB09F394E1}",1012,20429
+1054,"qAF_agg_2","Preferred shares and any other form of subordinated funding ",,"{1EED5FB7-678B-2149-85644453E8D1EC29}",1012,20430
+1007,"new_AI_agg_78","Financial guarantees, collateral",,"{35CA11EB-955E-7C47-89926BBF42D3337B}",1012,20431
+250,"GA11","Geographical area IPR",,"{21A64F44-F846-BE46-ACD6E289D5CF3403}",1012,20432
+1033,"new_PR7","Charges levied IPR",,"{55F4A4D3-7C75-BF45-BDE25B447F6AB0A3}",1012,20433
+1047,"qTE_2","Type of counterparty IPR",,"{3D2AE603-D490-B749-9ECA0D44A07754A4}",1012,20434
+1040,"qPY_1","Credit transfers",,"{4DEB5E5E-E218-E74F-8BD961C87DB11451}",1012,20435
+1011,"CM_agg_4","Unit measure of reporting ",,"{0881D1D4-A0E9-324E-9D768EBE1A9DABE5}",1012,20436
+1040,"qPY_2","Payment accounts",,"{0D50F037-9C8D-3D4E-B6C7CDB574883B26}",1012,20437
+1018,"FI_agg_32","Securities financing transactions (SFT) and Loans and advances",,"{114AF056-32E5-6E4F-81D236D0B3614B11}",1012,20438
+1007,"new_AI_agg_79","Accumulated other comprehensive income, other reserves","Equity items in Article CRR 26(1), points d) and e)","{21A9F601-F1BD-A740-96B0D53768549EDC}",1012,20440
+1054,"qAF_3","Type of liabilities RESOL",,"{5F06E091-EDDE-6249-9E4922E82903023D}",1012,20441
+1102,"new_AC1","Row reference from Liability structure aggregate template",,"{898CDE71-24F2-CD46-AC65A47CB6340A0B}",1012,20442
+1007,"new_AI83","Type of financial interconnection",,"{F2B29B65-28C7-E443-84100697D5F14F91}",1012,20443
+1007,"new_AI81","Type of accounting approach for asset recognition in the balance sheet",,"{28D22D6B-73AD-FD47-B1AFB4C9122A46E1}",1012,20445
+1007,"new_AI82","Type of non-financial liability",,"{D14D051D-81C0-704C-9275F46798FFC344}",1012,20446
+1048,"new_AP4","Derivative treatment",,"{5ACD95F8-590E-2443-B1B997528B8175F5}",1012,20447
+1048,"new_AP5","Rationale for exclusion",,"{ACE2F63F-238A-A24B-B1F00108523DDBAE}",1012,20448
+1048,"new_AP6","Methodology",,"{FFAB9169-C8BB-CF4C-8977BB00E04523DF}",1012,20449
+1048,"new_AP7","10 day horizon computation method",,"{61488829-ADD4-FC47-88437F1959D91578}",1012,20450
+1048,"new_AP9","Method for calculating exposure values at consolidated level",,"{24BCDA4F-7C73-BA4C-AF1810E6C0A92F0D}",1012,20452
+1057,"new_AS3","Accounting standard",,"{6B15C786-245B-654D-84B53BFAF45E94D1}",1012,20455
+1108,"new_AW1","Type of financial interconnection 1",,"{9AF1CE04-C44F-6745-AC11E0986A184D41}",1012,20456
+1086,"new_BT1","Application of article 7 Waiver granted",,"{5EDAC47A-1C6D-404D-91BC52B57309F56D}",1012,20458
+1010,"new_CG11","Type of guarantee",,"{740056C3-8747-F744-8C02E5AC8C749DD5}",1012,20459
+1011,"new_CM5","Data Weighting",,"{62A329E9-854A-7B4C-AF4BD45F033C8E7B}",1012,20460
+1059,"new_CN1","Type of coupon payment",,"{547FF16F-3322-A44E-BA4E9C55D5DC1B84}",1012,20461
+1059,"new_CN2","Type of issuance placement for financial instruments",,"{F818C019-F930-F543-9FE83AE286044FB4}",1012,20462
+1059,"new_CN3","Type of master agreement",,"{C7CAD117-AD45-7F4C-820D2814113D4C2E}",1012,20463
+1059,"new_CN4","Type of resolution stay agreement",,"{633B4C43-C26F-E14F-A8266B5C9B1DF11F}",1012,20464
+1059,"new_CN5","Type of resolution stay agreement for counterparty",,"{68856CB4-62E8-7F41-8A1B688E14AF0452}",1012,20465
+1012,"new_CO4","Type of identifier",,"{0BF0C3A9-4F29-8E49-825D769C1B18B02C}",1012,20466
+1012,"new_CO26","Is LEI Code/National Code of Counterparty Credit Risk",,"{E42CB345-D20B-AE4C-82492C09F55DBB47}",1012,20488
+1015,"new_CP1","Type of collateralization of the credit protection agreement",,"{4A8A17B9-6463-2842-9B3BE9AD8386D088}",1012,20489
+1013,"new_CQ10","CQS",,"{16AE4C34-A0AE-6548-8AA966A2CF98C917}",1012,20491
+1014,"new_CS1","Correlation scenario",,"{93CBBB8E-D5C2-DD46-AC1B2126874F4C1B}",1012,20492
+1043,"qEC11","Exposure class",,"{F46461E8-1538-1047-8E2C13FDD0190F5E}",1012,20493
+1049,"new_ET1","Event Type",,"{3590802C-FE3F-904C-AA3146269F8D3972}",1012,20496
+1106,"new_EX1","Sector, Type of entity or Related parties/Relationships",,"{0134F248-DAD2-F941-97D3E84F567FFB2D}",1012,20497
+1018,"new_FI65","Type of securitisation",,"{CE371113-1259-D74F-93FD21F73EA389C3}",1012,20499
+1018,"new_FI66","Product type (funding)",,"{A7696680-0156-A24F-9D05B095334E5E7A}",1012,20500
+1018,"new_FI67","Type of instrument",,"{0A2067FC-7C1C-8A48-87DDE480D87D2306}",1012,20501
+1018,"new_FI68","Type of financial liability",,"{11AB1DC3-8335-F14E-9107AF45AFF4E195}",1012,20502
+1091,"new_IA1","Payment band (EUR) 1",,"{B4EE082C-D9A5-5B42-96B6F186C876B1C2}",1012,20505
+1091,"new_IA2","Payment band (EUR) 2",,"{B5D555F4-D06D-8D43-963709D5139EE2C7}",1012,20506
+1021,"new_IG1","Jurisdiction of incorporation",,"{CF20D539-900D-B44F-8829151E4F6A9C3A}",1012,20507
+1022,"new_IM1","Default status",,"{4825F4E6-E860-8B46-AC264A962C756C70}",1012,20511
+1022,"new_IM2","Impairment status (IFRS 9 impairment stage)",,"{F4D77FE6-3944-BC4E-939B8CC48B1C4F92}",1012,20512
+1022,"new_IM3","Time past due or type of trigger for transfer to impairment stage 2",,"{424FB9C1-B70B-0442-B09CA64F3CD8CEDA}",1012,20513
+1099,"new_JF1","Type of sources of PD parameter",,"{C289236D-92EE-C54B-9F47E960D85FBD69}",1012,20514
+1099,"new_JF2","Type of sources of transition matrices",,"{3B77E74B-0A66-774F-95042BB21B1FBC37}",1012,20515
+1025,"new_MA2","Type of importance ordering for competitors currently performing similar economic functions",,"{B0439CA2-8221-F54E-980E9FD377DC7C24}",1012,20516
+1025,"new_MA3","Type of importance ordering for legal barriers for competitors to offer the service",,"{480549F0-F6E3-E546-8DDEFD83DCDBC0ED}",1012,20517
+1025,"new_MA4","Type of importance ordering for operational requirements to entry or expansion",,"{6903C176-3D87-A143-B55DC24E17B741EC}",1012,20518
+1025,"new_MA5","FMI system Type",,"{3C161CBA-655C-BA43-A628F42492CE8DB5}",1012,20519
+1029,"new_OI3","Importance in terms of size based on monetary amounts and degrees of substitutability and impact market",,"{51166E6B-FDD4-A444-AA342BE760BE2115}",1012,20522
+1029,"new_OI4","Type of importance ordering for share of the reporting entity’s cross-jurisdictional activity as percentage of total value",,"{C532CC37-7B48-E242-A14A96CB38339474}",1012,20523
+1029,"new_OI5","Number of EU countries where the reporting entity has a market share above 2%",,"{3BCE1862-AD84-094E-A73A0B3061B4AB63}",1012,20524
+1029,"new_OI6","Importance in terms of market share",,"{E85A67B4-AFCA-1D4F-B1AE7596D7424573}",1012,20525
+1029,"new_OI7","Economic scenario",,"{994AF0FE-E631-AE4B-9F51988C122FA96E}",1012,20526
+1050,"PL_10","Correlation Trading Portfolio",,"{CFC1D51B-E4CA-E546-9C4CA5A2F438CD6E}",1012,20527
+1033,"Hierarchy_7","Ranking in insolvency",,"{68A07C89-475D-F243-8108EAEE75E53FEB}",1012,20529
+1033,"Hierarchy_9","Type of redeem/withdrawal options",,"{34709143-C8D5-B94F-B7BBFCD6550BCA99}",1012,20531
+1105,"new_PT1","FMI system type",,"{D86C5D66-E260-0B47-9D65F0E20656F1C3}",1012,20534
+1096,"new_QI1","Number of price observations",,"{BF3049F6-9A3E-2449-9F49747FAC51E715}",1012,20535
+1100,"new_RB1","Type of institution for resolution",,"{FFECD5B6-DA84-AC4A-B3D22FB2850909E1}",1012,20536
+1104,"new_RC1","Type of issuance placement for financial instruments",,"{A9458442-4532-B348-9A6A5F05F1FACBA3}",1012,20537
+1104,"new_RC2","Type of items being notified by the reporting entity",,"{C0C0846D-1915-F944-856A1BFB53DA670E}",1012,20538
+1104,"new_RC3","Type of impractability for inclusion of the contractual provisions governing a relevant liability the contractual term",,"{66876BBF-F6C7-2741-95509E2EC7946CDE}",1012,20539
+1042,"new_RO1","Type of own funds and eligible liabilities",,"{3AA36A6F-AF88-1C4B-A6A8D7CF7BCC6C92}",1012,20540
+1035,"Hierarchy_9","Group structure",,"{18E2B72C-5779-114C-A88327C7C5E28A3D}",1012,20541
+1035,"Hierarchy_10","Role in the securitisation process",,"{E91B3E3A-CFD3-7E46-8D4DAA668780EAC6}",1012,20542
+1035,"Hierarchy_11","Type of relationship of the counterparty",,"{B3C7463A-91CC-FF45-9BABBF9A6C634012}",1012,20543
+1035,"Hierarchy_12","Mode of participation in FMI",,"{C23699B2-4833-F14B-B0397928FDD9ABA2}",1012,20544
+1035,"Hierarchy_13","Relationships",,"{2C9157C8-6729-774C-86ED3A17CF613527}",1012,20545
+1082,"new_RS1","Risk factor identifier",,"{963AF9C1-8247-7346-B43FB7475C139307}",1012,20547
+1064,"SC6","Reporting level",,"{0A15855B-EC21-5648-A22856C6FE2AE1E6}",1012,20548
+1062,"new_ST1","Type of retention of net economic interest applied",,"{64F3282C-ED20-CB49-A123B9F333512707}",1012,20550
+1062,"new_ST2","Type of issuance",,"{1A4616D6-5EF1-2F4D-8152702AA3D9F489}",1012,20551
+1062,"new_ST3","Type of SRT (significant risk transfer)",,"{1721D760-4ED1-7040-AF6D464745E980D1}",1012,20552
+1062,"new_ST4","Type of synthetic excess spread for securitisation positions",,"{7906D072-60F5-BC48-89C11897029E3C1A}",1012,20553
+1062,"new_ST5","Type of amortisation provisions for securitisation provisions",,"{C6108ED3-22B5-F942-90C7EA5CA7393584}",1012,20554
+1046,"new_SX1","Type of entity",,"{8B75CAFF-B2F0-2E44-819FDF93DB74579D}",1012,20555
+1037,"new_TA8","Type of banking business model",,"{56673224-FA4D-A04D-B417318C986D6625}",1012,20556
+1037,"new_TA9","Type of specialised lending exposure",,"{3600F869-A320-7B4D-A765FBA04C31DE2C}",1012,20557
+1037,"new_TA10","Type of service received (Code list)",,"{8FFD9FEC-2AAE-C847-93BF324F6EB17F4D}",1012,20558
+1047,"qTE_3","Type of entity's ownership structure",,"{738E17B2-2D62-1340-8C3F24E6F0EBFE83}",1012,20559
+1047,"qTE_4","Type of entity serving as counterparty",,"{9B16B768-3385-3B4B-9942B6BFBC7EE746}",1012,20560
+1047,"qTE_5","Type of central clearing counterparty in the transaction",,"{9E2DA8D7-2730-0546-8B2B396D31107851}",1012,20561
+1038,"new_TI1","Liquidity Horizon",,"{4E98582A-480E-6242-930D8B185E95F127}",1012,20562
+1038,"new_TI2","Length of observation period",,"{6C899C3A-9D47-B646-A3C9862B44AB95F0}",1012,20563
+1038,"new_TI3","Estimated time for substitutability",,"{E2F710E3-BCC0-1F46-997CCEFAE238E779}",1012,20564
+1038,"new_TI4","Estimated time for access to contracts",,"{06F6B933-7651-0C4A-A038A50B98EAA5DB}",1012,20565
+1038,"new_TI5","Type of importance ordering for expected time for substitution indicator",,"{E60C32C7-21D9-9B4A-97E988C86EF68564}",1012,20566
+1103,"new_TM1","Type of entity/sector/market-related concepts",,"{64246535-3A81-8E4C-A2D4E5A8C454D71B}",1012,20567
+1060,"qTR_2","Number of modelling factors used in the risk calculation",,"{31EFEB27-4BDF-6F40-886307FC1271116E}",1012,20568
+1060,"qTR_3","Type of risk",,"{50211EF7-F0BC-2449-BAE609E3ACE64BCA}",1012,20569
+1060,"qTR_4","Type of market risk (risk component)",,"{3AEF9B8C-A4B6-1846-85C16DD278D4550D}",1012,20570
+1060,"qTR_5","Market risk class",,"{1E27D539-C36E-3947-B4EB3BCEE29081B8}",1012,20571
+1107,"new_TZ1","Critical function for dropdown",,"{B44229C2-73A3-0745-9B8509506561308F}",1012,20572
+1030,"new_OR11","Source of LGDs",,"{20300C16-3FF2-7949-A67B2FE860F9D220}",1012,20577
+1030,"new_OR12","Type of regulatory capital",,"{CE1FB06B-9028-8C44-8C1A10A4B7D563CC}",1012,20578
+1030,"new_OR13","Type of pricing model applied to derive the sensitivities of risk factors",,"{AB8D3D0F-E05B-D04B-83BAEC36B317976F}",1012,20579
+1030,"new_OR14","Type of definition for sensitivity to risk factors",,"{D10A6DDF-227E-1E4C-92851525EB67509B}",1012,20580
+1041,"RE6","Status of an entity in the resolution plan [DOM2.0]",,"{EC0C3A72-100C-6B44-BF877C3B9CBC9535}",1012,20581
+1041,"RE7","BRRD waiver granted",,"{B9823660-9845-E345-84CC28990D6EDE52}",1012,20582
+1041,"RE8","Type of MREL decision",,"{8A7934F5-A28F-264C-BC3DEBDF22A5FF16}",1012,20583
+1041,"RE11","Investor, creditor",,"{1065EA92-EC7C-D741-BE50FFEFF7353A05}",1012,20586
+633,"EN3","Name of the Deposit Guarantee Scheme",,"{30A118B1-1CD6-BA46-9D70DBE719951234}",1012,20589
+210,"CU8","Currency code",,"{21C1A87F-BCE2-8C41-9D13A0B556B02763}",1012,20608
+210,"CU10","Reporting currency",,"{6313EAE2-FACB-2942-8101B4F856C0E6E9}",1012,20610
+1059,"new_CN6","Contract type ",,"{BA74F43F-2DBF-A34C-A6F67EFFA001FC5E}",1012,20612
+1012,"new_CO27","Type of code of service provider",,"{5D11F263-7A54-324F-97825DDA17DCF1E2}",1012,20614
+1037,"new_TA11","Type of service delivery of service provider",,"{52067B9B-05D1-D040-A5D725EEE64D1C9A}",1012,20619
+1037,"new_TA12","Type of criticality",,"{B2C1DD22-6247-D247-A9EF1EB3C012CFD2}",1012,20620
+1054,"new_AF4","Type of liabilities",,"{6FEA97BF-51B6-FF46-8522D98CD6834DC0}",1012,20621
+1048,"new_AP10","External ratings-based approach for securitisation positions (SEC-ERBA), Internal Assessment Approach (IAA)",,"{41C52754-8CE0-7C4F-801AE060D65CEF42}",1012,20622
+1041,"new_RE16","Type of contractual recognition of bail-in powers",,"{4A810E86-3D96-1A49-A4C3220F73BC161D}",1012,20623
+1059,"new_CN7","Type of MA",,"{C7D8AF7A-93DE-5646-BD12BE0EE0F38375}",1012,20624
+1018,"new_FI69","Type of financial instrument",,"{19C48A7D-FA2A-8444-AC5CA48261055AA4}",1012,20625
+1035,"new_RP15","Individual client or group of clients",,"{69EF9187-1527-754A-8A22C76766E81CE2}",1012,20626
+1045,"new_ES2","Sector or type of counterparty",,"{5BEB2DCE-907C-FD4A-B4735D195339024F}",1012,20627
+1060,"qTR_6","CCR",,"{CAE66F0E-E9FA-044A-95421178D119EE83}",1012,20628
+1054,"new_AF5","Type of financial interconnection",,"{76A91F32-58B9-7743-8FC9208BC05433F3}",1012,20630
+1047,"new_qTE6","Type of entity",,"{3059A19F-227F-0547-9E39734593D4626B}",1012,20631
+1086,"new_BT2","Submisson of SBM validation portfolio results",,"{E078D0F9-1ED4-D04B-B7898A146A745994}",1012,20633
+1054,"qAF_agg4","Leases",,"{59A7270C-8102-2945-8AC94788982A98DE}",1012,20634
+1081,"qAE5","Subcategory for CCR4",,"{0DF0724E-E46C-A540-89D86145414D90B1}",1012,20635
+1021,"new_IG2","Country the law of which governs access to the FMI and the law of which governs access to the FMI",,"{3BF722A7-746C-2946-BB41AD4DEC33FD93}",1012,20636
+1044,"newqSE_agg_1","Central governments or central banks, regional governments and local authorities, Multilateral Development Banks and International organisation and Public Sector Entities",,"{A312FDC0-3844-3342-8B091F90F50EFBE3}",1012,20639
+1048,"new_AP11","Basic Indicator Approach, Standardised Approach, Advanced measurement approaches",,"{DD218941-D449-B24B-9051CE7E2396B2CC}",1012,20643
+1048,"new_AP12","Standardised and IRB approach",,"{BB66A7A7-27A9-D841-849706944407439F}",1012,20644
+1048,"new_AP13","Application of formula for K-TCD (IFR), Standardised approach, IRB Approach, Advanced method, Standardised method, Original exposures method",,"{F09EA753-E8BB-274C-8483F9CF0ED36018}",1012,20645
+1048,"new_AP14","Original exposure method, Simplified SA-CCR, SA-CCR",,"{488A28D0-7CF2-504E-9F1774562ECC53D3}",1012,20646
+1048,"new_AP15","Application of formula for K-TCD (IFR)a, Standardised Approach‌ for credit risk, Standardised approach (SA) for CVA risk’ and ‘basic approach’",,"{92F84B9D-F610-B741-8D9DE767AAA50C9B}",1012,20647
+1048,"new_AP16","Advanced method, Standardised Method, Original Exposure Method",,"{E4FA19EF-0E02-4E45-B609CB7747C55CA7}",1012,20648
+1039,"AO_agg_4","Trade date payables, deferred tax, minority interests and other liabilities",,"{AA604DE4-DF52-124B-B5771D78CE86DC72}",1012,20652
+1039,"AO_agg_5","All liabilities and own funds",,"{A1C9E3FA-B9DE-054D-BE9DBB3B06D43B11}",1012,20653
+1039,"AO_agg_6","Deductible deferred tax assets that rely on future profitability and arise from temporary differences",,"{721A099B-AFC6-894C-9F69FB173A2C3B0A}",1012,20654
+1039,"AO_agg_7","Regulatory capital items, Share premium and Retained earnings",,"{19C2070F-94F6-574A-A9C1C07D6E985150}",1012,20655
+1055,"new_qAG1_agg","Assets, collateral received, own debt securities other than securitisations and covered bonds",,"{19B91D45-D64B-3A4B-9D871756D266475E}",1012,20656
+1067,"new_qNI1_agg","Physically traded commodities, trade date receivables, non-performing assets and other assets",,"{CDDE17A4-E381-A34A-BC168ED0451AC166}",1012,20657
+1071,"new_FT3","Unsecured transactions/deposits",,"{EACDDB57-0BB9-4D42-8D74F963AFB64E86}",1012,20658
+1034,"new_qRF1_agg","Current and previous reporting periods",,"{219CAB6B-40D4-A54D-BEA1123EC5EBCEB3}",1012,20660
+1041,"new_RE17","External MREL, internal MREL",,"{3DBB252C-09C1-5042-B1197E5B9107B369}",1012,20661
+1065,"new_qPZ1_agg","Investments in subsidiaries, joint ventures and associates and assets other than cash and cash balances at central banks,reverse repos, loans and advances, derivatives, debt securities and equity instruments not classified as held for sale","
+","{A3F518A9-201A-D147-BF5AAD62A289F516}",1012,20662
+1054,"qAF_agg6","Capital and subordinated loans",,"{DF6D221C-5496-DC49-AA9ABF19154372D7}",1012,20663
+1054,"qAF_agg7","Paid up capital and subordinated loans",,"{73FF4045-598F-D24A-A4B0B095A8999D98}",1012,20664
+1054,"qAF_agg8","Paid up capital, share premium and subordinated loans",,"{A9E44785-5A13-AB41-A9B144BFB6822857}",1012,20665
+1054,"qAF_agg9","Debt instruments, Equity instruments, Derivatives, Off balance sheet items",,"{E5C65FDC-7AF9-4541-A0E263EB0F5A4C19}",1012,20666
+1054,"qAF_agg10","Derivatives, Debt securities, Loans and advances, Equity instruments, Loan commitments given / received, Financial guarantees given / received, Other Commitments given / received, Deposits, Debt securities issued, Other financial liabilities",,"{1992729C-EAA6-0F46-BD833EB4E77D0B77}",1012,20667
+1054,"qAF_agg11","Debt securities issued and equity issued",,"{65112B44-32BE-9F42-B734068283110261}",1012,20668
+1054,"qAF_agg12","Derivatives, securities financing transactions, other assets, and off-balance-sheet items",,"{D78ECFE5-1987-9549-94C72FAA191EF182}",1012,20669
+1054,"qAF_agg13","Loans and advances, fee and commission",,"{DBA7CF47-2CC9-F74B-8097BF76EE42E7C8}",1012,20670
+1007,"new_AI_agg_85","Liabilities, equity and off-balance sheet items",,"{7E1E99E3-E641-D244-8B18488B9C4F1A5B}",1012,20673
+1018,"FI_agg_70","Securities and exchange traded equities",,"{8B54D861-0F23-6E4E-9E7C4D22910282B8}",1012,20683
+1018,"FI_agg_78","Mortgages on immovable property or Residential loan guaranteed by an eligible protection provider",,"{0CF75F31-88CD-A849-B60B72F4840D0F37}",1012,20691
+1018,"FI_agg_83","Own equity instruments issued and subordinated loans",,"{7202DB10-55C9-9D42-A8A3A007808D7C0F}",1012,20696
+1018,"FI_agg_87","Reverse repurchase loans and financial assets other than loans and advances to households, non-financial corporations and financial corporations and financial assets other than debt securities",,"{01659653-D051-3044-B635CFA0690B38C5}",1012,20700
+1018,"FI_agg_94","Deposits and loans and advances",,"{333189BB-2C51-234C-8B1E07A40E81F1CC}",1012,20707
+1018,"FI_agg_107","Securitisation, Re-Securitisation",,"{436E0054-8AEA-3B4C-99285A395D03C9AD}",1012,20720
+1035,"RP_agg_17","Entities other than entities of the group and other than institutional protection scheme or cooperative network",,"{062B3ACD-EECF-024C-9E5104EE64BBCD27}",1012,20730
+1035,"RP_agg_18","Issuer and guarantee recipient",,"{0C05EAF9-ECB6-594B-B20D9AC210792311}",1012,20731
+1035,"RP_agg_19","Investor, creditor, guarantee provider",,"{76A21844-AD92-4D44-9DF9FFE8669F1FC6}",1012,20732
+1035,"RP_agg_20","Investor, creditor",,"{D56CFE1B-974B-B04D-A3C08279F38642DA}",1012,20733
+1035,"RP_agg_21","Joint ventures, Associates",,"{53C541B9-D746-9445-A9E79B63B17DAA3F}",1012,20734
+1035,"RP_agg_22","Originator, Sponsor",,"{6F80EF65-2B46-5446-94AD3790D31B6007}",1012,20735
+1035,"RP_agg_23","Originator, Investor",,"{F629B392-3983-2D4F-A8C7882CA259CD00}",1012,20736
+1010,"new_CG12_agg","Unguaranteed or guaranteed by other entities than a Deposit Guarantee Scheme or assimilated",,"{87C1105F-8063-6C47-903C452438587AE2}",1012,20761
+1011,"new_CM9","Reference period for SVaR calculation (code list)",,"{376018FD-95E9-A944-8A5EA5BAF29068B2}",1012,20762
+1010,"new_CG14_agg","Non collateralized and unguaranteed",,"{8BDDFB0D-650F-9D43-97BF358CE2448F29}",1012,20764
+1010,"new_CG15_agg","Non covered by a Deposit Guarantee Scheme or assimilated",,"{FEECD9CE-E719-9B49-9405AE54A321E8C4}",1012,20765
+1043,"qEC15","Items associated with a particular high risk, Exposures to institutions and corporates with a short-term credit assessment, Exposures in the form of units or shares in CIUs , Equity claims, Other items",,"{BFDD2C5A-E9F1-1F42-9FD954BEADD40C26}",1012,20766
+1043,"qEC16","Exposures to regional governments or local authorities, Exposures to multilateral development banks, Exposure to international organisations, Exposures to public sector entities",,"{7E758618-62FA-7A4B-854B41867C8AA82D}",1012,20767
+1043,"qEC17","Exposures to central governments or central banks, Exposures to regional governments or local authorities, Exposures to multilateral development banks, Exposures to international organisations, Exposures to public sector entities",,"{73C9388B-D507-9448-A2D98B0C824C7728}",1012,20768
+1043,"qEC18","Exposures to multilateral development banks, Exposures to international organisations",,"{DE6B958B-FC0D-1544-9233CB4C1FEB58C8}",1012,20769
+1043,"qEC19","Equity exposures, Items representing securitisation positions, Other non-credit obligation assets",,"{5B679E22-4F81-8F47-8DAEE324D4D5E234}",1012,20770
+1043,"qEC20","Retail exposures, Exposures to corporates",,"{D581EFC6-BD6F-4448-A4E1175269A19CC6}",1012,20771
+1045,"new_ES3","Financial customers and central banks",,"{C71596DB-7E0E-E94E-AAFAC84DEC441989}",1012,20772
+1045,"new_ES4","Credit institutions, investment firms, financial holding companies, securities dealers, insurance companies, mutual funds, hedge funds, pension funds, asset management companies, private equity funds and central counterparties (CCPs)",,"{7A7970E1-FFB9-1148-91623DEA1BBAAC73}",1012,20773
+1045,"new_ES5","Large value funds transfer systems, agent banks, financial institutions, comercial customers",,"{C347ECC5-84CC-2941-B0E26779D7ABB33C}",1012,20774
+1045,"new_ES6","Credit institutions and investment firms",,"{6793B2FD-32B1-524C-952FD7B6A950DC45}",1012,20775
+1070,"new_qFP1_agg","Other than derivatives and short positions",,"{8B10A407-5CE8-434D-BC225E9813B31D42}",1012,20776
+1070,"new_qFP2_agg","Derivatives, Short positions, Deposits, Debt securities issued, Other financial liabilities",,"{3A185C74-8D61-7745-B947B084138ABA02}",1012,20777
+1070,"new_qFP3_agg","Short positions, other financial liabilities",,"{7A92F5A4-380F-484A-93D3E08974AA2C53}",1012,20778
+1070,"new_qFP4_agg","Derivatives, Equity instruments, Debt securities, Loans and advances, Short positions, Deposits, Debt securities issued, Other financial liabilities",,"{06565BCB-7F07-6D43-B9D53E74BD035019}",1012,20779
+1031,"new_PC4_agg","0,25%,1%,1,6%",,"{2F3891B0-F0E4-8144-81B6A9B2764F1746}",1012,20783
+1031,"new_PC5_agg","0%,0.2%,0.4%,0.7%",,"{08800EE4-C849-B247-8CB169F6C3496019}",1012,20784
+1031,"new_PC6_agg","1,25%,1,75%,2,25%",,"{1979E614-A967-8049-9C1441B25CA1C450}",1012,20785
+1031,"new_PC7_agg","2,75%,3,25%,3,75%,4,5%,5,25%,6%,8%,12,5%",,"{24A0E304-8FE0-AB47-BDAE44CC5E47155B}",1012,20786
+1042,"new_RO2","Regulatory capital items and eligible liabilities",,"{F57A5AA2-0950-8D4C-AAD0F08635593056}",1012,20788
+1063,"new_SM2_agg","Management body in its management function, senior management",,"{D92A9F52-1AEF-D943-8A040B512559CFAE}",1012,20792
+1037,"new_TA14","Clearing, assets custody, cash management and comparable services",,"{CCA4D771-ED09-344A-AA1967CC17BBFFB1}",1012,20794
+1037,"new_TA15","Payment services, cash services, clearing and settlement, custody",,"{56078EC8-E47B-6949-B8F48274F5D09C56}",1012,20795
+1037,"new_TA16","Universal banking (retail/commercial and investment banking)",,"{9F6660AF-33C2-5C43-9B659E659FE3F468}",1012,20796
+1044,"new_qSE_agg_2","Credit institutions, multilateral development banks and Public Sector Entities",,"{61472AA1-89B0-1043-BD24702D5F2E8314}",1012,20797
+1044,"new_qSE_agg_3","Central governments, multilateral development banks, public sector entities",,"{18E7D16F-8B36-674A-B7F491CB24E7DECA}",1012,20798
+1044,"new_qSE_agg_4","Central governments, central banks, multilateral development banks and public sector entities",,"{86EE769F-3384-4B48-AAA7C17AC816433F}",1012,20799
+1044,"new_qSE_agg_5","Regional governments and local authorities, Multilateral Development Banks, International organisation and Public Sector Entities",,"{45A9FDD6-5A12-1D45-9C8BBD4299AAFBC8}",1012,20800
+1060,"qTR_7","Credit risk, counterparty credit risk and free deliveries",,"{7FD0C0B0-3BA0-B64B-9FFECC3CD615F21A}",1012,20801
+1060,"qTR_8","Credit risk and free deliveries",,"{B7393815-192C-A44F-ACFA80291257E880}",1012,20802
+1060,"qTR_9","Credit risk, counterparty credit risk, dilution risk and free deliveries",,"{A77B9789-1223-3442-84B12EDA91BCCB02}",1012,20803
+1060,"qTR_10","Position, fx and commodities risks",,"{55AE4D78-4081-7046-A463D9AD21A0C63A}",1012,20804
+1060,"qTR_11","Credit risk, counterparty credit risk, dilution risk, free deliveries and settlement/delivery risk",,"{0AAEDB16-D5CF-E448-954BF81F2D1C4F61}",1012,20805
+1060,"qTR_12","Interest rate risk, Equity risk",,"{8BB98D8E-5AD6-0A40-B7AC737213955719}",1012,20806
+1010,"new_CG16_agg","Other funded or unfunded credit protection",,"{35E6FBD4-889F-1F48-AA242F3AA658925C}",1012,20807
+1022,"new_IM4_agg","Not past due or past due <= 90 days",,"{2DBD5F2F-48A7-B047-9AAD741921F21B3B}",1012,20808
+1022,"new_IM5_agg","Not past due or past due <= 30 days",,"{AE845CB6-8948-A147-AA496D0FD41A74F7}",1012,20809
+1104,"new_RC_4_agg","Impracticability conditions (a), (c) and (d)",,"{5D7C8802-CF42-7C45-B302A6A0975AD2D9}",1012,20812
+1104,"new_RC_5_agg","Impracticability conditions (a), (c), (d) and (e)",,"{E91F0456-EF7C-AB40-9FEF07509841C04A}",1012,20813
+1104,"new_RC_6_agg","Impracticability conditions (a), (d) and (e)",,"{D3E36891-601A-374E-9A9E16E4F005FF2D}",1012,20814
+1104,"new_RC_7_agg","Impracticability conditions (a), (b) and (d)",,"{FCDF088F-9B22-BF41-BF4ED95241CF002D}",1012,20815
+1104,"new_RC_8_agg","Impracticability conditions (c) and (d)",,"{1A26B8B3-E685-C249-9C52DBDB006A0564}",1012,20816
+1104,"new_RC_9_agg","Impracticability conditions (b), (c), (d) and (e)",,"{2BB30282-75D5-F941-9A28F8520ACA72BA}",1012,20817
+1104,"new_RC_10_agg","Impracticability conditions (a) and (c)",,"{014347A5-7C52-3C44-80DAE6D227644FB6}",1012,20818
+1104,"new_RC_11_agg","Impracticability conditions (b), (c) and (e)",,"{2F65C10E-7FC6-264A-B6EBFB642DACB813}",1012,20819
+1104,"new_RC_12_agg","Impracticability conditions (a), (c) and (e)",,"{0E89ADB2-6DE4-9148-B1A44E08D4E46549}",1012,20820
+1104,"new_RC_13_agg","Impracticability conditions (c) and (e)",,"{4085E728-AF8F-D642-95F73FC6BA4DCEFE}",1012,20821
+1104,"new_RC_14_agg","Impracticability conditions (c), (d) and (e)",,"{EC0EF079-AE17-604F-88B93905B94CE0A0}",1012,20822
+1104,"new_RC_15_agg","Impracticability conditions (b) and (e)",,"{86DF5C7F-6970-3141-A53C5C32B0D7CB5E}",1012,20823
+1104,"new_RC_16_agg","Impracticability conditions (a) and (e)",,"{1927DB72-69B4-D548-9988CBE055C7219D}",1012,20824
+1104,"new_RC_17_agg","Impracticability conditions (b) and (c)",,"{E6708E6B-3CC1-714D-AA4F56ADEDFA5A7A}",1012,20825
+1104,"new_RC_18_agg","Impracticability conditions (a) and (b)",,"{078D2FEF-022B-FE45-9B5752DE845A6611}",1012,20826
+1104,"new_RC_19_agg","Impracticability conditions (a), (b), (e) and (d)",,"{AC8561F9-B36F-7440-8B573F3D4BA007DC}",1012,20827
+1104,"new_RC_20_agg","Impracticability conditions (a), (b) and (e)",,"{A270771C-EE0D-B44F-88C51427A84D5A84}",1012,20828
+1104,"new_RC_21_agg","Impracticability conditions (a), (b) and (c)",,"{AD41AB4F-8686-9C49-B8BFD100D102C493}",1012,20829
+1104,"new_RC_22_agg","Impracticability conditions (b), (d) and (e)",,"{C7432A96-F09E-C141-A0135C87371D46FF}",1012,20830
+1104,"new_RC_23_agg","Impracticability conditions (a) and (d)",,"{A0FCD377-11E0-2141-81EBF2EC4E2EAAB2}",1012,20831
+1104,"new_RC_24_agg","Impracticability conditions (a), (b), (c) and (e)",,"{39526AD5-1BA9-DC43-81956A8FBB851A47}",1012,20832
+1104,"new_RC_25_agg","Impracticability conditions (d) and (e)",,"{9E4E01DD-2E94-0A45-BE4DA9B7EE55384D}",1012,20833
+1104,"new_RC_26_agg","Impracticability conditions (b), (c) and (d)",,"{EA1840A8-5CF4-CC45-A5D1B0A9FF11ACEE}",1012,20834
+1104,"new_RC_27_agg","Impracticability conditions (a), (b), (c) and (d)",,"{7D1E1DDA-169F-1E47-A2FF831466AF1512}",1012,20835
+1104,"new_RC_28_agg","Impracticability conditions (b) and (d)",,"{AEF626E5-C31F-E841-AE2971954AE74295}",1012,20836
+1109,"new_CX1","Accounting treatment (1)",,"{543D04A0-674C-6347-8F07A80CDF33E3AA}",1012,20837
+1038,"new_TI6","Hierarchy for time interval",,"{61A0B380-A0A5-F348-B0D54C75415678FD}",1012,20843
+1081,"qAE6","Retail exposures - with own estimates of LGD or conversion factors",,"{045132F0-474F-9746-B0FD36F162736163}",1012,20844
+210,"CU9","Second currency in pair code",,"{64C0075F-E901-9F49-B619A53945A8BB8C}",1012,20851
+1018,"newFI_108","Loans to corporates or SMEs",,"{71C280B7-CD6F-3C41-A75022B869FA65B1}",1012,20852
+1111,"new_qTU","Type of underlying for securitisations",,"{773DF930-24B4-5845-B55B929FF539C83E}",1012,20853
+250,"GA12","Hierarchy domestic/non-domestic",,"{81838BB5-88CC-144D-9176254A2421E44D}",1012,20854
+250,"GA13","Hierarchy EEA/non-EEA",,"{0C33F05A-8E99-7B4E-824114E0B498AA74}",1012,20855
+1048,"new_AP17","SME supporting factor treatment",,"{2FD5115B-F99D-D745-A82567AD2C6560B5}",1012,20856
+1048,"new_AP18","Total exposure",,"{7539A7DD-FA78-F146-B241B286245A0118}",1012,20857
+1064,"SC8","Accounting treatment",,"{11CB036E-CD60-7840-827CEC9EA7FF8C04}",1012,20859
+1041,"new_RE18","Type of subordination requirement",,"{DC6ED4A2-121D-EA40-9AEF451F3DDABFF2}",1012,20860
+1040,"qPY_3","Initiated Electronically/non electronically",,"{4D61764C-D43C-8A4C-86C4C330BEF48F30}",1012,20861
+1040,"qPY_4","Initiated via remote/non-remote channel",,"{413BE4A3-4676-9949-A0F958369B31D845}",1012,20863
+1040,"qPY_5","Type of authentication",,"{32CEB71E-E001-A541-A71CBBB7D8C5CE68}",1012,20864
+1049,"new_ET2","Issuance of a payment order by the fraudster",,"{2C02D629-8E3B-DE46-94C3391729F5354F}",1012,20865
+1038,"new_TI7","Transition unsettled",,"{204E1119-1611-1B4D-9DDBD3F69F974921}",1012,20866
+1018,"new_FI109","Exposure securitization",,"{A9BFF0CF-9EEF-7140-B475CF62831DCFEA}",1012,20867
+280,"NC4","NACE codes (level 1) WITH_x0_with fin. and public sec.",,"{4D06ABF6-8AF5-FD45-958F3AA992CB920B}",1012,20868
+1037,"new_TA18","Number of events",,"{F473DE2D-0A96-CC43-B67ADE388E3E9F06}",1012,20869
+1048,"new_AP19","Exposure credit risk",,"{7039790F-34BF-9D46-BC599CA391A0C11F}",1012,20870
+1048,"new_AP20","Exposure market risk",,"{8E4D0DF4-7482-BF4A-B6564AD8365A2A21}",1012,20871
+1060,"qTR_13","Type of underlying risks to derivatives and OTC","It cover all types of risks for derivatives (used in Finrep templates F 10, F 11 and F 16.04)","{0A2D2326-F35C-044F-8AD800EC29699C53}",1012,20872
+1007,"new_AI184","Intangible assets ","Goodwill and other intangible assets","{7A7545DA-65EE-154F-94523F5D22940D39}",1012,20874
+1037,"new_TA19","Type of securities services ","Issuances, transfer orders and other types of securities services ","{6D3C8BEF-34F9-944A-88718794D73D42BA}",1012,20876
+1047,"new_qTE7","Collective investment undertakings and other entities ",,"{2ABD0890-3DD4-C540-A9C31E67387D3EAC}",1012,20877
+1047,"new_qTE8","Collective investment undertakings, insurance companies and other entities ",,"{E8618E4D-1A71-8E4F-A6302950C86E5BF8}",1012,20878
+1047,"new_qTE9","Type of investment vehicles ","Collective investment undertakings (CIU), pension funds, customer portfolios managed on discretionary basis and other investment vehicles ","{A4BB65C3-1676-8B48-BA670384B4EC66A4}",1012,20879
+1047,"new_qTE10","Type of entities different from collective investment undertakings (CUIs)","Insurance companies and other entities other than CUIs","{FC10E3D7-79F2-2241-86A605C3AFC25A2C}",1012,20880
+1037,"new_TA20","Custody","Custody services ","{B5755EE1-7E67-EA45-9A2551075B8892A4}",1012,20881
+1007,"new_AI185","Intangible assets other than goodwill","Software assets treated as intangible assets and other intangible assets different from goodwill","{C3AC9111-2D16-6948-AEFA94FA03282C80}",1012,20882
+250,"GA14","Countries with other or unknown","Countries applicable for drop down or open axis tables
+not containing x0 (not applicable) and x1 (all countries). it is linked with GA5_3 by also removing x1 from the hierarchy. It also includes item Other or unknown.","{C4322FE2-6474-5645-83017B07D24D3168}",1012,20883
+1038,"new_TI18","Expected time for substitution",,"{74F0A7F7-DBD3-8C4A-BAF4F6BC6B7CAE39}",1012,20884
+1038,"new_TI8","Type of importance ordering for expected time for substitution indicator in days",,"{1DA7A10A-45B4-A24D-886BCCB00E026B71}",1012,20886
+1038,"new_TI9","Type of importance ordering for expected time for substitution indicator in weeks/months",,"{0560D304-3B83-1F4F-9D0B932FB53DA5CD}",1012,20887
+1038,"new_TI10","Type of importance ordering for expected time for substitution indicator in days/months",,"{2C4FA2ED-0089-B746-A4E0FC1820895242}",1012,20888
+1035,"new_RP16","Type of service delivery of service provider	",,"{9BC40D19-BCA4-0E4B-8152FFC65919CF86}",1012,20889
+1007,"new_AI186","Type of operational asset",,"{07C0C876-7F0D-B647-9A9ED8110FBE8835}",1012,20890
+1086,"new_BT3","Resolution resilience mitigation",,"{D03CE91C-19FC-F04E-813D1626A02AF1D6}",1012,20891
+1086,"new_BT4","Resolution resilience",,"{03D00D5C-9865-B248-ACD22AF8A9770AA9}",1012,20892
+1086,"new_BT5","Resolution-resilient contract",,"{117E2D21-DF02-FD45-957B51949ADFE81B}",1012,20893
+1107,"new_TZ2","Critical function",,"{7B3BBF0B-005A-6948-A761B0D9D476D7FD}",1012,20894
+1059,"new_CN8","Public/Private",,"{8DFBA304-3922-BE4F-903728894622F65C}",1012,20895
+1032,"new_PI4","Hierarchy_4",,"{4DE387D3-8B19-0C40-BDB50999D806325B}",1012,20896
+1069,"FA_agg_2","Financial interconnection",,"{038AB5AC-3A25-D54E-9485F0B44438EA5F}",1012,20897
+1040,"qPY_6","Type of initiation of payments",,"{22477405-B999-6F4F-8C2EA64EF5643737}",1012,20898
+1069,"FA_agg_3","Liabilities structure",,"{6BF37354-34ED-6F40-A1AAB93A310EA22C}",1012,20899
+1035,"new_RP17","Controlling and non-controling owners",,"{2B95B517-69C8-C940-868E67A6843D0803}",1012,20900
+1048,"new_AP21","Exposure credit risk (Standardised and IRB approach)",,"{F0D5313D-5B03-A243-9EBD8D1177267F5B}",1012,20901
+1091,"new_IA3","High Earners payment bands",,"{CE9F51CE-0ACD-A044-B6D549DE8EE35A04}",1012,20902
+1091,"new_IA4","Remuneration payment bands DIS",,"{054E3650-7321-804A-861DBE38AF87A655}",1012,20903
+1048,"new_AP22","CCR method for calculating the exposure values of derivative positions ",,"{69F8712E-D4D8-E347-92DAEAD0AB8447BD}",1012,20904
+1113,"new_TT1","Institution type for LR",,"{5527A18A-B990-DE41-BCB7CA9819FEFFC7}",1012,20906
+1048,"new_AP23","Additional requirements for options (non-delta risks)",,"{80FDD7BE-C110-E249-9060BDE4C2C1B55A}",1012,20907
+1060,"qTR_14","General and specific risk",,"{EA4423FB-F6C3-6945-B722F6477FBC88B2}",1012,20908
