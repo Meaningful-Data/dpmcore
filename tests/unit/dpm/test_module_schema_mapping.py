@@ -1,6 +1,34 @@
-import unittest
+"""Tests for the static module schema mapping lookup."""
 
-from py_dpm.dpm.data import get_module_schema_ref, get_module_schema_ref_by_version
+import importlib.util
+import sys
+import unittest
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _load_data_module():
+    """Load dpmcore.data bypassing dpmcore's ORM-heavy __init__."""
+    mod_name = "dpmcore.data._standalone"
+    if mod_name in sys.modules:
+        del sys.modules[mod_name]
+
+    spec = importlib.util.spec_from_file_location(
+        mod_name,
+        _REPO_ROOT / "src/dpmcore/data/__init__.py",
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[mod_name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_data = _load_data_module()
+get_module_schema_ref = _data.get_module_schema_ref
+get_module_schema_ref_by_version = (
+    _data.get_module_schema_ref_by_version
+)
 
 
 class TestModuleSchemaMapping(unittest.TestCase):

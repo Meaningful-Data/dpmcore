@@ -605,7 +605,7 @@ def _load_ast_generator():
 
     spec = importlib.util.spec_from_file_location(
         mod_name,
-        "src/dpmcore/services/ast_generator.py",
+        _REPO_ROOT / "src/dpmcore/services/ast_generator.py",
     )
     mod = importlib.util.module_from_spec(spec)
     sys.modules[mod_name] = mod
