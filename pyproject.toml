@@ -1,7 +1,7 @@
 [project]
 name = "dpmcore"
 version = "0.1.0"
-description = "Your opinionated Python DPM library"
+description = "Python library for DPM 2.0 Refit regulatory reporting (ORM, services, REST API)"
 license = { text = "Apache-2.0" }
 readme = "README.md"
 requires-python = ">=3.10"
@@ -33,7 +33,7 @@ dependencies = [
 [project.urls]
 homepage = "https://dpmcore.meaningfuldata.eu"
 repository = "https://github.com/Meaningful-Data/dpmcore"
-documentation = "https://meaningful-data.github.io/dpmcore"
+documentation = "https://docs.dpmcore.meaningfuldata.eu"
 "Bug Tracker" = "https://github.com/Meaningful-Data/dpmcore/issues"
 
 [project.optional-dependencies]
