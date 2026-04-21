@@ -49,12 +49,8 @@ class Table(Base):
 
     __tablename__ = "Table"
 
-    table_id: Mapped[int] = mapped_column(
-        "TableID", Integer, primary_key=True
-    )
-    is_abstract: Mapped[Optional[bool]] = mapped_column(
-        "IsAbstract", Boolean
-    )
+    table_id: Mapped[int] = mapped_column("TableID", Integer, primary_key=True)
+    is_abstract: Mapped[Optional[bool]] = mapped_column("IsAbstract", Boolean)
     has_open_columns: Mapped[Optional[bool]] = mapped_column(
         "HasOpenColumns", Boolean
     )
@@ -67,17 +63,13 @@ class Table(Base):
     is_normalised: Mapped[Optional[bool]] = mapped_column(
         "IsNormalised", Boolean
     )
-    is_flat: Mapped[Optional[bool]] = mapped_column(
-        "IsFlat", Boolean
-    )
+    is_flat: Mapped[Optional[bool]] = mapped_column("IsFlat", Boolean)
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
         String(36),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column(
-        "OwnerID", Integer
-    )
+    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
@@ -92,21 +84,19 @@ class Table(Base):
         foreign_keys="TableVersion.table_id",
         back_populates="table",
     )
-    abstract_table_versions: Mapped[
-        List["TableVersion"]
-    ] = relationship(
+    abstract_table_versions: Mapped[List["TableVersion"]] = relationship(
         foreign_keys="TableVersion.abstract_table_id",
         back_populates="abstract_table",
     )
-    table_group_compositions: Mapped[
-        List["TableGroupComposition"]
-    ] = relationship(
-        back_populates="table",
+    table_group_compositions: Mapped[List["TableGroupComposition"]] = (
+        relationship(
+            back_populates="table",
+        )
     )
-    module_version_compositions: Mapped[
-        List["ModuleVersionComposition"]
-    ] = relationship(
-        back_populates="table",
+    module_version_compositions: Mapped[List["ModuleVersionComposition"]] = (
+        relationship(
+            back_populates="table",
+        )
     )
 
 
@@ -134,19 +124,13 @@ class TableVersion(Base):
     """
 
     __tablename__ = "TableVersion"
-    __table_args__ = (
-        UniqueConstraint("TableID", "StartReleaseID"),
-    )
+    __table_args__ = (UniqueConstraint("TableID", "StartReleaseID"),)
 
     table_vid: Mapped[int] = mapped_column(
         "TableVID", Integer, primary_key=True
     )
-    code: Mapped[Optional[str]] = mapped_column(
-        "Code", String(30)
-    )
-    name: Mapped[Optional[str]] = mapped_column(
-        "Name", String(255)
-    )
+    code: Mapped[Optional[str]] = mapped_column("Code", String(30))
+    name: Mapped[Optional[str]] = mapped_column("Name", String(255))
     description: Mapped[Optional[str]] = mapped_column(
         "Description", String(500)
     )
@@ -197,9 +181,7 @@ class TableVersion(Base):
         foreign_keys=[abstract_table_id],
         back_populates="abstract_table_versions",
     )
-    key: Mapped[Optional["CompoundKey"]] = relationship(
-        foreign_keys=[key_id]
-    )
+    key: Mapped[Optional["CompoundKey"]] = relationship(foreign_keys=[key_id])
     property: Mapped[Optional["Property"]] = relationship(
         foreign_keys=[property_id]
     )
@@ -215,32 +197,28 @@ class TableVersion(Base):
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
     )
-    table_version_cells: Mapped[
-        List["TableVersionCell"]
-    ] = relationship(
+    table_version_cells: Mapped[List["TableVersionCell"]] = relationship(
         back_populates="table_version",
     )
-    table_version_headers: Mapped[
-        List["TableVersionHeader"]
-    ] = relationship(
+    table_version_headers: Mapped[List["TableVersionHeader"]] = relationship(
         back_populates="table_version",
     )
-    table_associations_as_child: Mapped[
-        List["TableAssociation"]
-    ] = relationship(
-        foreign_keys="TableAssociation.child_table_vid",
-        back_populates="child_table_version",
+    table_associations_as_child: Mapped[List["TableAssociation"]] = (
+        relationship(
+            foreign_keys="TableAssociation.child_table_vid",
+            back_populates="child_table_version",
+        )
     )
-    table_associations_as_parent: Mapped[
-        List["TableAssociation"]
-    ] = relationship(
-        foreign_keys="TableAssociation.parent_table_vid",
-        back_populates="parent_table_version",
+    table_associations_as_parent: Mapped[List["TableAssociation"]] = (
+        relationship(
+            foreign_keys="TableAssociation.parent_table_vid",
+            back_populates="parent_table_version",
+        )
     )
-    module_version_compositions: Mapped[
-        List["ModuleVersionComposition"]
-    ] = relationship(
-        back_populates="table_version",
+    module_version_compositions: Mapped[List["ModuleVersionComposition"]] = (
+        relationship(
+            back_populates="table_version",
+        )
     )
 
 
@@ -268,12 +246,8 @@ class Header(Base):
     table_id: Mapped[Optional[int]] = mapped_column(
         "TableID", Integer, ForeignKey("Table.TableID")
     )
-    direction: Mapped[Optional[str]] = mapped_column(
-        "Direction", String(1)
-    )
-    is_key: Mapped[Optional[bool]] = mapped_column(
-        "IsKey", Boolean
-    )
+    direction: Mapped[Optional[str]] = mapped_column("Direction", String(1))
+    is_key: Mapped[Optional[bool]] = mapped_column("IsKey", Boolean)
     is_attribute: Mapped[Optional[bool]] = mapped_column(
         "IsAttribute", Boolean
     )
@@ -282,19 +256,13 @@ class Header(Base):
         String(36),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column(
-        "OwnerID", Integer
-    )
+    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
 
-    table: Mapped[Optional["Table"]] = relationship(
-        back_populates="headers"
-    )
+    table: Mapped[Optional["Table"]] = relationship(back_populates="headers")
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
     )
-    header_versions: Mapped[
-        List["HeaderVersion"]
-    ] = relationship(
+    header_versions: Mapped[List["HeaderVersion"]] = relationship(
         back_populates="header",
     )
     column_cells: Mapped[List["Cell"]] = relationship(
@@ -334,9 +302,7 @@ class HeaderVersion(Base):
     """
 
     __tablename__ = "HeaderVersion"
-    __table_args__ = (
-        UniqueConstraint("HeaderID", "StartReleaseID"),
-    )
+    __table_args__ = (UniqueConstraint("HeaderID", "StartReleaseID"),)
 
     header_vid: Mapped[int] = mapped_column(
         "HeaderVID", Integer, primary_key=True
@@ -346,12 +312,8 @@ class HeaderVersion(Base):
         Integer,
         ForeignKey("Header.HeaderID"),
     )
-    code: Mapped[Optional[str]] = mapped_column(
-        "Code", String(10)
-    )
-    label: Mapped[Optional[str]] = mapped_column(
-        "Label", String(500)
-    )
+    code: Mapped[Optional[str]] = mapped_column("Code", String(10))
+    label: Mapped[Optional[str]] = mapped_column("Label", String(500))
     property_id: Mapped[Optional[int]] = mapped_column(
         "PropertyID",
         Integer,
@@ -397,14 +359,10 @@ class HeaderVersion(Base):
     context: Mapped[Optional["Context"]] = relationship(
         foreign_keys=[context_id]
     )
-    subcategory_version: Mapped[
-        Optional["SubCategoryVersion"]
-    ] = relationship(
+    subcategory_version: Mapped[Optional["SubCategoryVersion"]] = relationship(
         foreign_keys=[subcategory_vid]
     )
-    key_variable_version: Mapped[
-        Optional["VariableVersion"]
-    ] = relationship(
+    key_variable_version: Mapped[Optional["VariableVersion"]] = relationship(
         foreign_keys=[key_variable_vid]
     )
     start_release: Mapped[Optional["Release"]] = relationship(
@@ -436,13 +394,9 @@ class Cell(Base):
     """
 
     __tablename__ = "Cell"
-    __table_args__ = (
-        UniqueConstraint("ColumnID", "RowID", "SheetID"),
-    )
+    __table_args__ = (UniqueConstraint("ColumnID", "RowID", "SheetID"),)
 
-    cell_id: Mapped[int] = mapped_column(
-        "CellID", Integer, primary_key=True
-    )
+    cell_id: Mapped[int] = mapped_column("CellID", Integer, primary_key=True)
     table_id: Mapped[Optional[int]] = mapped_column(
         "TableID", Integer, ForeignKey("Table.TableID")
     )
@@ -466,13 +420,9 @@ class Cell(Base):
         String(36),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column(
-        "OwnerID", Integer
-    )
+    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
 
-    table: Mapped[Optional["Table"]] = relationship(
-        back_populates="cells"
-    )
+    table: Mapped[Optional["Table"]] = relationship(back_populates="cells")
     column_header: Mapped[Optional["Header"]] = relationship(
         foreign_keys=[column_id],
         back_populates="column_cells",
@@ -488,15 +438,13 @@ class Cell(Base):
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
     )
-    table_version_cells: Mapped[
-        List["TableVersionCell"]
-    ] = relationship(
+    table_version_cells: Mapped[List["TableVersionCell"]] = relationship(
         back_populates="cell",
     )
-    operand_reference_locations: Mapped[
-        List["OperandReferenceLocation"]
-    ] = relationship(
-        back_populates="cell",
+    operand_reference_locations: Mapped[List["OperandReferenceLocation"]] = (
+        relationship(
+            back_populates="cell",
+        )
     )
 
 
@@ -534,39 +482,23 @@ class TableVersionCell(Base):
         ForeignKey("Cell.CellID"),
         primary_key=True,
     )
-    cell_code: Mapped[Optional[str]] = mapped_column(
-        "CellCode", String(100)
-    )
-    is_nullable: Mapped[Optional[bool]] = mapped_column(
-        "IsNullable", Boolean
-    )
-    is_excluded: Mapped[Optional[bool]] = mapped_column(
-        "IsExcluded", Boolean
-    )
-    is_void: Mapped[Optional[bool]] = mapped_column(
-        "IsVoid", Boolean
-    )
-    sign: Mapped[Optional[str]] = mapped_column(
-        "Sign", String(8)
-    )
+    cell_code: Mapped[Optional[str]] = mapped_column("CellCode", String(100))
+    is_nullable: Mapped[Optional[bool]] = mapped_column("IsNullable", Boolean)
+    is_excluded: Mapped[Optional[bool]] = mapped_column("IsExcluded", Boolean)
+    is_void: Mapped[Optional[bool]] = mapped_column("IsVoid", Boolean)
+    sign: Mapped[Optional[str]] = mapped_column("Sign", String(8))
     variable_vid: Mapped[Optional[int]] = mapped_column(
         "VariableVID",
         Integer,
         ForeignKey("VariableVersion.VariableVID"),
     )
-    row_guid: Mapped[Optional[str]] = mapped_column(
-        "RowGUID", String(36)
-    )
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
 
     table_version: Mapped["TableVersion"] = relationship(
         back_populates="table_version_cells"
     )
-    cell: Mapped["Cell"] = relationship(
-        back_populates="table_version_cells"
-    )
-    variable_version: Mapped[
-        Optional["VariableVersion"]
-    ] = relationship(
+    cell: Mapped["Cell"] = relationship(back_populates="table_version_cells")
+    variable_version: Mapped[Optional["VariableVersion"]] = relationship(
         foreign_keys=[variable_vid]
     )
 
@@ -618,28 +550,16 @@ class TableVersionHeader(Base):
     parent_first: Mapped[Optional[bool]] = mapped_column(
         "ParentFirst", Boolean
     )
-    order: Mapped[Optional[int]] = mapped_column(
-        "Order", Integer
-    )
-    is_abstract: Mapped[Optional[bool]] = mapped_column(
-        "IsAbstract", Boolean
-    )
-    is_unique: Mapped[Optional[bool]] = mapped_column(
-        "IsUnique", Boolean
-    )
-    row_guid: Mapped[Optional[str]] = mapped_column(
-        "RowGUID", String(36)
-    )
+    order: Mapped[Optional[int]] = mapped_column("Order", Integer)
+    is_abstract: Mapped[Optional[bool]] = mapped_column("IsAbstract", Boolean)
+    is_unique: Mapped[Optional[bool]] = mapped_column("IsUnique", Boolean)
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
 
     table_version: Mapped["TableVersion"] = relationship(
         back_populates="table_version_headers"
     )
-    header: Mapped["Header"] = relationship(
-        foreign_keys=[header_id]
-    )
-    header_version: Mapped[
-        Optional["HeaderVersion"]
-    ] = relationship(
+    header: Mapped["Header"] = relationship(foreign_keys=[header_id])
+    header_version: Mapped[Optional["HeaderVersion"]] = relationship(
         foreign_keys=[header_vid]
     )
     parent_header: Mapped[Optional["Header"]] = relationship(
@@ -672,18 +592,12 @@ class TableGroup(Base):
     table_group_id: Mapped[int] = mapped_column(
         "TableGroupID", Integer, primary_key=True
     )
-    code: Mapped[Optional[str]] = mapped_column(
-        "Code", String(255)
-    )
-    name: Mapped[Optional[str]] = mapped_column(
-        "Name", String(255)
-    )
+    code: Mapped[Optional[str]] = mapped_column("Code", String(255))
+    name: Mapped[Optional[str]] = mapped_column("Name", String(255))
     description: Mapped[Optional[str]] = mapped_column(
         "Description", String(2000)
     )
-    type: Mapped[Optional[str]] = mapped_column(
-        "Type", String(20)
-    )
+    type: Mapped[Optional[str]] = mapped_column("Type", String(20))
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
         String(36),
@@ -699,16 +613,12 @@ class TableGroup(Base):
         Integer,
         ForeignKey("Release.ReleaseID"),
     )
-    parent_table_group_id: Mapped[
-        Optional[int]
-    ] = mapped_column(
+    parent_table_group_id: Mapped[Optional[int]] = mapped_column(
         "ParentTableGroupID",
         Integer,
         ForeignKey("TableGroup.TableGroupID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column(
-        "OwnerID", Integer
-    )
+    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
@@ -719,21 +629,17 @@ class TableGroup(Base):
     end_release: Mapped[Optional["Release"]] = relationship(
         foreign_keys=[end_release_id]
     )
-    parent_table_group: Mapped[
-        Optional["TableGroup"]
-    ] = relationship(
+    parent_table_group: Mapped[Optional["TableGroup"]] = relationship(
         remote_side=[table_group_id],
         back_populates="child_table_groups",
     )
-    child_table_groups: Mapped[
-        List["TableGroup"]
-    ] = relationship(
+    child_table_groups: Mapped[List["TableGroup"]] = relationship(
         back_populates="parent_table_group",
     )
-    table_group_compositions: Mapped[
-        List["TableGroupComposition"]
-    ] = relationship(
-        back_populates="table_group",
+    table_group_compositions: Mapped[List["TableGroupComposition"]] = (
+        relationship(
+            back_populates="table_group",
+        )
     )
 
 
@@ -768,9 +674,7 @@ class TableGroupComposition(Base):
         ForeignKey("Table.TableID"),
         primary_key=True,
     )
-    order: Mapped[Optional[int]] = mapped_column(
-        "Order", Integer
-    )
+    order: Mapped[Optional[int]] = mapped_column("Order", Integer)
     start_release_id: Mapped[Optional[int]] = mapped_column(
         "StartReleaseID",
         Integer,
@@ -781,9 +685,7 @@ class TableGroupComposition(Base):
         Integer,
         ForeignKey("Release.ReleaseID"),
     )
-    row_guid: Mapped[Optional[str]] = mapped_column(
-        "RowGUID", String(36)
-    )
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
 
     table_group: Mapped["TableGroup"] = relationship(
         back_populates="table_group_compositions"
@@ -836,33 +738,23 @@ class TableAssociation(Base):
         Integer,
         ForeignKey("TableVersion.TableVID"),
     )
-    name: Mapped[Optional[str]] = mapped_column(
-        "Name", String(50)
-    )
+    name: Mapped[Optional[str]] = mapped_column("Name", String(50))
     description: Mapped[Optional[str]] = mapped_column(
         "Description", String(255)
     )
     is_identifying: Mapped[Optional[bool]] = mapped_column(
         "IsIdentifying", Boolean
     )
-    is_subtype: Mapped[Optional[bool]] = mapped_column(
-        "IsSubtype", Boolean
-    )
-    subtype_discriminator: Mapped[
-        Optional[int]
-    ] = mapped_column(
+    is_subtype: Mapped[Optional[bool]] = mapped_column("IsSubtype", Boolean)
+    subtype_discriminator: Mapped[Optional[int]] = mapped_column(
         "SubtypeDiscriminator",
         Integer,
         ForeignKey("Header.HeaderID"),
     )
-    parent_cardinality: Mapped[
-        Optional[str]
-    ] = mapped_column(
+    parent_cardinality: Mapped[Optional[str]] = mapped_column(
         "ParentCardinalityAndOptionality", String(3)
     )
-    child_cardinality: Mapped[
-        Optional[str]
-    ] = mapped_column(
+    child_cardinality: Mapped[Optional[str]] = mapped_column(
         "ChildCardinalityAndOptionality", String(3)
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
@@ -870,33 +762,23 @@ class TableAssociation(Base):
         String(36),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column(
-        "OwnerID", Integer
-    )
+    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
 
-    child_table_version: Mapped[
-        Optional["TableVersion"]
-    ] = relationship(
+    child_table_version: Mapped[Optional["TableVersion"]] = relationship(
         foreign_keys=[child_table_vid],
         back_populates="table_associations_as_child",
     )
-    parent_table_version: Mapped[
-        Optional["TableVersion"]
-    ] = relationship(
+    parent_table_version: Mapped[Optional["TableVersion"]] = relationship(
         foreign_keys=[parent_table_vid],
         back_populates="table_associations_as_parent",
     )
-    subtype_discriminator_header: Mapped[
-        Optional["Header"]
-    ] = relationship(
+    subtype_discriminator_header: Mapped[Optional["Header"]] = relationship(
         foreign_keys=[subtype_discriminator]
     )
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
     )
-    key_header_mappings: Mapped[
-        List["KeyHeaderMapping"]
-    ] = relationship(
+    key_header_mappings: Mapped[List["KeyHeaderMapping"]] = relationship(
         back_populates="table_association",
     )
 
@@ -930,27 +812,19 @@ class KeyHeaderMapping(Base):
         ForeignKey("Header.HeaderID"),
         primary_key=True,
     )
-    primary_key_header_id: Mapped[
-        Optional[int]
-    ] = mapped_column(
+    primary_key_header_id: Mapped[Optional[int]] = mapped_column(
         "PrimaryKeyHeaderID",
         Integer,
         ForeignKey("Header.HeaderID"),
     )
-    row_guid: Mapped[Optional[str]] = mapped_column(
-        "RowGUID", String(36)
-    )
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
 
-    table_association: Mapped[
-        "TableAssociation"
-    ] = relationship(
+    table_association: Mapped["TableAssociation"] = relationship(
         back_populates="key_header_mappings"
     )
     foreign_key_header: Mapped["Header"] = relationship(
         foreign_keys=[foreign_key_header_id]
     )
-    primary_key_header: Mapped[
-        Optional["Header"]
-    ] = relationship(
+    primary_key_header: Mapped[Optional["Header"]] = relationship(
         foreign_keys=[primary_key_header_id]
     )

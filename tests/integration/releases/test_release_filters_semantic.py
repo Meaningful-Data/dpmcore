@@ -35,7 +35,8 @@ def test_filter_by_release_uses_is_null_for_end_release():
 
     sql = str(
         filtered.statement.compile(
-            dialect=session.get_bind().dialect, compile_kwargs={"literal_binds": True}
+            dialect=session.get_bind().dialect,
+            compile_kwargs={"literal_binds": True},
         )
     ).upper()
 
@@ -44,7 +45,9 @@ def test_filter_by_release_uses_is_null_for_end_release():
     assert "= NULL" not in sql
 
 
-def test_operands_check_headers_calls_filter_by_release_with_correct_args(monkeypatch):
+def test_operands_check_headers_calls_filter_by_release_with_correct_args(
+    monkeypatch,
+):
     """
     Verify that OperandsChecking.check_headers wires filter_by_release correctly:
     - start_col is TableVersion.startreleaseid
@@ -53,7 +56,9 @@ def test_operands_check_headers_calls_filter_by_release_with_correct_args(monkey
     """
     called = {}
 
-    def fake_filter_by_release(query, start_col, end_col, release_id=None, release_code=None):
+    def fake_filter_by_release(
+        query, start_col, end_col, release_id=None, release_code=None
+    ):
         called["query"] = query
         called["start_col"] = start_col
         called["end_col"] = end_col
@@ -61,7 +66,9 @@ def test_operands_check_headers_calls_filter_by_release_with_correct_args(monkey
         called["release_code"] = release_code
         return query
 
-    monkeypatch.setattr(operands_module, "filter_by_release", fake_filter_by_release)
+    monkeypatch.setattr(
+        operands_module, "filter_by_release", fake_filter_by_release
+    )
 
     # Stub out the pandas helpers used inside check_headers so that no real DB
     # access is attempted.
@@ -105,4 +112,3 @@ def test_operands_check_headers_calls_filter_by_release_with_correct_args(monkey
     assert called["end_col"] is TableVersion.endreleaseid
     assert called["release_id"] == 7
     assert called["release_code"] is None
-

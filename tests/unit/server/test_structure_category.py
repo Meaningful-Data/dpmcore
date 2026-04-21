@@ -34,154 +34,167 @@ def seeded_engine(engine):
 
     # Organisation
     org = Organisation(
-        org_id=1, name="European Banking Authority", acronym="EBA",
+        org_id=1,
+        name="European Banking Authority",
+        acronym="EBA",
     )
     session.add(org)
     session.flush()
 
     # Concepts for releases and categories
     for guid in [
-        "c-rel-1", "c-rel-2", "c-rel-3",
-        "c-cat-1", "c-cat-2",
+        "c-rel-1",
+        "c-rel-2",
+        "c-rel-3",
+        "c-cat-1",
+        "c-cat-2",
     ]:
         owner = 1 if guid != "c-rel-3" else None
         session.add(Concept(concept_guid=guid, owner_id=owner))
     session.flush()
 
     # Releases
-    session.add_all([
-        Release(
-            release_id=1,
-            code="3.3",
-            date=date(2024, 1, 1),
-            description="Release 3.3",
-            status="Final",
-            is_current=False,
-            row_guid="c-rel-1",
-            owner_id=1,
-        ),
-        Release(
-            release_id=2,
-            code="3.4",
-            date=date(2024, 6, 1),
-            description="Release 3.4",
-            status="Final",
-            is_current=True,
-            row_guid="c-rel-2",
-            owner_id=1,
-        ),
-        Release(
-            release_id=3,
-            code="3.5-draft",
-            date=date(2024, 12, 1),
-            description="Release 3.5 draft",
-            status="Draft",
-            is_current=False,
-            row_guid="c-rel-3",
-        ),
-    ])
+    session.add_all(
+        [
+            Release(
+                release_id=1,
+                code="3.3",
+                date=date(2024, 1, 1),
+                description="Release 3.3",
+                status="Final",
+                is_current=False,
+                row_guid="c-rel-1",
+                owner_id=1,
+            ),
+            Release(
+                release_id=2,
+                code="3.4",
+                date=date(2024, 6, 1),
+                description="Release 3.4",
+                status="Final",
+                is_current=True,
+                row_guid="c-rel-2",
+                owner_id=1,
+            ),
+            Release(
+                release_id=3,
+                code="3.5-draft",
+                date=date(2024, 12, 1),
+                description="Release 3.5 draft",
+                status="Draft",
+                is_current=False,
+                row_guid="c-rel-3",
+            ),
+        ]
+    )
     session.flush()
 
     # Categories
-    session.add_all([
-        Category(
-            category_id=1,
-            code="MC",
-            name="Main Category",
-            description="The main category",
-            is_enumerated=True,
-            is_active=True,
-            is_external_ref_data=False,
-            ref_data_source=None,
-            row_guid="c-cat-1",
-            created_release=1,
-            owner_id=1,
-        ),
-        Category(
-            category_id=2,
-            code="SC",
-            name="Second Category",
-            description="Another category",
-            is_enumerated=False,
-            is_active=True,
-            is_external_ref_data=False,
-            ref_data_source=None,
-            row_guid="c-cat-2",
-            created_release=2,
-            owner_id=1,
-        ),
-    ])
+    session.add_all(
+        [
+            Category(
+                category_id=1,
+                code="MC",
+                name="Main Category",
+                description="The main category",
+                is_enumerated=True,
+                is_active=True,
+                is_external_ref_data=False,
+                ref_data_source=None,
+                row_guid="c-cat-1",
+                created_release=1,
+                owner_id=1,
+            ),
+            Category(
+                category_id=2,
+                code="SC",
+                name="Second Category",
+                description="Another category",
+                is_enumerated=False,
+                is_active=True,
+                is_external_ref_data=False,
+                ref_data_source=None,
+                row_guid="c-cat-2",
+                created_release=2,
+                owner_id=1,
+            ),
+        ]
+    )
     session.flush()
 
     # Items
-    session.add_all([
-        Item(
-            item_id=10,
-            name="Item Alpha",
-            description="First item",
-            is_property=False,
-            is_active=True,
-        ),
-        Item(
-            item_id=11,
-            name="Item Beta",
-            description="Second item",
-            is_property=False,
-            is_active=True,
-        ),
-        Item(
-            item_id=12,
-            name="Item Gamma",
-            description="Third item (added in 3.4)",
-            is_property=False,
-            is_active=True,
-        ),
-    ])
+    session.add_all(
+        [
+            Item(
+                item_id=10,
+                name="Item Alpha",
+                description="First item",
+                is_property=False,
+                is_active=True,
+            ),
+            Item(
+                item_id=11,
+                name="Item Beta",
+                description="Second item",
+                is_property=False,
+                is_active=True,
+            ),
+            Item(
+                item_id=12,
+                name="Item Gamma",
+                description="Third item (added in 3.4)",
+                is_property=False,
+                is_active=True,
+            ),
+        ]
+    )
     session.flush()
 
     # ItemCategory — release-versioned links
-    session.add_all([
-        # Item 10 in MC from release 1 onward (no end)
-        ItemCategory(
-            item_id=10,
-            start_release_id=1,
-            category_id=1,
-            code="IC_001",
-            is_default_item=False,
-            signature="MC(IC_001)",
-            end_release_id=None,
-        ),
-        # Item 11 in MC only for release 1 (ends at 1)
-        ItemCategory(
-            item_id=11,
-            start_release_id=1,
-            category_id=1,
-            code="IC_002",
-            is_default_item=False,
-            signature="MC(IC_002)",
-            end_release_id=1,
-        ),
-        # Item 12 in MC from release 2 onward
-        ItemCategory(
-            item_id=12,
-            start_release_id=2,
-            category_id=1,
-            code="IC_003",
-            is_default_item=True,
-            signature="MC(IC_003)",
-            end_release_id=None,
-        ),
-        # Item 10 also in SC from release 2 onward
-        ItemCategory(
-            item_id=10,
-            start_release_id=2,
-            category_id=2,
-            code="SC_001",
-            is_default_item=False,
-            signature="SC(SC_001)",
-            end_release_id=None,
-        ),
-    ])
+    session.add_all(
+        [
+            # Item 10 in MC from release 1 onward (no end)
+            ItemCategory(
+                item_id=10,
+                start_release_id=1,
+                category_id=1,
+                code="IC_001",
+                is_default_item=False,
+                signature="MC(IC_001)",
+                end_release_id=None,
+            ),
+            # Item 11 in MC only for release 1 (ends at 1)
+            ItemCategory(
+                item_id=11,
+                start_release_id=1,
+                category_id=1,
+                code="IC_002",
+                is_default_item=False,
+                signature="MC(IC_002)",
+                end_release_id=1,
+            ),
+            # Item 12 in MC from release 2 onward
+            ItemCategory(
+                item_id=12,
+                start_release_id=2,
+                category_id=1,
+                code="IC_003",
+                is_default_item=True,
+                signature="MC(IC_003)",
+                end_release_id=None,
+            ),
+            # Item 10 also in SC from release 2 onward
+            ItemCategory(
+                item_id=10,
+                start_release_id=2,
+                category_id=2,
+                code="SC_001",
+                is_default_item=False,
+                signature="SC(SC_001)",
+                end_release_id=None,
+            ),
+        ]
+    )
     session.commit()
     session.close()
     return engine
@@ -415,7 +428,8 @@ class TestVirtualVersioning:
         assert cats[0]["release"] == "3.4"
 
     def test_category_created_later_absent_at_earlier_release(
-        self, client,
+        self,
+        client,
     ):
         """SC created at release 2 (3.4) has no version at 3.3."""
         resp = client.get(

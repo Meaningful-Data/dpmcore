@@ -58,7 +58,9 @@ def test_get_available_tables_filtered(api_with_data):
 
     assert any(t["code"] == "T1" for t in tables_r1)
     assert not any(t["code"] == "T2" for t in tables_r1)
-    assert not any(t["code"] == "T3" for t in tables_r1)  # EndRelease 1 > 1 False.
+    assert not any(
+        t["code"] == "T3" for t in tables_r1
+    )  # EndRelease 1 > 1 False.
 
     # Release 2
     tables_r2 = api_with_data.get_tables(release_id=2)

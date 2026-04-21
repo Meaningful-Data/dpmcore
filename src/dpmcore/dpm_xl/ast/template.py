@@ -1,6 +1,31 @@
-from dpmcore.dpm_xl.ast.nodes import AggregationOp, BinOp, ComplexNumericOp, CondExpr, Constant, Dimension, FilterOp, GetOp, GroupingClause, \
-    OperationRef, ParExpr, PersistentAssignment, PreconditionItem, PropertyReference, RenameOp, Scalar, Set, Start, SubOp, TemporaryAssignment, \
-    TimeShiftOp, UnaryOp, VarID, VarRef, WhereClauseOp, WithExpression
+from dpmcore.dpm_xl.ast.nodes import (
+    AggregationOp,
+    BinOp,
+    ComplexNumericOp,
+    CondExpr,
+    Constant,
+    Dimension,
+    FilterOp,
+    GetOp,
+    GroupingClause,
+    OperationRef,
+    ParExpr,
+    PersistentAssignment,
+    PreconditionItem,
+    PropertyReference,
+    RenameOp,
+    Scalar,
+    Set,
+    Start,
+    SubOp,
+    TemporaryAssignment,
+    TimeShiftOp,
+    UnaryOp,
+    VarID,
+    VarRef,
+    WhereClauseOp,
+    WithExpression,
+)
 from dpmcore.dpm_xl.ast.visitor import NodeVisitor
 
 

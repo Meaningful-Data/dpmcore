@@ -126,9 +126,7 @@ class TestPyodbcTypeInference:
         assert pd.api.types.is_numeric_dtype(df["price"])
         assert pd.api.types.is_numeric_dtype(df["amount"])
 
-    def test_mixed_columns_respect_schema_types(
-        self, service, mock_pyodbc
-    ):
+    def test_mixed_columns_respect_schema_types(self, service, mock_pyodbc):
         """Mixed table should respect schema types."""
         mock_cursor = MagicMock()
         mock_cursor.description = [

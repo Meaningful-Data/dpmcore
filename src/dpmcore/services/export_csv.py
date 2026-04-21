@@ -66,11 +66,11 @@ class ExportCsvService:
             future_to_table = {}
             for table in table_names:
                 future = executor.submit(
-                        self._export_table,
-                        access_path,
-                        table,
-                        output_dir / f"{table}.csv",
-                    )
+                    self._export_table,
+                    access_path,
+                    table,
+                    output_dir / f"{table}.csv",
+                )
 
                 future_to_table[future] = table
 

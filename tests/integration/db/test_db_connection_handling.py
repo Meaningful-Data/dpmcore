@@ -1,7 +1,12 @@
 import pytest
 import os
 
-from py_dpm.dpm.utils import get_engine, create_engine_from_url, create_engine_object, session_scope
+from py_dpm.dpm.utils import (
+    get_engine,
+    create_engine_from_url,
+    create_engine_object,
+    session_scope,
+)
 
 
 @pytest.fixture
@@ -10,7 +15,7 @@ def cleanup_test_dbs():
     test_dbs = [
         "test_engine_reuse.db",
         "test_engine_object.db",
-        "test_session_scope.db"
+        "test_session_scope.db",
     ]
 
     yield

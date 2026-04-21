@@ -3,7 +3,6 @@ from dpmcore.dpm_xl.ast.template import ASTTemplate
 
 
 class WhereClauseChecker(ASTTemplate):
-
     def __init__(self):
         super().__init__()
         self.key_components = []

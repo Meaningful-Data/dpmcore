@@ -2,11 +2,11 @@
 from antlr4 import *
 from io import StringIO
 import sys
+
 if sys.version_info[1] > 5:
     from typing import TextIO
 else:
     from typing.io import TextIO
-
 
 
 def serializedATN():
@@ -17,8 +17,8 @@ def serializedATN():
         buf.write("\4\f\t\f\4\r\t\r\4\16\t\16\4\17\t\17\4\20\t\20\4\21\t")
         buf.write("\21\4\22\t\22\4\23\t\23\4\24\t\24\4\25\t\25\4\26\t\26")
         buf.write("\4\27\t\27\4\30\t\30\4\31\t\31\4\32\t\32\4\33\t\33\4\34")
-        buf.write("\t\34\4\35\t\35\4\36\t\36\4\37\t\37\4 \t \4!\t!\4\"\t")
-        buf.write("\"\4#\t#\4$\t$\4%\t%\4&\t&\4\'\t\'\4(\t(\4)\t)\4*\t*\4")
+        buf.write('\t\34\4\35\t\35\4\36\t\36\4\37\t\37\4 \t \4!\t!\4"\t')
+        buf.write("\"\4#\t#\4$\t$\4%\t%\4&\t&\4'\t'\4(\t(\4)\t)\4*\t*\4")
         buf.write("+\t+\4,\t,\4-\t-\4.\t.\4/\t/\4\60\t\60\4\61\t\61\4\62")
         buf.write("\t\62\4\63\t\63\4\64\t\64\4\65\t\65\4\66\t\66\4\67\t\67")
         buf.write("\48\t8\49\t9\4:\t:\4;\t;\4<\t<\4=\t=\4>\t>\4?\t?\4@\t")
@@ -68,8 +68,8 @@ def serializedATN():
         buf.write("\3\33\3\33\3\33\3\33\3\33\3\33\3\33\3\33\3\34\3\34\3\34")
         buf.write("\3\34\3\35\3\35\3\35\3\35\3\35\3\35\3\35\3\36\3\36\3\36")
         buf.write("\3\36\3\37\3\37\3\37\3 \3 \3 \3 \3 \3!\3!\3!\3!\3!\3!")
-        buf.write("\3\"\3\"\3\"\3\"\3#\3#\3#\3#\3$\3$\3$\3$\3%\3%\3%\3%\3")
-        buf.write("%\3&\3&\3\'\3\'\3(\3(\3)\3)\3*\3*\3*\3*\3+\3+\3,\3,\3")
+        buf.write('\3"\3"\3"\3"\3#\3#\3#\3#\3$\3$\3$\3$\3%\3%\3%\3%\3')
+        buf.write("%\3&\3&\3'\3'\3(\3(\3)\3)\3*\3*\3*\3*\3+\3+\3,\3,\3")
         buf.write(",\3,\3-\3-\3.\3.\3.\3/\3/\3/\3/\3/\3/\3\60\3\60\3\60\3")
         buf.write("\60\3\60\3\61\3\61\3\61\3\61\3\61\3\62\3\62\3\62\3\62")
         buf.write("\3\63\3\63\3\63\3\63\3\63\3\63\3\63\3\64\3\64\3\64\3\64")
@@ -177,8 +177,8 @@ def serializedATN():
         buf.write("\3\u00da\3\u00da\3\u00da\3\u00da\3\u00db\3\u00db\3\u00db")
         buf.write("\3\u00db\3\u00dc\3\u00dc\3\u00dc\3\u00dc\2\2\u00dd\7\3")
         buf.write("\t\4\13\5\r\6\17\7\21\b\23\t\25\n\27\13\31\f\33\r\35\16")
-        buf.write("\37\17!\20#\21%\22\'\23)\24+\25-\26/\27\61\30\63\31\65")
-        buf.write("\32\67\339\34;\35=\36?\37A C!E\"G#I$K%M&O\'Q(S)U*W+Y,")
+        buf.write("\37\17!\20#\21%\22'\23)\24+\25-\26/\27\61\30\63\31\65")
+        buf.write("\32\67\339\34;\35=\36?\37A C!E\"G#I$K%M&O'Q(S)U*W+Y,")
         buf.write("[-]._/a\60c\61e\62g\63i\64k\65m\66o\67q8s9u:w;y<{=}>\177")
         buf.write("\2\u0081\2\u0083?\u0085@\u0087A\u0089B\u008bC\u008dD\u008f")
         buf.write("\2\u0091\2\u0093\2\u0095\2\u0097\2\u0099\2\u009b\2\u009d")
@@ -205,12 +205,12 @@ def serializedATN():
         buf.write("\2\u01bbb\7\2\3\4\5\6\24\b\2CCFFOOSSUUYY\3\2$$\3\2))\3")
         buf.write("\2\62\64\3\2\63\66\3\2\62\63\3\2\62\65\3\2\62\67\3\2\63")
         buf.write("\64\4\2C\\c|\7\2\60\60\62;C\\aac|\5\2\62;C\\c|\5\2\13")
-        buf.write("\f\16\17\"\"\7\2/\60\62;C\\aac|\3\2//\3\2,,\7\2//\62;")
+        buf.write('\f\16\17""\7\2/\60\62;C\\aac|\3\2//\3\2,,\7\2//\62;')
         buf.write("C\\aac|\3\2<<\2\u062d\2\7\3\2\2\2\2\t\3\2\2\2\2\13\3\2")
         buf.write("\2\2\2\r\3\2\2\2\2\17\3\2\2\2\2\21\3\2\2\2\2\23\3\2\2")
         buf.write("\2\2\25\3\2\2\2\2\27\3\2\2\2\2\31\3\2\2\2\2\33\3\2\2\2")
         buf.write("\2\35\3\2\2\2\2\37\3\2\2\2\2!\3\2\2\2\2#\3\2\2\2\2%\3")
-        buf.write("\2\2\2\2\'\3\2\2\2\2)\3\2\2\2\2+\3\2\2\2\2-\3\2\2\2\2")
+        buf.write("\2\2\2\2'\3\2\2\2\2)\3\2\2\2\2+\3\2\2\2\2-\3\2\2\2\2")
         buf.write("/\3\2\2\2\2\61\3\2\2\2\2\63\3\2\2\2\2\65\3\2\2\2\2\67")
         buf.write("\3\2\2\2\29\3\2\2\2\2;\3\2\2\2\2=\3\2\2\2\2?\3\2\2\2\2")
         buf.write("A\3\2\2\2\2C\3\2\2\2\2E\3\2\2\2\2G\3\2\2\2\2I\3\2\2\2")
@@ -262,7 +262,7 @@ def serializedATN():
         buf.write("\u01cf\3\2\2\2\17\u01d3\3\2\2\2\21\u01d7\3\2\2\2\23\u01da")
         buf.write("\3\2\2\2\25\u01dd\3\2\2\2\27\u01df\3\2\2\2\31\u01e2\3")
         buf.write("\2\2\2\33\u01e4\3\2\2\2\35\u01e7\3\2\2\2\37\u01e9\3\2")
-        buf.write("\2\2!\u01ec\3\2\2\2#\u01f2\3\2\2\2%\u01f7\3\2\2\2\'\u01f9")
+        buf.write("\2\2!\u01ec\3\2\2\2#\u01f2\3\2\2\2%\u01f7\3\2\2\2'\u01f9")
         buf.write("\3\2\2\2)\u01fb\3\2\2\2+\u01fd\3\2\2\2-\u01ff\3\2\2\2")
         buf.write("/\u0208\3\2\2\2\61\u0211\3\2\2\2\63\u0215\3\2\2\2\65\u021b")
         buf.write("\3\2\2\2\67\u021f\3\2\2\29\u0226\3\2\2\2;\u0231\3\2\2")
@@ -350,7 +350,7 @@ def serializedATN():
         buf.write("\34\3\2\2\2\u01e7\u01e8\7@\2\2\u01e8\36\3\2\2\2\u01e9")
         buf.write("\u01ea\7@\2\2\u01ea\u01eb\7?\2\2\u01eb \3\2\2\2\u01ec")
         buf.write("\u01ed\7o\2\2\u01ed\u01ee\7c\2\2\u01ee\u01ef\7v\2\2\u01ef")
-        buf.write("\u01f0\7e\2\2\u01f0\u01f1\7j\2\2\u01f1\"\3\2\2\2\u01f2")
+        buf.write('\u01f0\7e\2\2\u01f0\u01f1\7j\2\2\u01f1"\3\2\2\2\u01f2')
         buf.write("\u01f3\7y\2\2\u01f3\u01f4\7k\2\2\u01f4\u01f5\7v\2\2\u01f5")
         buf.write("\u01f6\7j\2\2\u01f6$\3\2\2\2\u01f7\u01f8\7-\2\2\u01f8")
         buf.write("&\3\2\2\2\u01f9\u01fa\7/\2\2\u01fa(\3\2\2\2\u01fb\u01fc")
@@ -370,7 +370,7 @@ def serializedATN():
         buf.write("\7k\2\2\u0223\u0224\7c\2\2\u0224\u0225\7p\2\2\u02258\3")
         buf.write("\2\2\2\u0226\u0227\7i\2\2\u0227\u0228\7t\2\2\u0228\u0229")
         buf.write("\7q\2\2\u0229\u022a\7w\2\2\u022a\u022b\7r\2\2\u022b\u022c")
-        buf.write("\7\"\2\2\u022c\u022d\7d\2\2\u022d\u022e\7{\2\2\u022e\u022f")
+        buf.write('\7"\2\2\u022c\u022d\7d\2\2\u022d\u022e\7{\2\2\u022e\u022f')
         buf.write("\3\2\2\2\u022f\u0230\b\33\2\2\u0230:\3\2\2\2\u0231\u0232")
         buf.write("\7c\2\2\u0232\u0233\7d\2\2\u0233\u0234\7u\2\2\u0234<\3")
         buf.write("\2\2\2\u0235\u0236\7k\2\2\u0236\u0237\7u\2\2\u0237\u0238")
@@ -422,15 +422,15 @@ def serializedATN():
         buf.write(";\2\u02bf\u0080\3\2\2\2\u02c0\u02c1\4\63;\2\u02c1\u0082")
         buf.write("\3\2\2\2\u02c2\u02c4\5\177>\2\u02c3\u02c2\3\2\2\2\u02c4")
         buf.write("\u02c5\3\2\2\2\u02c5\u02c3\3\2\2\2\u02c5\u02c6\3\2\2\2")
-        buf.write("\u02c6\u02d1\3\2\2\2\u02c7\u02c8\5S(\2\u02c8\u02ca\5\'")
+        buf.write("\u02c6\u02d1\3\2\2\2\u02c7\u02c8\5S(\2\u02c8\u02ca\5'")
         buf.write("\22\2\u02c9\u02cb\5\177>\2\u02ca\u02c9\3\2\2\2\u02cb\u02cc")
         buf.write("\3\2\2\2\u02cc\u02ca\3\2\2\2\u02cc\u02cd\3\2\2\2\u02cd")
         buf.write("\u02ce\3\2\2\2\u02ce\u02cf\5U)\2\u02cf\u02d1\3\2\2\2\u02d0")
         buf.write("\u02c3\3\2\2\2\u02d0\u02c7\3\2\2\2\u02d1\u0084\3\2\2\2")
         buf.write("\u02d2\u02d3\5\u0083@\2\u02d3\u02d4\7\60\2\2\u02d4\u02d5")
         buf.write("\5\u0083@\2\u02d5\u0086\3\2\2\2\u02d6\u02d7\5\u0083@\2")
-        buf.write("\u02d7\u02d8\7\'\2\2\u02d8\u02dd\3\2\2\2\u02d9\u02da\5")
-        buf.write("\u0085A\2\u02da\u02db\7\'\2\2\u02db\u02dd\3\2\2\2\u02dc")
+        buf.write("\u02d7\u02d8\7'\2\2\u02d8\u02dd\3\2\2\2\u02d9\u02da\5")
+        buf.write("\u0085A\2\u02da\u02db\7'\2\2\u02db\u02dd\3\2\2\2\u02dc")
         buf.write("\u02d6\3\2\2\2\u02dc\u02d9\3\2\2\2\u02dd\u0088\3\2\2\2")
         buf.write("\u02de\u02df\7p\2\2\u02df\u02e0\7w\2\2\u02e0\u02e1\7n")
         buf.write("\2\2\u02e1\u02e2\7n\2\2\u02e2\u008a\3\2\2\2\u02e3\u02e5")
@@ -462,7 +462,7 @@ def serializedATN():
         buf.write("\2\u031e\u031f\5\u008fF\2\u031f\u0320\7/\2\2\u0320\u0321")
         buf.write("\5\u0091G\2\u0321\u0322\7/\2\2\u0322\u032a\5\u0095I\2")
         buf.write("\u0323\u0324\7V\2\2\u0324\u0325\5\u0097J\2\u0325\u0326")
-        buf.write("\5Q\'\2\u0326\u0327\5\u0099K\2\u0327\u0328\5Q\'\2\u0328")
+        buf.write("\5Q'\2\u0326\u0327\5\u0099K\2\u0327\u0328\5Q'\2\u0328")
         buf.write("\u0329\5\u009bL\2\u0329\u032b\3\2\2\2\u032a\u0323\3\2")
         buf.write("\2\2\u032a\u032b\3\2\2\2\u032b\u009e\3\2\2\2\u032c\u032e")
         buf.write("\5\u008fF\2\u032d\u032f\7C\2\2\u032e\u032d\3\2\2\2\u032e")
@@ -492,7 +492,7 @@ def serializedATN():
         buf.write("\u0366\3\2\2\2\u0366\u0364\3\2\2\2\u0366\u0367\3\2\2\2")
         buf.write("\u0367\u0368\3\2\2\2\u0368\u0369\bS\6\2\u0369\u00aa\3")
         buf.write("\2\2\2\u036a\u036b\5O&\2\u036b\u036c\3\2\2\2\u036c\u036d")
-        buf.write("\bT\7\2\u036d\u00ac\3\2\2\2\u036e\u036f\5Q\'\2\u036f\u0370")
+        buf.write("\bT\7\2\u036d\u00ac\3\2\2\2\u036e\u036f\5Q'\2\u036f\u0370")
         buf.write("\3\2\2\2\u0370\u0371\bU\b\2\u0371\u00ae\3\2\2\2\u0372")
         buf.write("\u0373\5S(\2\u0373\u0374\3\2\2\2\u0374\u0375\bV\t\2\u0375")
         buf.write("\u00b0\3\2\2\2\u0376\u0377\5U)\2\u0377\u0378\3\2\2\2\u0378")
@@ -587,7 +587,7 @@ def serializedATN():
         buf.write("\u045f\7c\2\2\u045f\u0460\7v\2\2\u0460\u0461\7e\2\2\u0461")
         buf.write("\u0462\7j\2\2\u0462\u0463\3\2\2\2\u0463\u0464\b\u008c")
         buf.write("!\2\u0464\u011c\3\2\2\2\u0465\u0466\7-\2\2\u0466\u0467")
-        buf.write("\3\2\2\2\u0467\u0468\b\u008d\"\2\u0468\u011e\3\2\2\2\u0469")
+        buf.write('\3\2\2\2\u0467\u0468\b\u008d"\2\u0468\u011e\3\2\2\2\u0469')
         buf.write("\u046a\7/\2\2\u046a\u046b\3\2\2\2\u046b\u046c\b\u008e")
         buf.write("#\2\u046c\u0120\3\2\2\2\u046d\u046e\7,\2\2\u046e\u046f")
         buf.write("\3\2\2\2\u046f\u0470\b\u008f$\2\u0470\u0122\3\2\2\2\u0471")
@@ -599,7 +599,7 @@ def serializedATN():
         buf.write("\u0126\3\2\2\2\u0480\u0481\7o\2\2\u0481\u0482\7k\2\2\u0482")
         buf.write("\u0483\7p\2\2\u0483\u0484\7a\2\2\u0484\u0485\7c\2\2\u0485")
         buf.write("\u0486\7i\2\2\u0486\u0487\7i\2\2\u0487\u0488\7t\2\2\u0488")
-        buf.write("\u0489\3\2\2\2\u0489\u048a\b\u0092\'\2\u048a\u0128\3\2")
+        buf.write("\u0489\3\2\2\2\u0489\u048a\b\u0092'\2\u048a\u0128\3\2")
         buf.write("\2\2\u048b\u048c\7u\2\2\u048c\u048d\7w\2\2\u048d\u048e")
         buf.write("\7o\2\2\u048e\u048f\3\2\2\2\u048f\u0490\b\u0093(\2\u0490")
         buf.write("\u012a\3\2\2\2\u0491\u0492\7e\2\2\u0492\u0493\7q\2\2\u0493")
@@ -612,7 +612,7 @@ def serializedATN():
         buf.write("\u04a5\7p\2\2\u04a5\u04a6\3\2\2\2\u04a6\u04a7\b\u0096")
         buf.write("+\2\u04a7\u0130\3\2\2\2\u04a8\u04a9\7i\2\2\u04a9\u04aa")
         buf.write("\7t\2\2\u04aa\u04ab\7q\2\2\u04ab\u04ac\7w\2\2\u04ac\u04ad")
-        buf.write("\7r\2\2\u04ad\u04ae\7\"\2\2\u04ae\u04af\7d\2\2\u04af\u04b0")
+        buf.write('\7r\2\2\u04ad\u04ae\7"\2\2\u04ae\u04af\7d\2\2\u04af\u04b0')
         buf.write("\7{\2\2\u04b0\u04b1\3\2\2\2\u04b1\u04b2\b\u0097,\2\u04b2")
         buf.write("\u04b3\b\u0097\2\2\u04b3\u0132\3\2\2\2\u04b4\u04b5\7c")
         buf.write("\2\2\u04b5\u04b6\7d\2\2\u04b6\u04b7\7u\2\2\u04b7\u04b8")
@@ -759,22 +759,21 @@ def serializedATN():
         buf.write("\u02f7\u0302\u030a\u0310\u0316\u032a\u032e\u0346\u035a")
         buf.write("\u0360\u0366\u03ad\u03b3\u03b9\u03c3\u03c9\u03d0\u03d6")
         buf.write("\u05b1\u05b8\u05be\u05c5\u05e5N\7\5\2\7\6\2\7\3\2\7\4")
-        buf.write("\2\2\4\2\t\'\2\t(\2\t)\2\t*\2\6\2\2\t,\2\tB\2\t\3\2\t")
+        buf.write("\2\2\4\2\t'\2\t(\2\t)\2\t*\2\6\2\2\t,\2\tB\2\t\3\2\t")
         buf.write("?\2\t@\2\tA\2\tC\2\tD\2\tE\2\tF\2\tG\2\t\4\2\t\5\2\t\6")
         buf.write("\2\t\7\2\t\n\2\t\13\2\t\f\2\t\r\2\t\16\2\t\17\2\t\20\2")
         buf.write("\t\22\2\t\23\2\t\24\2\t\25\2\t\26\2\t\27\2\t\30\2\t\31")
         buf.write("\2\t\32\2\t\33\2\t\34\2\t\35\2\t\36\2\t\37\2\t \2\t!\2")
-        buf.write("\t\"\2\t#\2\t$\2\t%\2\t&\2\t+\2\t-\2\t.\2\t/\2\t\60\2")
+        buf.write('\t"\2\t#\2\t$\2\t%\2\t&\2\t+\2\t-\2\t.\2\t/\2\t\60\2')
         buf.write("\t\61\2\t\62\2\t\63\2\t\64\2\t\65\2\t\66\2\t\67\2\t8\2")
         buf.write("\t9\2\t:\2\t;\2\t<\2\t=\2\t[\2\t\\\2\t]\2\t_\2\t^\2")
         return buf.getvalue()
 
 
 class dpm_xlLexer(Lexer):
-
     atn = ATNDeserializer().deserialize(serializedATN())
 
-    decisionsToDFA = [ DFA(ds, i) for i, ds in enumerate(atn.decisionToState) ]
+    decisionsToDFA = [DFA(ds, i) for i, ds in enumerate(atn.decisionToState)]
 
     SELECTION_MODE = 1
     CLAUSE_MODE = 2
@@ -878,101 +877,360 @@ class dpm_xlLexer(Lexer):
     GROUPING_WS = 95
     SET_OPERAND_MODE_WS = 96
 
-    channelNames = [ u"DEFAULT_TOKEN_CHANNEL", u"HIDDEN" ]
+    channelNames = ["DEFAULT_TOKEN_CHANNEL", "HIDDEN"]
 
-    modeNames = [ "DEFAULT_MODE", "SELECTION_MODE", "CLAUSE_MODE", "GROUPING_CLAUSE_MODE", 
-                  "SET_OPERAND_MODE" ]
+    modeNames = [
+        "DEFAULT_MODE",
+        "SELECTION_MODE",
+        "CLAUSE_MODE",
+        "GROUPING_CLAUSE_MODE",
+        "SET_OPERAND_MODE",
+    ]
 
-    literalNames = [ "<INVALID>",
-            "':='", "'<-'", "'with'", "'group by'", "'in'", "'{'", "'['", 
-            "';'", "'null'", "'interval'", "'default'" ]
+    literalNames = [
+        "<INVALID>",
+        "':='",
+        "'<-'",
+        "'with'",
+        "'group by'",
+        "'in'",
+        "'{'",
+        "'['",
+        "';'",
+        "'null'",
+        "'interval'",
+        "'default'",
+    ]
 
-    symbolicNames = [ "<INVALID>",
-            "BOOLEAN_LITERAL", "AND", "OR", "XOR", "NOT", "ASSIGN", "PERSISTENT_ASSIGN", 
-            "EQ", "NE", "LT", "LE", "GT", "GE", "MATCH", "WITH", "PLUS", 
-            "MINUS", "MULT", "DIV", "MAX_AGGR", "MIN_AGGR", "SUM", "COUNT", 
-            "AVG", "MEDIAN", "GROUP_BY", "ABS", "ISNULL", "EXP", "LN", "SQRT", 
-            "POWER", "LOG", "MAX", "MIN", "IN", "COMMA", "COLON", "LPAREN", 
-            "RPAREN", "CURLY_BRACKET_LEFT", "CURLY_BRACKET_RIGHT", "SQUARE_BRACKET_LEFT", 
-            "SQUARE_BRACKET_RIGHT", "IF", "ENDIF", "THEN", "ELSE", "NVL", 
-            "FILTER", "WHERE", "GET", "RENAME", "TO", "SUB", "TIME_SHIFT", 
-            "LEN", "CONCAT", "TIME_PERIOD", "EOL", "INTEGER_LITERAL", "DECIMAL_LITERAL", 
-            "PERCENT_LITERAL", "NULL_LITERAL", "STRING_LITERAL", "EMPTY_LITERAL", 
-            "DATE_LITERAL", "TIME_INTERVAL_LITERAL", "TIME_PERIOD_LITERAL", 
-            "CODE", "WS", "INTERVAL", "DEFAULT", "ROW", "ROW_RANGE", "ROW_ALL", 
-            "COL", "COL_RANGE", "COL_ALL", "SHEET", "SHEET_RANGE", "SHEET_ALL", 
-            "TABLE_REFERENCE", "TABLE_GROUP_REFERENCE", "VAR_REFERENCE", 
-            "OPERATION_REFERENCE", "PRECONDITION_ELEMENT", "SELECTION_MODE_WS", 
-            "ROW_COMPONENT", "COL_COMPONENT", "SHEET_COMPONENT", "ITEM_SIGNATURE", 
-            "PROPERTY_CODE", "CLAUSE_WS", "GROUPING_WS", "SET_OPERAND_MODE_WS" ]
+    symbolicNames = [
+        "<INVALID>",
+        "BOOLEAN_LITERAL",
+        "AND",
+        "OR",
+        "XOR",
+        "NOT",
+        "ASSIGN",
+        "PERSISTENT_ASSIGN",
+        "EQ",
+        "NE",
+        "LT",
+        "LE",
+        "GT",
+        "GE",
+        "MATCH",
+        "WITH",
+        "PLUS",
+        "MINUS",
+        "MULT",
+        "DIV",
+        "MAX_AGGR",
+        "MIN_AGGR",
+        "SUM",
+        "COUNT",
+        "AVG",
+        "MEDIAN",
+        "GROUP_BY",
+        "ABS",
+        "ISNULL",
+        "EXP",
+        "LN",
+        "SQRT",
+        "POWER",
+        "LOG",
+        "MAX",
+        "MIN",
+        "IN",
+        "COMMA",
+        "COLON",
+        "LPAREN",
+        "RPAREN",
+        "CURLY_BRACKET_LEFT",
+        "CURLY_BRACKET_RIGHT",
+        "SQUARE_BRACKET_LEFT",
+        "SQUARE_BRACKET_RIGHT",
+        "IF",
+        "ENDIF",
+        "THEN",
+        "ELSE",
+        "NVL",
+        "FILTER",
+        "WHERE",
+        "GET",
+        "RENAME",
+        "TO",
+        "SUB",
+        "TIME_SHIFT",
+        "LEN",
+        "CONCAT",
+        "TIME_PERIOD",
+        "EOL",
+        "INTEGER_LITERAL",
+        "DECIMAL_LITERAL",
+        "PERCENT_LITERAL",
+        "NULL_LITERAL",
+        "STRING_LITERAL",
+        "EMPTY_LITERAL",
+        "DATE_LITERAL",
+        "TIME_INTERVAL_LITERAL",
+        "TIME_PERIOD_LITERAL",
+        "CODE",
+        "WS",
+        "INTERVAL",
+        "DEFAULT",
+        "ROW",
+        "ROW_RANGE",
+        "ROW_ALL",
+        "COL",
+        "COL_RANGE",
+        "COL_ALL",
+        "SHEET",
+        "SHEET_RANGE",
+        "SHEET_ALL",
+        "TABLE_REFERENCE",
+        "TABLE_GROUP_REFERENCE",
+        "VAR_REFERENCE",
+        "OPERATION_REFERENCE",
+        "PRECONDITION_ELEMENT",
+        "SELECTION_MODE_WS",
+        "ROW_COMPONENT",
+        "COL_COMPONENT",
+        "SHEET_COMPONENT",
+        "ITEM_SIGNATURE",
+        "PROPERTY_CODE",
+        "CLAUSE_WS",
+        "GROUPING_WS",
+        "SET_OPERAND_MODE_WS",
+    ]
 
-    ruleNames = [ "BOOLEAN_LITERAL", "AND", "OR", "XOR", "NOT", "ASSIGN", 
-                  "PERSISTENT_ASSIGN", "EQ", "NE", "LT", "LE", "GT", "GE", 
-                  "MATCH", "WITH", "PLUS", "MINUS", "MULT", "DIV", "MAX_AGGR", 
-                  "MIN_AGGR", "SUM", "COUNT", "AVG", "MEDIAN", "GROUP_BY", 
-                  "ABS", "ISNULL", "EXP", "LN", "SQRT", "POWER", "LOG", 
-                  "MAX", "MIN", "IN", "COMMA", "COLON", "LPAREN", "RPAREN", 
-                  "CURLY_BRACKET_LEFT", "CURLY_BRACKET_RIGHT", "SQUARE_BRACKET_LEFT", 
-                  "SQUARE_BRACKET_RIGHT", "IF", "ENDIF", "THEN", "ELSE", 
-                  "NVL", "FILTER", "WHERE", "GET", "RENAME", "TO", "SUB", 
-                  "TIME_SHIFT", "LEN", "CONCAT", "TIME_PERIOD", "EOL", "DIGITS0_9", 
-                  "DIGITS1_9", "INTEGER_LITERAL", "DECIMAL_LITERAL", "PERCENT_LITERAL", 
-                  "NULL_LITERAL", "STRING_LITERAL", "EMPTY_LITERAL", "YEAR", 
-                  "MONTH", "WEEK", "DAY", "HOURS", "MINUTES", "SECONDS", 
-                  "DATE_FORMAT", "TIME_PERIOD_FORMAT", "DATE_LITERAL", "TIME_INTERVAL_LITERAL", 
-                  "TIME_PERIOD_LITERAL", "CODE", "WS", "SELECTION_MODE_COMMA", 
-                  "SELECTION_MODE_COLON", "SELECTION_MODE_LPAREN", "SELECTION_MODE_RPAREN", 
-                  "SELECTION_MODE_CURLY_BRACKET_RIGHT", "INTERVAL", "DEFAULT", 
-                  "SELECTION_MODE_NULL_LITERAL", "SELECTION_MODE_BOOLEAN_LITERAL", 
-                  "ROW_PREFIX", "COL_PREFIX", "SHEET_PREFIX", "TABLE_PREFIX", 
-                  "TABLE_GROUP_PREFIX", "VAR_REF_PREFIX", "OPERATION_REF_PREFIX", 
-                  "PRECONDITION_PREFIX", "TABLE_CODE", "CELL_COMPONENT_CODE", 
-                  "CELL_COMPONENT_RANGE", "VAR_CODE", "OPERATION_CODE", 
-                  "ROW", "ROW_RANGE", "ROW_ALL", "COL", "COL_RANGE", "COL_ALL", 
-                  "SHEET", "SHEET_RANGE", "SHEET_ALL", "TABLE_REFERENCE", 
-                  "TABLE_GROUP_REFERENCE", "VAR_REFERENCE", "OPERATION_REFERENCE", 
-                  "PRECONDITION_ELEMENT", "SELECTION_MODE_INTEGER_LITERAL", 
-                  "SELECTION_MODE_DECIMAL_LITERAL", "SELECTION_MODE_PERCENT_LITERAL", 
-                  "SELECTION_MODE_STRING_LITERAL", "SELECTION_MODE_EMPTY_LITERAL", 
-                  "SELECTION_MODE_DATE_LITERAL", "SELECTION_MODE_TIME_INTERVAL_LITERAL", 
-                  "SELECTION_MODE_TIME_PERIOD_LITERAL", "SELECTION_MODE_WS", 
-                  "CLAUSE_BOOLEAN_LITERAL", "CLAUSE_AND", "CLAUSE_OR", "CLAUSE_XOR", 
-                  "CLAUSE_NOT", "CLAUSE_EQ", "CLAUSE_NE", "CLAUSE_LT", "CLAUSE_LE", 
-                  "CLAUSE_GT", "CLAUSE_GE", "CLAUSE_MATCH", "CLAUSE_PLUS", 
-                  "CLAUSE_MINUS", "CLAUSE_MULT", "CLAUSE_DIV", "CLAUSE_MAX_AGGR", 
-                  "CLAUSE_MIN_AGGR", "CLAUSE_SUM", "CLAUSE_COUNT", "CLAUSE_AVG", 
-                  "CLAUSE_MEDIAN", "CLAUSE_GROUP_BY", "CLAUSE_ABS", "CLAUSE_ISNULL", 
-                  "CLAUSE_EXP", "CLAUSE_LN", "CLAUSE_SQRT", "CLAUSE_POWER", 
-                  "CLAUSE_LOG", "CLAUSE_MAX", "CLAUSE_MIN", "CLAUSE_IN", 
-                  "CLAUSE_COMMA", "CLAUSE_COLON", "CLAUSE_LPAREN", "CLAUSE_RPAREN", 
-                  "CLAUSE_CURLY_BRACKET_LEFT", "CLAUSE_CURLY_BRACKET_RIGHT", 
-                  "CLAUSE_SQUARE_BRACKET_LEFT", "CLAUSE_SQUARE_BRACKET_RIGHT", 
-                  "CLAUSE_IF", "CLAUSE_ENDIF", "CLAUSE_THEN", "CLAUSE_ELSE", 
-                  "CLAUSE_NVL", "CLAUSE_FILTER", "CLAUSE_WHERE", "CLAUSE_GET", 
-                  "CLAUSE_RENAME", "CLAUSE_TO", "CLAUSE_SUB", "CLAUSE_TIME_SHIFT", 
-                  "CLAUSE_LEN", "CLAUSE_CONCAT", "ROW_COMPONENT", "COL_COMPONENT", 
-                  "SHEET_COMPONENT", "CLAUSE_TIME_PERIOD", "CLAUSE_INTEGER_LITERAL", 
-                  "CLAUSE_DECIMAL_LITERAL", "CLAUSE_PERCENT_LITERAL", "CLAUSE_STRING_LITERAL", 
-                  "CLAUSE_EMPTY_LITERAL", "CLAUSE_DATE_LITERAL", "CLAUSE_TIME_INTERVAL_LITERAL", 
-                  "CLAUSE_TIME_PERIOD_LITERAL", "ITEM_SIGNATURE", "PROPERTY_CODE", 
-                  "CLAUSE_WS", "GROUPING_RPAREN", "GROUPING_COMMA", "GROUPING_ROW_COMPONENT", 
-                  "GROUPING_COL_COMPONENT", "GROUPING_SHEET_COMPONENT", 
-                  "GROUPING_PROPERTY_CODE", "GROUPING_WS", "SET_OPERAND_MODE_COMMA", 
-                  "SET_OPERAND_MODE_CURLY_BRACKET_LEFT", "SET_OPERAND_MODE_CURLY_BRACKET_RIGHT", 
-                  "SET_OPERAND_MODE_SQUARE_BRACKET_LEFT", "SET_OPERAND_MODE_SQUARE_BRACKET_RIGHT", 
-                  "SET_OPERAND_MODE_ITEM_SIGNATURE", "SET_OPERAND_MODE_INTEGER_LITERAL", 
-                  "SET_OPERAND_MODE_DECIMAL_LITERAL", "SET_OPERAND_MODE_PERCENT_LITERAL", 
-                  "SET_OPERAND_MODE_STRING_LITERAL", "SET_OPERAND_MODE_EMPTY_LITERAL", 
-                  "SET_OPERAND_MODE_DATE_LITERAL", "SET_OPERAND_MODE_TIME_INTERVAL_LITERAL", 
-                  "SET_OPERAND_MODE_TIME_PERIOD_LITERAL", "SET_OPERAND_MODE_WS" ]
+    ruleNames = [
+        "BOOLEAN_LITERAL",
+        "AND",
+        "OR",
+        "XOR",
+        "NOT",
+        "ASSIGN",
+        "PERSISTENT_ASSIGN",
+        "EQ",
+        "NE",
+        "LT",
+        "LE",
+        "GT",
+        "GE",
+        "MATCH",
+        "WITH",
+        "PLUS",
+        "MINUS",
+        "MULT",
+        "DIV",
+        "MAX_AGGR",
+        "MIN_AGGR",
+        "SUM",
+        "COUNT",
+        "AVG",
+        "MEDIAN",
+        "GROUP_BY",
+        "ABS",
+        "ISNULL",
+        "EXP",
+        "LN",
+        "SQRT",
+        "POWER",
+        "LOG",
+        "MAX",
+        "MIN",
+        "IN",
+        "COMMA",
+        "COLON",
+        "LPAREN",
+        "RPAREN",
+        "CURLY_BRACKET_LEFT",
+        "CURLY_BRACKET_RIGHT",
+        "SQUARE_BRACKET_LEFT",
+        "SQUARE_BRACKET_RIGHT",
+        "IF",
+        "ENDIF",
+        "THEN",
+        "ELSE",
+        "NVL",
+        "FILTER",
+        "WHERE",
+        "GET",
+        "RENAME",
+        "TO",
+        "SUB",
+        "TIME_SHIFT",
+        "LEN",
+        "CONCAT",
+        "TIME_PERIOD",
+        "EOL",
+        "DIGITS0_9",
+        "DIGITS1_9",
+        "INTEGER_LITERAL",
+        "DECIMAL_LITERAL",
+        "PERCENT_LITERAL",
+        "NULL_LITERAL",
+        "STRING_LITERAL",
+        "EMPTY_LITERAL",
+        "YEAR",
+        "MONTH",
+        "WEEK",
+        "DAY",
+        "HOURS",
+        "MINUTES",
+        "SECONDS",
+        "DATE_FORMAT",
+        "TIME_PERIOD_FORMAT",
+        "DATE_LITERAL",
+        "TIME_INTERVAL_LITERAL",
+        "TIME_PERIOD_LITERAL",
+        "CODE",
+        "WS",
+        "SELECTION_MODE_COMMA",
+        "SELECTION_MODE_COLON",
+        "SELECTION_MODE_LPAREN",
+        "SELECTION_MODE_RPAREN",
+        "SELECTION_MODE_CURLY_BRACKET_RIGHT",
+        "INTERVAL",
+        "DEFAULT",
+        "SELECTION_MODE_NULL_LITERAL",
+        "SELECTION_MODE_BOOLEAN_LITERAL",
+        "ROW_PREFIX",
+        "COL_PREFIX",
+        "SHEET_PREFIX",
+        "TABLE_PREFIX",
+        "TABLE_GROUP_PREFIX",
+        "VAR_REF_PREFIX",
+        "OPERATION_REF_PREFIX",
+        "PRECONDITION_PREFIX",
+        "TABLE_CODE",
+        "CELL_COMPONENT_CODE",
+        "CELL_COMPONENT_RANGE",
+        "VAR_CODE",
+        "OPERATION_CODE",
+        "ROW",
+        "ROW_RANGE",
+        "ROW_ALL",
+        "COL",
+        "COL_RANGE",
+        "COL_ALL",
+        "SHEET",
+        "SHEET_RANGE",
+        "SHEET_ALL",
+        "TABLE_REFERENCE",
+        "TABLE_GROUP_REFERENCE",
+        "VAR_REFERENCE",
+        "OPERATION_REFERENCE",
+        "PRECONDITION_ELEMENT",
+        "SELECTION_MODE_INTEGER_LITERAL",
+        "SELECTION_MODE_DECIMAL_LITERAL",
+        "SELECTION_MODE_PERCENT_LITERAL",
+        "SELECTION_MODE_STRING_LITERAL",
+        "SELECTION_MODE_EMPTY_LITERAL",
+        "SELECTION_MODE_DATE_LITERAL",
+        "SELECTION_MODE_TIME_INTERVAL_LITERAL",
+        "SELECTION_MODE_TIME_PERIOD_LITERAL",
+        "SELECTION_MODE_WS",
+        "CLAUSE_BOOLEAN_LITERAL",
+        "CLAUSE_AND",
+        "CLAUSE_OR",
+        "CLAUSE_XOR",
+        "CLAUSE_NOT",
+        "CLAUSE_EQ",
+        "CLAUSE_NE",
+        "CLAUSE_LT",
+        "CLAUSE_LE",
+        "CLAUSE_GT",
+        "CLAUSE_GE",
+        "CLAUSE_MATCH",
+        "CLAUSE_PLUS",
+        "CLAUSE_MINUS",
+        "CLAUSE_MULT",
+        "CLAUSE_DIV",
+        "CLAUSE_MAX_AGGR",
+        "CLAUSE_MIN_AGGR",
+        "CLAUSE_SUM",
+        "CLAUSE_COUNT",
+        "CLAUSE_AVG",
+        "CLAUSE_MEDIAN",
+        "CLAUSE_GROUP_BY",
+        "CLAUSE_ABS",
+        "CLAUSE_ISNULL",
+        "CLAUSE_EXP",
+        "CLAUSE_LN",
+        "CLAUSE_SQRT",
+        "CLAUSE_POWER",
+        "CLAUSE_LOG",
+        "CLAUSE_MAX",
+        "CLAUSE_MIN",
+        "CLAUSE_IN",
+        "CLAUSE_COMMA",
+        "CLAUSE_COLON",
+        "CLAUSE_LPAREN",
+        "CLAUSE_RPAREN",
+        "CLAUSE_CURLY_BRACKET_LEFT",
+        "CLAUSE_CURLY_BRACKET_RIGHT",
+        "CLAUSE_SQUARE_BRACKET_LEFT",
+        "CLAUSE_SQUARE_BRACKET_RIGHT",
+        "CLAUSE_IF",
+        "CLAUSE_ENDIF",
+        "CLAUSE_THEN",
+        "CLAUSE_ELSE",
+        "CLAUSE_NVL",
+        "CLAUSE_FILTER",
+        "CLAUSE_WHERE",
+        "CLAUSE_GET",
+        "CLAUSE_RENAME",
+        "CLAUSE_TO",
+        "CLAUSE_SUB",
+        "CLAUSE_TIME_SHIFT",
+        "CLAUSE_LEN",
+        "CLAUSE_CONCAT",
+        "ROW_COMPONENT",
+        "COL_COMPONENT",
+        "SHEET_COMPONENT",
+        "CLAUSE_TIME_PERIOD",
+        "CLAUSE_INTEGER_LITERAL",
+        "CLAUSE_DECIMAL_LITERAL",
+        "CLAUSE_PERCENT_LITERAL",
+        "CLAUSE_STRING_LITERAL",
+        "CLAUSE_EMPTY_LITERAL",
+        "CLAUSE_DATE_LITERAL",
+        "CLAUSE_TIME_INTERVAL_LITERAL",
+        "CLAUSE_TIME_PERIOD_LITERAL",
+        "ITEM_SIGNATURE",
+        "PROPERTY_CODE",
+        "CLAUSE_WS",
+        "GROUPING_RPAREN",
+        "GROUPING_COMMA",
+        "GROUPING_ROW_COMPONENT",
+        "GROUPING_COL_COMPONENT",
+        "GROUPING_SHEET_COMPONENT",
+        "GROUPING_PROPERTY_CODE",
+        "GROUPING_WS",
+        "SET_OPERAND_MODE_COMMA",
+        "SET_OPERAND_MODE_CURLY_BRACKET_LEFT",
+        "SET_OPERAND_MODE_CURLY_BRACKET_RIGHT",
+        "SET_OPERAND_MODE_SQUARE_BRACKET_LEFT",
+        "SET_OPERAND_MODE_SQUARE_BRACKET_RIGHT",
+        "SET_OPERAND_MODE_ITEM_SIGNATURE",
+        "SET_OPERAND_MODE_INTEGER_LITERAL",
+        "SET_OPERAND_MODE_DECIMAL_LITERAL",
+        "SET_OPERAND_MODE_PERCENT_LITERAL",
+        "SET_OPERAND_MODE_STRING_LITERAL",
+        "SET_OPERAND_MODE_EMPTY_LITERAL",
+        "SET_OPERAND_MODE_DATE_LITERAL",
+        "SET_OPERAND_MODE_TIME_INTERVAL_LITERAL",
+        "SET_OPERAND_MODE_TIME_PERIOD_LITERAL",
+        "SET_OPERAND_MODE_WS",
+    ]
 
     grammarFileName = "dpm_xlLexer.g4"
 
-    def __init__(self, input=None, output:TextIO = sys.stdout):
+    def __init__(self, input=None, output: TextIO = sys.stdout):
         super().__init__(input, output)
         self.checkVersion("4.9.2")
-        self._interp = LexerATNSimulator(self, self.atn, self.decisionsToDFA, PredictionContextCache())
+        self._interp = LexerATNSimulator(
+            self, self.atn, self.decisionsToDFA, PredictionContextCache()
+        )
         self._actions = None
         self._predicates = None
-
-

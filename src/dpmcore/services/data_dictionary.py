@@ -45,11 +45,7 @@ class DataDictionaryService:
 
     def get_releases(self) -> List[Dict[str, Any]]:
         """Return all releases ordered by date descending."""
-        rows = (
-            self.session.query(Release)
-            .order_by(Release.date.desc())
-            .all()
-        )
+        rows = self.session.query(Release).order_by(Release.date.desc()).all()
         return [r.to_dict() for r in rows]
 
     def get_release_by_id(self, release_id: int) -> Optional[Dict[str, Any]]:
@@ -61,7 +57,9 @@ class DataDictionaryService:
         )
         return row.to_dict() if row else None
 
-    def get_release_by_code(self, release_code: str) -> Optional[Dict[str, Any]]:
+    def get_release_by_code(
+        self, release_code: str
+    ) -> Optional[Dict[str, Any]]:
         """Return a single release by code."""
         row = (
             self.session.query(Release)
@@ -72,11 +70,7 @@ class DataDictionaryService:
 
     def get_latest_release(self) -> Optional[Dict[str, Any]]:
         """Return the most recent release."""
-        row = (
-            self.session.query(Release)
-            .order_by(Release.date.desc())
-            .first()
-        )
+        row = self.session.query(Release).order_by(Release.date.desc()).first()
         return row.to_dict() if row else None
 
     # ------------------------------------------------------------------ #
@@ -93,30 +87,31 @@ class DataDictionaryService:
         q = self.session.query(TableVersion.code)
 
         if date:
-            q = (
-                q.join(
-                    ModuleVersionComposition,
-                    TableVersion.table_vid == ModuleVersionComposition.table_vid,
-                )
-                .join(
-                    ModuleVersion,
-                    ModuleVersionComposition.module_vid == ModuleVersion.module_vid,
-                )
+            q = q.join(
+                ModuleVersionComposition,
+                TableVersion.table_vid == ModuleVersionComposition.table_vid,
+            ).join(
+                ModuleVersion,
+                ModuleVersionComposition.module_vid
+                == ModuleVersion.module_vid,
             )
             q = filter_by_date(
-                q, date,
+                q,
+                date,
                 ModuleVersion.from_reference_date,
                 ModuleVersion.to_reference_date,
             )
         elif release_id:
             q = filter_by_release(
-                q, release_id=release_id,
+                q,
+                release_id=release_id,
                 start_col=TableVersion.start_release_id,
                 end_col=TableVersion.end_release_id,
             )
         elif release_code:
             q = filter_by_release(
-                q, release_code=release_code,
+                q,
+                release_code=release_code,
                 start_col=TableVersion.start_release_id,
                 end_col=TableVersion.end_release_id,
             )
@@ -135,7 +130,8 @@ class DataDictionaryService:
         )
         if release_id is not None:
             q = filter_by_release(
-                q, release_id=release_id,
+                q,
+                release_id=release_id,
                 start_col=TableVersion.start_release_id,
                 end_col=TableVersion.end_release_id,
             )
@@ -157,7 +153,8 @@ class DataDictionaryService:
 
         if release_id is not None:
             q = filter_by_release(
-                q, release_id=release_id,
+                q,
+                release_id=release_id,
                 start_col=ItemCategory.start_release_id,
                 end_col=ItemCategory.end_release_id,
             )
@@ -182,7 +179,8 @@ class DataDictionaryService:
 
         if release_id is not None:
             q = filter_by_release(
-                q, release_id=release_id,
+                q,
+                release_id=release_id,
                 start_col=ItemCategory.start_release_id,
                 end_col=ItemCategory.end_release_id,
             )

@@ -58,7 +58,9 @@ class TestDPMExplorer(unittest.TestCase):
         mock_query.filter.return_value.all.return_value = [row_mock]
 
         # With release_id filter
-        mock_query.filter.return_value.filter.return_value.all.return_value = [row_mock]
+        mock_query.filter.return_value.filter.return_value.all.return_value = [
+            row_mock
+        ]
 
         # Test search
         results = self.explorer.search_table("TABLE", release_id=1)
@@ -72,7 +74,9 @@ class TestDPMExplorer(unittest.TestCase):
     @patch("py_dpm.dpm.models.Category")
     @patch("py_dpm.dpm.models.PropertyCategory")
     @patch("py_dpm.dpm.models.ItemCategory")
-    def test_get_properties_using_item(self, mock_ic, mock_pc, mock_cat, mock_aliased):
+    def test_get_properties_using_item(
+        self, mock_ic, mock_pc, mock_cat, mock_aliased
+    ):
         # Setup mock return values
         mock_result = MagicMock()
         mock_result.code = "PROP_CODE"
@@ -125,8 +129,12 @@ class TestDPMExplorer(unittest.TestCase):
         audit = self.explorer.audit_table("NON_EXISTENT")
         self.assertIn("error", audit)
 
-    @patch("py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variable_usage")
-    def test_get_variable_usage_delegates_to_query(self, mock_get_variable_usage):
+    @patch(
+        "py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variable_usage"
+    )
+    def test_get_variable_usage_delegates_to_query(
+        self, mock_get_variable_usage
+    ):
         # Arrange
         expected_result = [
             {
@@ -159,9 +167,7 @@ class TestDPMExplorer(unittest.TestCase):
     @patch("py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_module_url")
     def test_get_module_url_delegates_to_query(self, mock_get_module_url):
         # Arrange
-        expected_url = (
-            "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/FRM/1.0/mod/MOD_aaaX.json"
-        )
+        expected_url = "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/FRM/1.0/mod/MOD_aaaX.json"
         mock_get_module_url.return_value = expected_url
 
         # Act
@@ -263,9 +269,7 @@ class TestExplorerQueryModuleUrlIntegration(unittest.TestCase):
             release_code=None,
         )
 
-        expected_url = (
-            "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/frm/2.0/mod/mod_x.json"
-        )
+        expected_url = "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/frm/2.0/mod/mod_x.json"
         self.assertEqual(url, expected_url)
 
     def test_get_module_url_by_release_id_uses_static_mapping(self):
@@ -285,7 +289,9 @@ class TestExplorerQueryModuleUrlIntegration(unittest.TestCase):
             endreleaseid=None,
         )
 
-        self.session.add_all([release_34, framework_ae, module_ae, module_version_ae])
+        self.session.add_all(
+            [release_34, framework_ae, module_ae, module_version_ae]
+        )
         self.session.commit()
 
         url = ExplorerQuery.get_module_url(
@@ -310,8 +316,12 @@ class TestGetVariableByCode(unittest.TestCase):
         self.mock_api.session = self.mock_session
         self.explorer = ExplorerQueryAPI(data_dict_api=self.mock_api)
 
-    @patch("py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variable_by_code")
-    def test_get_variable_by_code_delegates_to_query(self, mock_get_variable_by_code):
+    @patch(
+        "py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variable_by_code"
+    )
+    def test_get_variable_by_code_delegates_to_query(
+        self, mock_get_variable_by_code
+    ):
         """Test that API method delegates to query layer correctly."""
         # Arrange
         expected_result = {
@@ -337,8 +347,12 @@ class TestGetVariableByCode(unittest.TestCase):
         )
         self.assertEqual(result, expected_result)
 
-    @patch("py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variable_by_code")
-    def test_get_variable_by_code_with_release_code(self, mock_get_variable_by_code):
+    @patch(
+        "py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variable_by_code"
+    )
+    def test_get_variable_by_code_with_release_code(
+        self, mock_get_variable_by_code
+    ):
         """Test get_variable_by_code with release_code parameter."""
         expected_result = {
             "variable_id": 1935,
@@ -361,16 +375,22 @@ class TestGetVariableByCode(unittest.TestCase):
         )
         self.assertEqual(result, expected_result)
 
-    @patch("py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variable_by_code")
+    @patch(
+        "py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variable_by_code"
+    )
     def test_get_variable_by_code_not_found(self, mock_get_variable_by_code):
         """Test get_variable_by_code returns None when variable not found."""
         mock_get_variable_by_code.return_value = None
 
-        result = self.explorer.get_variable_by_code(variable_code="NONEXISTENT")
+        result = self.explorer.get_variable_by_code(
+            variable_code="NONEXISTENT"
+        )
 
         self.assertIsNone(result)
 
-    @patch("py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variables_by_codes")
+    @patch(
+        "py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variables_by_codes"
+    )
     def test_get_variables_by_codes_delegates_to_query(
         self, mock_get_variables_by_codes
     ):
@@ -407,8 +427,12 @@ class TestGetVariableByCode(unittest.TestCase):
         )
         self.assertEqual(result, expected_result)
 
-    @patch("py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variables_by_codes")
-    def test_get_variables_by_codes_empty_list(self, mock_get_variables_by_codes):
+    @patch(
+        "py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variables_by_codes"
+    )
+    def test_get_variables_by_codes_empty_list(
+        self, mock_get_variables_by_codes
+    ):
         """Test get_variables_by_codes with empty list returns empty dict."""
         mock_get_variables_by_codes.return_value = {}
 
@@ -422,8 +446,12 @@ class TestGetVariableByCode(unittest.TestCase):
         )
         self.assertEqual(result, {})
 
-    @patch("py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variables_by_codes")
-    def test_get_variables_by_codes_partial_match(self, mock_get_variables_by_codes):
+    @patch(
+        "py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variables_by_codes"
+    )
+    def test_get_variables_by_codes_partial_match(
+        self, mock_get_variables_by_codes
+    ):
         """Test that only found variables are returned (missing codes excluded)."""
         # Only C_01.00 found, C_99.99 not in database
         expected_result = {

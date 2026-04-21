@@ -93,7 +93,8 @@ def test_get_available_tables_by_date(api_with_dates):
 
 def test_mutual_exclusivity(api_with_dates):
     with pytest.raises(
-        ValueError, match="Specify a maximum of one of release_id, release_code or date"
+        ValueError,
+        match="Specify a maximum of one of release_id, release_code or date",
     ):
         api_with_dates.get_tables(date="2024-01-01", release_id=1)
 

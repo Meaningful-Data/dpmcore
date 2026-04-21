@@ -39,8 +39,7 @@ class Scalar(Operand):
 
     def __repr__(self):
         return "<{class_name}(type='{type}',)>".format(
-            class_name=self.__class__.__name__,
-            type=self.type
+            class_name=self.__class__.__name__, type=self.type
         )
 
 
@@ -49,14 +48,18 @@ class Component:
     Superclass of all components inside a recordset
     """
 
-    def __init__(self, name: str, type_, parent: str, is_global: bool = False) -> None:
+    def __init__(
+        self, name: str, type_, parent: str, is_global: bool = False
+    ) -> None:
         if type_.__class__ in ScalarFactory().all_types():
             self.name = name
             self.type = type_
             self.parent = parent
             self.is_global = is_global
         else:
-            raise Exception("INTERNAL: Wrong data type on Component generation")
+            raise Exception(
+                "INTERNAL: Wrong data type on Component generation"
+            )
 
 
 class KeyComponent(Component):
@@ -68,7 +71,14 @@ class KeyComponent(Component):
     :parameter subtype: Specifies if it is a Standard component (Row, Column or Sheet) or a DPM component
     """
 
-    def __init__(self, name: str, type_: ScalarFactory().all_types, subtype: str, parent: str, is_global: bool = False) -> None:
+    def __init__(
+        self,
+        name: str,
+        type_: ScalarFactory().all_types,
+        subtype: str,
+        parent: str,
+        is_global: bool = False,
+    ) -> None:
         super().__init__(name, type_, parent, is_global)
         self.name = name
         if subtype in (DPM, STANDARD):
@@ -92,7 +102,9 @@ class AttributeComponent(Component):
     These components are drop normally except for rename and where operators.
     """
 
-    def __init__(self, name: str, type_: ScalarFactory().all_types, parent: str) -> None:
+    def __init__(
+        self, name: str, type_: ScalarFactory().all_types, parent: str
+    ) -> None:
         super().__init__(name, type_, parent)
 
 
@@ -102,15 +114,21 @@ class Structure:
     """
 
     def __init__(self, components: List[Component]) -> None:
-        components_names = [c.name for c in components if isinstance(c, Component)]
-        if len(components_names) != len(set(components_names)) or len(components) != len(components_names):
-            raise Exception("Duplicated Component Names, check key_components query.")
-        facts_components = [c.name for c in components if isinstance(c, FactComponent)]
+        components_names = [
+            c.name for c in components if isinstance(c, Component)
+        ]
+        if len(components_names) != len(set(components_names)) or len(
+            components
+        ) != len(components_names):
+            raise Exception(
+                "Duplicated Component Names, check key_components query."
+            )
+        facts_components = [
+            c.name for c in components if isinstance(c, FactComponent)
+        ]
         if len(facts_components) > 1:
             raise Exception("Duplicated Fact Component")
-        self.components = {
-            c.name: c for c in components
-        }
+        self.components = {c.name: c for c in components}
 
     def get_key_components(self) -> dict:
         dpm_components = self.get_dpm_components()
@@ -122,14 +140,19 @@ class Structure:
 
     def get_dpm_components(self) -> dict:
         dpm_components = {
-            elto_k: elto_v for elto_k, elto_v in self.components.items() if (isinstance(elto_v, KeyComponent) and elto_v.subtype == DPM)
+            elto_k: elto_v
+            for elto_k, elto_v in self.components.items()
+            if (isinstance(elto_v, KeyComponent) and elto_v.subtype == DPM)
         }
         return dpm_components
 
     def get_standard_components(self):
         standard_components = {
-            elto_k: elto_v for elto_k, elto_v in self.components.items() if
-            (isinstance(elto_v, KeyComponent) and elto_v.subtype == STANDARD)
+            elto_k: elto_v
+            for elto_k, elto_v in self.components.items()
+            if (
+                isinstance(elto_v, KeyComponent) and elto_v.subtype == STANDARD
+            )
         }
         return standard_components
 
@@ -138,13 +161,18 @@ class Structure:
 
     def get_fact_component(self):
         fact_component = [
-            elto_v for elto_v in self.components.values() if (isinstance(elto_v, FactComponent))
+            elto_v
+            for elto_v in self.components.values()
+            if (isinstance(elto_v, FactComponent))
         ]
         return fact_component[0]
 
     def get_attributes(self):
-        attributes = {elto_k: elto_v for elto_k, elto_v in self.components.items() if
-                      (isinstance(elto_v, AttributeComponent))}
+        attributes = {
+            elto_k: elto_v
+            for elto_k, elto_v in self.components.items()
+            if (isinstance(elto_v, AttributeComponent))
+        }
         return attributes
 
     def replace_components_parent(self, parent: str):
@@ -152,8 +180,11 @@ class Structure:
             component.parent = parent
 
     def get_attributes_names(self):
-        return [attribute for attribute in self.components if
-                isinstance(self.components[attribute], AttributeComponent)]
+        return [
+            attribute
+            for attribute in self.components
+            if isinstance(self.components[attribute], AttributeComponent)
+        ]
 
     def remove_attributes(self):
         attributes_names = self.get_attributes_names()
@@ -183,7 +214,12 @@ class RecordSet(Operand):
         self.errors = None
         self.interval = None
         self.default = None
-        self.has_only_global_components = all([component.is_global for component in structure.get_key_components().values()])
+        self.has_only_global_components = all(
+            [
+                component.is_global
+                for component in structure.get_key_components().values()
+            ]
+        )
 
     def get_key_components(self) -> dict:
         return self.structure.get_key_components()

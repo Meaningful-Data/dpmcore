@@ -38,7 +38,9 @@ def _semantic_db_kwargs():
 
         if all([host, db, user, password]):
             if rdbms == "postgres":
-                connection_url = f"postgresql://{user}:{password}@{host}:{port}/{db}"
+                connection_url = (
+                    f"postgresql://{user}:{password}@{host}:{port}/{db}"
+                )
             else:
                 # SQL Server connection using ODBC connection string
                 server_with_port = f"{host},{port}" if port else host
@@ -82,7 +84,9 @@ def _semantic_db_kwargs():
         password = os.getenv("POSTGRES_PASS")
 
         if all([host, db, user, password]):
-            connection_url = f"postgresql://{user}:{password}@{host}:{port}/{db}"
+            connection_url = (
+                f"postgresql://{user}:{password}@{host}:{port}/{db}"
+            )
             return {"connection_url": connection_url}
 
     if use_sqlite:

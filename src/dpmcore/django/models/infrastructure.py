@@ -94,9 +94,7 @@ class RelatedConcept(models.Model):
         managed = False
         db_table = "RelatedConcept"
         app_label = "dpmcore_django"
-        unique_together = (
-            ("concept_guid", "concept_relation_id"),
-        )
+        unique_together = (("concept_guid", "concept_relation_id"),)
 
 
 class Organisation(models.Model):
@@ -468,9 +466,7 @@ class Changelog(models.Model):
         managed = False
         db_table = "ChangeLog"
         app_label = "dpmcore_django"
-        unique_together = (
-            ("row_guid", "class_id", "timestamp"),
-        )
+        unique_together = (("row_guid", "class_id", "timestamp"),)
 
 
 class ChangelogAttribute(models.Model):
@@ -724,9 +720,7 @@ class Reference(models.Model):
         managed = False
         db_table = "Reference"
         app_label = "dpmcore_django"
-        unique_together = (
-            ("subdivision_id", "concept_guid"),
-        )
+        unique_together = (("subdivision_id", "concept_guid"),)
 
 
 class Release(models.Model):

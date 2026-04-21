@@ -22,14 +22,20 @@ def api_with_module_tables():
 
     # Concrete tables
     t1 = Table(tableid=1, isabstract=False)
-    tv1 = TableVersion(tablevid=100, tableid=1, code="T01", name="Concrete Table 1")
+    tv1 = TableVersion(
+        tablevid=100, tableid=1, code="T01", name="Concrete Table 1"
+    )
 
     t2 = Table(tableid=2, isabstract=False)
-    tv2 = TableVersion(tablevid=200, tableid=2, code="T02", name="Concrete Table 2")
+    tv2 = TableVersion(
+        tablevid=200, tableid=2, code="T02", name="Concrete Table 2"
+    )
 
     # Abstract table
     t3 = Table(tableid=3, isabstract=True)
-    tv3 = TableVersion(tablevid=300, tableid=3, code="T03_ABS", name="Abstract Table")
+    tv3 = TableVersion(
+        tablevid=300, tableid=3, code="T03_ABS", name="Abstract Table"
+    )
 
     # Link all tables to the module
     mvc1 = ModuleVersionComposition(modulevid=10, tableid=1, tablevid=100)
@@ -52,7 +58,9 @@ def test_include_abstract_default_returns_all_tables(api_with_module_tables):
     assert codes == {"T01", "T02", "T03_ABS"}
 
 
-def test_include_abstract_false_excludes_abstract_tables(api_with_module_tables):
+def test_include_abstract_false_excludes_abstract_tables(
+    api_with_module_tables,
+):
     """include_abstract=False excludes abstract tables."""
     result = api_with_module_tables.get_all_tables_for_module(
         module_vid=10, include_abstract=False
@@ -110,14 +118,19 @@ def test_module_with_only_abstract_tables():
 
     mv = ModuleVersion(modulevid=20, moduleid=2, startreleaseid=1)
     t = Table(tableid=10, isabstract=True)
-    tv = TableVersion(tablevid=1000, tableid=10, code="ABS_ONLY", name="Abstract Only")
+    tv = TableVersion(
+        tablevid=1000, tableid=10, code="ABS_ONLY", name="Abstract Only"
+    )
     mvc = ModuleVersionComposition(modulevid=20, tableid=10, tablevid=1000)
 
     api.session.add_all([mv, t, tv, mvc])
     api.session.commit()
 
     assert len(api.get_all_tables_for_module(module_vid=20)) == 1
-    assert api.get_all_tables_for_module(module_vid=20, include_abstract=False) == []
+    assert (
+        api.get_all_tables_for_module(module_vid=20, include_abstract=False)
+        == []
+    )
 
     api.session.close()
 
@@ -130,13 +143,17 @@ def test_isabstract_null_treated_as_non_abstract():
 
     mv = ModuleVersion(modulevid=30, moduleid=3, startreleaseid=1)
     t = Table(tableid=20, isabstract=None)
-    tv = TableVersion(tablevid=2000, tableid=20, code="NULL_ABS", name="Null Abstract")
+    tv = TableVersion(
+        tablevid=2000, tableid=20, code="NULL_ABS", name="Null Abstract"
+    )
     mvc = ModuleVersionComposition(modulevid=30, tableid=20, tablevid=2000)
 
     api.session.add_all([mv, t, tv, mvc])
     api.session.commit()
 
-    result = api.get_all_tables_for_module(module_vid=30, include_abstract=False)
+    result = api.get_all_tables_for_module(
+        module_vid=30, include_abstract=False
+    )
     assert len(result) == 1
     assert result[0]["table_code"] == "NULL_ABS"
 

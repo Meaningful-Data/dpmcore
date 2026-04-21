@@ -31,7 +31,9 @@ def _check_if_existing(composition_modules, existing_scopes):
     existing_scopes = existing_scopes[
         existing_scopes[MODULE_VID].isin(composition_modules)
     ][MODULE_VID].tolist()
-    if len(existing_scopes) and set(composition_modules) == set(existing_scopes):
+    if len(existing_scopes) and set(composition_modules) == set(
+        existing_scopes
+    ):
         return True
     return False
 
@@ -102,14 +104,18 @@ class OperationScopeService:
 
             # When using table_codes, unique operands are based on table codes, not table VIDs
             if table_codes:
-                unique_operands_number = len(table_codes) + len(precondition_items)
+                unique_operands_number = len(table_codes) + len(
+                    precondition_items
+                )
 
                 # First pass: categorize modules by table code and lifecycle
                 # We track lifecycle to handle version transitions within the SAME module
                 starting_by_code = {}  # table_code -> [module_vids that START in this release]
                 ending_by_code = {}  # table_code -> [module_vids that END or are active]
 
-                for module_vid, group_df in modules_info_dataframe.groupby(MODULE_VID):
+                for module_vid, group_df in modules_info_dataframe.groupby(
+                    MODULE_VID
+                ):
                     table_codes_in_module = (
                         group_df["TableCode"].unique().tolist()
                         if "TableCode" in group_df.columns
@@ -147,7 +153,8 @@ class OperationScopeService:
                 # (indicating a version transition for that table)
                 needs_lifecycle_separation = any(
                     code in starting_by_code and code in ending_by_code
-                    for code in set(starting_by_code.keys()) | set(ending_by_code.keys())
+                    for code in set(starting_by_code.keys())
+                    | set(ending_by_code.keys())
                 )
 
                 if needs_lifecycle_separation:
@@ -176,8 +183,12 @@ class OperationScopeService:
                     cross_modules = all_by_code
             else:
                 # Original logic for table VIDs
-                unique_operands_number = len(tables_vids) + len(precondition_items)
-                for module_vid, group_df in modules_info_dataframe.groupby(MODULE_VID):
+                unique_operands_number = len(tables_vids) + len(
+                    precondition_items
+                )
+                for module_vid, group_df in modules_info_dataframe.groupby(
+                    MODULE_VID
+                ):
                     vids = group_df[VARIABLE_VID].unique().tolist()
                     if len(vids) == unique_operands_number:
                         intra_modules.append(module_vid)
@@ -223,7 +234,8 @@ class OperationScopeService:
                         if table_vid not in cross_modules:
                             cross_modules[table_vid] = (
                                 modules_info_dataframe[
-                                    modules_info_dataframe[VARIABLE_VID] == table_vid
+                                    modules_info_dataframe[VARIABLE_VID]
+                                    == table_vid
                                 ][MODULE_VID]
                                 .unique()
                                 .tolist()
@@ -236,7 +248,11 @@ class OperationScopeService:
         return self.get_scopes_with_status()
 
     def extract_module_info(
-        self, tables_vids, precondition_items, release_id=None, table_codes=None
+        self,
+        tables_vids,
+        precondition_items,
+        release_id=None,
+        table_codes=None,
     ):
         """
         Extracts modules information of tables version ids and preconditions from database and
@@ -252,22 +268,34 @@ class OperationScopeService:
 
         # If table_codes are provided, query by codes to get ALL versions
         if table_codes and len(table_codes):
-            tables_modules_info_dataframe = ModuleVersionQuery.get_from_table_codes(
-                session=self.session, table_codes=table_codes, release_id=release_id
+            tables_modules_info_dataframe = (
+                ModuleVersionQuery.get_from_table_codes(
+                    session=self.session,
+                    table_codes=table_codes,
+                    release_id=release_id,
+                )
             )
             if tables_modules_info_dataframe.empty:
                 raise errors.SemanticError("1-13", table_codes=table_codes)
             modules_info_lst.append(tables_modules_info_dataframe)
         # Otherwise use the traditional table VID approach
         elif len(tables_vids):
-            tables_modules_info_dataframe = ModuleVersionQuery.get_from_tables_vids(
-                session=self.session, tables_vids=tables_vids, release_id=release_id
+            tables_modules_info_dataframe = (
+                ModuleVersionQuery.get_from_tables_vids(
+                    session=self.session,
+                    tables_vids=tables_vids,
+                    release_id=release_id,
+                )
             )
             if tables_modules_info_dataframe.empty:
                 missing_table_modules = tables_vids
             else:
-                modules_tables = tables_modules_info_dataframe[VARIABLE_VID].tolist()
-                missing_table_modules = set(tables_vids).difference(set(modules_tables))
+                modules_tables = tables_modules_info_dataframe[
+                    VARIABLE_VID
+                ].tolist()
+                missing_table_modules = set(tables_vids).difference(
+                    set(modules_tables)
+                )
 
             if len(missing_table_modules):
                 raise errors.SemanticError(
@@ -291,9 +319,9 @@ class OperationScopeService:
                 modules_preconditions = preconditions_modules_info_dataframe[
                     "Code"
                 ].tolist()
-                missing_precondition_modules = set(precondition_items).difference(
-                    set(modules_preconditions)
-                )
+                missing_precondition_modules = set(
+                    precondition_items
+                ).difference(set(modules_preconditions))
 
             if missing_precondition_modules:
                 raise errors.SemanticError(
@@ -343,7 +371,9 @@ class OperationScopeService:
         :param modules_dataframe: dataframe with modules data
         """
         modules_dataframe[FROM_REFERENCE_DATE] = pd.to_datetime(
-            modules_dataframe[FROM_REFERENCE_DATE], format="mixed", dayfirst=True
+            modules_dataframe[FROM_REFERENCE_DATE],
+            format="mixed",
+            dayfirst=True,
         )
         modules_dataframe[TO_REFERENCE_DATE] = pd.to_datetime(
             modules_dataframe[TO_REFERENCE_DATE], format="mixed", dayfirst=True
@@ -423,7 +453,9 @@ class OperationScopeService:
             if isinstance(submission_date, numpy.datetime64):
                 submission_date = str(submission_date).split("T")[0]
             if isinstance(submission_date, str):
-                submission_date = datetime.strptime(submission_date, "%Y-%m-%d").date()
+                submission_date = datetime.strptime(
+                    submission_date, "%Y-%m-%d"
+                ).date()
             elif isinstance(submission_date, datetime):
                 submission_date = submission_date.date()
         else:
@@ -438,7 +470,9 @@ class OperationScopeService:
         self.session.add(operation_scope)
         return operation_scope
 
-    def create_operation_scope_composition(self, operation_scope, module_vid, module_info=None):
+    def create_operation_scope_composition(
+        self, operation_scope, module_vid, module_info=None
+    ):
         """
         Method to populate OperationScopeComposition table
         :param operation_scope: Operation scope data
@@ -465,8 +499,10 @@ class OperationScopeService:
         operation_scopes = [
             o for o in self.session.new if isinstance(o, OperationScope)
         ]
-        database_scopes = OperationScopeCompositionQuery.get_from_operation_version_id(
-            self.session, self.operation_version_id
+        database_scopes = (
+            OperationScopeCompositionQuery.get_from_operation_version_id(
+                self.session, self.operation_version_id
+            )
         )
         if database_scopes.empty:
             new_scopes = operation_scopes

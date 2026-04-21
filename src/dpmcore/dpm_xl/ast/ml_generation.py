@@ -17,7 +17,6 @@ from dpmcore.dpm_xl.utils.scopes_calculator import OperationScopeService
 from dpmcore.dpm_xl.utils.data_handlers import filter_all_data, generate_xyz
 
 
-
 def gather_element(node, attribute):
     if hasattr(node, attribute):
         return getattr(node, attribute)
@@ -60,7 +59,9 @@ class MLGeneration(ASTTemplate):
         self.session_queries = session
         self.data = data
         self.table_ids = (
-            [int(x) for x in data["table_vid"].unique()] if data is not None else []
+            [int(x) for x in data["table_vid"].unique()]
+            if data is not None
+            else []
         )
         self.op_version_id = op_version_id
         self.df_operators = OperatorQuery.get_operators(self.session)
@@ -124,7 +125,10 @@ class MLGeneration(ASTTemplate):
         else:
             operator = self.df_operators[
                 (self.df_operators["Symbol"] == op)
-                & (self.df_operators["Name"] == getattr(node, "operator_name", None))
+                & (
+                    self.df_operators["Name"]
+                    == getattr(node, "operator_name", None)
+                )
             ]["OperatorID"].values
 
         if len(operator) > 0:
@@ -272,7 +276,9 @@ class MLGeneration(ASTTemplate):
             comp_node = self.create_operation_node(element, is_leaf=True)
             # property_id = ItemCategoryQuery.get_property_id_from_code(code=node.component, session=self.session)[0]
             if component in ("r", "c", "s"):
-                op_ref = OperandReference(op_node=comp_node, OperandReference=component)
+                op_ref = OperandReference(
+                    op_node=comp_node, OperandReference=component
+                )
             else:
                 property_id = ItemCategoryQuery.get_property_id_from_code(
                     code=component, session=self.session_queries
@@ -323,7 +329,9 @@ class MLGeneration(ASTTemplate):
         shift_number_node = AST()
         setattr(shift_number_node, "parent", get_node)
         setattr(shift_number_node, "argument", "shift_number")
-        setattr(shift_number_node, "scalar", getattr(node, "shift_number", None))
+        setattr(
+            shift_number_node, "scalar", getattr(node, "shift_number", None)
+        )
         self.create_operation_node(shift_number_node, is_leaf=True)
 
         # component
@@ -600,7 +608,9 @@ class MLGeneration(ASTTemplate):
 
         op_version_id = self._get_op_version_id(node.operation_code)
 
-        operand_ref = OperandReference(op_node=op_node, OperandReference=op_version_id)
+        operand_ref = OperandReference(
+            op_node=op_node, OperandReference=op_version_id
+        )
         self.session.add(operand_ref)
 
     def _get_op_version_id(self, operation_code):
@@ -620,14 +630,18 @@ class MLGeneration(ASTTemplate):
         if self.op_version_id not in self.operation_tables:
             self.operation_tables[self.op_version_id] = []
         table_vid = int(
-            self.data[self.data["table_code"] == table_code]["table_vid"].unique()[0]
+            self.data[self.data["table_code"] == table_code][
+                "table_vid"
+            ].unique()[0]
         )
         if table_vid not in self.operation_tables[self.op_version_id]:
             self.operation_tables[self.op_version_id].append(table_vid)
 
     def store_objects_as_json(self):
         operation_nodes = [
-            o for o in self.session.new if isinstance(o, OperationNode) and not o.parent
+            o
+            for o in self.session.new
+            if isinstance(o, OperationNode) and not o.parent
         ]
         self.result["operation_nodes"] = operation_nodes
         self.result["operation_scopes"] = {}

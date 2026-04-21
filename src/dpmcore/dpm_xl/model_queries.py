@@ -108,9 +108,7 @@ def read_sql_with_connection(
             message=".*pandas only supports SQLAlchemy.*",
             category=UserWarning,
         )
-        return pd.read_sql(
-            sql, session.connection().connection
-        )
+        return pd.read_sql(sql, session.connection().connection)
 
 
 def compile_query_for_pandas(
@@ -158,9 +156,7 @@ def _filter_elements(query, column, values):
             return query.filter(column.is_not(None))
         elif "-" in values[0]:
             limits = values[0].split("-")
-            return query.filter(
-                column.between(limits[0], limits[1])
-            )
+            return query.filter(column.between(limits[0], limits[1]))
         else:
             return query.filter(column == values[0])
     range_control = any("-" in x for x in values)
@@ -170,9 +166,7 @@ def _filter_elements(query, column, values):
     for x in values:
         if "-" in x:
             limits = x.split("-")
-            dynamic_filter.append(
-                column.between(limits[0], limits[1])
-            )
+            dynamic_filter.append(column.between(limits[0], limits[1]))
         else:
             dynamic_filter.append(column == x)
     return query.filter(or_(*dynamic_filter))
@@ -207,9 +201,7 @@ def _check_ranges_values_are_present(
     return data
 
 
-def _old_filter_by_release(
-    query, start_release, end_release, release_id
-):
+def _old_filter_by_release(query, start_release, end_release, release_id):
     """Legacy release filter (inlined from old models).
 
     Args:
@@ -261,32 +253,22 @@ class ItemCategoryQuery:
         query = session.query(
             ItemCategory.signature.label("Signature"),
             ItemCategory.code.label("Code"),
-            ItemCategory.category_id.label(
-                "CategoryID"
-            ),
+            ItemCategory.category_id.label("CategoryID"),
         )
         if items:
-            query = query.filter(
-                ItemCategory.signature.in_(items)
-            )
+            query = query.filter(ItemCategory.signature.in_(items))
         if release_id is not None:
             query = query.filter(
                 and_(
-                    ItemCategory.start_release_id
-                    <= release_id,
+                    ItemCategory.start_release_id <= release_id,
                     or_(
-                        ItemCategory.end_release_id
-                        > release_id,
-                        ItemCategory.end_release_id.is_(
-                            None
-                        ),
+                        ItemCategory.end_release_id > release_id,
+                        ItemCategory.end_release_id.is_(None),
                     ),
                 )
             )
         else:
-            query = query.filter(
-                ItemCategory.end_release_id.is_(None)
-            )
+            query = query.filter(ItemCategory.end_release_id.is_(None))
         result = query.all()
         if result:
             return pd.DataFrame(
@@ -299,9 +281,7 @@ class ItemCategoryQuery:
                     for r in result
                 ]
             )
-        return pd.DataFrame(
-            columns=["Signature", "Code", "CategoryID"]
-        )
+        return pd.DataFrame(columns=["Signature", "Code", "CategoryID"])
 
     @staticmethod
     def get_property_from_code(
@@ -396,21 +376,15 @@ class VariableVersionQuery:
         if release_id is not None:
             query = query.filter(
                 and_(
-                    VariableVersion.start_release_id
-                    <= release_id,
+                    VariableVersion.start_release_id <= release_id,
                     or_(
-                        VariableVersion.end_release_id
-                        > release_id,
-                        VariableVersion.end_release_id.is_(
-                            None
-                        ),
+                        VariableVersion.end_release_id > release_id,
+                        VariableVersion.end_release_id.is_(None),
                     ),
                 )
             )
         else:
-            query = query.filter(
-                VariableVersion.end_release_id.is_(None)
-            )
+            query = query.filter(VariableVersion.end_release_id.is_(None))
         return query.first() is not None
 
     @staticmethod
@@ -436,15 +410,12 @@ class VariableVersionQuery:
         """
         query = (
             session.query(
-                Variable.variable_id.label(
-                    "VariableID"
-                ),
+                Variable.variable_id.label("VariableID"),
                 VariableVersion.code.label("Code"),
             )
             .join(
                 Variable,
-                VariableVersion.variable_id
-                == Variable.variable_id,
+                VariableVersion.variable_id == Variable.variable_id,
             )
             .filter(
                 VariableVersion.code == variable_code,
@@ -454,14 +425,10 @@ class VariableVersionQuery:
         if release_id is not None:
             query = query.filter(
                 and_(
-                    VariableVersion.start_release_id
-                    <= release_id,
+                    VariableVersion.start_release_id <= release_id,
                     or_(
-                        VariableVersion.end_release_id
-                        > release_id,
-                        VariableVersion.end_release_id.is_(
-                            None
-                        ),
+                        VariableVersion.end_release_id > release_id,
+                        VariableVersion.end_release_id.is_(None),
                     ),
                 )
             )
@@ -483,20 +450,16 @@ class VariableVersionQuery:
         Returns:
             List of variable_id values, or None.
         """
-        query = session.query(
-            VariableVersion.variable_id
-        ).filter(VariableVersion.code == value)
+        query = session.query(VariableVersion.variable_id).filter(
+            VariableVersion.code == value
+        )
         if release_id is not None:
             query = query.filter(
                 and_(
-                    VariableVersion.start_release_id
-                    <= release_id,
+                    VariableVersion.start_release_id <= release_id,
                     or_(
-                        VariableVersion.end_release_id
-                        > release_id,
-                        VariableVersion.end_release_id.is_(
-                            None
-                        ),
+                        VariableVersion.end_release_id > release_id,
+                        VariableVersion.end_release_id.is_(None),
                     ),
                 )
             )
@@ -521,31 +484,22 @@ class VariableVersionQuery:
         """
         query = (
             session.query(
-                Variable.variable_id.label(
-                    "VariableID"
-                ),
+                Variable.variable_id.label("VariableID"),
                 VariableVersion.code.label("Code"),
             )
             .join(
                 Variable,
-                VariableVersion.variable_id
-                == Variable.variable_id,
+                VariableVersion.variable_id == Variable.variable_id,
             )
-            .filter(
-                Variable.type == "Filing Indicator"
-            )
+            .filter(Variable.type == "Filing Indicator")
         )
         if release_id is not None:
             query = query.filter(
                 and_(
-                    VariableVersion.start_release_id
-                    <= release_id,
+                    VariableVersion.start_release_id <= release_id,
                     or_(
-                        VariableVersion.end_release_id
-                        > release_id,
-                        VariableVersion.end_release_id.is_(
-                            None
-                        ),
+                        VariableVersion.end_release_id > release_id,
+                        VariableVersion.end_release_id.is_(None),
                     ),
                 )
             )
@@ -579,38 +533,25 @@ class OperationQuery:
         """
         query = (
             session.query(
-                OperationVersion.operation_vid.label(
-                    "OperationVID"
-                ),
+                OperationVersion.operation_vid.label("OperationVID"),
                 Operation.code.label("Code"),
-                OperationVersion.expression.label(
-                    "Expression"
-                ),
-                OperationVersion.start_release_id.label(
-                    "StartReleaseID"
-                ),
-                OperationVersion.end_release_id.label(
-                    "EndReleaseID"
-                ),
+                OperationVersion.expression.label("Expression"),
+                OperationVersion.start_release_id.label("StartReleaseID"),
+                OperationVersion.end_release_id.label("EndReleaseID"),
             )
             .join(
                 Operation,
-                OperationVersion.operation_id
-                == Operation.operation_id,
+                OperationVersion.operation_id == Operation.operation_id,
             )
             .filter(Operation.code.in_(operation_codes))
         )
         if release_id is not None:
             query = query.filter(
                 and_(
-                    OperationVersion.start_release_id
-                    <= release_id,
+                    OperationVersion.start_release_id <= release_id,
                     or_(
-                        OperationVersion.end_release_id
-                        > release_id,
-                        OperationVersion.end_release_id.is_(
-                            None
-                        ),
+                        OperationVersion.end_release_id > release_id,
+                        OperationVersion.end_release_id.is_(None),
                     ),
                 )
             )
@@ -655,14 +596,10 @@ class TableVersionQuery:
         if release_id is not None:
             query = query.filter(
                 and_(
-                    TableVersion.start_release_id
-                    <= release_id,
+                    TableVersion.start_release_id <= release_id,
                     or_(
-                        TableVersion.end_release_id
-                        > release_id,
-                        TableVersion.end_release_id.is_(
-                            None
-                        ),
+                        TableVersion.end_release_id > release_id,
+                        TableVersion.end_release_id.is_(None),
                     ),
                 )
             )
@@ -721,16 +658,10 @@ class OperatorQuery:
             Order, IsMandatory, Name.
         """
         query = session.query(
-            OperatorArgument.argument_id.label(
-                "ArgumentID"
-            ),
-            OperatorArgument.operator_id.label(
-                "OperatorID"
-            ),
+            OperatorArgument.argument_id.label("ArgumentID"),
+            OperatorArgument.operator_id.label("OperatorID"),
             OperatorArgument.order.label("Order"),
-            OperatorArgument.is_mandatory.label(
-                "IsMandatory"
-            ),
+            OperatorArgument.is_mandatory.label("IsMandatory"),
             OperatorArgument.name.label("Name"),
         )
         results = query.all()
@@ -766,9 +697,7 @@ class ModuleVersionQuery:
         Returns:
             Integer release ID, or None.
         """
-        return session.query(
-            func.max(Release.release_id)
-        ).scalar()
+        return session.query(func.max(Release.release_id)).scalar()
 
     @staticmethod
     def get_from_tables_vids(
@@ -801,59 +730,35 @@ class ModuleVersionQuery:
 
         query = (
             session.query(
-                ModuleVersion.module_vid.label(
-                    "ModuleVID"
-                ),
-                ModuleVersionComposition.table_vid.label(
-                    "variable_vid"
-                ),
+                ModuleVersion.module_vid.label("ModuleVID"),
+                ModuleVersionComposition.table_vid.label("variable_vid"),
                 ModuleVersion.code.label("ModuleCode"),
-                ModuleVersion.version_number.label(
-                    "VersionNumber"
-                ),
-                ModuleVersion.from_reference_date.label(
-                    "FromReferenceDate"
-                ),
-                ModuleVersion.to_reference_date.label(
-                    "ToReferenceDate"
-                ),
-                ModuleVersion.start_release_id.label(
-                    "StartReleaseID"
-                ),
-                ModuleVersion.end_release_id.label(
-                    "EndReleaseID"
-                ),
+                ModuleVersion.version_number.label("VersionNumber"),
+                ModuleVersion.from_reference_date.label("FromReferenceDate"),
+                ModuleVersion.to_reference_date.label("ToReferenceDate"),
+                ModuleVersion.start_release_id.label("StartReleaseID"),
+                ModuleVersion.end_release_id.label("EndReleaseID"),
             )
             .join(
                 ModuleVersionComposition,
                 ModuleVersion.module_vid
                 == ModuleVersionComposition.module_vid,
             )
-            .filter(
-                ModuleVersionComposition.table_vid.in_(
-                    tables_vids
-                )
-            )
+            .filter(ModuleVersionComposition.table_vid.in_(tables_vids))
         )
         if release_id is not None:
             query = query.filter(
                 and_(
-                    ModuleVersion.start_release_id
-                    <= release_id,
+                    ModuleVersion.start_release_id <= release_id,
                     or_(
-                        ModuleVersion.end_release_id
-                        > release_id,
-                        ModuleVersion.end_release_id.is_(
-                            None
-                        ),
+                        ModuleVersion.end_release_id > release_id,
+                        ModuleVersion.end_release_id.is_(None),
                     ),
                 )
             )
         results = query.all()
         df = pd.DataFrame(results, columns=cols)
-        return _apply_fallback_for_equal_dates(
-            session, df
-        )
+        return _apply_fallback_for_equal_dates(session, df)
 
     @staticmethod
     def get_from_table_codes(
@@ -887,28 +792,14 @@ class ModuleVersionQuery:
 
         query = (
             session.query(
-                ModuleVersion.module_vid.label(
-                    "ModuleVID"
-                ),
-                ModuleVersionComposition.table_vid.label(
-                    "variable_vid"
-                ),
+                ModuleVersion.module_vid.label("ModuleVID"),
+                ModuleVersionComposition.table_vid.label("variable_vid"),
                 ModuleVersion.code.label("ModuleCode"),
-                ModuleVersion.version_number.label(
-                    "VersionNumber"
-                ),
-                ModuleVersion.from_reference_date.label(
-                    "FromReferenceDate"
-                ),
-                ModuleVersion.to_reference_date.label(
-                    "ToReferenceDate"
-                ),
-                ModuleVersion.start_release_id.label(
-                    "StartReleaseID"
-                ),
-                ModuleVersion.end_release_id.label(
-                    "EndReleaseID"
-                ),
+                ModuleVersion.version_number.label("VersionNumber"),
+                ModuleVersion.from_reference_date.label("FromReferenceDate"),
+                ModuleVersion.to_reference_date.label("ToReferenceDate"),
+                ModuleVersion.start_release_id.label("StartReleaseID"),
+                ModuleVersion.end_release_id.label("EndReleaseID"),
                 TableVersion.code.label("TableCode"),
             )
             .join(
@@ -918,30 +809,23 @@ class ModuleVersionQuery:
             )
             .join(
                 TableVersion,
-                ModuleVersionComposition.table_vid
-                == TableVersion.table_vid,
+                ModuleVersionComposition.table_vid == TableVersion.table_vid,
             )
             .filter(TableVersion.code.in_(table_codes))
         )
         if release_id is not None:
             query = query.filter(
                 and_(
-                    ModuleVersion.start_release_id
-                    <= release_id,
+                    ModuleVersion.start_release_id <= release_id,
                     or_(
-                        ModuleVersion.end_release_id
-                        > release_id,
-                        ModuleVersion.end_release_id.is_(
-                            None
-                        ),
+                        ModuleVersion.end_release_id > release_id,
+                        ModuleVersion.end_release_id.is_(None),
                     ),
                 )
             )
         results = query.all()
         df = pd.DataFrame(results, columns=cols)
-        return _apply_fallback_for_equal_dates(
-            session, df
-        )
+        return _apply_fallback_for_equal_dates(session, df)
 
     @staticmethod
     def get_precondition_module_versions(
@@ -975,73 +859,44 @@ class ModuleVersionQuery:
 
         query = (
             session.query(
-                ModuleVersion.module_vid.label(
-                    "ModuleVID"
-                ),
-                VariableVersion.variable_vid.label(
-                    "variable_vid"
-                ),
+                ModuleVersion.module_vid.label("ModuleVID"),
+                VariableVersion.variable_vid.label("variable_vid"),
                 ModuleVersion.code.label("ModuleCode"),
-                ModuleVersion.version_number.label(
-                    "VersionNumber"
-                ),
-                ModuleVersion.from_reference_date.label(
-                    "FromReferenceDate"
-                ),
-                ModuleVersion.to_reference_date.label(
-                    "ToReferenceDate"
-                ),
-                ModuleVersion.start_release_id.label(
-                    "StartReleaseID"
-                ),
-                ModuleVersion.end_release_id.label(
-                    "EndReleaseID"
-                ),
+                ModuleVersion.version_number.label("VersionNumber"),
+                ModuleVersion.from_reference_date.label("FromReferenceDate"),
+                ModuleVersion.to_reference_date.label("ToReferenceDate"),
+                ModuleVersion.start_release_id.label("StartReleaseID"),
+                ModuleVersion.end_release_id.label("EndReleaseID"),
                 VariableVersion.code.label("Code"),
             )
             .join(
                 ModuleParameters,
-                ModuleVersion.module_vid
-                == ModuleParameters.module_vid,
+                ModuleVersion.module_vid == ModuleParameters.module_vid,
             )
             .join(
                 VariableVersion,
-                ModuleParameters.variable_vid
-                == VariableVersion.variable_vid,
+                ModuleParameters.variable_vid == VariableVersion.variable_vid,
             )
             .join(
                 Variable,
-                VariableVersion.variable_id
-                == Variable.variable_id,
+                VariableVersion.variable_id == Variable.variable_id,
             )
-            .filter(
-                VariableVersion.code.in_(
-                    precondition_items
-                )
-            )
-            .filter(
-                Variable.type == "Filing Indicator"
-            )
+            .filter(VariableVersion.code.in_(precondition_items))
+            .filter(Variable.type == "Filing Indicator")
         )
         if release_id is not None:
             query = query.filter(
                 and_(
-                    ModuleVersion.start_release_id
-                    <= release_id,
+                    ModuleVersion.start_release_id <= release_id,
                     or_(
-                        ModuleVersion.end_release_id
-                        > release_id,
-                        ModuleVersion.end_release_id.is_(
-                            None
-                        ),
+                        ModuleVersion.end_release_id > release_id,
+                        ModuleVersion.end_release_id.is_(None),
                     ),
                 )
             )
         results = query.all()
         df = pd.DataFrame(results, columns=cols)
-        return _apply_fallback_for_equal_dates(
-            session, df
-        )
+        return _apply_fallback_for_equal_dates(session, df)
 
     @staticmethod
     def get_module_version_by_vid(
@@ -1067,23 +922,13 @@ class ModuleVersionQuery:
             "EndReleaseID",
         ]
         query = session.query(
-            ModuleVersion.module_vid.label(
-                "ModuleVID"
-            ),
+            ModuleVersion.module_vid.label("ModuleVID"),
             ModuleVersion.code.label("Code"),
             ModuleVersion.name.label("Name"),
-            ModuleVersion.from_reference_date.label(
-                "FromReferenceDate"
-            ),
-            ModuleVersion.to_reference_date.label(
-                "ToReferenceDate"
-            ),
-            ModuleVersion.start_release_id.label(
-                "StartReleaseID"
-            ),
-            ModuleVersion.end_release_id.label(
-                "EndReleaseID"
-            ),
+            ModuleVersion.from_reference_date.label("FromReferenceDate"),
+            ModuleVersion.to_reference_date.label("ToReferenceDate"),
+            ModuleVersion.start_release_id.label("StartReleaseID"),
+            ModuleVersion.end_release_id.label("EndReleaseID"),
         ).filter(ModuleVersion.module_vid == vid)
         results = query.all()
         return pd.DataFrame(results, columns=cols)
@@ -1112,17 +957,12 @@ def _apply_fallback_for_equal_dates(
     if df.empty:
         return df
 
-    mask = (
-        df["FromReferenceDate"] == df["ToReferenceDate"]
-    )
+    mask = df["FromReferenceDate"] == df["ToReferenceDate"]
     rows_needing = df[mask]
     if rows_needing.empty:
         return df
 
-    vids_needing = [
-        int(v)
-        for v in rows_needing[module_vid_col].unique()
-    ]
+    vids_needing = [int(v) for v in rows_needing[module_vid_col].unique()]
 
     current_modules = (
         session.query(
@@ -1130,9 +970,7 @@ def _apply_fallback_for_equal_dates(
             ModuleVersion.module_id,
             ModuleVersion.start_release_id,
         )
-        .filter(
-            ModuleVersion.module_vid.in_(vids_needing)
-        )
+        .filter(ModuleVersion.module_vid.in_(vids_needing))
         .all()
     )
     current_info = {
@@ -1140,9 +978,7 @@ def _apply_fallback_for_equal_dates(
         for r in current_modules
     }
 
-    unique_mids = list(
-        {info[0] for info in current_info.values()}
-    )
+    unique_mids = list({info[0] for info in current_info.values()})
     prev_versions = (
         session.query(ModuleVersion)
         .filter(ModuleVersion.module_id.in_(unique_mids))
@@ -1161,10 +997,7 @@ def _apply_fallback_for_equal_dates(
     for cur_vid, (mid, cur_srid) in current_info.items():
         for mv in by_mid.get(mid, []):
             if mv.start_release_id < cur_srid:
-                if (
-                    mv.from_reference_date
-                    != mv.to_reference_date
-                ):
+                if mv.from_reference_date != mv.to_reference_date:
                     replacement[cur_vid] = mv
                     break
 
@@ -1173,36 +1006,21 @@ def _apply_fallback_for_equal_dates(
 
     result_df = df.copy()
     for idx, row in result_df.iterrows():
-        if (
-            row["FromReferenceDate"]
-            == row["ToReferenceDate"]
-        ):
+        if row["FromReferenceDate"] == row["ToReferenceDate"]:
             cur_vid = int(row[module_vid_col])
             if cur_vid in replacement:
                 prev = replacement[cur_vid]
-                result_df.at[idx, "ModuleVID"] = (
-                    prev.module_vid
-                )
-                result_df.at[idx, "ModuleCode"] = (
-                    prev.code
-                )
-                result_df.at[idx, "VersionNumber"] = (
-                    prev.version_number
-                )
+                result_df.at[idx, "ModuleVID"] = prev.module_vid
+                result_df.at[idx, "ModuleCode"] = prev.code
+                result_df.at[idx, "VersionNumber"] = prev.version_number
                 result_df.at[idx, "FromReferenceDate"] = (
                     prev.from_reference_date
                 )
-                result_df.at[idx, "ToReferenceDate"] = (
-                    prev.to_reference_date
-                )
+                result_df.at[idx, "ToReferenceDate"] = prev.to_reference_date
                 if "StartReleaseID" in result_df.columns:
-                    result_df.at[
-                        idx, "StartReleaseID"
-                    ] = prev.start_release_id
+                    result_df.at[idx, "StartReleaseID"] = prev.start_release_id
                 if "EndReleaseID" in result_df.columns:
-                    result_df.at[
-                        idx, "EndReleaseID"
-                    ] = prev.end_release_id
+                    result_df.at[idx, "EndReleaseID"] = prev.end_release_id
     return result_df
 
 
@@ -1233,19 +1051,14 @@ class OperationScopeCompositionQuery:
                 OperationScopeComposition.operation_scope_id.label(
                     "OperationScopeID"
                 ),
-                OperationScopeComposition.module_vid.label(
-                    "ModuleVID"
-                ),
+                OperationScopeComposition.module_vid.label("ModuleVID"),
             )
             .join(
                 OperationScope,
                 OperationScopeComposition.operation_scope_id
                 == OperationScope.operation_scope_id,
             )
-            .filter(
-                OperationScope.operation_vid
-                == operation_version_id
-            )
+            .filter(OperationScope.operation_vid == operation_version_id)
         )
         results = query.all()
         return pd.DataFrame(
@@ -1304,8 +1117,7 @@ class ViewDatapointsQuery:
             .select_from(TableVersion)
             .join(
                 ModuleVersionComposition,
-                TableVersion.table_vid
-                == ModuleVersionComposition.table_vid,
+                TableVersion.table_vid == ModuleVersionComposition.table_vid,
             )
             .join(
                 ModuleVersion,
@@ -1315,30 +1127,25 @@ class ViewDatapointsQuery:
             .join(
                 TableVersionCell,
                 and_(
-                    TableVersionCell.table_vid
-                    == TableVersion.table_vid,
+                    TableVersionCell.table_vid == TableVersion.table_vid,
                     TableVersionCell.is_void == 0,
                 ),
             )
             .outerjoin(
                 VariableVersion,
-                TableVersionCell.variable_vid
-                == VariableVersion.variable_vid,
+                TableVersionCell.variable_vid == VariableVersion.variable_vid,
             )
             .outerjoin(
                 Property,
-                VariableVersion.property_id
-                == Property.property_id,
+                VariableVersion.property_id == Property.property_id,
             )
             .outerjoin(
                 DataType,
-                Property.data_type_id
-                == DataType.data_type_id,
+                Property.data_type_id == DataType.data_type_id,
             )
             .join(
                 Cell,
-                TableVersionCell.cell_id
-                == Cell.cell_id,
+                TableVersionCell.cell_id == Cell.cell_id,
             )
             .outerjoin(
                 hvr,
@@ -1347,10 +1154,8 @@ class ViewDatapointsQuery:
             .outerjoin(
                 tvh_row,
                 and_(
-                    tvh_row.table_vid
-                    == TableVersion.table_vid,
-                    tvh_row.header_vid
-                    == hvr.header_vid,
+                    tvh_row.table_vid == TableVersion.table_vid,
+                    tvh_row.header_vid == hvr.header_vid,
                 ),
             )
             .outerjoin(
@@ -1360,10 +1165,8 @@ class ViewDatapointsQuery:
             .outerjoin(
                 tvh_col,
                 and_(
-                    tvh_col.table_vid
-                    == TableVersion.table_vid,
-                    tvh_col.header_vid
-                    == hvc.header_vid,
+                    tvh_col.table_vid == TableVersion.table_vid,
+                    tvh_col.header_vid == hvc.header_vid,
                 ),
             )
             .outerjoin(
@@ -1373,10 +1176,8 @@ class ViewDatapointsQuery:
             .outerjoin(
                 tvh_sheet,
                 and_(
-                    tvh_sheet.table_vid
-                    == TableVersion.table_vid,
-                    tvh_sheet.header_vid
-                    == hvs.header_vid,
+                    tvh_sheet.table_vid == TableVersion.table_vid,
+                    tvh_sheet.header_vid == hvs.header_vid,
                 ),
             )
         )
@@ -1419,17 +1220,9 @@ class ViewDatapointsQuery:
             DataFrame of cell data.
         """
         engine_key = _get_engine_cache_key(session)
-        rows_k = (
-            tuple(rows) if rows is not None else None
-        )
-        cols_k = (
-            tuple(cols) if cols is not None else None
-        )
-        sheets_k = (
-            tuple(sheets)
-            if sheets is not None
-            else None
-        )
+        rows_k = tuple(rows) if rows is not None else None
+        cols_k = tuple(cols) if cols is not None else None
+        sheets_k = tuple(sheets) if sheets is not None else None
         cache_key = (
             engine_key,
             table,
@@ -1442,58 +1235,38 @@ class ViewDatapointsQuery:
         if cached is not None:
             return cached
 
-        query, aliases = (
-            cls._create_base_query_with_aliases(session)
-        )
+        query, aliases = cls._create_base_query_with_aliases(session)
 
         query = query.add_columns(
-            TableVersionCell.cell_code.label(
-                "cell_code"
-            ),
+            TableVersionCell.cell_code.label("cell_code"),
             TableVersion.code.label("table_code"),
             aliases["hvr"].code.label("row_code"),
             aliases["hvc"].code.label("column_code"),
             aliases["hvs"].code.label("sheet_code"),
-            VariableVersion.variable_id.label(
-                "variable_id"
-            ),
+            VariableVersion.variable_id.label("variable_id"),
             DataType.code.label("data_type"),
             TableVersion.table_vid.label("table_vid"),
             TableVersionCell.cell_id.label("cell_id"),
-            ModuleVersion.start_release_id.label(
-                "start_release_id"
-            ),
-            ModuleVersion.end_release_id.label(
-                "end_release_id"
-            ),
+            ModuleVersion.start_release_id.label("start_release_id"),
+            ModuleVersion.end_release_id.label("end_release_id"),
         )
 
-        query = query.filter(
-            TableVersion.code == table
-        )
+        query = query.filter(TableVersion.code == table)
 
         if release_id is None:
-            query = query.filter(
-                TableVersion.end_release_id.is_(None)
-            )
+            query = query.filter(TableVersion.end_release_id.is_(None))
 
         # Row filter
         if rows is not None and rows != ["*"]:
-            query = _apply_dimension_filter(
-                query, aliases["hvr"].code, rows
-            )
+            query = _apply_dimension_filter(query, aliases["hvr"].code, rows)
 
         # Column filter
         if cols is not None and cols != ["*"]:
-            query = _apply_dimension_filter(
-                query, aliases["hvc"].code, cols
-            )
+            query = _apply_dimension_filter(query, aliases["hvc"].code, cols)
 
         # Sheet filter
         if sheets is not None and sheets != ["*"]:
-            query = _apply_dimension_filter(
-                query, aliases["hvs"].code, sheets
-            )
+            query = _apply_dimension_filter(query, aliases["hvs"].code, sheets)
 
         if release_id is not None:
             query = _old_filter_by_release(
@@ -1504,29 +1277,17 @@ class ViewDatapointsQuery:
             )
 
         data = read_sql_with_connection(
-            compile_query_for_pandas(
-                query.statement, session
-            ),
+            compile_query_for_pandas(query.statement, session),
             session,
         )
 
         if len(data) > 0:
-            data = data.sort_values(
-                "variable_id", na_position="last"
-            )
-            data = data.drop_duplicates(
-                subset=["cell_code"], keep="first"
-            )
+            data = data.sort_values("variable_id", na_position="last")
+            data = data.drop_duplicates(subset=["cell_code"], keep="first")
 
-        data = _check_ranges_values_are_present(
-            data, "row_code", rows
-        )
-        data = _check_ranges_values_are_present(
-            data, "column_code", cols
-        )
-        data = _check_ranges_values_are_present(
-            data, "sheet_code", sheets
-        )
+        data = _check_ranges_values_are_present(data, "row_code", rows)
+        data = _check_ranges_values_are_present(data, "column_code", cols)
+        data = _check_ranges_values_are_present(data, "sheet_code", sheets)
 
         cls._TABLE_DATA_CACHE[cache_key] = data
         return data
@@ -1550,42 +1311,26 @@ class ViewDatapointsQuery:
         Returns:
             DataFrame of filtered datapoints.
         """
-        query, aliases = (
-            cls._create_base_query_with_aliases(session)
-        )
+        query, aliases = cls._create_base_query_with_aliases(session)
 
         query = query.add_columns(
-            TableVersionCell.cell_code.label(
-                "cell_code"
-            ),
+            TableVersionCell.cell_code.label("cell_code"),
             TableVersion.code.label("table_code"),
             aliases["hvr"].code.label("row_code"),
             aliases["hvc"].code.label("column_code"),
             aliases["hvs"].code.label("sheet_code"),
-            VariableVersion.variable_id.label(
-                "variable_id"
-            ),
+            VariableVersion.variable_id.label("variable_id"),
             DataType.code.label("data_type"),
             TableVersion.table_vid.label("table_vid"),
             Property.property_id.label("property_id"),
-            ModuleVersion.start_release_id.label(
-                "start_release"
-            ),
-            ModuleVersion.end_release_id.label(
-                "end_release"
-            ),
+            ModuleVersion.start_release_id.label("start_release"),
+            ModuleVersion.end_release_id.label("end_release"),
             TableVersionCell.cell_id.label("cell_id"),
-            VariableVersion.context_id.label(
-                "context_id"
-            ),
-            VariableVersion.variable_vid.label(
-                "variable_vid"
-            ),
+            VariableVersion.context_id.label("context_id"),
+            VariableVersion.variable_vid.label("variable_vid"),
         ).distinct()
 
-        query = query.filter(
-            TableVersion.code == table
-        )
+        query = query.filter(TableVersion.code == table)
 
         mapping = {
             "rows": aliases["hvr"].code,
@@ -1597,15 +1342,11 @@ class ViewDatapointsQuery:
                 col = mapping[key]
                 if "-" in values[0]:
                     lo, hi = values[0].split("-")
-                    query = query.filter(
-                        col.between(lo, hi)
-                    )
+                    query = query.filter(col.between(lo, hi))
                 elif values[0] == "*":
                     continue
                 else:
-                    query = query.filter(
-                        col.in_(values)
-                    )
+                    query = query.filter(col.in_(values))
 
         if release_id:
             query = _old_filter_by_release(
@@ -1616,9 +1357,7 @@ class ViewDatapointsQuery:
             )
 
         return read_sql_with_connection(
-            compile_query_for_pandas(
-                query.statement, session
-            ),
+            compile_query_for_pandas(query.statement, session),
             session,
         )
 
@@ -1644,9 +1383,7 @@ def _apply_dimension_filter(query, column, values):
         for v in values:
             if "-" in v:
                 lo, hi = v.split("-")
-                filters.append(
-                    column.between(lo, hi)
-                )
+                filters.append(column.between(lo, hi))
             else:
                 filters.append(column == v)
         return query.filter(or_(*filters))
@@ -1676,18 +1413,15 @@ class ViewKeyComponentsQuery:
             .select_from(TableVersion)
             .join(
                 KeyComposition,
-                TableVersion.key_id
-                == KeyComposition.key_id,
+                TableVersion.key_id == KeyComposition.key_id,
             )
             .join(
                 VariableVersion,
-                VariableVersion.variable_vid
-                == KeyComposition.variable_vid,
+                VariableVersion.variable_vid == KeyComposition.variable_vid,
             )
             .join(
                 Item,
-                VariableVersion.property_id
-                == Item.item_id,
+                VariableVersion.property_id == Item.item_id,
             )
             .join(
                 ItemCategory,
@@ -1695,18 +1429,15 @@ class ViewKeyComponentsQuery:
             )
             .join(
                 Property,
-                VariableVersion.property_id
-                == Property.property_id,
+                VariableVersion.property_id == Property.property_id,
             )
             .outerjoin(
                 DataType,
-                Property.data_type_id
-                == DataType.data_type_id,
+                Property.data_type_id == DataType.data_type_id,
             )
             .join(
                 ModuleVersionComposition,
-                TableVersion.table_vid
-                == ModuleVersionComposition.table_vid,
+                TableVersion.table_vid == ModuleVersionComposition.table_vid,
             )
             .join(
                 ModuleVersion,
@@ -1739,9 +1470,7 @@ class ViewKeyComponentsQuery:
             ItemCategory.code.label("property_code"),
             DataType.code.label("data_type"),
         )
-        query = query.filter(
-            TableVersion.code == table
-        )
+        query = query.filter(TableVersion.code == table)
         query = _old_filter_by_release(
             query,
             ItemCategory.start_release_id,
@@ -1756,9 +1485,7 @@ class ViewKeyComponentsQuery:
         )
         query = query.distinct()
         return read_sql_with_connection(
-            compile_query_for_pandas(
-                query.statement, session
-            ),
+            compile_query_for_pandas(query.statement, session),
             session,
         )
 
@@ -1786,13 +1513,11 @@ class ViewOpenKeysQuery:
             .select_from(KeyComposition)
             .join(
                 VariableVersion,
-                VariableVersion.variable_vid
-                == KeyComposition.variable_vid,
+                VariableVersion.variable_vid == KeyComposition.variable_vid,
             )
             .join(
                 Item,
-                VariableVersion.property_id
-                == Item.item_id,
+                VariableVersion.property_id == Item.item_id,
             )
             .join(
                 ItemCategory,
@@ -1800,13 +1525,11 @@ class ViewOpenKeysQuery:
             )
             .join(
                 Property,
-                VariableVersion.property_id
-                == Property.property_id,
+                VariableVersion.property_id == Property.property_id,
             )
             .outerjoin(
                 DataType,
-                Property.data_type_id
-                == DataType.data_type_id,
+                Property.data_type_id == DataType.data_type_id,
             )
         )
 
@@ -1834,9 +1557,7 @@ class ViewOpenKeysQuery:
             ItemCategory.code.label("property_code"),
             DataType.code.label("data_type"),
         )
-        query = query.filter(
-            ItemCategory.code.in_(dimension_codes)
-        )
+        query = query.filter(ItemCategory.code.in_(dimension_codes))
         query = _old_filter_by_release(
             query,
             ItemCategory.start_release_id,
@@ -1845,9 +1566,7 @@ class ViewOpenKeysQuery:
         )
         query = query.distinct()
         return read_sql_with_connection(
-            compile_query_for_pandas(
-                query.statement, session
-            ),
+            compile_query_for_pandas(query.statement, session),
             session,
         )
 
@@ -1883,9 +1602,7 @@ class ViewModulesQuery:
         """
         query = (
             session.query(
-                ModuleVersion.code.label(
-                    "module_code"
-                ),
+                ModuleVersion.code.label("module_code"),
                 TableVersion.code.label("table_code"),
             )
             .join(
@@ -1895,8 +1612,7 @@ class ViewModulesQuery:
             )
             .join(
                 TableVersion,
-                ModuleVersionComposition.table_vid
-                == TableVersion.table_vid,
+                ModuleVersionComposition.table_vid == TableVersion.table_vid,
             )
             .filter(TableVersion.code.in_(tables))
         )
@@ -1919,9 +1635,7 @@ class ViewModulesQuery:
         """
         query = (
             session.query(
-                ModuleVersion.code.label(
-                    "module_code"
-                ),
+                ModuleVersion.code.label("module_code"),
                 TableVersion.code.label("table_code"),
             )
             .join(
@@ -1931,14 +1645,11 @@ class ViewModulesQuery:
             )
             .join(
                 TableVersion,
-                ModuleVersionComposition.table_vid
-                == TableVersion.table_vid,
+                ModuleVersionComposition.table_vid == TableVersion.table_vid,
             )
             .distinct()
         )
         return read_sql_with_connection(
-            compile_query_for_pandas(
-                query.statement, session
-            ),
+            compile_query_for_pandas(query.statement, session),
             session,
         )

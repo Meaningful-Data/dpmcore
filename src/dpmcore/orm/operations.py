@@ -56,48 +56,32 @@ class Operation(Base):
     operation_id: Mapped[int] = mapped_column(
         "OperationID", Integer, primary_key=True
     )
-    code: Mapped[Optional[str]] = mapped_column(
-        "Code", String(20)
-    )
-    type: Mapped[Optional[str]] = mapped_column(
-        "Type", String(20)
-    )
-    source: Mapped[Optional[str]] = mapped_column(
-        "Source", String(20)
-    )
-    group_operation_id: Mapped[Optional[int]] = (
-        mapped_column(
-            "GroupOperID",
-            Integer,
-            ForeignKey("Operation.OperationID"),
-        )
+    code: Mapped[Optional[str]] = mapped_column("Code", String(20))
+    type: Mapped[Optional[str]] = mapped_column("Type", String(20))
+    source: Mapped[Optional[str]] = mapped_column("Source", String(20))
+    group_operation_id: Mapped[Optional[int]] = mapped_column(
+        "GroupOperID",
+        Integer,
+        ForeignKey("Operation.OperationID"),
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
         String(36),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column(
-        "OwnerID", Integer
-    )
+    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
 
-    group_operation: Mapped[
-        Optional["Operation"]
-    ] = relationship(
+    group_operation: Mapped[Optional["Operation"]] = relationship(
         remote_side=[operation_id],
         back_populates="grouped_operations",
     )
-    grouped_operations: Mapped[
-        List["Operation"]
-    ] = relationship(
+    grouped_operations: Mapped[List["Operation"]] = relationship(
         back_populates="group_operation",
     )
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
     )
-    operation_versions: Mapped[
-        List["OperationVersion"]
-    ] = relationship(
+    operation_versions: Mapped[List["OperationVersion"]] = relationship(
         back_populates="operation",
     )
 
@@ -125,9 +109,7 @@ class OperationVersion(Base):
     """
 
     __tablename__ = "OperationVersion"
-    __table_args__ = (
-        UniqueConstraint("OperationID", "StartReleaseID"),
-    )
+    __table_args__ = (UniqueConstraint("OperationID", "StartReleaseID"),)
 
     operation_vid: Mapped[int] = mapped_column(
         "OperationVID", Integer, primary_key=True
@@ -137,16 +119,12 @@ class OperationVersion(Base):
         Integer,
         ForeignKey("Operation.OperationID"),
     )
-    precondition_operation_vid: Mapped[
-        Optional[int]
-    ] = mapped_column(
+    precondition_operation_vid: Mapped[Optional[int]] = mapped_column(
         "PreconditionOperationVID",
         Integer,
         ForeignKey("OperationVersion.OperationVID"),
     )
-    severity_operation_vid: Mapped[
-        Optional[int]
-    ] = mapped_column(
+    severity_operation_vid: Mapped[Optional[int]] = mapped_column(
         "SeverityOperationVID",
         Integer,
         ForeignKey("OperationVersion.OperationVID"),
@@ -161,9 +139,7 @@ class OperationVersion(Base):
         Integer,
         ForeignKey("Release.ReleaseID"),
     )
-    expression: Mapped[Optional[str]] = mapped_column(
-        "Expression", Text
-    )
+    expression: Mapped[Optional[str]] = mapped_column("Expression", Text)
     description: Mapped[Optional[str]] = mapped_column(
         "Description", String(1000)
     )
@@ -175,38 +151,36 @@ class OperationVersion(Base):
     endorsement: Mapped[Optional[str]] = mapped_column(
         "Endorsement", String(25)
     )
-    is_variant_approved: Mapped[Optional[bool]] = (
-        mapped_column("IsVariantApproved", Boolean)
+    is_variant_approved: Mapped[Optional[bool]] = mapped_column(
+        "IsVariantApproved", Boolean
     )
 
     operation: Mapped[Optional["Operation"]] = relationship(
         back_populates="operation_versions"
     )
-    precondition_operation: Mapped[
-        Optional["OperationVersion"]
-    ] = relationship(
-        foreign_keys=[precondition_operation_vid],
-        remote_side=[operation_vid],
-        back_populates="precondition_dependent_operations",
+    precondition_operation: Mapped[Optional["OperationVersion"]] = (
+        relationship(
+            foreign_keys=[precondition_operation_vid],
+            remote_side=[operation_vid],
+            back_populates="precondition_dependent_operations",
+        )
     )
-    severity_operation: Mapped[
-        Optional["OperationVersion"]
-    ] = relationship(
+    severity_operation: Mapped[Optional["OperationVersion"]] = relationship(
         foreign_keys=[severity_operation_vid],
         remote_side=[operation_vid],
         back_populates="severity_dependent_operations",
     )
-    precondition_dependent_operations: Mapped[
-        List["OperationVersion"]
-    ] = relationship(
-        foreign_keys=[precondition_operation_vid],
-        back_populates="precondition_operation",
+    precondition_dependent_operations: Mapped[List["OperationVersion"]] = (
+        relationship(
+            foreign_keys=[precondition_operation_vid],
+            back_populates="precondition_operation",
+        )
     )
-    severity_dependent_operations: Mapped[
-        List["OperationVersion"]
-    ] = relationship(
-        foreign_keys=[severity_operation_vid],
-        back_populates="severity_operation",
+    severity_dependent_operations: Mapped[List["OperationVersion"]] = (
+        relationship(
+            foreign_keys=[severity_operation_vid],
+            back_populates="severity_operation",
+        )
     )
     start_release: Mapped[Optional["Release"]] = relationship(
         foreign_keys=[start_release_id]
@@ -217,25 +191,19 @@ class OperationVersion(Base):
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
     )
-    operation_nodes: Mapped[
-        List["OperationNode"]
-    ] = relationship(
+    operation_nodes: Mapped[List["OperationNode"]] = relationship(
         back_populates="operation_version",
     )
-    operation_scopes: Mapped[
-        List["OperationScope"]
-    ] = relationship(
+    operation_scopes: Mapped[List["OperationScope"]] = relationship(
         back_populates="operation_version",
     )
-    operation_version_data: Mapped[
-        Optional["OperationVersionData"]
-    ] = relationship(
-        back_populates="operation_version",
-        uselist=False,
+    operation_version_data: Mapped[Optional["OperationVersionData"]] = (
+        relationship(
+            back_populates="operation_version",
+            uselist=False,
+        )
     )
-    variable_calculations: Mapped[
-        List["VariableCalculation"]
-    ] = relationship(
+    variable_calculations: Mapped[List["VariableCalculation"]] = relationship(
         back_populates="operation_version",
     )
 
@@ -264,22 +232,14 @@ class OperationVersionData(Base):
         ForeignKey("OperationVersion.OperationVID"),
         primary_key=True,
     )
-    error: Mapped[Optional[str]] = mapped_column(
-        "Error", String(2000)
-    )
-    error_code: Mapped[Optional[str]] = mapped_column(
-        "ErrorCode", String(50)
-    )
-    is_applying: Mapped[Optional[bool]] = mapped_column(
-        "IsApplying", Boolean
-    )
+    error: Mapped[Optional[str]] = mapped_column("Error", String(2000))
+    error_code: Mapped[Optional[str]] = mapped_column("ErrorCode", String(50))
+    is_applying: Mapped[Optional[bool]] = mapped_column("IsApplying", Boolean)
     proposing_status: Mapped[Optional[str]] = mapped_column(
         "ProposingStatus", String(50)
     )
 
-    operation_version: Mapped[
-        "OperationVersion"
-    ] = relationship(
+    operation_version: Mapped["OperationVersion"] = relationship(
         back_populates="operation_version_data"
     )
 
@@ -309,9 +269,7 @@ class OperationNode(Base):
 
     __tablename__ = "OperationNode"
 
-    node_id: Mapped[int] = mapped_column(
-        "NodeID", Integer, primary_key=True
-    )
+    node_id: Mapped[int] = mapped_column("NodeID", Integer, primary_key=True)
     operation_vid: Mapped[Optional[int]] = mapped_column(
         "OperationVID",
         Integer,
@@ -332,57 +290,43 @@ class OperationNode(Base):
         Integer,
         ForeignKey("OperatorArgument.ArgumentID"),
     )
-    absolute_tolerance: Mapped[Optional[str]] = (
-        mapped_column("AbsoluteTolerance", String)
+    absolute_tolerance: Mapped[Optional[str]] = mapped_column(
+        "AbsoluteTolerance", String
     )
-    relative_tolerance: Mapped[Optional[str]] = (
-        mapped_column("RelativeTolerance", String)
+    relative_tolerance: Mapped[Optional[str]] = mapped_column(
+        "RelativeTolerance", String
     )
     fallback_value: Mapped[Optional[str]] = mapped_column(
         "FallbackValue", String(50)
     )
-    use_interval_arithmetics: Mapped[
-        Optional[bool]
-    ] = mapped_column(
+    use_interval_arithmetics: Mapped[Optional[bool]] = mapped_column(
         "UseIntervalArithmetics", Boolean
     )
     operand_type: Mapped[Optional[str]] = mapped_column(
         "OperandType", String(20)
     )
-    is_leaf: Mapped[Optional[bool]] = mapped_column(
-        "IsLeaf", Boolean
-    )
-    scalar: Mapped[Optional[str]] = mapped_column(
-        "Scalar", Text
-    )
+    is_leaf: Mapped[Optional[bool]] = mapped_column("IsLeaf", Boolean)
+    scalar: Mapped[Optional[str]] = mapped_column("Scalar", Text)
 
-    operation_version: Mapped[
-        Optional["OperationVersion"]
-    ] = relationship(
+    operation_version: Mapped[Optional["OperationVersion"]] = relationship(
         back_populates="operation_nodes"
     )
     parent: Mapped[Optional["OperationNode"]] = relationship(
         remote_side=[node_id],
         back_populates="children",
     )
-    children: Mapped[
-        List["OperationNode"]
-    ] = relationship(
+    children: Mapped[List["OperationNode"]] = relationship(
         back_populates="parent",
     )
     operator: Mapped[Optional["Operator"]] = relationship(
         foreign_keys=[operator_id],
         back_populates="operation_nodes",
     )
-    operator_argument: Mapped[
-        Optional["OperatorArgument"]
-    ] = relationship(
+    operator_argument: Mapped[Optional["OperatorArgument"]] = relationship(
         foreign_keys=[argument_id],
         back_populates="operation_nodes",
     )
-    operand_references: Mapped[
-        List["OperandReference"]
-    ] = relationship(
+    operand_references: Mapped[List["OperandReference"]] = relationship(
         back_populates="operation_node",
     )
 
@@ -414,28 +358,20 @@ class OperationScope(Base):
         Integer,
         ForeignKey("OperationVersion.OperationVID"),
     )
-    is_active: Mapped[Optional[int]] = mapped_column(
-        "IsActive", SmallInteger
+    is_active: Mapped[Optional[int]] = mapped_column("IsActive", SmallInteger)
+    severity: Mapped[Optional[str]] = mapped_column("Severity", String(20))
+    from_submission_date: Mapped[Optional[date]] = mapped_column(
+        "FromSubmissionDate", Date
     )
-    severity: Mapped[Optional[str]] = mapped_column(
-        "Severity", String(20)
-    )
-    from_submission_date: Mapped[Optional[date]] = (
-        mapped_column("FromSubmissionDate", Date)
-    )
-    row_guid: Mapped[Optional[str]] = mapped_column(
-        "RowGUID", String(36)
-    )
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
 
-    operation_version: Mapped[
-        Optional["OperationVersion"]
-    ] = relationship(
+    operation_version: Mapped[Optional["OperationVersion"]] = relationship(
         back_populates="operation_scopes"
     )
-    operation_scope_compositions: Mapped[
-        List["OperationScopeComposition"]
-    ] = relationship(
-        back_populates="operation_scope",
+    operation_scope_compositions: Mapped[List["OperationScopeComposition"]] = (
+        relationship(
+            back_populates="operation_scope",
+        )
     )
 
 
@@ -458,9 +394,7 @@ class OperationScopeComposition(Base):
     operation_scope_id: Mapped[int] = mapped_column(
         "OperationScopeID",
         Integer,
-        ForeignKey(
-            "OperationScope.OperationScopeID"
-        ),
+        ForeignKey("OperationScope.OperationScopeID"),
         primary_key=True,
     )
     module_vid: Mapped[int] = mapped_column(
@@ -469,13 +403,9 @@ class OperationScopeComposition(Base):
         ForeignKey("ModuleVersion.ModuleVID"),
         primary_key=True,
     )
-    row_guid: Mapped[Optional[str]] = mapped_column(
-        "RowGUID", String(36)
-    )
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
 
-    operation_scope: Mapped[
-        "OperationScope"
-    ] = relationship(
+    operation_scope: Mapped["OperationScope"] = relationship(
         back_populates="operation_scope_compositions"
     )
     module_version: Mapped["ModuleVersion"] = relationship(
@@ -503,38 +433,28 @@ class Operator(Base):
     operator_id: Mapped[int] = mapped_column(
         "OperatorID", Integer, primary_key=True
     )
-    name: Mapped[Optional[str]] = mapped_column(
-        "Name", String(50)
-    )
-    symbol: Mapped[Optional[str]] = mapped_column(
-        "Symbol", String(20)
-    )
-    type: Mapped[Optional[str]] = mapped_column(
-        "Type", String(20)
-    )
+    name: Mapped[Optional[str]] = mapped_column("Name", String(50))
+    symbol: Mapped[Optional[str]] = mapped_column("Symbol", String(20))
+    type: Mapped[Optional[str]] = mapped_column("Type", String(20))
 
-    operator_arguments: Mapped[
-        List["OperatorArgument"]
-    ] = relationship(
+    operator_arguments: Mapped[List["OperatorArgument"]] = relationship(
         back_populates="operator",
     )
-    operation_nodes: Mapped[
-        List["OperationNode"]
-    ] = relationship(
+    operation_nodes: Mapped[List["OperationNode"]] = relationship(
         foreign_keys="OperationNode.operator_id",
         back_populates="operator",
     )
-    comparison_subcategory_items: Mapped[
-        List["SubCategoryItem"]
-    ] = relationship(
-        foreign_keys="SubCategoryItem.comparison_operator_id",
-        back_populates="comparison_operator",
+    comparison_subcategory_items: Mapped[List["SubCategoryItem"]] = (
+        relationship(
+            foreign_keys="SubCategoryItem.comparison_operator_id",
+            back_populates="comparison_operator",
+        )
     )
-    arithmetic_subcategory_items: Mapped[
-        List["SubCategoryItem"]
-    ] = relationship(
-        foreign_keys="SubCategoryItem.arithmetic_operator_id",
-        back_populates="arithmetic_operator",
+    arithmetic_subcategory_items: Mapped[List["SubCategoryItem"]] = (
+        relationship(
+            foreign_keys="SubCategoryItem.arithmetic_operator_id",
+            back_populates="arithmetic_operator",
+        )
     )
 
 
@@ -564,22 +484,16 @@ class OperatorArgument(Base):
         Integer,
         ForeignKey("Operator.OperatorID"),
     )
-    order: Mapped[Optional[int]] = mapped_column(
-        "Order", SmallInteger
-    )
+    order: Mapped[Optional[int]] = mapped_column("Order", SmallInteger)
     is_mandatory: Mapped[Optional[bool]] = mapped_column(
         "IsMandatory", Boolean
     )
-    name: Mapped[Optional[str]] = mapped_column(
-        "Name", String(50)
-    )
+    name: Mapped[Optional[str]] = mapped_column("Name", String(50))
 
     operator: Mapped[Optional["Operator"]] = relationship(
         back_populates="operator_arguments"
     )
-    operation_nodes: Mapped[
-        List["OperationNode"]
-    ] = relationship(
+    operation_nodes: Mapped[List["OperationNode"]] = relationship(
         foreign_keys="OperationNode.argument_id",
         back_populates="operator_argument",
     )
@@ -616,19 +530,11 @@ class OperandReference(Base):
         Integer,
         ForeignKey("OperationNode.NodeID"),
     )
-    x: Mapped[Optional[int]] = mapped_column(
-        "x", Integer
-    )
-    y: Mapped[Optional[int]] = mapped_column(
-        "y", Integer
-    )
-    z: Mapped[Optional[int]] = mapped_column(
-        "z", Integer
-    )
-    operand_reference: Mapped[Optional[str]] = (
-        mapped_column(
-            "OperandReference", String(255)
-        )
+    x: Mapped[Optional[int]] = mapped_column("x", Integer)
+    y: Mapped[Optional[int]] = mapped_column("y", Integer)
+    z: Mapped[Optional[int]] = mapped_column("z", Integer)
+    operand_reference: Mapped[Optional[str]] = mapped_column(
+        "OperandReference", String(255)
     )
     item_id: Mapped[Optional[int]] = mapped_column(
         "ItemID",
@@ -651,14 +557,10 @@ class OperandReference(Base):
         ForeignKey("SubCategory.SubCategoryID"),
     )
 
-    operation_node: Mapped[
-        Optional["OperationNode"]
-    ] = relationship(
+    operation_node: Mapped[Optional["OperationNode"]] = relationship(
         back_populates="operand_references"
     )
-    item: Mapped[Optional["Item"]] = relationship(
-        foreign_keys=[item_id]
-    )
+    item: Mapped[Optional["Item"]] = relationship(foreign_keys=[item_id])
     property: Mapped[Optional["Property"]] = relationship(
         foreign_keys=[property_id]
     )
@@ -666,13 +568,13 @@ class OperandReference(Base):
         foreign_keys=[variable_id],
         back_populates="operand_references",
     )
-    subcategory: Mapped[
-        Optional["SubCategory"]
-    ] = relationship(foreign_keys=[subcategory_id])
-    operand_reference_locations: Mapped[
-        List["OperandReferenceLocation"]
-    ] = relationship(
-        back_populates="operand_reference",
+    subcategory: Mapped[Optional["SubCategory"]] = relationship(
+        foreign_keys=[subcategory_id]
+    )
+    operand_reference_locations: Mapped[List["OperandReferenceLocation"]] = (
+        relationship(
+            back_populates="operand_reference",
+        )
     )
 
 
@@ -698,9 +600,7 @@ class OperandReferenceLocation(Base):
     operand_reference_id: Mapped[int] = mapped_column(
         "OperandReferenceID",
         Integer,
-        ForeignKey(
-            "OperandReference.OperandReferenceID"
-        ),
+        ForeignKey("OperandReference.OperandReferenceID"),
         primary_key=True,
     )
     cell_id: Mapped[Optional[int]] = mapped_column(
@@ -708,24 +608,12 @@ class OperandReferenceLocation(Base):
         Integer,
         ForeignKey("Cell.CellID"),
     )
-    table: Mapped[Optional[str]] = mapped_column(
-        "Table", String(255)
-    )
-    row: Mapped[Optional[str]] = mapped_column(
-        "Row", String(255)
-    )
-    column: Mapped[Optional[str]] = mapped_column(
-        "Column", String(255)
-    )
-    sheet: Mapped[Optional[str]] = mapped_column(
-        "Sheet", String(255)
-    )
+    table: Mapped[Optional[str]] = mapped_column("Table", String(255))
+    row: Mapped[Optional[str]] = mapped_column("Row", String(255))
+    column: Mapped[Optional[str]] = mapped_column("Column", String(255))
+    sheet: Mapped[Optional[str]] = mapped_column("Sheet", String(255))
 
-    operand_reference: Mapped[
-        "OperandReference"
-    ] = relationship(
+    operand_reference: Mapped["OperandReference"] = relationship(
         back_populates="operand_reference_locations"
     )
-    cell: Mapped[Optional["Cell"]] = relationship(
-        foreign_keys=[cell_id]
-    )
+    cell: Mapped[Optional["Cell"]] = relationship(foreign_keys=[cell_id])

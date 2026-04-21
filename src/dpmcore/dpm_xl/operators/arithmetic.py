@@ -51,7 +51,7 @@ class SquareRoot(Unary):
 
 class NumericBinary(Binary):
     type_to_check = Number
-    interval_allowed:bool = True
+    interval_allowed: bool = True
 
 
 class BinPlus(NumericBinary):
@@ -78,19 +78,19 @@ class Div(NumericBinary):
 class Power(NumericBinary):
     op = tokens.POW
     py_op = operator.pow
-    interval_allowed:bool = False
+    interval_allowed: bool = False
 
 
 class Logarithm(NumericBinary):
     op = tokens.LOG
     py_op = math.log
     return_type = Number
-    interval_allowed:bool = False
+    interval_allowed: bool = False
 
 
 class NumericComplex(Complex):
     type_to_check = Number
-    interval_allowed:bool = True
+    interval_allowed: bool = True
 
 
 class Max(NumericComplex):

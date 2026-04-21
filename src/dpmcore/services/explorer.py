@@ -52,7 +52,8 @@ class ExplorerService:
         )
         if release_id is not None:
             q = filter_by_release(
-                q, release_id=release_id,
+                q,
+                release_id=release_id,
                 start_col=VariableVersion.start_release_id,
                 end_col=VariableVersion.end_release_id,
             )
@@ -82,14 +83,14 @@ class ExplorerService:
             )
             .join(
                 OperationVersion,
-                OperationNode.operation_vid
-                == OperationVersion.operation_vid,
+                OperationNode.operation_vid == OperationVersion.operation_vid,
             )
             .filter(OperandReference.variable_id == variable_vid)
         )
         if release_id is not None:
             q = filter_by_release(
-                q, release_id=release_id,
+                q,
+                release_id=release_id,
                 start_col=OperationVersion.start_release_id,
                 end_col=OperationVersion.end_release_id,
             )
@@ -114,7 +115,8 @@ class ExplorerService:
         )
         if release_id is not None:
             q = filter_by_release(
-                q, release_id=release_id,
+                q,
+                release_id=release_id,
                 start_col=TableVersion.start_release_id,
                 end_col=TableVersion.end_release_id,
             )

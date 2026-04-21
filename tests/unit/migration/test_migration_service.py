@@ -31,7 +31,7 @@ class TestMigrateMdbtoolsSuccess:
         with patch("subprocess.check_output") as mock_sub:
             mock_sub.side_effect = [
                 "Users\n",  # mdb-tables
-                csv_data,   # mdb-export
+                csv_data,  # mdb-export
             ]
             result = service.migrate_from_access("/fake.accdb")
 
@@ -125,9 +125,7 @@ class TestLoadData:
 
         # Create a table manually.
         with sqlite_engine.connect() as conn:
-            conn.execute(
-                text("CREATE TABLE items (id INTEGER, name TEXT)")
-            )
+            conn.execute(text("CREATE TABLE items (id INTEGER, name TEXT)"))
             conn.commit()
 
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})

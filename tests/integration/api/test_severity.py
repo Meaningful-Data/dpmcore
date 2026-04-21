@@ -48,7 +48,9 @@ def _db_kwargs():
 
         if all([host, db, user, password]):
             if rdbms == "postgres":
-                connection_url = f"postgresql://{user}:{password}@{host}:{port}/{db}"
+                connection_url = (
+                    f"postgresql://{user}:{password}@{host}:{port}/{db}"
+                )
             else:
                 # SQL Server connection using ODBC connection string
                 server_with_port = f"{host},{port}" if port else host
@@ -111,10 +113,7 @@ class TestSeverityValidation:
     def api(self):
         """Create ASTGeneratorAPI instance with database configuration."""
         db_config = _db_kwargs()
-        return ASTGeneratorAPI(
-            **db_config,
-            enable_semantic_validation=True
-        )
+        return ASTGeneratorAPI(**db_config, enable_semantic_validation=True)
 
     def test_invalid_severity_raises_error(self, api):
         """Test that invalid severity value raises ValueError."""
@@ -156,10 +155,7 @@ class TestSeverityInGenerateValidationsScript:
     def api(self):
         """Create ASTGeneratorAPI instance with database configuration."""
         db_config = _db_kwargs()
-        return ASTGeneratorAPI(
-            **db_config,
-            enable_semantic_validation=True
-        )
+        return ASTGeneratorAPI(**db_config, enable_semantic_validation=True)
 
     def test_default_severity_is_error(self, api):
         """Test that default severity is 'error' when not specified."""
@@ -172,7 +168,9 @@ class TestSeverityInGenerateValidationsScript:
             # severity not specified - should default to 'error'
         )
 
-        assert result["success"] is True, f"Expected success, got error: {result['error']}"
+        assert result["success"] is True, (
+            f"Expected success, got error: {result['error']}"
+        )
 
         enriched_ast = result["enriched_ast"]
         namespace = list(enriched_ast.keys())[0]
@@ -193,7 +191,9 @@ class TestSeverityInGenerateValidationsScript:
             severity="error",
         )
 
-        assert result["success"] is True, f"Expected success, got error: {result['error']}"
+        assert result["success"] is True, (
+            f"Expected success, got error: {result['error']}"
+        )
 
         enriched_ast = result["enriched_ast"]
         namespace = list(enriched_ast.keys())[0]
@@ -212,7 +212,9 @@ class TestSeverityInGenerateValidationsScript:
             severity="warning",
         )
 
-        assert result["success"] is True, f"Expected success, got error: {result['error']}"
+        assert result["success"] is True, (
+            f"Expected success, got error: {result['error']}"
+        )
 
         enriched_ast = result["enriched_ast"]
         namespace = list(enriched_ast.keys())[0]
@@ -231,7 +233,9 @@ class TestSeverityInGenerateValidationsScript:
             severity="info",
         )
 
-        assert result["success"] is True, f"Expected success, got error: {result['error']}"
+        assert result["success"] is True, (
+            f"Expected success, got error: {result['error']}"
+        )
 
         enriched_ast = result["enriched_ast"]
         namespace = list(enriched_ast.keys())[0]
@@ -291,7 +295,9 @@ class TestSeverityInGenerateValidationsScript:
             severity="warning",
         )
 
-        assert result["success"] is True, f"Expected success, got error: {result['error']}"
+        assert result["success"] is True, (
+            f"Expected success, got error: {result['error']}"
+        )
 
         enriched_ast = result["enriched_ast"]
         namespace = list(enriched_ast.keys())[0]
@@ -312,13 +318,17 @@ class TestSeverityInOperationScopeService:
         from py_dpm.dpm_xl.utils.scopes_calculator import OperationScopeService
 
         # Mock session and dependencies
-        with patch("py_dpm.dpm_xl.utils.scopes_calculator.get_session") as mock_session:
+        with patch(
+            "py_dpm.dpm_xl.utils.scopes_calculator.get_session"
+        ) as mock_session:
             mock_session.return_value = MagicMock()
 
             service = OperationScopeService(operation_version_id=123)
 
             # Mock the OperationScope class to capture the severity argument
-            with patch("py_dpm.dpm_xl.utils.scopes_calculator.OperationScope") as mock_scope:
+            with patch(
+                "py_dpm.dpm_xl.utils.scopes_calculator.OperationScope"
+            ) as mock_scope:
                 mock_scope.return_value = MagicMock()
 
                 service.create_operation_scope(submission_date="2024-01-01")
@@ -332,15 +342,21 @@ class TestSeverityInOperationScopeService:
         from unittest.mock import MagicMock, patch
         from py_dpm.dpm_xl.utils.scopes_calculator import OperationScopeService
 
-        with patch("py_dpm.dpm_xl.utils.scopes_calculator.get_session") as mock_session:
+        with patch(
+            "py_dpm.dpm_xl.utils.scopes_calculator.get_session"
+        ) as mock_session:
             mock_session.return_value = MagicMock()
 
             service = OperationScopeService(operation_version_id=123)
 
-            with patch("py_dpm.dpm_xl.utils.scopes_calculator.OperationScope") as mock_scope:
+            with patch(
+                "py_dpm.dpm_xl.utils.scopes_calculator.OperationScope"
+            ) as mock_scope:
                 mock_scope.return_value = MagicMock()
 
-                service.create_operation_scope(submission_date="2024-01-01", severity="error")
+                service.create_operation_scope(
+                    submission_date="2024-01-01", severity="error"
+                )
 
                 call_kwargs = mock_scope.call_args[1]
                 assert call_kwargs["severity"] == "error"
@@ -350,15 +366,21 @@ class TestSeverityInOperationScopeService:
         from unittest.mock import MagicMock, patch
         from py_dpm.dpm_xl.utils.scopes_calculator import OperationScopeService
 
-        with patch("py_dpm.dpm_xl.utils.scopes_calculator.get_session") as mock_session:
+        with patch(
+            "py_dpm.dpm_xl.utils.scopes_calculator.get_session"
+        ) as mock_session:
             mock_session.return_value = MagicMock()
 
             service = OperationScopeService(operation_version_id=123)
 
-            with patch("py_dpm.dpm_xl.utils.scopes_calculator.OperationScope") as mock_scope:
+            with patch(
+                "py_dpm.dpm_xl.utils.scopes_calculator.OperationScope"
+            ) as mock_scope:
                 mock_scope.return_value = MagicMock()
 
-                service.create_operation_scope(submission_date="2024-01-01", severity="warning")
+                service.create_operation_scope(
+                    submission_date="2024-01-01", severity="warning"
+                )
 
                 call_kwargs = mock_scope.call_args[1]
                 assert call_kwargs["severity"] == "warning"
@@ -368,15 +390,21 @@ class TestSeverityInOperationScopeService:
         from unittest.mock import MagicMock, patch
         from py_dpm.dpm_xl.utils.scopes_calculator import OperationScopeService
 
-        with patch("py_dpm.dpm_xl.utils.scopes_calculator.get_session") as mock_session:
+        with patch(
+            "py_dpm.dpm_xl.utils.scopes_calculator.get_session"
+        ) as mock_session:
             mock_session.return_value = MagicMock()
 
             service = OperationScopeService(operation_version_id=123)
 
-            with patch("py_dpm.dpm_xl.utils.scopes_calculator.OperationScope") as mock_scope:
+            with patch(
+                "py_dpm.dpm_xl.utils.scopes_calculator.OperationScope"
+            ) as mock_scope:
                 mock_scope.return_value = MagicMock()
 
-                service.create_operation_scope(submission_date="2024-01-01", severity="info")
+                service.create_operation_scope(
+                    submission_date="2024-01-01", severity="info"
+                )
 
                 call_kwargs = mock_scope.call_args[1]
                 assert call_kwargs["severity"] == "info"
@@ -386,13 +414,17 @@ class TestSeverityInOperationScopeService:
         from unittest.mock import MagicMock, patch
         from py_dpm.dpm_xl.utils.scopes_calculator import OperationScopeService
 
-        with patch("py_dpm.dpm_xl.utils.scopes_calculator.get_session") as mock_session:
+        with patch(
+            "py_dpm.dpm_xl.utils.scopes_calculator.get_session"
+        ) as mock_session:
             mock_session.return_value = MagicMock()
 
             service = OperationScopeService(operation_version_id=123)
 
             with pytest.raises(ValueError) as exc_info:
-                service.create_operation_scope(submission_date="2024-01-01", severity="invalid")
+                service.create_operation_scope(
+                    submission_date="2024-01-01", severity="invalid"
+                )
 
             assert "Invalid severity" in str(exc_info.value)
             assert "invalid" in str(exc_info.value)
@@ -402,16 +434,22 @@ class TestSeverityInOperationScopeService:
         from unittest.mock import MagicMock, patch
         from py_dpm.dpm_xl.utils.scopes_calculator import OperationScopeService
 
-        with patch("py_dpm.dpm_xl.utils.scopes_calculator.get_session") as mock_session:
+        with patch(
+            "py_dpm.dpm_xl.utils.scopes_calculator.get_session"
+        ) as mock_session:
             mock_session.return_value = MagicMock()
 
             service = OperationScopeService(operation_version_id=123)
 
-            with patch("py_dpm.dpm_xl.utils.scopes_calculator.OperationScope") as mock_scope:
+            with patch(
+                "py_dpm.dpm_xl.utils.scopes_calculator.OperationScope"
+            ) as mock_scope:
                 mock_scope.return_value = MagicMock()
 
                 # Pass uppercase severity
-                service.create_operation_scope(submission_date="2024-01-01", severity="ERROR")
+                service.create_operation_scope(
+                    submission_date="2024-01-01", severity="ERROR"
+                )
 
                 call_kwargs = mock_scope.call_args[1]
                 # Should be normalized to lowercase

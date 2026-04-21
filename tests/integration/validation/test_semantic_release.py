@@ -38,7 +38,9 @@ def test_validate_expression_release_5(fixture_session):
     """
     svc = SemanticService(fixture_session)
     result = svc.validate(expression, release_id=5)
-    assert not result.is_valid, "Expected invalid for release_id=5, but it was valid"
+    assert not result.is_valid, (
+        "Expected invalid for release_id=5, but it was valid"
+    )
 
 
 def test_nonexistent_release(fixture_session):
@@ -270,7 +272,9 @@ with {tF_40.01}:
 """
     svc = SemanticService(fixture_session)
     result = svc.validate(expression, release_id=3)
-    assert not result.is_valid, "Expected invalid for release_id=3, but it was valid"
+    assert not result.is_valid, (
+        "Expected invalid for release_id=3, but it was valid"
+    )
 
 
 def test_item_versioning_release_5(fixture_session):

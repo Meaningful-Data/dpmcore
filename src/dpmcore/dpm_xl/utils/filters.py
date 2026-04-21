@@ -32,9 +32,7 @@ def filter_by_date(
         return query
 
     if isinstance(date, str):
-        target_date = datetime.strptime(
-            date, "%Y-%m-%d"
-        ).date()
+        target_date = datetime.strptime(date, "%Y-%m-%d").date()
     else:
         target_date = date
 
@@ -92,13 +90,9 @@ def filter_by_release(
         ValueError: If both release_id and release_code
             are specified.
     """
-    if (
-        release_id is not None
-        and release_code is not None
-    ):
+    if release_id is not None and release_code is not None:
         raise ValueError(
-            "Specify a maximum of one of"
-            " release_id or release_code."
+            "Specify a maximum of one of release_id or release_code."
         )
 
     if release_id is None and release_code is None:

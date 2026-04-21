@@ -85,9 +85,7 @@ class MigrationService:
         self._create_schema()
         warnings = self._load_data(data)
 
-        table_details = {
-            name: len(df) for name, df in data.items()
-        }
+        table_details = {name: len(df) for name, df in data.items()}
         total_rows = sum(table_details.values())
 
         return MigrationResult(
@@ -102,17 +100,13 @@ class MigrationService:
     # Extraction
     # -------------------------------------------------------------- #
 
-    def _extract_tables(
-        self, access_path: str
-    ) -> tuple[Dict[str, Any], str]:
+    def _extract_tables(self, access_path: str) -> tuple[Dict[str, Any], str]:
         """Try mdb-tools first, fall back to pyodbc."""
         try:
             data = self._extract_with_mdbtools(access_path)
             return data, "mdbtools"
         except (FileNotFoundError, OSError, subprocess.CalledProcessError):
-            logger.debug(
-                "mdb-tools not available, falling back to pyodbc"
-            )
+            logger.debug("mdb-tools not available, falling back to pyodbc")
 
         try:
             data = self._extract_with_pyodbc(access_path)
@@ -124,9 +118,7 @@ class MigrationService:
                 "(Windows/macOS), then try again."
             ) from exc
 
-    def _extract_with_mdbtools(
-        self, access_path: str
-    ) -> Dict[str, Any]:
+    def _extract_with_mdbtools(self, access_path: str) -> Dict[str, Any]:
         """Use ``mdb-tables`` / ``mdb-export`` (subprocess)."""
         import pandas as pd  # lazy
 
@@ -155,9 +147,7 @@ class MigrationService:
 
         return data
 
-    def _extract_with_pyodbc(
-        self, access_path: str
-    ) -> Dict[str, Any]:
+    def _extract_with_pyodbc(self, access_path: str) -> Dict[str, Any]:
         """Use pyodbc with the Access ODBC driver."""
         import decimal
 
@@ -176,8 +166,7 @@ class MigrationService:
             row.table_name
             for row in cursor.tables(tableType="TABLE")
             if not any(
-                row.table_name.startswith(p)
-                for p in _SYSTEM_TABLE_PREFIXES
+                row.table_name.startswith(p) for p in _SYSTEM_TABLE_PREFIXES
             )
         ]
 
@@ -193,19 +182,13 @@ class MigrationService:
 
             rows = cursor.fetchall()
 
-            df = pd.DataFrame.from_records(
-                rows, columns=col_names
-            )
+            df = pd.DataFrame.from_records(rows, columns=col_names)
 
             # Apply schema-based type enforcement: keep text columns
             # as text even when values look numeric.
-            for name, col_type in zip(
-                col_names, col_types, strict=True
-            ):
+            for name, col_type in zip(col_names, col_types, strict=True):
                 if col_type in numeric_types:
-                    df[name] = pd.to_numeric(
-                        df[name], errors="coerce"
-                    )
+                    df[name] = pd.to_numeric(df[name], errors="coerce")
                 else:
                     df[name] = df[name].astype(object)
 
@@ -273,9 +256,7 @@ class MigrationService:
                 )
                 logger.info(msg)
                 warnings.append(msg)
-                df = df[[
-                    c for c in df.columns if c in known_cols
-                ]]
+                df = df[[c for c in df.columns if c in known_cols]]
 
         try:
             df.to_sql(

@@ -90,9 +90,13 @@ def test_get_all_frameworks_filtering(session):
     mod = Module(moduleid=1, frameworkid=1)
 
     # Active in Release 1
-    mv1 = ModuleVersion(modulevid=11, moduleid=1, startreleaseid=1, endreleaseid=2)
+    mv1 = ModuleVersion(
+        modulevid=11, moduleid=1, startreleaseid=1, endreleaseid=2
+    )
     # Active in Release 2
-    mv2 = ModuleVersion(modulevid=12, moduleid=1, startreleaseid=2, endreleaseid=None)
+    mv2 = ModuleVersion(
+        modulevid=12, moduleid=1, startreleaseid=2, endreleaseid=None
+    )
 
     # Setup meaningless table associations just to satisfy join
     t = Table(tableid=1)

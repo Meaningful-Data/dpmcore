@@ -41,8 +41,7 @@ def migrate(source: str, database: str) -> None:
         from rich.table import Table
     except ImportError:
         click.echo(
-            "Install 'rich' for pretty output: "
-            "pip install dpmcore[cli]",
+            "Install 'rich' for pretty output: pip install dpmcore[cli]",
             err=True,
         )
         sys.exit(1)
@@ -99,12 +98,12 @@ def migrate(source: str, database: str) -> None:
 def export_csv(source: str, output_dir: str) -> None:
     """Export all tables from an Access database to CSV files."""
     from pathlib import Path
+
     try:
         from rich.console import Console
     except ImportError:
         click.echo(
-            "Install 'rich' for pretty output: "
-            "pip install dpmcore[cli]",
+            "Install 'rich' for pretty output: pip install dpmcore[cli]",
             err=True,
         )
         sys.exit(1)
@@ -126,9 +125,7 @@ def export_csv(source: str, output_dir: str) -> None:
         f"\n[bold]{result.tables_exported} tables[/bold] exported to "
         f"[green]{result.output_dir}[/green]"
     )
-    console.print(
-        "Review results with manual inspection and/or git diff."
-    )
+    console.print("Review results with manual inspection and/or git diff.")
 
 
 @main.command()

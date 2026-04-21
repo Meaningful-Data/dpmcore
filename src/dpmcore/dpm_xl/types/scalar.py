@@ -6,8 +6,7 @@ from dpmcore.errors import DataTypeError, SemanticError
 
 
 class ScalarType:
-    """
-    """
+    """ """
 
     default = None
 
@@ -40,15 +39,16 @@ class ScalarType:
 
 
 class String(ScalarType):
-    """
+    """ """
 
-    """
     default = ""
 
     def __init__(self):
         super().__init__()
 
-    def check_type(self, value):  # Not needed for semantic, but can be util later
+    def check_type(
+        self, value
+    ):  # Not needed for semantic, but can be util later
         if isinstance(value, str):
             return True
         raise DataTypeError(value, String)
@@ -58,12 +58,11 @@ class String(ScalarType):
 
     @property
     def dtype(self):
-        return 'string'
+        return "string"
 
 
 class Number(ScalarType):
-    """
-    """
+    """ """
 
     def __init__(self, interval=False):
         super().__init__()
@@ -83,12 +82,11 @@ class Number(ScalarType):
 
     @property
     def dtype(self):
-        return 'Float64'
+        return "Float64"
 
 
 class Integer(Number):
-    """
-    """
+    """ """
 
     def __init__(self, interval=False):
         super().__init__(interval)
@@ -104,13 +102,12 @@ class Integer(Number):
 
     @property
     def dtype(self):
-        return 'Int64'
+        return "Int64"
 
 
 class TimeInterval(ScalarType):
-    """
+    """ """
 
-    """
     default = pd.NA
 
     def __init__(self):
@@ -127,13 +124,12 @@ class TimeInterval(ScalarType):
 
     @property
     def dtype(self):
-        return 'string'
+        return "string"
 
 
 class Date(TimeInterval):
-    """
+    """ """
 
-    """
     default = np.nan
 
     def __init__(self):
@@ -147,13 +143,12 @@ class Date(TimeInterval):
 
     @property
     def dtype(self):
-        return 'string'
+        return "string"
 
 
 class TimePeriod(TimeInterval):
-    """
+    """ """
 
-    """
     default = pd.NA
 
     def __init__(self):
@@ -167,7 +162,7 @@ class TimePeriod(TimeInterval):
 
     @property
     def dtype(self):
-        return 'string'
+        return "string"
 
 
 class Duration(ScalarType):
@@ -175,8 +170,8 @@ class Duration(ScalarType):
 
 
 class Boolean(ScalarType):
-    """
-    """
+    """ """
+
     default = np.nan
 
     def __init__(self):
@@ -218,14 +213,15 @@ class Boolean(ScalarType):
 
     @property
     def dtype(self):
-        return 'boolean'
+        return "boolean"
 
 
 class Null(ScalarType):  # I think it is needed
     """
     All the Data Types are assumed to contain the conventional value null, which means “no value”, or “absence of known value” or “missing value”.
-    Note that the null value, therefore, is the only value of multiple different types. 
+    Note that the null value, therefore, is the only value of multiple different types.
     """
+
     default = None
 
     def __init__(self):
@@ -239,9 +235,7 @@ class Null(ScalarType):  # I think it is needed
 
 
 class Mixed(ScalarType):
-    """
-
-    """
+    """ """
 
     def __init__(self):
         super().__init__()
@@ -258,7 +252,7 @@ class Item(ScalarType):
 
     @property
     def dtype(self):
-        return 'string'
+        return "string"
 
 
 class Subcategory(ScalarType):
@@ -278,7 +272,7 @@ class ScalarFactory:
         "Item": Item,
         "Subcategory": Subcategory,
         "Null": Null,
-        "Mixed": Mixed
+        "Mixed": Mixed,
     }
 
     database_types = {
@@ -301,7 +295,7 @@ class ScalarFactory:
         "s": String,
         "es": String,
         "r": Number,
-        "t": Boolean
+        "t": Boolean,
     }
 
     def scalar_factory(self, code=None, interval=None):

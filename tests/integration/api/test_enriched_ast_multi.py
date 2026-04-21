@@ -37,7 +37,9 @@ def _db_kwargs():
 
         if all([host, db, user, password]):
             if rdbms == "postgres":
-                connection_url = f"postgresql://{user}:{password}@{host}:{port}/{db}"
+                connection_url = (
+                    f"postgresql://{user}:{password}@{host}:{port}/{db}"
+                )
             else:
                 # SQL Server connection using ODBC connection string
                 server_with_port = f"{host},{port}" if port else host
@@ -79,10 +81,7 @@ class TestGenerateEnrichedAstMultiExpression:
     def api(self):
         """Create ASTGeneratorAPI instance with database configuration."""
         db_config = _db_kwargs()
-        return ASTGeneratorAPI(
-            **db_config,
-            enable_semantic_validation=True
-        )
+        return ASTGeneratorAPI(**db_config, enable_semantic_validation=True)
 
     def test_single_expression_new_signature(self, api):
         """Test that single expression works with new tuple signature."""
@@ -100,7 +99,9 @@ class TestGenerateEnrichedAstMultiExpression:
             preferred_module_dependencies=["FINREP9"],
         )
 
-        assert result["success"] is True, f"Expected success, got error: {result['error']}"
+        assert result["success"] is True, (
+            f"Expected success, got error: {result['error']}"
+        )
         assert result["enriched_ast"] is not None
         assert result["error"] is None
 
@@ -125,7 +126,10 @@ class TestGenerateEnrichedAstMultiExpression:
 
         # Verify dependency information
         assert "dependency_information" in module_data
-        assert "cross_instance_dependencies" in module_data["dependency_information"]
+        assert (
+            "cross_instance_dependencies"
+            in module_data["dependency_information"]
+        )
 
     def test_multiple_expressions_single_module(self, api):
         """Test multiple expressions aggregated into single script."""
@@ -141,7 +145,9 @@ class TestGenerateEnrichedAstMultiExpression:
             module_code="FINREP9",
         )
 
-        assert result["success"] is True, f"Expected success, got error: {result['error']}"
+        assert result["success"] is True, (
+            f"Expected success, got error: {result['error']}"
+        )
 
         enriched_ast = result["enriched_ast"]
         namespace = list(enriched_ast.keys())[0]
@@ -158,8 +164,16 @@ class TestGenerateEnrichedAstMultiExpression:
     def test_multiple_expressions_with_preconditions(self, api):
         """Test multiple expressions with preconditions."""
         expressions = [
-            ("{tF_01.01, r0380, c0010} > 0", "op_with_precond_1", "{v_F_44_04}"),
-            ("{tF_01.01, r0390, c0010} >= 0", "op_with_precond_2", "{v_F_44_04}"),  # Same precondition
+            (
+                "{tF_01.01, r0380, c0010} > 0",
+                "op_with_precond_1",
+                "{v_F_44_04}",
+            ),
+            (
+                "{tF_01.01, r0390, c0010} >= 0",
+                "op_with_precond_2",
+                "{v_F_44_04}",
+            ),  # Same precondition
             ("{tF_01.01, r0340, c0010} != 0", "op_without_precond", None),
         ]
 
@@ -169,7 +183,9 @@ class TestGenerateEnrichedAstMultiExpression:
             module_code="FINREP9",
         )
 
-        assert result["success"] is True, f"Expected success, got error: {result['error']}"
+        assert result["success"] is True, (
+            f"Expected success, got error: {result['error']}"
+        )
 
         enriched_ast = result["enriched_ast"]
         namespace = list(enriched_ast.keys())[0]
@@ -182,8 +198,13 @@ class TestGenerateEnrichedAstMultiExpression:
         # but affected_operations should list both ops
         if module_data["preconditions"]:
             precond_key = list(module_data["preconditions"].keys())[0]
-            affected_ops = module_data["preconditions"][precond_key]["affected_operations"]
-            assert "op_with_precond_1" in affected_ops or "op_with_precond_2" in affected_ops
+            affected_ops = module_data["preconditions"][precond_key][
+                "affected_operations"
+            ]
+            assert (
+                "op_with_precond_1" in affected_ops
+                or "op_with_precond_2" in affected_ops
+            )
 
     def test_cross_module_expression(self, api):
         """Test expression that references multiple modules."""
@@ -201,7 +222,9 @@ class TestGenerateEnrichedAstMultiExpression:
             preferred_module_dependencies=["FINREP9"],
         )
 
-        assert result["success"] is True, f"Expected success, got error: {result['error']}"
+        assert result["success"] is True, (
+            f"Expected success, got error: {result['error']}"
+        )
 
         enriched_ast = result["enriched_ast"]
         namespace = list(enriched_ast.keys())[0]
@@ -211,18 +234,27 @@ class TestGenerateEnrichedAstMultiExpression:
         assert "dependency_modules" in module_data
         assert "dependency_information" in module_data
 
-        cross_deps = module_data["dependency_information"]["cross_instance_dependencies"]
+        cross_deps = module_data["dependency_information"][
+            "cross_instance_dependencies"
+        ]
         # Should have at least one cross-module dependency (FINREP9)
-        assert len(cross_deps) >= 0  # May or may not have depending on module detection
+        assert (
+            len(cross_deps) >= 0
+        )  # May or may not have depending on module detection
 
     def test_expression_failure_skips_with_warning(self, api):
         """Test that invalid expression is skipped with a warning, not failing the entire operation."""
         expressions = [
             ("{tF_01.01, r0380, c0010} > 0", "valid_op", None),
-            ("INVALID EXPRESSION !!!", "invalid_op", None),  # This should be skipped
+            (
+                "INVALID EXPRESSION !!!",
+                "invalid_op",
+                None,
+            ),  # This should be skipped
         ]
 
         import warnings
+
         with warnings.catch_warnings(record=True) as caught_warnings:
             warnings.simplefilter("always")
             result = api.generate_validations_script(
@@ -320,8 +352,14 @@ class TestGenerateEnrichedAstMultiExpression:
         assert "to" in module_data["dates"]
 
         # Dependency information structure
-        assert "intra_instance_validations" in module_data["dependency_information"]
-        assert "cross_instance_dependencies" in module_data["dependency_information"]
+        assert (
+            "intra_instance_validations"
+            in module_data["dependency_information"]
+        )
+        assert (
+            "cross_instance_dependencies"
+            in module_data["dependency_information"]
+        )
 
     def test_add_all_tables_true_includes_all_module_tables(self, api):
         """Test that add_all_tables=True includes all tables from the module version."""
@@ -337,7 +375,9 @@ class TestGenerateEnrichedAstMultiExpression:
             add_all_tables=True,  # Explicitly set to True (default)
         )
 
-        assert result["success"] is True, f"Expected success, got error: {result['error']}"
+        assert result["success"] is True, (
+            f"Expected success, got error: {result['error']}"
+        )
 
         enriched_ast = result["enriched_ast"]
         namespace = list(enriched_ast.keys())[0]
@@ -351,7 +391,9 @@ class TestGenerateEnrichedAstMultiExpression:
         )
 
         # The referenced table should still be present
-        assert "C_47.00" in tables, "Referenced table C_47.00 should be present"
+        assert "C_47.00" in tables, (
+            "Referenced table C_47.00 should be present"
+        )
 
         # Variables should include variables from all tables
         variables = module_data["variables"]
@@ -371,7 +413,9 @@ class TestGenerateEnrichedAstMultiExpression:
             add_all_tables=False,
         )
 
-        assert result["success"] is True, f"Expected success, got error: {result['error']}"
+        assert result["success"] is True, (
+            f"Expected success, got error: {result['error']}"
+        )
 
         enriched_ast = result["enriched_ast"]
         namespace = list(enriched_ast.keys())[0]
@@ -384,7 +428,9 @@ class TestGenerateEnrichedAstMultiExpression:
         )
 
         # The referenced table should be present
-        assert "C_47.00" in tables, "Referenced table C_47.00 should be present"
+        assert "C_47.00" in tables, (
+            "Referenced table C_47.00 should be present"
+        )
 
     def test_add_all_tables_comparison(self, api):
         """Test that add_all_tables=True returns more tables than add_all_tables=False."""
@@ -462,7 +508,9 @@ class TestGenerateEnrichedAstMultiExpression:
         ns_explicit = list(result_explicit["enriched_ast"].keys())[0]
 
         tables_default = result_default["enriched_ast"][ns_default]["tables"]
-        tables_explicit = result_explicit["enriched_ast"][ns_explicit]["tables"]
+        tables_explicit = result_explicit["enriched_ast"][ns_explicit][
+            "tables"
+        ]
 
         # Both should have the same number of tables (default = True)
         assert len(tables_default) == len(tables_explicit), (

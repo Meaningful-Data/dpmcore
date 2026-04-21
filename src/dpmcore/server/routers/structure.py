@@ -150,29 +150,23 @@ def create_structure_router(
     router = APIRouter(prefix="/structure")
 
     _type_path = Path(
-        ..., description="DPM artefact type",
+        ...,
+        description="DPM artefact type",
     )
     _owner_path = Path(
         ...,
-        description=(
-            "Organisation acronym, comma-separated, "
-            "or * for all"
-        ),
+        description=("Organisation acronym, comma-separated, or * for all"),
         json_schema_extra={"default": "*"},
     )
     _id_path = Path(
         ...,
-        description=(
-            "Artefact code, comma-separated, "
-            "or * for all"
-        ),
+        description=("Artefact code, comma-separated, or * for all"),
         json_schema_extra={"default": "*"},
     )
     _release_path = Path(
         ...,
         description=(
-            "~ (latest) | + (latest stable) "
-            "| * (all) | literal release"
+            "~ (latest) | + (latest stable) | * (all) | literal release"
         ),
         json_schema_extra={"default": "*"},
     )
@@ -191,10 +185,15 @@ def create_structure_router(
             description="Related artefact inclusion",
         ),
         offset: int = Query(  # noqa: B008
-            0, ge=0, description="Results to skip",
+            0,
+            ge=0,
+            description="Results to skip",
         ),
         limit: int = Query(  # noqa: B008
-            100, ge=1, le=1000, description="Max results",
+            100,
+            ge=1,
+            le=1000,
+            description="Max results",
         ),
         session: Session = Depends(get_session),  # noqa: B008
     ) -> Any:
@@ -228,9 +227,7 @@ def create_structure_router(
             limit=limit,
         )
 
-    _204_desc = (
-        "Query valid but no results (SDMX convention)"
-    )
+    _204_desc = "Query valid but no results (SDMX convention)"
 
     router.add_api_route(
         "/{artefact_type}/{owner}/{id}/{release}",
@@ -269,10 +266,15 @@ def create_structure_router(
             description="Related artefact inclusion",
         ),
         offset: int = Query(  # noqa: B008
-            0, ge=0, description="Results to skip",
+            0,
+            ge=0,
+            description="Results to skip",
         ),
         limit: int = Query(  # noqa: B008
-            100, ge=1, le=1000, description="Max results",
+            100,
+            ge=1,
+            le=1000,
+            description="Max results",
         ),
         session: Session = Depends(get_session),  # noqa: B008
     ) -> Any:
@@ -294,7 +296,9 @@ def create_structure_router(
         "/{artefact_type}",
     ]:
         router.add_api_route(
-            path, _short_handler, methods=["GET"],
+            path,
+            _short_handler,
+            methods=["GET"],
             include_in_schema=False,
         )
 
@@ -334,7 +338,9 @@ def handle_release(
     if params.is_single_id and not params.wants_all_releases:
         owner = params.owners[0] if not params.is_owner_wildcard else None
         result = svc.get_release_by_code(
-            params.ids[0], owner=owner, detail=detail,
+            params.ids[0],
+            owner=owner,
+            detail=detail,
         )
         if result is None:
             return Response(status_code=204)
@@ -344,7 +350,10 @@ def handle_release(
                 [result.get("ownerId")],
             )
         return envelope(
-            data, total_count=1, offset=0, limit=1,
+            data,
+            total_count=1,
+            offset=0,
+            limit=1,
         )
 
     # Collection query
@@ -411,16 +420,12 @@ def handle_category(
 
     data: Dict[str, Any] = {"categories": results}
     if references == "all":
-        acronyms = list({
-            r.get("owner")
-            for r in results
-            if r.get("owner") is not None
-        })
+        acronyms = list(
+            {r.get("owner") for r in results if r.get("owner") is not None}
+        )
         if acronyms:
-            data["organisations"] = (
-                svc.get_release_organisations(
-                    _owner_ids_from_acronyms(svc, acronyms),
-                )
+            data["organisations"] = svc.get_release_organisations(
+                _owner_ids_from_acronyms(svc, acronyms),
             )
 
     return envelope(

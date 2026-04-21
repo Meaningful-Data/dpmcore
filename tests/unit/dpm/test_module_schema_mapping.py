@@ -1,6 +1,9 @@
 import unittest
 
-from py_dpm.dpm.data import get_module_schema_ref, get_module_schema_ref_by_version
+from py_dpm.dpm.data import (
+    get_module_schema_ref,
+    get_module_schema_ref_by_version,
+)
 
 
 class TestModuleSchemaMapping(unittest.TestCase):
