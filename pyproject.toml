@@ -29,7 +29,10 @@ classifiers = [
 ]
 dependencies = [
     "sqlalchemy>=2.0,<3.0",
-    "antlr4-python3-runtime>=4.13,<5.0",
+    # Runtime must match the ANTLR version used to generate the grammar
+    # in src/dpmcore/dpm_xl/grammar/generated/. Regenerating with a newer
+    # ANTLR is tracked separately.
+    "antlr4-python3-runtime>=4.9,<4.10",
 ]
 
 [project.urls]
