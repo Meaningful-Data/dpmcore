@@ -6,7 +6,7 @@ Thanks for your interest in contributing! This guide covers the basics to get yo
 - Use Python 3.10+.
 - Install dependencies with poetry:
   ```bash
-  poetry install --all-extras
+  poetry install --all-extras --with dev --with docs
   ```
 - Activate the virtual environment:
   ```bash
