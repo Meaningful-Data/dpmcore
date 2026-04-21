@@ -4,7 +4,6 @@ Each test validates a DPM-XL expression at a specific release ID using
 the SemanticService backed by the fixture SQLite database.
 """
 
-
 from dpmcore.services.semantic import SemanticService
 
 

@@ -1,6 +1,5 @@
 """Tests for the MigrationService."""
 
-
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -101,7 +100,8 @@ class TestMigrateBothFail:
                 "dpmcore.services.migration.MigrationService"
                 "._extract_with_pyodbc",
                 side_effect=ImportError("no pyodbc"),
-            ),pytest.raises(MigrationError, match="Could not read")
+            ),
+            pytest.raises(MigrationError, match="Could not read"),
         ):
             service.migrate_from_access("/fake.accdb")
 
