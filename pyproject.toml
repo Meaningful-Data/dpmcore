@@ -9,6 +9,8 @@ authors = [
     { name = "MeaningfulData S.L.", email = "info@meaningfuldata.eu" },
 ]
 maintainers = [
+    { name = "Antonio Olleros", email = "antonio.olleros@meaningfuldata.eu" },
+    { name = "Andres Manuel Sole Castillo", email = "andres.sole@meaningfuldata.eu" },
     { name = "Francisco Javier Hernandez del Caño", email = "javier.hernandez@meaningfuldata.eu" },
 ]
 keywords = [
