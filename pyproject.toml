@@ -3,7 +3,7 @@ name = "dpmcore"
 version = "0.1.0"
 description = "Your opinionated Python DPM library"
 license = { text = "Apache-2.0" }
-readme = "README.rst"
+readme = "README.md"
 requires-python = ">=3.10"
 authors = [
     { name = "MeaningfulData S.L.", email = "info@meaningfuldata.eu" },
