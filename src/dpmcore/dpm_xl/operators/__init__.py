@@ -1,4 +1,4 @@
-"""DPM-XL Operators
+"""DPM-XL Operators.
 
 Operator implementations for DPM-XL expressions.
 """

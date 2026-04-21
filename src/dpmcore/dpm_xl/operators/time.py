@@ -31,7 +31,7 @@ class TimeShift(Operator):
             if not component_name:
                 raise errors.SemanticError("4-7-3")
 
-            if not component_name == tokens.FACT:
+            if component_name != tokens.FACT:
                 components = {
                     **operand.get_dpm_components(),
                     **operand.get_attributes(),
@@ -46,7 +46,7 @@ class TimeShift(Operator):
 
             component = operand.structure.components[component_name]
 
-            result_type = unary_implicit_type_promotion(
+            unary_implicit_type_promotion(
                 operand=component.type,
                 op_type_to_check=type_to_check,
                 error_info=error_info,

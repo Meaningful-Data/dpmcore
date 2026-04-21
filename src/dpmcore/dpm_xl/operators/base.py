@@ -216,8 +216,7 @@ class Binary(Operator):
 
     @classmethod
     def validate_types(cls, left, right, result_dataframe):
-        """Here the Structures has been validated
-        """
+        """Here the Structures has been validated."""
         cls.check_operator_well_defined()
         left_type, right_type, op_type_to_check = cls.types_given_structures(
             left, right
@@ -359,7 +358,7 @@ class Binary(Operator):
         left_dpm_components = left.get_dpm_components()
         right_dpm_components = right.get_dpm_components()
         for comp_key, comp_value in left_dpm_components.items():
-            if comp_key not in right_dpm_components.keys():
+            if comp_key not in right_dpm_components:
                 raise SemanticError(
                     "2-4", op=cls.op, name=comp_key, origin=origin
                 )
@@ -381,8 +380,7 @@ class Binary(Operator):
     def _check_structures(
         cls, left: Structure, right: Structure, origin
     ) -> Structure:
-        """Used for recordset-recordset
-        """
+        """Used for recordset-recordset."""
         if len(left.get_key_components()) == len(right.get_key_components()):
             cls.check_same_components(left, right, origin)
             return left
@@ -403,7 +401,7 @@ class Binary(Operator):
         left: Structure, right: Structure
     ):  # -> Tuple[bool, Structure| None]:
         """Take two Structures and return a True is one is other's subset and the greatest Structure
-        False, None in other case
+        False, None in other case.
         """
         left_dpm_components = left.get_dpm_components()
         right_dpm_components = right.get_dpm_components()

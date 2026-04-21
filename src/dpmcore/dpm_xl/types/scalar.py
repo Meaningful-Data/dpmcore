@@ -194,15 +194,9 @@ class Boolean(ScalarType):
             else:
                 return np.nan
         if isinstance(value, int):
-            if value != 0:
-                return True
-            else:
-                return False
+            return value != 0
         if isinstance(value, float):
-            if value != 0.0:
-                return True
-            else:
-                return False
+            return value != 0.0
         if isinstance(value, bool):
             return value
         if isinstance(value, np.bool_):

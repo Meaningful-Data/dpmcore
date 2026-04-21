@@ -41,7 +41,7 @@ def test_create_engine_object_sqlite_smoke(cleanup_test_dbs):
 def test_session_scope_closes_session(cleanup_test_dbs):
     engine = get_engine(database_path="test_session_scope.db")
 
-    with session_scope() as session:
+    with session_scope():
         # Simple smoke query: ensure we can execute something against the engine
         conn = engine.connect()
         conn.close()

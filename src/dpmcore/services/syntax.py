@@ -45,7 +45,7 @@ class SyntaxService:
         syntax.
         """
         try:
-            parse_tree = self._parse(expression)
+            self._parse(expression)
             return SyntaxResult(
                 is_valid=True,
                 error_message=None,

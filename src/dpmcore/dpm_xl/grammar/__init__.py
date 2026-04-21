@@ -1,4 +1,4 @@
-"""DPM-XL Grammar
+"""DPM-XL Grammar.
 
 ANTLR4 grammar definitions and generated parsers for DPM-XL expressions.
 """

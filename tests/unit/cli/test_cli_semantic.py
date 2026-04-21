@@ -19,7 +19,7 @@ sys.modules["py_dpm.models"] = MagicMock()
 
 
 def test_semantic_no_release_id(runner):
-    """Test semantic command without release_id (valid case)"""
+    """Test semantic command without release_id (valid case)."""
     expression = "{tC_01.00, r0100, c0010}"
 
     with patch("py_dpm.cli.main.SemanticAPI") as MockAPI:
@@ -49,7 +49,7 @@ def test_semantic_no_release_id(runner):
 
 
 def test_semantic_with_release_id(runner):
-    """Test semantic command with specific release_id (valid case)"""
+    """Test semantic command with specific release_id (valid case)."""
     expression = "{tC_01.00, r0100, c0010}"
     release_id = 5
 
@@ -82,7 +82,7 @@ def test_semantic_with_release_id(runner):
 
 
 def test_semantic_invalid_validation(runner):
-    """Test semantic command when validation fails"""
+    """Test semantic command when validation fails."""
     expression = "invalid_expression"
     release_id = 3
 
@@ -117,7 +117,7 @@ def test_semantic_invalid_validation(runner):
 
 
 def test_semantic_exception(runner):
-    """Test semantic command when an exception occurs"""
+    """Test semantic command when an exception occurs."""
     expression = "{tC_01.00}"
 
     with patch("py_dpm.cli.main.SemanticAPI") as MockAPI:

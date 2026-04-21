@@ -1,4 +1,4 @@
-"""DPM-XL Utilities
+"""DPM-XL Utilities.
 
 Utility functions and mappings for DPM-XL processing.
 """

@@ -1,4 +1,4 @@
-"""DPM-XL Abstract Syntax Tree
+"""DPM-XL Abstract Syntax Tree.
 
 AST construction, manipulation, and analysis for DPM-XL expressions.
 """

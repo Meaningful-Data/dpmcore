@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from py_dpm.api.dpm.instance import InstanceAPI
 
 
@@ -52,7 +53,7 @@ class TestInstanceAPI(unittest.TestCase):
         mock_instance.build_package.assert_called_once_with(
             output_folder=self.output_folder, file_prefix="test"
         )
-        self.assertEqual(result, expected_path)
+        assert result == expected_path
 
     @patch("py_dpm.instance.instance.Instance.from_dict")
     def test_build_package_from_dict_without_prefix(self, mock_from_dict):
@@ -73,7 +74,7 @@ class TestInstanceAPI(unittest.TestCase):
         mock_instance.build_package.assert_called_once_with(
             output_folder=self.output_folder, file_prefix=None
         )
-        self.assertEqual(result, expected_path)
+        assert result == expected_path
 
     @patch("py_dpm.instance.instance.Instance.from_json_file")
     def test_build_package_from_json(self, mock_from_json):
@@ -99,7 +100,7 @@ class TestInstanceAPI(unittest.TestCase):
         mock_instance.build_package.assert_called_once_with(
             output_folder=self.output_folder, file_prefix="test"
         )
-        self.assertEqual(result, expected_path)
+        assert result == expected_path
 
     @patch("py_dpm.instance.instance.Instance.from_json_file")
     def test_build_package_from_json_with_string_path(self, mock_from_json):
@@ -123,18 +124,18 @@ class TestInstanceAPI(unittest.TestCase):
         # Assertions
         mock_from_json.assert_called_once_with(json_file)
         mock_instance.build_package.assert_called_once()
-        self.assertEqual(result, expected_path)
+        assert result == expected_path
 
     def test_build_package_from_json_file_not_found(self):
         """Test that FileNotFoundError is raised for non-existent JSON file."""
         non_existent_file = self.output_folder / "non_existent.json"
 
-        with self.assertRaises(FileNotFoundError) as context:
+        with pytest.raises(FileNotFoundError) as context:
             self.api.build_package_from_json(
                 non_existent_file, self.output_folder
             )
 
-        self.assertIn("JSON file not found", str(context.exception))
+        assert "JSON file not found" in str(context.value)
 
 
 if __name__ == "__main__":

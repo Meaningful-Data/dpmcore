@@ -315,10 +315,7 @@ def check_operator(
         op_check_type.__class__
     ]
 
-    if return_type.is_included(op_check_type_implicities):
-        return True
-
-    return False
+    return bool(return_type.is_included(op_check_type_implicities))
 
 
 def unary_check_interval(

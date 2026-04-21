@@ -1,4 +1,4 @@
-"""AST.ASTObjects.py
+"""AST.ASTObjects.py.
 =================
 
 Description
@@ -8,8 +8,7 @@ AST nodes
 
 
 class AST:
-    """Superclass of all AST objects
-    """
+    """Superclass of all AST objects."""
 
     def __init__(self):
         self.num = None
@@ -22,8 +21,7 @@ class AST:
 
 
 class Start(AST):
-    """Starting point of the AST.
-    """
+    """Starting point of the AST."""
 
     def __init__(self, children):
         super().__init__()
@@ -54,7 +52,7 @@ class Start(AST):
 
 class ParExpr(AST):
     """ParExpr. Parenthesis Expression used to group expressions inside parenthesis to give more priority.
-    Example: (A + B) * C
+    Example: (A + B) * C.
     """
 
     def __init__(self, expression):
@@ -131,8 +129,7 @@ class UnaryOp(AST):
 
 
 class CondExpr(AST):
-    """AST Object for if-then-else operation.
-    """
+    """AST Object for if-then-else operation."""
 
     def __init__(self, condition, then_expr, else_expr):
         super().__init__()
@@ -160,8 +157,7 @@ class CondExpr(AST):
 
 
 class VarRef(AST):
-    """Checks the reference to a specific variable in DB.
-    """
+    """Checks the reference to a specific variable in DB."""
 
     def __init__(self, variable):
         super().__init__()
@@ -182,8 +178,7 @@ class VarRef(AST):
 
 
 class VarID(AST):
-    """AST Object for operand including a Cell Reference from DB.
-    """
+    """AST Object for operand including a Cell Reference from DB."""
 
     def __init__(
         self,
@@ -315,7 +310,7 @@ class VarID(AST):
 class Constant(AST):
     """AST Object for Constants included in code. Example: 0, "A"
     :parameter type_: Data Type of the Constant
-    :parameter value: Value to be hold by the Constant
+    :parameter value: Value to be hold by the Constant.
     """
 
     def __init__(self, type_, value):
@@ -408,8 +403,7 @@ class AggregationOp(AST):
 
 
 class GroupingClause(AST):
-    """Grouping clause inside an aggregation operation.
-    """
+    """Grouping clause inside an aggregation operation."""
 
     def __init__(self, components):
         super().__init__()
@@ -430,8 +424,7 @@ class GroupingClause(AST):
 
 
 class Dimension(AST):
-    """AST object only included in a Where clause. Specifies the component to be filtered.
-    """
+    """AST object only included in a Where clause. Specifies the component to be filtered."""
 
     def __init__(self, dimension_code, property_id=None):
         super().__init__()
@@ -456,8 +449,7 @@ class Dimension(AST):
 
 
 class Set(AST):
-    """AST object for Set operands. Used only in 'IN' operator.
-    """
+    """AST object for Set operands. Used only in 'IN' operator."""
 
     def __init__(self, children):
         super().__init__()
@@ -507,8 +499,7 @@ class Scalar(AST):
 
 
 class ComplexNumericOp(AST):
-    """AST Object for max and min operations. Could have more than one operand without any other size restrictions.
-    """
+    """AST Object for max and min operations. Could have more than one operand without any other size restrictions."""
 
     def __init__(self, op, operands):
         super().__init__()
@@ -713,7 +704,7 @@ class RenameOp(AST):
 
 
 class RenameNode(AST):
-    """Used only in rename operation, specifies the component and the new name to be used
+    """Used only in rename operation, specifies the component and the new name to be used.
 
     :parameter old_name: Component to be renamed
     :parameter new_name: New name applied to the component

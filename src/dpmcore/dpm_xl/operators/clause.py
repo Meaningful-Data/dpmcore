@@ -48,7 +48,7 @@ class ClauseOperator(Operator):
             if len(new_names) > len(set(new_names)):
                 seen = set()
                 duplicated = list(
-                    set(x for x in new_names if x in seen or seen.add(x))
+                    {x for x in new_names if x in seen or seen.add(x)}
                 )
                 raise errors.SemanticError("4-5-1-2", duplicated=duplicated)
             existing_components = [
@@ -61,7 +61,7 @@ class ClauseOperator(Operator):
                     recordset=operand.name,
                 )
 
-            for name, new_name in list(zip(key_names, new_names)):
+            for name, new_name in list(zip(key_names, new_names, strict=False)):
                 if new_name in (
                     tokens.ROW,
                     tokens.COLUMN,

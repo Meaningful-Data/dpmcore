@@ -28,8 +28,7 @@ class Operand:
 
 
 class Scalar(Operand):
-    """Operand to be used when finding a single Cell Reference or an Item
-    """
+    """Operand to be used when finding a single Cell Reference or an Item."""
 
     def __init__(self, type_, name, origin):
         super().__init__(name, origin)
@@ -42,8 +41,7 @@ class Scalar(Operand):
 
 
 class Component:
-    """Superclass of all components inside a recordset
-    """
+    """Superclass of all components inside a recordset."""
 
     def __init__(
         self, name: str, type_, parent: str, is_global: bool = False
@@ -60,7 +58,7 @@ class Component:
 
 
 class KeyComponent(Component):
-    """Component used to specify the row, column, sheet or property in a Recordset
+    """Component used to specify the row, column, sheet or property in a Recordset.
 
     :parameter name: Name of the component
     :parameter type_: Data type of the component
@@ -84,8 +82,7 @@ class KeyComponent(Component):
 
 
 class FactComponent(Component):
-    """Component used to specify the data type of the recordset
-    """
+    """Component used to specify the data type of the recordset."""
 
     def __init__(self, type_: ScalarFactory().all_types, parent: str) -> None:
         super().__init__("f", type_, parent)
@@ -103,8 +100,7 @@ class AttributeComponent(Component):
 
 
 class Structure:
-    """Structure for the Recordset. Components must have unique names and only one Fact Component can be present.
-    """
+    """Structure for the Recordset. Components must have unique names and only one Fact Component can be present."""
 
     def __init__(self, components: List[Component]) -> None:
         components_names = [
@@ -129,7 +125,7 @@ class Structure:
         return {**dpm_components, **standard_components}
 
     def get_key_components_names(self) -> List[str]:
-        return [elto for elto in self.get_key_components()]
+        return list(self.get_key_components())
 
     def get_dpm_components(self) -> dict:
         dpm_components = {
@@ -150,7 +146,7 @@ class Structure:
         return standard_components
 
     def get_standard_components_names(self) -> List[str]:
-        return [elto for elto in self.get_standard_components()]
+        return list(self.get_standard_components())
 
     def get_fact_component(self):
         fact_component = [
@@ -207,10 +203,8 @@ class RecordSet(Operand):
         self.interval = None
         self.default = None
         self.has_only_global_components = all(
-            [
-                component.is_global
+            component.is_global
                 for component in structure.get_key_components().values()
-            ]
         )
 
     def get_key_components(self) -> dict:
@@ -236,8 +230,7 @@ class RecordSet(Operand):
 
 
 class ScalarSet(Operand):
-    """Scalar set are a collection of scalars used in the IN operator.
-    """
+    """Scalar set are a collection of scalars used in the IN operator."""
 
     def __init__(self, type_, name, origin):
         super().__init__(name, origin)

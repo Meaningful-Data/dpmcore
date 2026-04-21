@@ -49,8 +49,7 @@ class ConditionalOperator(Operator):
     def _check_same_recordset_structures(
         cls, left: RecordSet, right: RecordSet, origin
     ) -> bool:
-        """Used for recordset-recordset
-        """
+        """Used for recordset-recordset."""
         left = left.structure
         right = right.structure
         if len(left.get_key_components()) == len(right.get_key_components()):
@@ -69,8 +68,7 @@ class ConditionalOperator(Operator):
         origin: str,
         subset_allowed: bool = True,
     ) -> bool:
-        """Used for recordset-recordset
-        """
+        """Used for recordset-recordset."""
         left_records = left.records
         right_records = right.records
         if cls._check_same_recordset_structures(left, right, origin):
@@ -179,8 +177,7 @@ class IfOperator(ConditionalOperator):
 
     @classmethod
     def check_condition(cls, condition: Union[RecordSet, Scalar]) -> bool:
-        """Check if the condition has Boolean type
-        """
+        """Check if the condition has Boolean type."""
         if isinstance(condition, RecordSet):
             condition_type = condition.structure.components["f"].type
         else:

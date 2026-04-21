@@ -976,7 +976,7 @@ class dpm_xlParser(Parser):
                 self.state = 113
                 self.expressionWithoutAssignment()
                 pass
-            elif token in [dpm_xlParser.CODE]:
+            elif token == dpm_xlParser.CODE:
                 localctx = dpm_xlParser.AssignmentExprContext(self, localctx)
                 self.enterOuterAlt(localctx, 2)
                 self.state = 114
@@ -1217,7 +1217,7 @@ class dpm_xlParser(Parser):
                 self.state = 121
                 self.expression(0)
                 pass
-            elif token in [dpm_xlParser.WITH]:
+            elif token == dpm_xlParser.WITH:
                 localctx = dpm_xlParser.ExprWithSelectionContext(
                     self, localctx
                 )
@@ -2504,7 +2504,7 @@ class dpm_xlParser(Parser):
             self.state = 230
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [dpm_xlParser.SQUARE_BRACKET_LEFT]:
+            if token == dpm_xlParser.SQUARE_BRACKET_LEFT:
                 self.enterOuterAlt(localctx, 1)
                 self.state = 214
                 self.itemReference()
@@ -2805,13 +2805,13 @@ class dpm_xlParser(Parser):
                 self.state = 234
                 self.comparisonFunctionOperators()
                 pass
-            elif token in [dpm_xlParser.FILTER]:
+            elif token == dpm_xlParser.FILTER:
                 localctx = dpm_xlParser.FilterFunctionsContext(self, localctx)
                 self.enterOuterAlt(localctx, 4)
                 self.state = 235
                 self.filterOperators()
                 pass
-            elif token in [dpm_xlParser.NVL]:
+            elif token == dpm_xlParser.NVL:
                 localctx = dpm_xlParser.ConditionalFunctionsContext(
                     self, localctx
                 )
@@ -2819,13 +2819,13 @@ class dpm_xlParser(Parser):
                 self.state = 236
                 self.conditionalOperators()
                 pass
-            elif token in [dpm_xlParser.TIME_SHIFT]:
+            elif token == dpm_xlParser.TIME_SHIFT:
                 localctx = dpm_xlParser.TimeFunctionsContext(self, localctx)
                 self.enterOuterAlt(localctx, 6)
                 self.state = 237
                 self.timeOperators()
                 pass
-            elif token in [dpm_xlParser.LEN]:
+            elif token == dpm_xlParser.LEN:
                 localctx = dpm_xlParser.StringFunctionsContext(self, localctx)
                 self.enterOuterAlt(localctx, 7)
                 self.state = 238
@@ -3102,7 +3102,7 @@ class dpm_xlParser(Parser):
                     self.state = 260
                     self._errHandler.sync(self)
                     _la = self._input.LA(1)
-                    if not (_la == dpm_xlParser.COMMA):
+                    if _la != dpm_xlParser.COMMA:
                         break
 
                 self.state = 262
@@ -3219,7 +3219,7 @@ class dpm_xlParser(Parser):
             self.state = 278
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [dpm_xlParser.MATCH]:
+            if token == dpm_xlParser.MATCH:
                 localctx = dpm_xlParser.MatchExprContext(self, localctx)
                 self.enterOuterAlt(localctx, 1)
                 self.state = 266
@@ -3235,7 +3235,7 @@ class dpm_xlParser(Parser):
                 self.state = 271
                 self.match(dpm_xlParser.RPAREN)
                 pass
-            elif token in [dpm_xlParser.ISNULL]:
+            elif token == dpm_xlParser.ISNULL:
                 localctx = dpm_xlParser.IsnullExprContext(self, localctx)
                 self.enterOuterAlt(localctx, 2)
                 self.state = 273
@@ -4211,7 +4211,7 @@ class dpm_xlParser(Parser):
                 self.state = 341
                 self.rowElem()
                 pass
-            elif token in [dpm_xlParser.LPAREN]:
+            elif token == dpm_xlParser.LPAREN:
                 self.enterOuterAlt(localctx, 2)
                 self.state = 342
                 self.match(dpm_xlParser.LPAREN)
@@ -4311,7 +4311,7 @@ class dpm_xlParser(Parser):
                 self.state = 354
                 self.colElem()
                 pass
-            elif token in [dpm_xlParser.LPAREN]:
+            elif token == dpm_xlParser.LPAREN:
                 self.enterOuterAlt(localctx, 2)
                 self.state = 355
                 self.match(dpm_xlParser.LPAREN)
@@ -4413,7 +4413,7 @@ class dpm_xlParser(Parser):
                 self.state = 367
                 self.sheetElem()
                 pass
-            elif token in [dpm_xlParser.LPAREN]:
+            elif token == dpm_xlParser.LPAREN:
                 self.enterOuterAlt(localctx, 2)
                 self.state = 368
                 self.match(dpm_xlParser.LPAREN)
@@ -4906,17 +4906,17 @@ class dpm_xlParser(Parser):
                 self.state = 403
                 self.cellRef()
                 pass
-            elif token in [dpm_xlParser.VAR_REFERENCE]:
+            elif token == dpm_xlParser.VAR_REFERENCE:
                 self.enterOuterAlt(localctx, 2)
                 self.state = 404
                 self.varRef()
                 pass
-            elif token in [dpm_xlParser.OPERATION_REFERENCE]:
+            elif token == dpm_xlParser.OPERATION_REFERENCE:
                 self.enterOuterAlt(localctx, 3)
                 self.state = 405
                 self.operationRef()
                 pass
-            elif token in [dpm_xlParser.PRECONDITION_ELEMENT]:
+            elif token == dpm_xlParser.PRECONDITION_ELEMENT:
                 self.enterOuterAlt(localctx, 4)
                 self.state = 406
                 self.preconditionElem()
@@ -5580,7 +5580,7 @@ class dpm_xlParser(Parser):
             self.state = 462
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [dpm_xlParser.WHERE]:
+            if token == dpm_xlParser.WHERE:
                 localctx = dpm_xlParser.WhereExprContext(self, localctx)
                 self.enterOuterAlt(localctx, 1)
                 self.state = 441
@@ -5588,7 +5588,7 @@ class dpm_xlParser(Parser):
                 self.state = 442
                 self.expression(0)
                 pass
-            elif token in [dpm_xlParser.GET]:
+            elif token == dpm_xlParser.GET:
                 localctx = dpm_xlParser.GetExprContext(self, localctx)
                 self.enterOuterAlt(localctx, 2)
                 self.state = 443
@@ -5596,7 +5596,7 @@ class dpm_xlParser(Parser):
                 self.state = 444
                 self.keyNames()
                 pass
-            elif token in [dpm_xlParser.RENAME]:
+            elif token == dpm_xlParser.RENAME:
                 localctx = dpm_xlParser.RenameExprContext(self, localctx)
                 self.enterOuterAlt(localctx, 3)
                 self.state = 445
@@ -5616,7 +5616,7 @@ class dpm_xlParser(Parser):
                     _la = self._input.LA(1)
 
                 pass
-            elif token in [dpm_xlParser.SUB]:
+            elif token == dpm_xlParser.SUB:
                 localctx = dpm_xlParser.SubExprContext(self, localctx)
                 self.enterOuterAlt(localctx, 4)
                 self.state = 454
@@ -5642,11 +5642,11 @@ class dpm_xlParser(Parser):
                     self.state = 457
                     self.literal()
                     pass
-                elif token in [dpm_xlParser.CURLY_BRACKET_LEFT]:
+                elif token == dpm_xlParser.CURLY_BRACKET_LEFT:
                     self.state = 458
                     self.select()
                     pass
-                elif token in [dpm_xlParser.SQUARE_BRACKET_LEFT]:
+                elif token == dpm_xlParser.SQUARE_BRACKET_LEFT:
                     self.state = 459
                     self.itemReference()
                     pass
@@ -6167,8 +6167,8 @@ class dpm_xlParser(Parser):
         return localctx
 
     def sempred(self, localctx: RuleContext, ruleIndex: int, predIndex: int):
-        if self._predicates == None:
-            self._predicates = dict()
+        if self._predicates is None:
+            self._predicates = {}
         self._predicates[8] = self.expression_sempred
         pred = self._predicates.get(ruleIndex, None)
         if pred is None:

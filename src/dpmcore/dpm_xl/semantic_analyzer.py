@@ -207,7 +207,7 @@ class InputAnalyzer(ASTTemplate, ABC):
             dpm_keys = self.key_components[node.table]
             if len(dpm_keys) > 0:
                 for key_name, key_type in zip(
-                    dpm_keys["property_code"], dpm_keys["data_type"]
+                    dpm_keys["property_code"], dpm_keys["data_type"], strict=False
                 ):
                     if not key_type:
                         type_ = Item()
@@ -460,7 +460,7 @@ class InputAnalyzer(ASTTemplate, ABC):
         Example:
         "table_code","ColumnID","RowID","SheetID","column_code","row_code","sheet_code","cell_code","CellID","VariableVID","data_type_code"
         S.01.01.01.01,,,,,,,,,xxxxxxx,BOO
-        We can check with table_code or VariableVID, here for now, we use table_code
+        We can check with table_code or VariableVID, here for now, we use table_code.
         """
         type_ = ScalarFactory().scalar_factory(code="Boolean")
 

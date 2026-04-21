@@ -49,7 +49,7 @@ def test_operands_check_headers_calls_filter_by_release_with_correct_args(
     """Verify that OperandsChecking.check_headers wires filter_by_release correctly:
     - start_col is TableVersion.startreleaseid
     - end_col is TableVersion.endreleaseid
-    - release_id matches the instance's release_id
+    - release_id matches the instance's release_id.
     """
     called = {}
 

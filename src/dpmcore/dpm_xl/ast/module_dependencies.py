@@ -41,8 +41,7 @@ def filter_datapoints_df(df, table, table_info: dict, release_id: int = None):
 
 
 def filter_module_by_table_df(df, table):
-    """Returns a list of modules that contain the table
-    """
+    """Returns a list of modules that contain the table."""
     module_list = df[df["table_code"] == table]["module_code"].tolist()
     return module_list
 

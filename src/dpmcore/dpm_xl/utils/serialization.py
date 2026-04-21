@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""AST to JSON serialization utilities for pyDPM
-"""
+"""AST to JSON serialization utilities for pyDPM."""
 
 from dpmcore.dpm_xl.ast.visitor import NodeVisitor
 

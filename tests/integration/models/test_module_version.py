@@ -145,7 +145,7 @@ def test_module_version_table_versions_is_viewonly(session):
 
 # Tests for get_from_release_id classmethod
 class TestGetFromReleaseId:
-    """Integration tests for ModuleVersion.get_from_release_id()"""
+    """Integration tests for ModuleVersion.get_from_release_id()."""
 
     @pytest.fixture
     def setup_releases(self, session):
@@ -392,7 +392,7 @@ class TestGetFromReleaseId:
 
 # Tests for _apply_fallback_for_equal_dates helper method
 class TestApplyFallbackForEqualDates:
-    """Tests for ModuleVersion._apply_fallback_for_equal_dates()"""
+    """Tests for ModuleVersion._apply_fallback_for_equal_dates()."""
 
     @pytest.fixture
     def setup_fallback_data(self, session):
@@ -579,7 +579,7 @@ class TestApplyFallbackForEqualDates:
 
 # Tests for get_from_tables_vids fallback behavior
 class TestGetFromTablesVidsFallback:
-    """Tests for fallback behavior in get_from_tables_vids()"""
+    """Tests for fallback behavior in get_from_tables_vids()."""
 
     @pytest.fixture
     def setup_tables_data(self, session):
@@ -719,7 +719,7 @@ class TestGetFromTablesVidsFallback:
 
 # Tests for get_from_table_codes fallback behavior
 class TestGetFromTableCodesFallback:
-    """Tests for fallback behavior in get_from_table_codes()"""
+    """Tests for fallback behavior in get_from_table_codes()."""
 
     @pytest.fixture
     def setup_table_codes_data(self, session):
@@ -862,7 +862,7 @@ class TestGetFromTableCodesFallback:
 
 # Tests for get_precondition_module_versions fallback behavior
 class TestGetPreconditionModuleVersionsFallback:
-    """Tests for fallback behavior in get_precondition_module_versions()"""
+    """Tests for fallback behavior in get_precondition_module_versions()."""
 
     @pytest.fixture
     def setup_precondition_data(self, session):

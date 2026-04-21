@@ -11,7 +11,7 @@ def filter_data_by_cell_element(
     :param series: data to be filtered
     :param cell_elements: rows, columns or sheets using to filter data
     :param element_name: name of cell elements using to filter data
-    :return: filtered data
+    :return: filtered data.
     """
     if len(cell_elements) == 1 and "-" not in cell_elements[0]:
         series = series[series[element_name] == cell_elements[0]]
@@ -19,7 +19,7 @@ def filter_data_by_cell_element(
         limits = cell_elements[0].split("-")
         series = series[series[element_name].between(limits[0], limits[1])]
     else:
-        range_control = any(["-" in x for x in cell_elements])
+        range_control = any("-" in x for x in cell_elements)
         if range_control:  # Range in cell elements, we must separate them
             data_range = []
             data_single = []
@@ -33,7 +33,7 @@ def filter_data_by_cell_element(
                     )
                 else:
                     data_single.append(x)
-            cell_elements = sorted(list(set(data_range + data_single)))
+            cell_elements = sorted(set(data_range + data_single))
         series = series[series[element_name].isin(cell_elements)]
         cells_not_found = [
             x

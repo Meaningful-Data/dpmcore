@@ -326,7 +326,7 @@ class OperandsChecking(ASTTemplate, ABC):
             property_id_map = dict(
                 zip(
                     self.open_keys["property_code"],
-                    self.open_keys["property_id"],
+                    self.open_keys["property_id"], strict=False,
                 )
             )
             for node in self.dimension_nodes:
@@ -397,7 +397,7 @@ class OperandsChecking(ASTTemplate, ABC):
         if getop_keys is not None and not getop_keys.empty:
             # Create a mapping from component code to property_id
             property_id_map = dict(
-                zip(getop_keys["property_code"], getop_keys["property_id"])
+                zip(getop_keys["property_code"], getop_keys["property_id"], strict=False)
             )
             for node in self.getop_nodes:
                 if node.component in property_id_map:
@@ -622,7 +622,7 @@ def extract_data_types(node: VarID, database_types: pd.Series) -> None:
     """Extract data type of var ids from database information
     :param node: Var id
     :param database_types: Series that contains the data types of node elements
-    :return: None
+    :return: None.
     """
     unique_types = database_types.unique()
     scalar_factory = ScalarFactory()

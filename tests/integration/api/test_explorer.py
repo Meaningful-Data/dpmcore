@@ -2,6 +2,7 @@ import unittest
 from dataclasses import dataclass
 from unittest.mock import MagicMock, patch
 
+import pytest
 from py_dpm.api.dpm.explorer import ExplorerQueryAPI
 from py_dpm.dpm.models import Base, Framework, Module, ModuleVersion, Release
 from py_dpm.dpm.queries.explorer_queries import ExplorerQuery
@@ -63,10 +64,10 @@ class TestDPMExplorer(unittest.TestCase):
         # Test search
         results = self.explorer.search_table("TABLE", release_id=1)
 
-        self.assertEqual(len(results), 1)
-        self.assertEqual(len(results), 1)
-        self.assertIsInstance(results[0], dict)
-        self.assertEqual(results[0]["code"], "TABLE_A")
+        assert len(results) == 1
+        assert len(results) == 1
+        assert isinstance(results[0], dict)
+        assert results[0]["code"] == "TABLE_A"
 
     @patch("sqlalchemy.orm.aliased")
     @patch("py_dpm.dpm.models.Category")
@@ -92,8 +93,8 @@ class TestDPMExplorer(unittest.TestCase):
 
         results = self.explorer.get_properties_using_item("ITEM_CODE")
 
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0], "PROP_CODE")
+        assert len(results) == 1
+        assert results[0] == "PROP_CODE"
 
     def test_audit_table(self):
         # Setup mock values for dependent API calls
@@ -117,15 +118,15 @@ class TestDPMExplorer(unittest.TestCase):
         # Test audit
         audit = self.explorer.audit_table("TABLE_X", release_id=1)
 
-        self.assertEqual(audit["info"], mock_table_info)
-        self.assertEqual(audit["open_keys"], mock_open_keys)
-        self.assertEqual(audit["open_keys_count"], 1)
+        assert audit["info"] == mock_table_info
+        assert audit["open_keys"] == mock_open_keys
+        assert audit["open_keys_count"] == 1
 
     def test_audit_table_not_found(self):
         self.mock_api.get_table_version.return_value = None
 
         audit = self.explorer.audit_table("NON_EXISTENT")
-        self.assertIn("error", audit)
+        assert "error" in audit
 
     @patch(
         "py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variable_usage"
@@ -160,7 +161,7 @@ class TestDPMExplorer(unittest.TestCase):
             date=None,
             release_code=None,
         )
-        self.assertEqual(result, expected_result)
+        assert result == expected_result
 
     @patch("py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_module_url")
     def test_get_module_url_delegates_to_query(self, mock_get_module_url):
@@ -183,7 +184,7 @@ class TestDPMExplorer(unittest.TestCase):
         )
 
         print(result)
-        self.assertEqual(result, expected_url)
+        assert result == expected_url
 
     @patch(
         "py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variable_from_cell_address"
@@ -228,7 +229,7 @@ class TestDPMExplorer(unittest.TestCase):
             release_code=None,
             date=None,
         )
-        self.assertEqual(result, expected)
+        assert result == expected
 
 
 class TestExplorerQueryModuleUrlIntegration(unittest.TestCase):
@@ -268,7 +269,7 @@ class TestExplorerQueryModuleUrlIntegration(unittest.TestCase):
         )
 
         expected_url = "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/frm/2.0/mod/mod_x.json"
-        self.assertEqual(url, expected_url)
+        assert url == expected_url
 
     def test_get_module_url_by_release_id_uses_static_mapping(self):
         """Test that querying by release_id returns the static mapping URL
@@ -303,7 +304,7 @@ class TestExplorerQueryModuleUrlIntegration(unittest.TestCase):
             "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/ae/"
             "its-005-2020/2022-03-01/mod/ae.json"
         )
-        self.assertEqual(url, expected_url)
+        assert url == expected_url
 
 
 class TestGetVariableByCode(unittest.TestCase):
@@ -344,7 +345,7 @@ class TestGetVariableByCode(unittest.TestCase):
             release_id=3,
             release_code=None,
         )
-        self.assertEqual(result, expected_result)
+        assert result == expected_result
 
     @patch(
         "py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variable_by_code"
@@ -372,7 +373,7 @@ class TestGetVariableByCode(unittest.TestCase):
             release_id=None,
             release_code="4.2",
         )
-        self.assertEqual(result, expected_result)
+        assert result == expected_result
 
     @patch(
         "py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variable_by_code"
@@ -385,7 +386,7 @@ class TestGetVariableByCode(unittest.TestCase):
             variable_code="NONEXISTENT"
         )
 
-        self.assertIsNone(result)
+        assert result is None
 
     @patch(
         "py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variables_by_codes"
@@ -424,7 +425,7 @@ class TestGetVariableByCode(unittest.TestCase):
             release_id=3,
             release_code=None,
         )
-        self.assertEqual(result, expected_result)
+        assert result == expected_result
 
     @patch(
         "py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variables_by_codes"
@@ -443,7 +444,7 @@ class TestGetVariableByCode(unittest.TestCase):
             release_id=None,
             release_code=None,
         )
-        self.assertEqual(result, {})
+        assert result == {}
 
     @patch(
         "py_dpm.dpm.queries.explorer_queries.ExplorerQuery.get_variables_by_codes"
@@ -468,9 +469,9 @@ class TestGetVariableByCode(unittest.TestCase):
             release_code="4.2",
         )
 
-        self.assertEqual(len(result), 1)
-        self.assertIn("C_01.00", result)
-        self.assertNotIn("C_99.99", result)
+        assert len(result) == 1
+        assert "C_01.00" in result
+        assert "C_99.99" not in result
 
 
 class TestExplorerQueryVariableByCodeIntegration(unittest.TestCase):
@@ -532,10 +533,10 @@ class TestExplorerQueryVariableByCodeIntegration(unittest.TestCase):
             variable_code="C_01.00",
         )
 
-        self.assertIsNotNone(result)
-        self.assertEqual(result["variable_vid"], 2001)
-        self.assertEqual(result["variable_code"], "C_01.00")
-        self.assertIn("v4.2", result["variable_name"])
+        assert result is not None
+        assert result["variable_vid"] == 2001
+        assert result["variable_code"] == "C_01.00"
+        assert "v4.2" in result["variable_name"]
 
     def test_get_variable_by_code_with_release_id(self):
         """Test filtering by release_id returns correct version."""
@@ -546,9 +547,9 @@ class TestExplorerQueryVariableByCodeIntegration(unittest.TestCase):
             release_id=1,
         )
 
-        self.assertIsNotNone(result)
-        self.assertEqual(result["variable_vid"], 1001)
-        self.assertIn("v4.1", result["variable_name"])
+        assert result is not None
+        assert result["variable_vid"] == 1001
+        assert "v4.1" in result["variable_name"]
 
     def test_get_variable_by_code_with_release_code(self):
         """Test filtering by release_code returns correct version."""
@@ -558,8 +559,8 @@ class TestExplorerQueryVariableByCodeIntegration(unittest.TestCase):
             release_code="4.2",
         )
 
-        self.assertIsNotNone(result)
-        self.assertEqual(result["variable_vid"], 2001)
+        assert result is not None
+        assert result["variable_vid"] == 2001
 
     def test_get_variable_by_code_not_found(self):
         """Test returns None when variable code doesn't exist."""
@@ -568,11 +569,11 @@ class TestExplorerQueryVariableByCodeIntegration(unittest.TestCase):
             variable_code="NONEXISTENT",
         )
 
-        self.assertIsNone(result)
+        assert result is None
 
     def test_get_variable_by_code_mutual_exclusion_error(self):
         """Test that providing both release_id and release_code raises error."""
-        with self.assertRaises(ValueError) as ctx:
+        with pytest.raises(ValueError) as ctx:
             ExplorerQuery.get_variable_by_code(
                 self.session,
                 variable_code="C_01.00",
@@ -580,7 +581,7 @@ class TestExplorerQueryVariableByCodeIntegration(unittest.TestCase):
                 release_code="4.2",
             )
 
-        self.assertIn("maximum of one", str(ctx.exception))
+        assert "maximum of one" in str(ctx.value)
 
     def test_get_variables_by_codes_batch(self):
         """Test batch lookup returns multiple variables."""
@@ -589,12 +590,12 @@ class TestExplorerQueryVariableByCodeIntegration(unittest.TestCase):
             variable_codes=["C_01.00", "C_47.00"],
         )
 
-        self.assertEqual(len(result), 2)
-        self.assertIn("C_01.00", result)
-        self.assertIn("C_47.00", result)
+        assert len(result) == 2
+        assert "C_01.00" in result
+        assert "C_47.00" in result
         # Should return active versions (endreleaseid is NULL)
-        self.assertEqual(result["C_01.00"]["variable_vid"], 2001)
-        self.assertEqual(result["C_47.00"]["variable_vid"], 3001)
+        assert result["C_01.00"]["variable_vid"] == 2001
+        assert result["C_47.00"]["variable_vid"] == 3001
 
     def test_get_variables_by_codes_empty_list(self):
         """Test empty input returns empty dict without database query."""
@@ -603,7 +604,7 @@ class TestExplorerQueryVariableByCodeIntegration(unittest.TestCase):
             variable_codes=[],
         )
 
-        self.assertEqual(result, {})
+        assert result == {}
 
     def test_get_variables_by_codes_partial_match(self):
         """Test that missing codes are simply not included in result."""
@@ -612,10 +613,10 @@ class TestExplorerQueryVariableByCodeIntegration(unittest.TestCase):
             variable_codes=["C_01.00", "NONEXISTENT", "C_47.00"],
         )
 
-        self.assertEqual(len(result), 2)
-        self.assertIn("C_01.00", result)
-        self.assertIn("C_47.00", result)
-        self.assertNotIn("NONEXISTENT", result)
+        assert len(result) == 2
+        assert "C_01.00" in result
+        assert "C_47.00" in result
+        assert "NONEXISTENT" not in result
 
     def test_get_variables_by_codes_with_release_id(self):
         """Test batch lookup with release_id filter."""
@@ -625,15 +626,15 @@ class TestExplorerQueryVariableByCodeIntegration(unittest.TestCase):
             release_id=1,
         )
 
-        self.assertEqual(len(result), 2)
+        assert len(result) == 2
         # Release 1 should return v4.1 version for C_01.00
-        self.assertEqual(result["C_01.00"]["variable_vid"], 1001)
+        assert result["C_01.00"]["variable_vid"] == 1001
         # C_47.00 is active in both releases
-        self.assertEqual(result["C_47.00"]["variable_vid"], 3001)
+        assert result["C_47.00"]["variable_vid"] == 3001
 
     def test_get_variables_by_codes_mutual_exclusion_error(self):
         """Test that providing both release_id and release_code raises error."""
-        with self.assertRaises(ValueError) as ctx:
+        with pytest.raises(ValueError) as ctx:
             ExplorerQuery.get_variables_by_codes(
                 self.session,
                 variable_codes=["C_01.00"],
@@ -641,4 +642,4 @@ class TestExplorerQueryVariableByCodeIntegration(unittest.TestCase):
                 release_code="4.2",
             )
 
-        self.assertIn("maximum of one", str(ctx.exception))
+        assert "maximum of one" in str(ctx.value)

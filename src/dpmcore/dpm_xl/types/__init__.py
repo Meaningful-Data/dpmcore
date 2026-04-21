@@ -1,4 +1,4 @@
-"""DPM-XL Type System
+"""DPM-XL Type System.
 
 Type definitions, type checking, and type promotion rules for DPM-XL expressions.
 """

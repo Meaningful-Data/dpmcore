@@ -30,16 +30,11 @@ def _check_if_existing(composition_modules, existing_scopes):
     existing_scopes = existing_scopes[
         existing_scopes[MODULE_VID].isin(composition_modules)
     ][MODULE_VID].tolist()
-    if len(existing_scopes) and set(composition_modules) == set(
-        existing_scopes
-    ):
-        return True
-    return False
+    return bool(len(existing_scopes) and set(composition_modules) == set(existing_scopes))
 
 
 class OperationScopeService:
-    """Class to calculate OperationScope and OperationScopeComposition tables for an operation version
-    """
+    """Class to calculate OperationScope and OperationScopeComposition tables for an operation version."""
 
     def __init__(self, operation_version_id, session=None):
         self.operation_version_id = operation_version_id
@@ -62,7 +57,7 @@ class OperationScopeService:
         :param precondition_items: List with precondition codes
         :param release_id: Optional release ID to filter modules. If None, defaults to last release.
         :param table_codes: Optional list of table codes. If provided, finds ALL module versions with these table codes in the release.
-        :return two list with existing and new scopes
+        :return two list with existing and new scopes.
         """
         # Get last release if not specified
         if release_id is None:
@@ -125,7 +120,7 @@ class OperationScopeService:
                         if "StartReleaseID" in group_df.columns
                         else None
                     )
-                    end_release = group_df["EndReleaseID"].values[0]
+                    group_df["EndReleaseID"].values[0]
 
                     # Determine if this is a "new" module starting in this release
                     is_starting = start_release == release_id
@@ -252,7 +247,7 @@ class OperationScopeService:
         :param precondition_items: List with precondition codes
         :param release_id: Optional release ID to filter modules
         :param table_codes: Optional list of table codes. If provided, queries ALL module versions with these codes.
-        :return two list with existing and new scopes
+        :return two list with existing and new scopes.
         """
         modules_info_lst = []
         modules_info_dataframe = None
@@ -327,7 +322,7 @@ class OperationScopeService:
 
     def process_repeated(self, modules_vids, modules_info):
         """Method to calculate OperationScope and OperationScopeComposition tables for repeated operations
-        :param modules_vids: list with module version ids
+        :param modules_vids: list with module version ids.
         """
         # Pre-build dict lookup for O(1) access instead of DataFrame boolean filtering per module
         module_lookup = {}
@@ -357,7 +352,7 @@ class OperationScopeService:
     def process_cross_module(self, cross_modules, modules_dataframe):
         """Method to calculate OperationScope and OperationScopeComposition tables for a cross module operation
         :param cross_modules: dictionary with table version ids as key and its module version ids as values
-        :param modules_dataframe: dataframe with modules data
+        :param modules_dataframe: dataframe with modules data.
         """
         modules_dataframe[FROM_REFERENCE_DATE] = pd.to_datetime(
             modules_dataframe[FROM_REFERENCE_DATE],
@@ -386,7 +381,7 @@ class OperationScopeService:
             ref_to_date = to_dates.min()
 
             is_valid_combination = True
-            for from_date, to_date in zip(from_dates, to_dates):
+            for from_date, to_date in zip(from_dates, to_dates, strict=False):
                 if to_date < ref_from_date or (
                     (not pd.isna(ref_to_date)) and from_date > ref_to_date
                 ):
@@ -464,7 +459,7 @@ class OperationScopeService:
         """Method to populate OperationScopeComposition table
         :param operation_scope: Operation scope data
         :param module_vid: Module version id
-        :param module_info: Optional dict with module info (code, from_reference_date, to_reference_date)
+        :param module_info: Optional dict with module info (code, from_reference_date, to_reference_date).
         """
         operation_scope_composition = OperationScopeComposition(
             operation_scope=operation_scope,
@@ -478,7 +473,7 @@ class OperationScopeService:
 
     def get_scopes_with_status(self):
         """Method that checks if operation scope exists in database and classifies it based on whether it exists or not
-        :return two list with existing and new scopes
+        :return two list with existing and new scopes.
         """
         existing_scopes = []
         new_scopes = []

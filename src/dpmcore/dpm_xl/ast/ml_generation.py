@@ -24,9 +24,7 @@ def gather_element(node, attribute):
 
 
 def property_ref_period_mangement(name):
-    if name == "refPeriod":
-        return True
-    return False
+    return name == "refPeriod"
 
 
 class MLGeneration(ASTTemplate):
@@ -66,7 +64,7 @@ class MLGeneration(ASTTemplate):
         self.df_operators = OperatorQuery.get_operators(self.session)
         self.df_arguments = OperatorQuery.get_arguments(self.session)
         self.release_id = release_id
-        self.is_scripting = False if op_version_id else True
+        self.is_scripting = not op_version_id
 
         self.operations_data = operations_data
         self.operation_tables = {}

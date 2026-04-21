@@ -1,4 +1,4 @@
-"""AST.ASTConstructor.py
+"""AST.ASTConstructor.py.
 =====================
 
 Description
@@ -21,8 +21,7 @@ from dpmcore.errors import SemanticError
 
 
 class ASTVisitor(dpm_xlParserVisitor):
-    """Class to walk to generate an AST which nodes are defined at AST.ASTObjects
-    """
+    """Class to walk to generate an AST which nodes are defined at AST.ASTObjects."""
 
     def visitStart(self, ctx: dpm_xlParser.StartContext):
         ctx_list = list(ctx.getChildren())
