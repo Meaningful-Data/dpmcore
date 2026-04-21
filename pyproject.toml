@@ -1,6 +1,6 @@
 [project]
 name = "dpmcore"
-version = "0.0.1"
+version = "0.0.2"
 description = "Your opinionated Python DPM library"
 license = { text = "Apache-2.0" }
 readme = "README.rst"
