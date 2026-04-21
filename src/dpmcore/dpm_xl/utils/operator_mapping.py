@@ -6,20 +6,6 @@ from dpmcore.dpm_xl.operators.aggregate import (
     MinAggr,
     Sum,
 )
-from dpmcore.dpm_xl.operators.boolean import And, Not, Or, Xor
-from dpmcore.dpm_xl.operators.clause import Get, Rename, Sub, Where
-from dpmcore.dpm_xl.operators.comparison import (
-    Equal,
-    Greater,
-    GreaterEqual,
-    In,
-    IsNull,
-    Less,
-    LessEqual,
-    Match,
-    NotEqual,
-)
-from dpmcore.dpm_xl.operators.conditional import Filter, IfOperator, Nvl
 from dpmcore.dpm_xl.operators.arithmetic import (
     AbsoluteValue,
     BinMinus,
@@ -36,8 +22,23 @@ from dpmcore.dpm_xl.operators.arithmetic import (
     UnMinus,
     UnPlus,
 )
+from dpmcore.dpm_xl.operators.boolean import And, Not, Or, Xor
+from dpmcore.dpm_xl.operators.clause import Get, Rename, Sub, Where
+from dpmcore.dpm_xl.operators.comparison import (
+    Equal,
+    Greater,
+    GreaterEqual,
+    In,
+    IsNull,
+    Less,
+    LessEqual,
+    Match,
+    NotEqual,
+)
+from dpmcore.dpm_xl.operators.conditional import Filter, IfOperator, Nvl
 from dpmcore.dpm_xl.operators.string import Concatenate, Len
 from dpmcore.dpm_xl.operators.time import TimeShift
+
 from .tokens import *
 
 BIN_OP_MAPPING = {

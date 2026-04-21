@@ -2,19 +2,19 @@ from sqlalchemy.orm import Session
 
 from dpmcore.dpm_xl.ast.nodes import *
 from dpmcore.dpm_xl.ast.template import ASTTemplate
-from dpmcore.errors import SemanticError
 from dpmcore.dpm_xl.model_queries import (
     ItemCategoryQuery,
     OperatorQuery,
     VariableVersionQuery,
 )
+from dpmcore.dpm_xl.utils.data_handlers import filter_all_data, generate_xyz
+from dpmcore.dpm_xl.utils.scopes_calculator import OperationScopeService
+from dpmcore.errors import SemanticError
 from dpmcore.orm.operations import (
     OperandReference,
     OperandReferenceLocation,
     OperationNode,
 )
-from dpmcore.dpm_xl.utils.scopes_calculator import OperationScopeService
-from dpmcore.dpm_xl.utils.data_handlers import filter_all_data, generate_xyz
 
 
 def gather_element(node, attribute):
@@ -30,8 +30,7 @@ def property_ref_period_mangement(name):
 
 
 class MLGeneration(ASTTemplate):
-    """
-    DPM-ML generation is applied after checking the expression is semantically valid.
+    """DPM-ML generation is applied after checking the expression is semantically valid.
 
     Extracts the data provided by the semantic analysis and the Operation Version object to be associated with this expression.
     Based on the Visit pattern, creates the OperandNode, OperandReference and OperandReferenceLocation for each sub-operation and the
@@ -185,11 +184,11 @@ class MLGeneration(ASTTemplate):
 
         operation_node = self.create_operation_node(node)
 
-        setattr(node.left, "argument", "left")
-        setattr(node.right, "argument", "right")
+        node.left.argument = "left"
+        node.right.argument = "right"
 
-        setattr(node.left, "parent", operation_node)
-        setattr(node.right, "parent", operation_node)
+        node.left.parent = operation_node
+        node.right.parent = operation_node
 
         self.visit(node.left)
         self.visit(node.right)
@@ -198,81 +197,81 @@ class MLGeneration(ASTTemplate):
         self.visit(node.right)
 
     def visit_ParExpr(self, node: ParExpr):
-        setattr(node, "op", "()")
+        node.op = "()"
         operand_node = self.create_operation_node(node)
-        setattr(node.expression, "argument", "expression")
-        setattr(node.expression, "parent", operand_node)
+        node.expression.argument = "expression"
+        node.expression.parent = operand_node
         self.visit(node.expression)
 
     def visit_BinOp(self, node: BinOp):
         if node.op == "+":
-            setattr(node, "operator_name", "Addition")
+            node.operator_name = "Addition"
         elif node.op == "-":
-            setattr(node, "operator_name", "Subtraction")
+            node.operator_name = "Subtraction"
         operand_node = self.create_operation_node(node)
 
         if node.op == "in":
-            setattr(node.left, "argument", "operand")
-            setattr(node.right, "argument", "set")
+            node.left.argument = "operand"
+            node.right.argument = "set"
         elif node.op == "match":
-            setattr(node.left, "argument", "operand")
-            setattr(node.right, "argument", "pattern")
+            node.left.argument = "operand"
+            node.right.argument = "pattern"
         else:
-            setattr(node.left, "argument", "left")
-            setattr(node.right, "argument", "right")
-        setattr(node.left, "parent", operand_node)
-        setattr(node.right, "parent", operand_node)
+            node.left.argument = "left"
+            node.right.argument = "right"
+        node.left.parent = operand_node
+        node.right.parent = operand_node
         self.visit(node.left)
         self.visit(node.right)
 
     def visit_UnaryOp(self, node: UnaryOp):
         if node.op == "+":
-            setattr(node, "operator_name", "Unary plus")
+            node.operator_name = "Unary plus"
         elif node.op == "-":
-            setattr(node, "operator_name", "Unary minus")
+            node.operator_name = "Unary minus"
         operand_node = self.create_operation_node(node)
-        setattr(node.operand, "argument", "operand")
-        setattr(node.operand, "parent", operand_node)
+        node.operand.argument = "operand"
+        node.operand.parent = operand_node
         self.visit(node.operand)
 
     def visit_CondExpr(self, node: CondExpr):
-        setattr(node, "op", "if-then-else")
+        node.op = "if-then-else"
         operand_if = self.create_operation_node(node)
-        setattr(node.condition, "parent", operand_if)
-        setattr(node.condition, "argument", "condition")
+        node.condition.parent = operand_if
+        node.condition.argument = "condition"
         self.visit(node.condition)
-        setattr(node.then_expr, "argument", "then")
-        setattr(node.then_expr, "parent", operand_if)
+        node.then_expr.argument = "then"
+        node.then_expr.parent = operand_if
         self.visit(node.then_expr)
         if node.else_expr:
-            setattr(node.else_expr, "argument", "else")
-            setattr(node.else_expr, "parent", operand_if)
+            node.else_expr.argument = "else"
+            node.else_expr.parent = operand_if
             self.visit(node.else_expr)
 
     def visit_WithExpression(self, node: WithExpression):
         parent = getattr(node, "parent", None)
         if parent:
-            setattr(node.expression, "parent", parent)
-        setattr(node.expression, "argument", getattr(node, "argument", None))
+            node.expression.parent = parent
+        node.expression.argument = getattr(node, "argument", None)
         self.visit(node.expression)
 
     def visit_AggregationOp(self, node: AggregationOp):
         operand_node = self.create_operation_node(node)
-        setattr(node.operand, "parent", operand_node)
-        setattr(node.operand, "argument", "operand")
+        node.operand.parent = operand_node
+        node.operand.argument = "operand"
         self.visit(node.operand)
         if node.grouping_clause:
-            setattr(node.grouping_clause, "op", "group by")
-            setattr(node.grouping_clause, "parent", operand_node)
-            setattr(node.grouping_clause, "argument", "grouping_clause")
+            node.grouping_clause.op = "group by"
+            node.grouping_clause.parent = operand_node
+            node.grouping_clause.argument = "grouping_clause"
             self.visit(node.grouping_clause)
 
     def visit_GroupingClause(self, node: GroupingClause):
         gc_node = self.create_operation_node(node)
         for component in node.components:
             element = AST()
-            setattr(element, "parent", gc_node)
-            setattr(element, "argument", "component")
+            element.parent = gc_node
+            element.argument = "component"
             comp_node = self.create_operation_node(element, is_leaf=True)
             # property_id = ItemCategoryQuery.get_property_id_from_code(code=node.component, session=self.session)[0]
             if component in ("r", "c", "s"):
@@ -294,51 +293,49 @@ class MLGeneration(ASTTemplate):
     def visit_ComplexNumericOp(self, node: ComplexNumericOp):
         operand_node = self.create_operation_node(node)
         for operand in node.operands:
-            setattr(operand, "parent", operand_node)
-            setattr(operand, "argument", "operand")
+            operand.parent = operand_node
+            operand.argument = "operand"
             self.visit(operand)
 
     def visit_FilterOp(self, node: FilterOp):
-        setattr(node, "op", "filter")
+        node.op = "filter"
         operand_node = self.create_operation_node(node)
-        setattr(node.selection, "parent", operand_node)
-        setattr(node.selection, "argument", "selection")
+        node.selection.parent = operand_node
+        node.selection.argument = "selection"
 
-        setattr(node.condition, "parent", operand_node)
-        setattr(node.condition, "argument", "condition")
+        node.condition.parent = operand_node
+        node.condition.argument = "condition"
 
         self.visit(node.selection)
         self.visit(node.condition)
 
     def visit_TimeShiftOp(self, node: TimeShiftOp):
-        setattr(node, "op", "time_shift")
+        node.op = "time_shift"
         get_node = self.create_operation_node(node)
 
-        setattr(node.operand, "parent", get_node)
-        setattr(node.operand, "argument", "operand")
+        node.operand.parent = get_node
+        node.operand.argument = "operand"
         self.visit(node.operand)
 
         # period indicator
         period_indicator_node = AST()
-        setattr(period_indicator_node, "parent", get_node)
-        setattr(period_indicator_node, "argument", "period_indicator")
-        setattr(period_indicator_node, "scalar", "Q")
+        period_indicator_node.parent = get_node
+        period_indicator_node.argument = "period_indicator"
+        period_indicator_node.scalar = "Q"
         self.create_operation_node(period_indicator_node, is_leaf=True)
 
         # shift number
         shift_number_node = AST()
-        setattr(shift_number_node, "parent", get_node)
-        setattr(shift_number_node, "argument", "shift_number")
-        setattr(
-            shift_number_node, "scalar", getattr(node, "shift_number", None)
-        )
+        shift_number_node.parent = get_node
+        shift_number_node.argument = "shift_number"
+        shift_number_node.scalar = getattr(node, "shift_number", None)
         self.create_operation_node(shift_number_node, is_leaf=True)
 
         # component
         ast_element = AST()
-        setattr(ast_element, "parent", get_node)
-        setattr(ast_element, "argument", "dimension")
-        setattr(ast_element, "source_reference", "property")
+        ast_element.parent = get_node
+        ast_element.argument = "dimension"
+        ast_element.source_reference = "property"
         operand_node = self.create_operation_node(
             ast_element, is_leaf=True
         )  # TODO: Adapt to refPeriod
@@ -352,33 +349,33 @@ class MLGeneration(ASTTemplate):
             )[0]
             op_ref = OperandReference(
                 op_node=operand_node,
-                OperandReference=getattr(ast_element, "source_reference"),
+                OperandReference=ast_element.source_reference,
                 PropertyID=property_id,
             )
         self.session.add(op_ref)
 
     def visit_WhereClauseOp(self, node: WhereClauseOp):
-        setattr(node, "op", "where")
+        node.op = "where"
         node_op = self.create_operation_node(node)
-        setattr(node.operand, "parent", node_op)
-        setattr(node.operand, "argument", "operand")
+        node.operand.parent = node_op
+        node.operand.argument = "operand"
 
-        setattr(node.condition, "parent", node_op)
-        setattr(node.condition, "argument", "condition")
+        node.condition.parent = node_op
+        node.condition.argument = "condition"
         self.visit(node.operand)
         self.visit(node.condition)
 
     def visit_GetOp(self, node: GetOp):
-        setattr(node, "op", "get")
+        node.op = "get"
         node_op = self.create_operation_node(node)
-        setattr(node.operand, "parent", node_op)
-        setattr(node.operand, "argument", "operand")
+        node.operand.parent = node_op
+        node.operand.argument = "operand"
         self.visit(node.operand)
 
         element = AST()
-        setattr(element, "parent", node_op)
-        setattr(element, "argument", "component")
-        setattr(element, "source_reference", "property")
+        element.parent = node_op
+        element.argument = "component"
+        element.source_reference = "property"
         component_node = self.create_operation_node(element, is_leaf=True)
         if property_ref_period_mangement(node.component):
             op_ref = OperandReference(
@@ -390,31 +387,31 @@ class MLGeneration(ASTTemplate):
             )[0]
             op_ref = OperandReference(
                 op_node=component_node,
-                OperandReference=getattr(element, "source_reference"),
+                OperandReference=element.source_reference,
                 PropertyID=property_id,
             )
         self.session.add(op_ref)
 
     def visit_RenameOp(self, node: RenameOp):
-        setattr(node, "op", "rename")
+        node.op = "rename"
         operand_node = self.create_operation_node(node)
-        setattr(node.operand, "parent", operand_node)
-        setattr(node.operand, "argument", "operand")
+        node.operand.parent = operand_node
+        node.operand.argument = "operand"
         self.visit(node.operand)
 
         for rename_node in node.rename_nodes:
-            setattr(rename_node, "parent", operand_node)
-            setattr(rename_node, "argument", "node")
+            rename_node.parent = operand_node
+            rename_node.argument = "node"
             self.visit(rename_node)
 
     def visit_RenameNode(self, node: RenameNode):
-        setattr(node, "op", "node")
+        node.op = "node"
         rename_node = self.create_operation_node(node)
         old_name = AST()
-        setattr(old_name, "parent", rename_node)
-        setattr(old_name, "argument", "old_name")
-        setattr(old_name, "source_reference", "property")
-        setattr(old_name, "scalar", node.old_name)
+        old_name.parent = rename_node
+        old_name.argument = "old_name"
+        old_name.source_reference = "property"
+        old_name.scalar = node.old_name
         old_property_id = ItemCategoryQuery.get_property_id_from_code(
             code=node.old_name, session=self.session_queries
         )[0]
@@ -422,36 +419,36 @@ class MLGeneration(ASTTemplate):
 
         old_operand_ref = OperandReference(
             op_node=old_name_node,
-            OperandReference=getattr(old_name, "source_reference"),
+            OperandReference=old_name.source_reference,
             PropertyID=old_property_id,
         )
 
         self.session.add(old_operand_ref)
 
         new_name = AST()
-        setattr(new_name, "parent", rename_node)
-        setattr(new_name, "argument", "new_name")
-        setattr(new_name, "source_reference", "property")
-        setattr(new_name, "scalar", node.new_name)
+        new_name.parent = rename_node
+        new_name.argument = "new_name"
+        new_name.source_reference = "property"
+        new_name.scalar = node.new_name
         new_name_node = self.create_operation_node(new_name, is_leaf=True)
 
         new_operand_ref = OperandReference(
             op_node=new_name_node,
-            OperandReference=getattr(new_name, "source_reference"),
+            OperandReference=new_name.source_reference,
             PropertyID=old_property_id,
         )
         self.session.add(new_operand_ref)
 
     def visit_SubOp(self, node: SubOp):
-        setattr(node, "op", "sub")
+        node.op = "sub"
         operand_node = self.create_operation_node(node)
-        setattr(node.operand, "parent", operand_node)
-        setattr(node.operand, "argument", "operand")
+        node.operand.parent = operand_node
+        node.operand.argument = "operand"
         self.visit(node.operand)
 
         # Visit the value (can be literal, select, or itemReference)
-        setattr(node.value, "parent", operand_node)
-        setattr(node.value, "argument", "value")
+        node.value.parent = operand_node
+        node.value.argument = "value"
         self.visit(node.value)
 
     def visit_PreconditionItem(self, node: PreconditionItem):
@@ -490,7 +487,7 @@ class MLGeneration(ASTTemplate):
         self.precondition_items.append(precondition_code)
 
     def visit_VarRef(self, node: VarRef):
-        setattr(node, "source_reference", "variable")
+        node.source_reference = "variable"
         op_node = self.create_operation_node(node, is_leaf=True)
         node_value = getattr(node, "value", getattr(node, "variable", None))
         variable_id = VariableVersionQuery.get_variable_id(
@@ -502,14 +499,14 @@ class MLGeneration(ASTTemplate):
             raise SemanticError("1-3", variable=node_value)
         operand_ref = OperandReference(
             op_node=op_node,
-            OperandReference=getattr(node, "source_reference"),
+            OperandReference=node.source_reference,
             VariableID=variable_id,
         )
 
         self.session.add(operand_ref)
 
     def visit_VarID(self, node: VarID):
-        setattr(node, "source_reference", "variable")
+        node.source_reference = "variable"
 
         op_node = self.create_operation_node(node, is_leaf=True)
 
@@ -528,7 +525,7 @@ class MLGeneration(ASTTemplate):
                 x=e["x"] if significant_rows else None,
                 y=e["y"] if significant_cols else None,
                 z=e["z"] if significant_sheets else None,
-                OperandReference=getattr(node, "source_reference"),
+                OperandReference=node.source_reference,
                 VariableID=e["variable_id"],
             )
 
@@ -557,25 +554,25 @@ class MLGeneration(ASTTemplate):
                 self._add_table_vid_to_operation_tables(node.table)
 
     def visit_Constant(self, node: Constant):
-        setattr(node, "scalar", node.value)
+        node.scalar = node.value
         self.create_operation_node(node, is_leaf=True)
 
     def visit_Dimension(self, node: Dimension):
-        setattr(node, "source_reference", "property")
+        node.source_reference = "property"
         op_node = self.create_operation_node(node, is_leaf=True)
         property = ItemCategoryQuery.get_property_from_code(
             code=node.dimension_code, session=self.session_queries
         )
         operand_ref = OperandReference(
             op_node=op_node,
-            OperandReference=getattr(node, "source_reference"),
+            OperandReference=node.source_reference,
             PropertyID=property.ItemID,
         )
         self.session.add(operand_ref)
 
     def visit_Set(self, node: Set):
-        setattr(node, "source_reference", "item")
-        setattr(node, "operand_type", "set")
+        node.source_reference = "item"
+        node.operand_type = "set"
         op_node = self.create_operation_node(node, is_leaf=True)
 
         for child in node.children:
@@ -584,26 +581,26 @@ class MLGeneration(ASTTemplate):
             )[0]
             operand_ref = OperandReference(
                 op_node=op_node,
-                OperandReference=getattr(node, "source_reference"),
+                OperandReference=node.source_reference,
                 ItemID=item_id,
             )
             self.session.add(operand_ref)
 
     def visit_Scalar(self, node: Scalar):
-        setattr(node, "source_reference", "item")
+        node.source_reference = "item"
         op_node = self.create_operation_node(node, is_leaf=True)
         item_id = ItemCategoryQuery.get_item_category_id_from_signature(
             signature=node.item, session=self.session_queries
         )[0]
         operand_ref = OperandReference(
             op_node=op_node,
-            OperandReference=getattr(node, "source_reference"),
+            OperandReference=node.source_reference,
             ItemID=item_id,
         )
         self.session.add(operand_ref)
 
     def visit_OperationRef(self, node: OperationRef):
-        setattr(node, "source_reference", "operation")
+        node.source_reference = "operation"
         op_node = self.create_operation_node(node, is_leaf=True)
 
         op_version_id = self._get_op_version_id(node.operation_code)
@@ -650,8 +647,7 @@ class MLGeneration(ASTTemplate):
         self.session.expunge_all()
 
     def compare_ast(self, reference: OperationNode):
-        """
-        Compares the ML generated by the AST of the expression provided with the ML generated by the AST generated with the ML stored in the db.
+        """Compares the ML generated by the AST of the expression provided with the ML generated by the AST generated with the ML stored in the db.
         :return: True if the ASTs are equal, False otherwise.
         """
         op_nodes = self.result["operation_nodes"]

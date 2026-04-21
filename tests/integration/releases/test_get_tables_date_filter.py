@@ -1,13 +1,14 @@
-import pytest
 from datetime import date
+
+import pytest
 from py_dpm.api.dpm.data_dictionary import DataDictionaryAPI
 from py_dpm.dpm.models import (
     Base,
-    TableVersion,
+    Module,
     ModuleVersion,
     ModuleVersionComposition,
     Table,
-    Module,
+    TableVersion,
 )
 
 

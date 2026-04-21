@@ -1,6 +1,5 @@
 class NodeVisitor(object):
-    """
-    Foundation of the Visit pattern. Gets the AST Object class name and checks if a method
+    """Foundation of the Visit pattern. Gets the AST Object class name and checks if a method
     named visit_ + class name is present. If not, raises a NotImplementedError.
     """
 

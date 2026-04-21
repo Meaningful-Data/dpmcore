@@ -1,5 +1,4 @@
-"""
-Tests for the severity parameter in AST generation and operation scope creation.
+"""Tests for the severity parameter in AST generation and operation scope creation.
 
 These tests cover:
 - Severity constants validation
@@ -9,26 +8,24 @@ These tests cover:
 """
 
 import os
-import pytest
-from dotenv import load_dotenv
 from urllib.parse import quote_plus
 
+import pytest
+from dotenv import load_dotenv
 from py_dpm.api.dpm_xl import ASTGeneratorAPI
 from py_dpm.dpm_xl.utils.tokens import (
-    SEVERITY_ERROR,
-    SEVERITY_WARNING,
-    SEVERITY_INFO,
-    VALID_SEVERITIES,
     DEFAULT_SEVERITY,
+    SEVERITY_ERROR,
+    SEVERITY_INFO,
+    SEVERITY_WARNING,
+    VALID_SEVERITIES,
 )
-
 
 load_dotenv()
 
 
 def _db_kwargs():
-    """
-    Build DB configuration from environment/.env.
+    """Build DB configuration from environment/.env.
 
     Prefers server databases configured via PYDPM_RDBMS/PYDPM_DB_* variables.
     Falls back to legacy USE_POSTGRES/POSTGRES_* configuration, then finally
@@ -315,6 +312,7 @@ class TestSeverityInOperationScopeService:
     def test_create_operation_scope_default_severity(self):
         """Test that create_operation_scope uses 'warning' as default severity."""
         from unittest.mock import MagicMock, patch
+
         from py_dpm.dpm_xl.utils.scopes_calculator import OperationScopeService
 
         # Mock session and dependencies
@@ -340,6 +338,7 @@ class TestSeverityInOperationScopeService:
     def test_create_operation_scope_custom_severity_error(self):
         """Test that create_operation_scope accepts 'error' severity."""
         from unittest.mock import MagicMock, patch
+
         from py_dpm.dpm_xl.utils.scopes_calculator import OperationScopeService
 
         with patch(
@@ -364,6 +363,7 @@ class TestSeverityInOperationScopeService:
     def test_create_operation_scope_custom_severity_warning(self):
         """Test that create_operation_scope accepts 'warning' severity."""
         from unittest.mock import MagicMock, patch
+
         from py_dpm.dpm_xl.utils.scopes_calculator import OperationScopeService
 
         with patch(
@@ -388,6 +388,7 @@ class TestSeverityInOperationScopeService:
     def test_create_operation_scope_custom_severity_info(self):
         """Test that create_operation_scope accepts 'info' severity."""
         from unittest.mock import MagicMock, patch
+
         from py_dpm.dpm_xl.utils.scopes_calculator import OperationScopeService
 
         with patch(
@@ -412,6 +413,7 @@ class TestSeverityInOperationScopeService:
     def test_create_operation_scope_invalid_severity_raises_error(self):
         """Test that create_operation_scope raises ValueError for invalid severity."""
         from unittest.mock import MagicMock, patch
+
         from py_dpm.dpm_xl.utils.scopes_calculator import OperationScopeService
 
         with patch(
@@ -432,6 +434,7 @@ class TestSeverityInOperationScopeService:
     def test_create_operation_scope_severity_normalized_to_lowercase(self):
         """Test that severity is normalized to lowercase."""
         from unittest.mock import MagicMock, patch
+
         from py_dpm.dpm_xl.utils.scopes_calculator import OperationScopeService
 
         with patch(

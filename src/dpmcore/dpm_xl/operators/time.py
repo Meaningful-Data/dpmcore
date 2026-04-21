@@ -1,11 +1,11 @@
 from typing import Union
 
-from dpmcore.dpm_xl.types.scalar import ScalarFactory, TimeInterval
-from dpmcore.dpm_xl.types.promotion import unary_implicit_type_promotion
 from dpmcore import errors
 from dpmcore.dpm_xl.operators.base import Operator
-from dpmcore.dpm_xl.utils import tokens
 from dpmcore.dpm_xl.symbols import ConstantOperand, RecordSet, Scalar
+from dpmcore.dpm_xl.types.promotion import unary_implicit_type_promotion
+from dpmcore.dpm_xl.types.scalar import ScalarFactory, TimeInterval
+from dpmcore.dpm_xl.utils import tokens
 
 
 class TimeShift(Operator):

@@ -217,8 +217,7 @@ class Boolean(ScalarType):
 
 
 class Null(ScalarType):  # I think it is needed
-    """
-    All the Data Types are assumed to contain the conventional value null, which means “no value”, or “absence of known value” or “missing value”.
+    """All the Data Types are assumed to contain the conventional value null, which means “no value”, or “absence of known value” or “missing value”.
     Note that the null value, therefore, is the only value of multiple different types.
     """
 

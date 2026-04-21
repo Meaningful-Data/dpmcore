@@ -6,12 +6,12 @@ writes the raw CSV output directly to disk.
 
 from __future__ import annotations
 
-import subprocess
 import shutil
+import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 _DATE_FORMAT_TABLES = ("Release",)
 

@@ -1,10 +1,9 @@
 import pandas as pd
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 from py_dpm.dpm.models import Base, TableVersion
 from py_dpm.dpm.queries.filters import filter_by_release
 from py_dpm.dpm_xl.ast import operands as operands_module
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 
 def _make_session():
@@ -16,8 +15,7 @@ def _make_session():
 
 
 def test_filter_by_release_uses_is_null_for_end_release():
-    """
-    Ensure filter_by_release uses SQLAlchemy .is_(None) semantics for end_col,
+    """Ensure filter_by_release uses SQLAlchemy .is_(None) semantics for end_col,
     resulting in an 'IS NULL' predicate rather than '= NULL' in the SQL.
 
     This is important for PostgreSQL, which is strict about boolean expressions
@@ -48,8 +46,7 @@ def test_filter_by_release_uses_is_null_for_end_release():
 def test_operands_check_headers_calls_filter_by_release_with_correct_args(
     monkeypatch,
 ):
-    """
-    Verify that OperandsChecking.check_headers wires filter_by_release correctly:
+    """Verify that OperandsChecking.check_headers wires filter_by_release correctly:
     - start_col is TableVersion.startreleaseid
     - end_col is TableVersion.endreleaseid
     - release_id matches the instance's release_id

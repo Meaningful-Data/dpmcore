@@ -1,5 +1,4 @@
-"""
-Unit tests for AST coordinate assignment functionality.
+"""Unit tests for AST coordinate assignment functionality.
 
 Tests the _add_coordinates_to_ast and _clean_ast_data_entries methods
 in ASTGeneratorAPI to prevent regressions in x/y/z coordinate assignment.
@@ -14,6 +13,7 @@ Rules:
 """
 
 import copy
+
 import pytest
 from py_dpm.api.dpm_xl.ast_generator import ASTGeneratorAPI
 
@@ -602,7 +602,7 @@ class TestCleanAstDataEntries:
     # ========== BASE FIELDS RETENTION ==========
 
     def test_datapoint_always_kept(self, api):
-        """datapoint field should always be kept."""
+        """Datapoint field should always be kept."""
         ast = {
             "class_name": "VarID",
             "data": [

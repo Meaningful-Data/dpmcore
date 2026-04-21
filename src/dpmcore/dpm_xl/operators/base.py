@@ -2,19 +2,6 @@ from typing import Union
 
 import pandas as pd
 
-from dpmcore.dpm_xl.types.scalar import Mixed, Number, ScalarFactory
-from dpmcore.dpm_xl.types.promotion import (
-    binary_implicit_type_promotion,
-    binary_implicit_type_promotion_with_mixed_types,
-    check_operator,
-    unary_implicit_type_promotion,
-    unary_implicit_type_promotion_with_mixed_types,
-)
-from dpmcore.errors import SemanticError
-from dpmcore.dpm_xl.utils.operands_mapping import (
-    generate_new_label,
-    set_operand_label,
-)
 from dpmcore.dpm_xl.symbols import (
     ConstantOperand,
     FactComponent,
@@ -23,12 +10,24 @@ from dpmcore.dpm_xl.symbols import (
     ScalarSet,
     Structure,
 )
+from dpmcore.dpm_xl.types.promotion import (
+    binary_implicit_type_promotion,
+    binary_implicit_type_promotion_with_mixed_types,
+    check_operator,
+    unary_implicit_type_promotion,
+    unary_implicit_type_promotion_with_mixed_types,
+)
+from dpmcore.dpm_xl.types.scalar import Mixed, Number, ScalarFactory
+from dpmcore.dpm_xl.utils.operands_mapping import (
+    generate_new_label,
+    set_operand_label,
+)
 from dpmcore.dpm_xl.warning_collector import add_semantic_warning
+from dpmcore.errors import SemanticError
 
 
 class Operator:
-    """
-    Superclass for all operators. Defines the flags and methods to be used to create the scalars and recordsets.
+    """Superclass for all operators. Defines the flags and methods to be used to create the scalars and recordsets.
 
     Attributes:
         op: Token used to represent the operator
@@ -110,8 +109,8 @@ class Binary(Operator):
 
     @classmethod
     def create_origin_expression(cls, first_operand, second_operand) -> str:
-        first_operand_origin = getattr(first_operand, "origin")
-        second_operand_origin = getattr(second_operand, "origin")
+        first_operand_origin = first_operand.origin
+        second_operand_origin = second_operand.origin
         origin = f"{first_operand_origin} {cls.op} {second_operand_origin}"
         return origin
 
@@ -217,8 +216,7 @@ class Binary(Operator):
 
     @classmethod
     def validate_types(cls, left, right, result_dataframe):
-        """
-        Here the Structures has been validated
+        """Here the Structures has been validated
         """
         cls.check_operator_well_defined()
         left_type, right_type, op_type_to_check = cls.types_given_structures(
@@ -383,8 +381,7 @@ class Binary(Operator):
     def _check_structures(
         cls, left: Structure, right: Structure, origin
     ) -> Structure:
-        """
-        Used for recordset-recordset
+        """Used for recordset-recordset
         """
         if len(left.get_key_components()) == len(right.get_key_components()):
             cls.check_same_components(left, right, origin)
@@ -405,8 +402,7 @@ class Binary(Operator):
     def check_is_subset(
         left: Structure, right: Structure
     ):  # -> Tuple[bool, Structure| None]:
-        """
-        Take two Structures and return a True is one is other's subset and the greatest Structure
+        """Take two Structures and return a True is one is other's subset and the greatest Structure
         False, None in other case
         """
         left_dpm_components = left.get_dpm_components()
@@ -461,7 +457,7 @@ class Unary(Operator):
 
     @classmethod
     def create_origin_expression(cls, operand, *args) -> str:
-        operand_origin = getattr(operand, "origin")
+        operand_origin = operand.origin
         origin = f"{cls.op}({operand_origin})"
         return origin
 

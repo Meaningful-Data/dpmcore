@@ -1,8 +1,8 @@
-import pytest
 from datetime import date
 
+import pytest
 from py_dpm.api.dpm.data_dictionary import DataDictionaryAPI
-from py_dpm.dpm.models import Release, Base
+from py_dpm.dpm.models import Base, Release
 
 
 # Fixture to set up the in-memory database and API

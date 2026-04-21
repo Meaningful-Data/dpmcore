@@ -1,10 +1,10 @@
-import pytest
 import os
 
+import pytest
 from py_dpm.dpm.utils import (
-    get_engine,
     create_engine_from_url,
     create_engine_object,
+    get_engine,
     session_scope,
 )
 

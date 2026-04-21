@@ -23,10 +23,6 @@ import pandas as pd
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import aliased
 
-from dpmcore.dpm_xl.utils.filters import (
-    filter_by_release,
-    filter_item_version,
-)
 from dpmcore.orm.glossary import (
     Item,
     ItemCategory,
@@ -51,15 +47,12 @@ from dpmcore.orm.packaging import (
 )
 from dpmcore.orm.rendering import (
     Cell,
-    Header,
     HeaderVersion,
-    Table,
     TableVersion,
     TableVersionCell,
     TableVersionHeader,
 )
 from dpmcore.orm.variables import (
-    CompoundKey,
     KeyComposition,
     Variable,
     VariableVersion,

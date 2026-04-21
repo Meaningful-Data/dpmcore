@@ -81,8 +81,7 @@ class TimePeriod:
         )
 
     def start_date(self, as_date=False) -> Union[date, str]:
-        """
-        Gets the starting date of the Period
+        """Gets the starting date of the Period
         """
         date_value = period_to_date(
             year=self.year,
@@ -95,8 +94,7 @@ class TimePeriod:
         return date_value.isoformat()
 
     def end_date(self, as_date=False) -> Union[date, str]:
-        """
-        Gets the ending date of the Period
+        """Gets the ending date of the Period
         """
         date_value = period_to_date(
             year=self.year,
@@ -241,10 +239,8 @@ class Time:
 
 
 def timePeriodParser(str_: str) -> Union[TimePeriod, NAType]:
+    """Examples: 2020, 2019A, 2018Q3, 2011M12 2023S2.
     """
-    Examples: 2020, 2019A, 2018Q3, 2011M12 2023S2.
-    """
-
     try:
         if pd.isnull(str_) or len(str_) == 0:
             return pd.NA
@@ -256,8 +252,7 @@ def timePeriodParser(str_: str) -> Union[TimePeriod, NAType]:
 
 
 def timeParser(str_: str) -> Union[NAType, Time]:
-    """
-    Example: 2000-01-01/2009-12-31
+    """Example: 2000-01-01/2009-12-31
     """
     try:
         if pd.isnull(str_) or len(str_) == 0:
@@ -351,8 +346,7 @@ def period_to_date(year, period_indicator, period_number, start=False):
 
 
 class SingletonMeta(type):
-    """
-    The Singleton class can be implemented in different ways in Python. Some
+    """The Singleton class can be implemented in different ways in Python. Some
     possible methods include: base class, decorator, metaclass. We will use the
     metaclass because it is best suited for this purpose.
     """
@@ -360,8 +354,7 @@ class SingletonMeta(type):
     _instances = {}
 
     def __call__(cls, *args, **kwargs):
-        """
-        Possible changes to the value of the `__init__` argument do not affect
+        """Possible changes to the value of the `__init__` argument do not affect
         the returned instance.
         """
         if cls not in cls._instances:

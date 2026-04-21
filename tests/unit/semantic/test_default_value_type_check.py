@@ -1,12 +1,10 @@
-"""
-Tests for default value type checking in semantic analyzer.
+"""Tests for default value type checking in semantic analyzer.
 
 Tests that the semantic analyzer correctly validates that default value types
 are compatible with the operand's expected data type.
 """
 
 import pytest
-
 from py_dpm.dpm_xl.ast.nodes import Constant
 from py_dpm.dpm_xl.semantic_analyzer import InputAnalyzer
 from py_dpm.dpm_xl.types.scalar import (

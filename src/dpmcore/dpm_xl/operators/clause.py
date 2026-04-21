@@ -1,16 +1,16 @@
 from typing import List
 
-from dpmcore.dpm_xl.types.scalar import ScalarFactory
-from dpmcore.dpm_xl.types.promotion import unary_implicit_type_promotion
 from dpmcore import errors
-from dpmcore.dpm_xl.operators.conditional import ConditionalOperator
 from dpmcore.dpm_xl.operators.base import Binary, Operator
+from dpmcore.dpm_xl.operators.conditional import ConditionalOperator
+from dpmcore.dpm_xl.symbols import FactComponent, RecordSet
+from dpmcore.dpm_xl.types.promotion import unary_implicit_type_promotion
+from dpmcore.dpm_xl.types.scalar import ScalarFactory
 from dpmcore.dpm_xl.utils import tokens
 from dpmcore.dpm_xl.utils.operands_mapping import (
     generate_new_label,
     set_operand_label,
 )
-from dpmcore.dpm_xl.symbols import FactComponent, RecordSet
 
 
 class ClauseOperator(Operator):

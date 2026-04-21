@@ -1,14 +1,13 @@
 import pandas as pd
 
-from dpmcore.errors import SemanticError
 from dpmcore.dpm_xl.utils.tokens import *
+from dpmcore.errors import SemanticError
 
 
 def filter_data_by_cell_element(
     series, cell_elements, element_name, table_code
 ):
-    """
-    Filter data by cell elements
+    """Filter data by cell elements
     :param series: data to be filtered
     :param cell_elements: rows, columns or sheets using to filter data
     :param element_name: name of cell elements using to filter data

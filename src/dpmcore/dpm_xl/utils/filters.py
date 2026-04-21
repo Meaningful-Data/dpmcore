@@ -8,7 +8,6 @@ from datetime import datetime
 from typing import Any, Optional
 
 from sqlalchemy import Date, and_, cast, or_
-from sqlalchemy.orm import Query
 
 
 def filter_by_date(

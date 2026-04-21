@@ -1,7 +1,7 @@
+
 import pytest
-from datetime import date
 from py_dpm.api.dpm.data_dictionary import DataDictionaryAPI
-from py_dpm.dpm.models import Base, TableVersion, ItemCategory
+from py_dpm.dpm.models import Base, ItemCategory, TableVersion
 from py_dpm.dpm.queries.tables import TableQuery
 
 

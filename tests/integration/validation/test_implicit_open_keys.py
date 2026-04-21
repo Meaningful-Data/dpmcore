@@ -5,20 +5,16 @@ available when explicitly mentioned, without needing to be declared in the datab
 """
 
 import os
-
-import pytest
-from dotenv import load_dotenv
 from urllib.parse import quote_plus
 
+from dotenv import load_dotenv
 from py_dpm.api.dpm_xl.semantic import validate_expression
-
 
 load_dotenv()
 
 
 def _semantic_db_kwargs():
-    """
-    Build DB configuration for semantic validation from environment/.env.
+    """Build DB configuration for semantic validation from environment/.env.
 
     Prefers server databases configured via PYDPM_RDBMS/PYDPM_DB_* variables.
     Falls back to legacy USE_POSTGRES/POSTGRES_* configuration, then finally

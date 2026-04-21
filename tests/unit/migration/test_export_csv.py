@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 from dpmcore.services.export_csv import ExportCsvError, ExportCsvService
 

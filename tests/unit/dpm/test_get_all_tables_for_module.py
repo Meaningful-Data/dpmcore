@@ -1,12 +1,11 @@
 import pytest
-
 from py_dpm.api.dpm.data_dictionary import DataDictionaryAPI
 from py_dpm.dpm.models import (
     Base,
-    Table,
-    TableVersion,
     ModuleVersion,
     ModuleVersionComposition,
+    Table,
+    TableVersion,
 )
 
 

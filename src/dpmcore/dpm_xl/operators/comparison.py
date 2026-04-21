@@ -1,8 +1,8 @@
 import operator
 import re
 
+from dpmcore.dpm_xl.operators.base import Binary, Unary
 from dpmcore.dpm_xl.types.scalar import Boolean, String
-from dpmcore.dpm_xl.operators.base import Operator, Binary, Unary, Complex
 from dpmcore.dpm_xl.utils import tokens
 
 

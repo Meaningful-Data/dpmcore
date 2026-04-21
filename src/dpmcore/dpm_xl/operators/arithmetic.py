@@ -1,8 +1,8 @@
 import math
 import operator
 
+from dpmcore.dpm_xl.operators.base import Binary, Complex, Unary
 from dpmcore.dpm_xl.types.scalar import Number
-from dpmcore.dpm_xl.operators.base import Operator, Binary, Unary, Complex
 from dpmcore.dpm_xl.utils import tokens
 
 

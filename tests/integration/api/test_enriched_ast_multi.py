@@ -1,23 +1,20 @@
-"""
-Integration tests for generate_validations_script with multi-expression support.
+"""Integration tests for generate_validations_script with multi-expression support.
 
 These tests require a database connection configured via .env file.
 """
 
 import os
-import pytest
-from dotenv import load_dotenv
 from urllib.parse import quote_plus
 
+import pytest
+from dotenv import load_dotenv
 from py_dpm.api.dpm_xl import ASTGeneratorAPI
-
 
 load_dotenv()
 
 
 def _db_kwargs():
-    """
-    Build DB configuration from environment/.env.
+    """Build DB configuration from environment/.env.
 
     Prefers server databases configured via PYDPM_RDBMS/PYDPM_DB_* variables.
     Falls back to legacy USE_POSTGRES/POSTGRES_* configuration, then finally

@@ -2,7 +2,6 @@
 
 from dpmcore.server.params import (
     ReleaseKeyword,
-    StructureParams,
     parse_structure_params,
 )
 

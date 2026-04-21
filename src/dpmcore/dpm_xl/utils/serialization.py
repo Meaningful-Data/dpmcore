@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-AST to JSON serialization utilities for pyDPM
+"""AST to JSON serialization utilities for pyDPM
 """
 
 from dpmcore.dpm_xl.ast.visitor import NodeVisitor
@@ -664,12 +663,12 @@ class ASTToJSONVisitor(NodeVisitor):
 
 # Original serialization functions (kept for backward compatibility)
 import json
+
 from dpmcore.dpm_xl.ast import nodes as ASTObjects
 
 
 def expand_with_expression(node):
-    """
-    Recursively expand WithExpression nodes by merging partial selections into cell references.
+    """Recursively expand WithExpression nodes by merging partial selections into cell references.
 
     Args:
         node: AST node to process
@@ -727,8 +726,7 @@ def expand_with_expression(node):
 
 
 def apply_partial_selection(expression, partial_selection):
-    """
-    Apply partial selection to VarID nodes in the expression.
+    """Apply partial selection to VarID nodes in the expression.
 
     Args:
         expression: Expression AST node
@@ -795,8 +793,7 @@ def apply_partial_selection(expression, partial_selection):
 
 
 def serialize_ast(ast_obj):
-    """
-    Serialize an AST object to a JSON-serializable dictionary.
+    """Serialize an AST object to a JSON-serializable dictionary.
     Expands WithExpression nodes before serialization.
 
     Args:
@@ -850,8 +847,7 @@ def serialize_ast(ast_obj):
 
 
 def deserialize_ast(data):
-    """
-    Deserialize a JSON dictionary back to an AST object.
+    """Deserialize a JSON dictionary back to an AST object.
 
     Args:
         data: Dictionary or list from JSON
@@ -898,8 +894,7 @@ def deserialize_ast(data):
 
 
 def ast_to_json_string(ast_obj, indent=None):
-    """
-    Convert AST object to JSON string.
+    """Convert AST object to JSON string.
 
     Args:
         ast_obj: AST object to serialize
@@ -912,8 +907,7 @@ def ast_to_json_string(ast_obj, indent=None):
 
 
 def ast_from_json_string(json_str):
-    """
-    Create AST object from JSON string.
+    """Create AST object from JSON string.
 
     Args:
         json_str: JSON string representation

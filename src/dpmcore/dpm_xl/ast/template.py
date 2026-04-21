@@ -30,8 +30,7 @@ from dpmcore.dpm_xl.ast.visitor import NodeVisitor
 
 
 class ASTTemplate(NodeVisitor):
-    """
-    Template to start a new visitor for the AST
+    """Template to start a new visitor for the AST
     """
 
     def __init__(self):

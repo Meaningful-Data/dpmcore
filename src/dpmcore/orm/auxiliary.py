@@ -17,7 +17,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from dpmcore.orm.base import Base
 
-
 # ------------------------------------------------------------------
 # AuxCellMapping
 # ------------------------------------------------------------------

@@ -1,29 +1,29 @@
-import pytest
-from py_dpm.api.dpm.data_dictionary import DataDictionaryAPI
 import inspect
 
+import pytest
+from py_dpm.api.dpm.data_dictionary import DataDictionaryAPI
 from py_dpm.dpm.models import (
     Base,
+    Cell,
+    DataType,
+    Framework,
     Header,
     HeaderVersion,
-    SubCategory,
-    SubCategoryVersion,
-    SubCategoryItem,
-    Table,
-    TableVersion,
-    TableVersionHeader,
-    ModuleVersionComposition,
-    ModuleVersion,
-    Module,
-    Framework,
-    Property,
-    DataType,
     Item,
     ItemCategory,
-    Cell,
-    TableVersionCell,
-    VariableVersion,
+    Module,
+    ModuleVersion,
+    ModuleVersionComposition,
+    Property,
     Release,
+    SubCategory,
+    SubCategoryItem,
+    SubCategoryVersion,
+    Table,
+    TableVersion,
+    TableVersionCell,
+    TableVersionHeader,
+    VariableVersion,
 )
 from py_dpm.dpm.queries.hierarchical_queries import HierarchicalQuery
 

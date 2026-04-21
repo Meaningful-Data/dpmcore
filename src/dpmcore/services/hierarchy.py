@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from sqlalchemy import and_, or_
-
 from dpmcore.dpm_xl.utils.filters import filter_by_release
 from dpmcore.orm.packaging import (
     Framework,
@@ -15,9 +13,7 @@ from dpmcore.orm.packaging import (
 )
 from dpmcore.orm.rendering import (
     Cell,
-    Header,
     HeaderVersion,
-    Table,
     TableVersion,
     TableVersionCell,
     TableVersionHeader,

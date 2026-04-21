@@ -2,6 +2,7 @@ from abc import ABC
 
 import pandas as pd
 
+from dpmcore import errors
 from dpmcore.dpm_xl.ast.nodes import (
     AggregationOp,
     BinOp,
@@ -17,7 +18,6 @@ from dpmcore.dpm_xl.ast.nodes import (
     PreconditionItem,
     PropertyReference,
     RenameOp,
-    Scalar as ScalarNode,
     Set,
     Start,
     SubOp,
@@ -29,11 +29,21 @@ from dpmcore.dpm_xl.ast.nodes import (
     WhereClauseOp,
     WithExpression,
 )
+from dpmcore.dpm_xl.ast.nodes import (
+    Scalar as ScalarNode,
+)
 from dpmcore.dpm_xl.ast.template import ASTTemplate
+from dpmcore.dpm_xl.symbols import (
+    ConstantOperand,
+    FactComponent,
+    KeyComponent,
+    RecordSet,
+    Scalar,
+    ScalarSet,
+    Structure,
+)
 from dpmcore.dpm_xl.types.scalar import Item, Mixed, Null, ScalarFactory
-from dpmcore.dpm_xl.types.promotion import binary_implicit_type_promotion
-from dpmcore import errors
-from dpmcore.errors import SemanticError
+from dpmcore.dpm_xl.utils.data_handlers import filter_all_data
 from dpmcore.dpm_xl.utils.operands_mapping import set_operand_label
 from dpmcore.dpm_xl.utils.operator_mapping import (
     AGGR_OP_MAPPING,
@@ -55,17 +65,8 @@ from dpmcore.dpm_xl.utils.tokens import (
     TIME_SHIFT,
     WHERE,
 )
-from dpmcore.dpm_xl.utils.data_handlers import filter_all_data
-from dpmcore.dpm_xl.symbols import (
-    ConstantOperand,
-    FactComponent,
-    KeyComponent,
-    RecordSet,
-    Scalar,
-    ScalarSet,
-    Structure,
-)
 from dpmcore.dpm_xl.warning_collector import add_semantic_warning
+from dpmcore.errors import SemanticError
 
 
 class InputAnalyzer(ASTTemplate, ABC):
@@ -186,7 +187,7 @@ class InputAnalyzer(ASTTemplate, ABC):
 
     def visit_VarID(self, node: VarID):
 
-        self.__check_default_value(node.default, getattr(node, "type"))
+        self.__check_default_value(node.default, node.type)
 
         # filter by table_code
         df = filter_all_data(
@@ -243,10 +244,10 @@ class InputAnalyzer(ASTTemplate, ABC):
         if len(components) == 0:
             set_operand_label(label=label, operand=node)
             return Scalar(
-                type_=getattr(node, "type"), name=label, origin=label
+                type_=node.type, name=label, origin=label
             )
         fact_component = FactComponent(
-            type_=getattr(node, "type"), parent=label
+            type_=node.type, parent=label
         )
 
         components.append(fact_component)
@@ -455,8 +456,7 @@ class InputAnalyzer(ASTTemplate, ABC):
         return result
 
     def visit_PreconditionItem(self, node: PreconditionItem) -> Scalar:
-        """
-        Return a ScalarType Boolean with True value is precondition is satisfied otherwise False.
+        """Return a ScalarType Boolean with True value is precondition is satisfied otherwise False.
         Example:
         "table_code","ColumnID","RowID","SheetID","column_code","row_code","sheet_code","cell_code","CellID","VariableVID","data_type_code"
         S.01.01.01.01,,,,,,,,,xxxxxxx,BOO

@@ -1,8 +1,8 @@
-import unittest
-import tempfile
 import json
+import tempfile
+import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from py_dpm.api.dpm.instance import InstanceAPI
 

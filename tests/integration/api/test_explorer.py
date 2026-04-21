@@ -1,14 +1,12 @@
 import unittest
-from unittest.mock import MagicMock, patch
 from dataclasses import dataclass
-
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from unittest.mock import MagicMock, patch
 
 from py_dpm.api.dpm.explorer import ExplorerQueryAPI
 from py_dpm.dpm.models import Base, Framework, Module, ModuleVersion, Release
 from py_dpm.dpm.queries.explorer_queries import ExplorerQuery
-
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 # Mock models to avoid importing actual DB models which require DB connection
 
@@ -274,7 +272,8 @@ class TestExplorerQueryModuleUrlIntegration(unittest.TestCase):
 
     def test_get_module_url_by_release_id_uses_static_mapping(self):
         """Test that querying by release_id returns the static mapping URL
-        when the module version matches a known entry in the CSV."""
+        when the module version matches a known entry in the CSV.
+        """
         # Add a release and module version that matches a static mapping entry.
         # AE version 1.2.0 is in the CSV with the correct ITS-based URL.
         release_34 = Release(releaseid=34, code="3.4")

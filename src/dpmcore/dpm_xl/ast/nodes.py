@@ -1,5 +1,4 @@
-"""
-AST.ASTObjects.py
+"""AST.ASTObjects.py
 =================
 
 Description
@@ -9,8 +8,7 @@ AST nodes
 
 
 class AST:
-    """
-    Superclass of all AST objects
+    """Superclass of all AST objects
     """
 
     def __init__(self):
@@ -24,8 +22,7 @@ class AST:
 
 
 class Start(AST):
-    """
-    Starting point of the AST.
+    """Starting point of the AST.
     """
 
     def __init__(self, children):
@@ -56,8 +53,7 @@ class Start(AST):
 
 
 class ParExpr(AST):
-    """
-    ParExpr. Parenthesis Expression used to group expressions inside parenthesis to give more priority.
+    """ParExpr. Parenthesis Expression used to group expressions inside parenthesis to give more priority.
     Example: (A + B) * C
     """
 
@@ -80,8 +76,7 @@ class ParExpr(AST):
 
 
 class BinOp(AST):
-    """
-    All binary operators are analysed using this AST Object. Check BIN_OP_MAPPING on Utils/operator_mapping.py
+    """All binary operators are analysed using this AST Object. Check BIN_OP_MAPPING on Utils/operator_mapping.py
     for the complete list.
     """
 
@@ -111,8 +106,7 @@ class BinOp(AST):
 
 
 class UnaryOp(AST):
-    """
-    All unary operators are analysed using this AST Object. Check UNARY_OP_MAPPING on Utils/operator_mapping.py
+    """All unary operators are analysed using this AST Object. Check UNARY_OP_MAPPING on Utils/operator_mapping.py
     for the complete list.
     """
 
@@ -137,8 +131,7 @@ class UnaryOp(AST):
 
 
 class CondExpr(AST):
-    """
-    AST Object for if-then-else operation.
+    """AST Object for if-then-else operation.
     """
 
     def __init__(self, condition, then_expr, else_expr):
@@ -167,8 +160,7 @@ class CondExpr(AST):
 
 
 class VarRef(AST):
-    """
-    Checks the reference to a specific variable in DB.
+    """Checks the reference to a specific variable in DB.
     """
 
     def __init__(self, variable):
@@ -190,8 +182,7 @@ class VarRef(AST):
 
 
 class VarID(AST):
-    """
-    AST Object for operand including a Cell Reference from DB.
+    """AST Object for operand including a Cell Reference from DB.
     """
 
     def __init__(
@@ -322,8 +313,7 @@ class VarID(AST):
 
 
 class Constant(AST):
-    """
-    AST Object for Constants included in code. Example: 0, "A"
+    """AST Object for Constants included in code. Example: 0, "A"
     :parameter type_: Data Type of the Constant
     :parameter value: Value to be hold by the Constant
     """
@@ -357,8 +347,7 @@ class Constant(AST):
 
 
 class WithExpression(AST):
-    """
-    AST Object for expressions including a With clause, which simplifies the expressions over a common
+    """AST Object for expressions including a With clause, which simplifies the expressions over a common
     group of cell references.
 
     Example: {Table 1, row 1} + {Table 1, row 2} -> with {Table 1}: {row 1} + {row 2}
@@ -389,8 +378,7 @@ class WithExpression(AST):
 
 
 class AggregationOp(AST):
-    """
-    All aggregate operators are analysed using this AST Object. Check AGGR_OP_MAPPING on Utils/operator_mapping.py
+    """All aggregate operators are analysed using this AST Object. Check AGGR_OP_MAPPING on Utils/operator_mapping.py
     for the complete list.
     """
 
@@ -420,8 +408,7 @@ class AggregationOp(AST):
 
 
 class GroupingClause(AST):
-    """
-    Grouping clause inside an aggregation operation.
+    """Grouping clause inside an aggregation operation.
     """
 
     def __init__(self, components):
@@ -443,8 +430,7 @@ class GroupingClause(AST):
 
 
 class Dimension(AST):
-    """
-    AST object only included in a Where clause. Specifies the component to be filtered.
+    """AST object only included in a Where clause. Specifies the component to be filtered.
     """
 
     def __init__(self, dimension_code, property_id=None):
@@ -457,8 +443,7 @@ class Dimension(AST):
             "<AST(name='{name}', dimension_code='{dimension_code}')>".format(
                 name=self.__class__.__name__,
                 dimension_code=self.dimension_code,
-                property_id=self.property_id,
-            )
+                )
         )
 
     __repr__ = __str__
@@ -471,8 +456,7 @@ class Dimension(AST):
 
 
 class Set(AST):
-    """
-    AST object for Set operands. Used only in 'IN' operator.
+    """AST object for Set operands. Used only in 'IN' operator.
     """
 
     def __init__(self, children):
@@ -494,8 +478,7 @@ class Set(AST):
 
 
 class Scalar(AST):
-    """
-    AST object representing an Item. Must be validated against the ItemCategory.Signature column.
+    """AST object representing an Item. Must be validated against the ItemCategory.Signature column.
 
     :parameter item: Item Signature to be validated
     :parameter scalar_type: Data type of the item referenced
@@ -524,8 +507,7 @@ class Scalar(AST):
 
 
 class ComplexNumericOp(AST):
-    """
-    AST Object for max and min operations. Could have more than one operand without any other size restrictions.
+    """AST Object for max and min operations. Could have more than one operand without any other size restrictions.
     """
 
     def __init__(self, op, operands):
@@ -549,8 +531,7 @@ class ComplexNumericOp(AST):
 
 
 class FilterOp(AST):
-    """
-    AST Object for filtering operations.
+    """AST Object for filtering operations.
 
     :parameter selection: operand or expression over the filter is applied
     :parameter condition: boolean operation to filter the operand
@@ -579,8 +560,7 @@ class FilterOp(AST):
 
 
 class TimeShiftOp(AST):
-    """
-    AST Object of the TimeShift operator.
+    """AST Object of the TimeShift operator.
 
     :parameter operand: Recordset where the operation is applied
     :parameter component: Component inside the Recordset to be selected
@@ -620,8 +600,7 @@ class TimeShiftOp(AST):
 
 
 class WhereClauseOp(AST):
-    """
-    AST object for the Where clause.
+    """AST object for the Where clause.
 
     :parameter operand: Operand where the filter is applied based on condition
     :parameter condition: Boolean expression to be used to filter information in the operand.
@@ -652,8 +631,7 @@ class WhereClauseOp(AST):
 
 
 class GetOp(AST):
-    """
-    AST Object for the Get operator. Replaces the Fact component with the specified component.
+    """AST Object for the Get operator. Replaces the Fact component with the specified component.
 
     :parameter operand: Recordset to be changed
     :parameter component: Component specified to replace the Fact component.
@@ -682,8 +660,7 @@ class GetOp(AST):
 
 
 class PreconditionItem(AST):
-    """
-    AST Object only used in Preconditions.
+    """AST Object only used in Preconditions.
 
     :parameter value: Sets to True or False if the desired table is present in the DB.
     """
@@ -709,8 +686,7 @@ class PreconditionItem(AST):
 
 
 class RenameOp(AST):
-    """
-    AST Object for rename operation.
+    """AST Object for rename operation.
 
     :parameter operand: Recordset on which components the rename operation applies.
     :parameter rename_nodes: A collection of Rename Nodes
@@ -737,8 +713,7 @@ class RenameOp(AST):
 
 
 class RenameNode(AST):
-    """
-    Used only in rename operation, specifies the component and the new name to be used
+    """Used only in rename operation, specifies the component and the new name to be used
 
     :parameter old_name: Component to be renamed
     :parameter new_name: New name applied to the component
@@ -767,8 +742,7 @@ class RenameNode(AST):
 
 
 class SubOp(AST):
-    """
-    AST Object for the Sub operator. Filters a recordset based on a property substitution.
+    """AST Object for the Sub operator. Filters a recordset based on a property substitution.
 
     :parameter operand: Recordset to be filtered
     :parameter property_code: Property code to substitute

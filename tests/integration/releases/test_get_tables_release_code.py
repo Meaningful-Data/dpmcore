@@ -1,7 +1,8 @@
-import pytest
 from datetime import date
+
+import pytest
 from py_dpm.api.dpm.data_dictionary import DataDictionaryAPI
-from py_dpm.dpm.models import Base, TableVersion, Table, Release
+from py_dpm.dpm.models import Base, Release, Table, TableVersion
 
 
 @pytest.fixture

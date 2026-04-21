@@ -1,9 +1,10 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
 from click.testing import CliRunner
-from py_dpm.cli.main import main, semantic, syntax
-from unittest.mock import patch, MagicMock, MagicMock
 from py_dpm.api.dpm_xl.semantic import SemanticValidationResult
 from py_dpm.api.dpm_xl.syntax import SyntaxValidationResult
+from py_dpm.cli.main import main
 
 
 @pytest.fixture
@@ -13,7 +14,6 @@ def runner():
 
 # Mock py_dpm.models before importing client or running tests that might trigger it
 import sys
-from unittest.mock import MagicMock
 
 sys.modules["py_dpm.models"] = MagicMock()
 

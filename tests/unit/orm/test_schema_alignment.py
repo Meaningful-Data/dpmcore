@@ -19,7 +19,6 @@ import subprocess
 from typing import Dict, Set
 
 import pytest
-from sqlalchemy import inspect as sa_inspect
 
 from dpmcore.orm import Base
 

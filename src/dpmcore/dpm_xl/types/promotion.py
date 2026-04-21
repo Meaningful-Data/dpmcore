@@ -13,8 +13,8 @@ from dpmcore.dpm_xl.types.scalar import (
     TimeInterval,
     TimePeriod,
 )
-from dpmcore.errors import SemanticError
 from dpmcore.dpm_xl.warning_collector import add_semantic_warning
+from dpmcore.errors import SemanticError
 
 implicit_type_promotion_dict = {
     String: {String},

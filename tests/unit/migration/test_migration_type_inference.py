@@ -7,25 +7,25 @@ which fixes the Windows vs Linux inconsistency issue.
 
 import decimal
 import sys
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
-from unittest.mock import MagicMock, patch
 
 from dpmcore.services.migration import MigrationService
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_engine():
     return MagicMock()
 
 
-@pytest.fixture()
+@pytest.fixture
 def service(mock_engine):
     return MigrationService(mock_engine)
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_pyodbc():
     mock_module = MagicMock()
     mock_module.Error = Exception

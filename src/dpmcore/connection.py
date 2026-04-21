@@ -167,7 +167,8 @@ class DpmConnection:
     @property
     def orm(self):
         """Direct access to the SQLAlchemy session for advanced ORM
-        queries."""
+        queries.
+        """
         return self.session
 
     # ------------------------------------------------------------------ #

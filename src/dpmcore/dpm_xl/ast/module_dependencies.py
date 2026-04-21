@@ -1,9 +1,9 @@
 from abc import ABC
 
+from dpmcore import errors
 from dpmcore.dpm_xl.ast.nodes import *
 from dpmcore.dpm_xl.ast.template import ASTTemplate
 from dpmcore.dpm_xl.ast.where_clause import WhereClauseChecker
-from dpmcore import errors
 from dpmcore.dpm_xl.model_queries import (
     ItemCategoryQuery,
     TableVersionQuery,
@@ -41,8 +41,7 @@ def filter_datapoints_df(df, table, table_info: dict, release_id: int = None):
 
 
 def filter_module_by_table_df(df, table):
-    """
-    Returns a list of modules that contain the table
+    """Returns a list of modules that contain the table
     """
     module_list = df[df["table_code"] == table]["module_code"].tolist()
     return module_list
@@ -97,8 +96,7 @@ class ModuleDependencies(ASTTemplate, ABC):
             for attribute in operand_elements:
                 if (
                     getattr(node, attribute, None) is None
-                    and not getattr(self.partial_selection, attribute, None)
-                    is None
+                    and getattr(self.partial_selection, attribute, None) is not None
                 ):
                     setattr(
                         node,

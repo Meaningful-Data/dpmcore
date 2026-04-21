@@ -1,14 +1,15 @@
+import warnings
 from abc import ABC
+from typing import Dict, Hashable, Tuple
 
 import pandas as pd
-import warnings
-from typing import Dict, Hashable, Tuple
 
 # Suppress pandas UserWarning about SQLAlchemy connection types
 warnings.filterwarnings(
     "ignore", message=".*pandas only supports SQLAlchemy.*"
 )
 
+from dpmcore import errors
 from dpmcore.dpm_xl.ast.nodes import (
     Dimension,
     GetOp,
@@ -24,9 +25,6 @@ from dpmcore.dpm_xl.ast.nodes import (
 )
 from dpmcore.dpm_xl.ast.template import ASTTemplate
 from dpmcore.dpm_xl.ast.where_clause import WhereClauseChecker
-from dpmcore.dpm_xl.types.scalar import Integer, Mixed, Number, ScalarFactory
-from dpmcore import errors
-from dpmcore.errors import SemanticError
 from dpmcore.dpm_xl.model_queries import (
     ItemCategoryQuery,
     OperationQuery,
@@ -34,21 +32,21 @@ from dpmcore.dpm_xl.model_queries import (
     ViewDatapointsQuery,
     ViewKeyComponentsQuery,
     ViewOpenKeysQuery,
-    compile_query_for_pandas,
-    read_sql_with_connection,
 )
+from dpmcore.dpm_xl.types.scalar import Integer, Mixed, Number, ScalarFactory
+from dpmcore.dpm_xl.utils.data_handlers import filter_all_data
+from dpmcore.dpm_xl.utils.filters import filter_by_release
+from dpmcore.dpm_xl.utils.operands_mapping import (
+    generate_new_label,
+    set_operand_label,
+)
+from dpmcore.errors import SemanticError
 from dpmcore.orm.rendering import (
     Header,
     Table,
     TableVersion,
     TableVersionHeader,
 )
-from dpmcore.dpm_xl.utils.filters import filter_by_release
-from dpmcore.dpm_xl.utils.operands_mapping import (
-    generate_new_label,
-    set_operand_label,
-)
-from dpmcore.dpm_xl.utils.data_handlers import filter_all_data
 
 operand_elements = ["table", "rows", "cols", "sheets", "default", "interval"]
 
@@ -71,9 +69,7 @@ def _create_operand_label(node):
 
 
 def _modify_element_info(new_data, element, table_info):
-    if new_data is None and table_info[element] is None:
-        pass
-    elif table_info[element] == ["*"]:
+    if new_data is None and table_info[element] is None or table_info[element] == ["*"]:
         pass
     elif new_data is not None and table_info[element] is None:
         table_info[element] = new_data
@@ -112,8 +108,7 @@ def _has_range_syntax(values):
 
 
 def _expand_ranges_from_data(node, node_data):
-    """
-    Expand range-type values in VarID node's rows/cols/sheets to actual codes from the database.
+    """Expand range-type values in VarID node's rows/cols/sheets to actual codes from the database.
 
     When a VarID has range syntax like ['0010-0080'], this function replaces it with
     the actual codes found in node_data (e.g., ['0010', '0020', '0030', ...]).
@@ -515,8 +510,7 @@ class OperandsChecking(ASTTemplate, ABC):
             for attribute in operand_elements:
                 if (
                     getattr(node, attribute, None) is None
-                    and not getattr(self.partial_selection, attribute, None)
-                    is None
+                    and getattr(self.partial_selection, attribute, None) is not None
                 ):
                     setattr(
                         node,
@@ -625,8 +619,7 @@ class OperandsChecking(ASTTemplate, ABC):
 
 
 def extract_data_types(node: VarID, database_types: pd.Series) -> None:
-    """
-    Extract data type of var ids from database information
+    """Extract data type of var ids from database information
     :param node: Var id
     :param database_types: Series that contains the data types of node elements
     :return: None
@@ -636,9 +629,9 @@ def extract_data_types(node: VarID, database_types: pd.Series) -> None:
     if len(unique_types) == 1:
         data_type = scalar_factory.database_types_mapping(unique_types[0])
         if node.interval and isinstance(data_type(), Number):
-            setattr(node, "type", data_type(node.interval))
+            node.type = data_type(node.interval)
         else:
-            setattr(node, "type", data_type())
+            node.type = data_type()
     else:
         data_types = {
             scalar_factory.database_types_mapping(data_type)
@@ -646,12 +639,12 @@ def extract_data_types(node: VarID, database_types: pd.Series) -> None:
         }
         if len(data_types) == 1:
             data_type = data_types.pop()
-            setattr(node, "type", data_type())
+            node.type = data_type()
         elif (
             len(data_types) == 2
             and Number in data_types
             and Integer in data_types
         ):
-            setattr(node, "type", Number())
+            node.type = Number()
         else:
-            setattr(node, "type", Mixed())
+            node.type = Mixed()

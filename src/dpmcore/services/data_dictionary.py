@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, distinct, func, or_
+from sqlalchemy import distinct
 
 from dpmcore.dpm_xl.utils.filters import (
     filter_active_only,
@@ -18,12 +18,6 @@ from dpmcore.orm.packaging import (
     ModuleVersionComposition,
 )
 from dpmcore.orm.rendering import TableVersion
-from dpmcore.orm.variables import (
-    CompoundKey,
-    KeyComposition,
-    Variable,
-    VariableVersion,
-)
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

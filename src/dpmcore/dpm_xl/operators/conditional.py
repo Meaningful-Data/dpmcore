@@ -2,23 +2,23 @@ from typing import Union
 
 import pandas as pd
 
-from dpmcore.dpm_xl.types.scalar import Mixed, ScalarFactory
-from dpmcore.dpm_xl.types.promotion import (
-    binary_implicit_type_promotion,
-    binary_implicit_type_promotion_with_mixed_types,
-    unary_implicit_type_promotion,
-)
 from dpmcore import errors
-from dpmcore.errors import SemanticError
 from dpmcore.dpm_xl.operators.base import Binary, Operator
-from dpmcore.dpm_xl.utils import tokens
 from dpmcore.dpm_xl.symbols import (
     ConstantOperand,
     RecordSet,
     Scalar,
     Structure,
 )
+from dpmcore.dpm_xl.types.promotion import (
+    binary_implicit_type_promotion,
+    binary_implicit_type_promotion_with_mixed_types,
+    unary_implicit_type_promotion,
+)
+from dpmcore.dpm_xl.types.scalar import Mixed, ScalarFactory
+from dpmcore.dpm_xl.utils import tokens
 from dpmcore.dpm_xl.warning_collector import add_semantic_warning
+from dpmcore.errors import SemanticError
 
 
 class ConditionalOperator(Operator):
@@ -49,8 +49,7 @@ class ConditionalOperator(Operator):
     def _check_same_recordset_structures(
         cls, left: RecordSet, right: RecordSet, origin
     ) -> bool:
-        """
-        Used for recordset-recordset
+        """Used for recordset-recordset
         """
         left = left.structure
         right = right.structure
@@ -70,8 +69,7 @@ class ConditionalOperator(Operator):
         origin: str,
         subset_allowed: bool = True,
     ) -> bool:
-        """
-        Used for recordset-recordset
+        """Used for recordset-recordset
         """
         left_records = left.records
         right_records = right.records
@@ -170,16 +168,10 @@ class IfOperator(ConditionalOperator):
 
     @classmethod
     def create_origin_expression(cls, condition, then_op, else_op=None) -> str:
-        condition_name = getattr(condition, "name", None) or getattr(
-            condition, "origin"
-        )
-        then_name = getattr(then_op, "name", None) or getattr(
-            then_op, "origin"
-        )
+        condition_name = getattr(condition, "name", None) or condition.origin
+        then_name = getattr(then_op, "name", None) or then_op.origin
         if else_op:
-            else_name = getattr(else_op, "name", None) or getattr(
-                else_op, "origin"
-            )
+            else_name = getattr(else_op, "name", None) or else_op.origin
             origin = f"If {condition_name} then {then_name} else {else_name}"
         else:
             origin = f"If {condition_name} then {then_name}"
@@ -187,8 +179,7 @@ class IfOperator(ConditionalOperator):
 
     @classmethod
     def check_condition(cls, condition: Union[RecordSet, Scalar]) -> bool:
-        """
-        Check if the condition has Boolean type
+        """Check if the condition has Boolean type
         """
         if isinstance(condition, RecordSet):
             condition_type = condition.structure.components["f"].type
@@ -298,8 +289,7 @@ class IfOperator(ConditionalOperator):
     def _check_if_structures(
         cls, condition: RecordSet, operand: RecordSet, origin: str
     ):
-        """
-        Bidirectional structure check for IF operator.
+        """Bidirectional structure check for IF operator.
         Returns (result_structure, result_records) where result is the superset.
         """
         # Same structure: return condition's
@@ -411,8 +401,8 @@ class Nvl(ConditionalOperator):
 
     @classmethod
     def create_origin_expression(cls, left, right) -> str:
-        left_name = getattr(left, "name", None) or getattr(left, "origin")
-        right_name = getattr(right, "name", None) or getattr(right, "origin")
+        left_name = getattr(left, "name", None) or left.origin
+        right_name = getattr(right, "name", None) or right.origin
 
         origin = f"{cls.op}({left_name},{right_name})"
         return origin

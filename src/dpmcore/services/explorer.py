@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from sqlalchemy import and_, or_
-
 from dpmcore.dpm_xl.utils.filters import filter_by_release
 from dpmcore.orm.operations import (
     OperandReference,
@@ -13,19 +11,10 @@ from dpmcore.orm.operations import (
     OperationNode,
     OperationVersion,
 )
-from dpmcore.orm.packaging import (
-    ModuleVersion,
-    ModuleVersionComposition,
-)
 from dpmcore.orm.rendering import (
-    Cell,
-    Header,
-    HeaderVersion,
     TableVersion,
-    TableVersionCell,
-    TableVersionHeader,
 )
-from dpmcore.orm.variables import Variable, VariableVersion
+from dpmcore.orm.variables import VariableVersion
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

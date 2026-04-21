@@ -1,13 +1,12 @@
 from typing import List, Union
 
 from dpmcore.dpm_xl.types.scalar import ScalarFactory
-from dpmcore.errors import SemanticError
 from dpmcore.dpm_xl.utils.tokens import DPM, STANDARD
+from dpmcore.errors import SemanticError
 
 
 class Operand:
-    """
-    Superclass of all Symbols.
+    """Superclass of all Symbols.
 
     :parameter name: Name of the operand
     :parameter origin: Expression to be used to generate this operand.
@@ -29,8 +28,7 @@ class Operand:
 
 
 class Scalar(Operand):
-    """
-    Operand to be used when finding a single Cell Reference or an Item
+    """Operand to be used when finding a single Cell Reference or an Item
     """
 
     def __init__(self, type_, name, origin):
@@ -44,8 +42,7 @@ class Scalar(Operand):
 
 
 class Component:
-    """
-    Superclass of all components inside a recordset
+    """Superclass of all components inside a recordset
     """
 
     def __init__(
@@ -63,8 +60,7 @@ class Component:
 
 
 class KeyComponent(Component):
-    """
-    Component used to specify the row, column, sheet or property in a Recordset
+    """Component used to specify the row, column, sheet or property in a Recordset
 
     :parameter name: Name of the component
     :parameter type_: Data type of the component
@@ -88,8 +84,7 @@ class KeyComponent(Component):
 
 
 class FactComponent(Component):
-    """
-    Component used to specify the data type of the recordset
+    """Component used to specify the data type of the recordset
     """
 
     def __init__(self, type_: ScalarFactory().all_types, parent: str) -> None:
@@ -97,8 +92,7 @@ class FactComponent(Component):
 
 
 class AttributeComponent(Component):
-    """
-    Components that are included in the recordset as auxiliar information.
+    """Components that are included in the recordset as auxiliar information.
     These components are drop normally except for rename and where operators.
     """
 
@@ -109,8 +103,7 @@ class AttributeComponent(Component):
 
 
 class Structure:
-    """
-    Structure for the Recordset. Components must have unique names and only one Fact Component can be present.
+    """Structure for the Recordset. Components must have unique names and only one Fact Component can be present.
     """
 
     def __init__(self, components: List[Component]) -> None:
@@ -193,8 +186,7 @@ class Structure:
 
 
 class RecordSet(Operand):
-    """
-    Recordset are collections of Records that share a same Structure.
+    """Recordset are collections of Records that share a same Structure.
     Technically, Recordsets are two-dimensional labelled data structures (tabular),
     which can be assimilated to Relational Tables or Data Frames.
     The columns (fields) of the Recordset are provided by the Components of its Structure.
@@ -244,8 +236,7 @@ class RecordSet(Operand):
 
 
 class ScalarSet(Operand):
-    """
-    Scalar set are a collection of scalars used in the IN operator.
+    """Scalar set are a collection of scalars used in the IN operator.
     """
 
     def __init__(self, type_, name, origin):

@@ -25,7 +25,6 @@ from dpmcore.orm.base import Base
 
 if TYPE_CHECKING:
     from dpmcore.orm.glossary import ContextComposition
-    from dpmcore.orm.operations import Operator
 
 
 # ------------------------------------------------------------------

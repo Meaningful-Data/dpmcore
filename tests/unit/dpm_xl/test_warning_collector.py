@@ -1,11 +1,11 @@
 """Tests for the semantic validation warning collector."""
 
-import pytest
 import threading
+
 from py_dpm.dpm_xl.warning_collector import (
     WarningCollector,
-    collect_warnings,
     add_semantic_warning,
+    collect_warnings,
     get_active_collector,
 )
 

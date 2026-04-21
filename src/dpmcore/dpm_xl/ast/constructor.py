@@ -1,5 +1,4 @@
-"""
-AST.ASTConstructor.py
+"""AST.ASTConstructor.py
 =====================
 
 Description
@@ -11,19 +10,18 @@ import re
 
 from antlr4.tree.Tree import TerminalNodeImpl
 
-from dpmcore.dpm_xl.ast.nodes import *
 from dpmcore import errors
-from dpmcore.errors import SemanticError
-from dpmcore.dpm_xl.utils.tokens import TABLE_GROUP_PREFIX
+from dpmcore.dpm_xl.ast.nodes import *
 from dpmcore.dpm_xl.grammar.generated.dpm_xlParser import dpm_xlParser
 from dpmcore.dpm_xl.grammar.generated.dpm_xlParserVisitor import (
     dpm_xlParserVisitor,
 )
+from dpmcore.dpm_xl.utils.tokens import TABLE_GROUP_PREFIX
+from dpmcore.errors import SemanticError
 
 
 class ASTVisitor(dpm_xlParserVisitor):
-    """
-    Class to walk to generate an AST which nodes are defined at AST.ASTObjects
+    """Class to walk to generate an AST which nodes are defined at AST.ASTObjects
     """
 
     def visitStart(self, ctx: dpm_xlParser.StartContext):

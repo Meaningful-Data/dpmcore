@@ -1,24 +1,18 @@
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from py_dpm.dpm.models import (
     Base,
-    ModuleVersion,
-    TableVersion,
-    ModuleVersionComposition,
-    Table,
     Module,
+    ModuleParameters,
+    ModuleVersion,
+    ModuleVersionComposition,
     Release,
-    CompoundKey,
-    Concept,
-    DpmClass,
-    Organisation,
+    Table,
+    TableVersion,
     Variable,
     VariableVersion,
-    ModuleParameters,
 )
-
-
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 
@@ -306,8 +300,7 @@ class TestGetFromReleaseId:
     def test_get_from_release_id_finrep9_integration(
         self, session, setup_releases
     ):
-        """
-        Integration test: FINREP9 module with release_id=104 should return
+        """Integration test: FINREP9 module with release_id=104 should return
         module version with start_release.releaseid=101 when current version
         has equal fromreferencedate and toreferencedate.
         """
@@ -484,8 +477,9 @@ class TestApplyFallbackForEqualDates:
         self, session, setup_fallback_data
     ):
         """DataFrame without equal dates should return unchanged."""
-        import pandas as pd
         from datetime import date
+
+        import pandas as pd
 
         # Create DataFrame with different from/to dates
         df = pd.DataFrame(
@@ -508,8 +502,9 @@ class TestApplyFallbackForEqualDates:
 
     def test_equal_dates_triggers_fallback(self, session, setup_fallback_data):
         """Rows with equal dates should get replaced with previous version."""
-        import pandas as pd
         from datetime import date
+
+        import pandas as pd
 
         # Create DataFrame with the "current" version (equal dates)
         df = pd.DataFrame(
@@ -539,8 +534,9 @@ class TestApplyFallbackForEqualDates:
 
     def test_no_previous_version_keeps_original(self, session):
         """If no previous version exists, keep original row."""
-        import pandas as pd
         from datetime import date
+
+        import pandas as pd
 
         # Create a module with only one version (no previous)
         release = Release(releaseid=310, code="R310")

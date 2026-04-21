@@ -1,17 +1,16 @@
 import pandas as pd
 
-from dpmcore.dpm_xl.types.scalar import Integer, Number, ScalarFactory
-from dpmcore.dpm_xl.types.promotion import unary_implicit_type_promotion
 from dpmcore import errors
-from dpmcore.dpm_xl.operators.base import Operator, Binary, Unary, Complex
-from dpmcore.dpm_xl.utils import tokens
+from dpmcore.dpm_xl.operators.base import Unary
 from dpmcore.dpm_xl.symbols import RecordSet
+from dpmcore.dpm_xl.types.promotion import unary_implicit_type_promotion
+from dpmcore.dpm_xl.types.scalar import Integer, Number, ScalarFactory
+from dpmcore.dpm_xl.utils import tokens
 from dpmcore.dpm_xl.warning_collector import add_semantic_warning
 
 
 class AggregateOperator(Unary):
-    """
-    Aggregate operators involve all operators with a Recordset and a Grouping clause.
+    """Aggregate operators involve all operators with a Recordset and a Grouping clause.
 
     The grouping clause components must be present in the operand recordset.
     """

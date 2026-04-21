@@ -10,16 +10,15 @@ from dpmcore.dpm_xl.model_queries import (
     ModuleVersionQuery,
     OperationScopeCompositionQuery,
 )
+from dpmcore.dpm_xl.utils.tokens import (
+    VALID_SEVERITIES,
+    VARIABLE_VID,
+    WARNING_SEVERITY,
+)
 from dpmcore.orm.operations import (
     OperationScope,
     OperationScopeComposition,
 )
-from dpmcore.dpm_xl.utils.tokens import (
-    VARIABLE_VID,
-    WARNING_SEVERITY,
-    VALID_SEVERITIES,
-)
-
 
 FROM_REFERENCE_DATE = "FromReferenceDate"
 TO_REFERENCE_DATE = "ToReferenceDate"
@@ -39,8 +38,7 @@ def _check_if_existing(composition_modules, existing_scopes):
 
 
 class OperationScopeService:
-    """
-    Class to calculate OperationScope and OperationScopeComposition tables for an operation version
+    """Class to calculate OperationScope and OperationScopeComposition tables for an operation version
     """
 
     def __init__(self, operation_version_id, session=None):
@@ -58,8 +56,7 @@ class OperationScopeService:
         release_id=None,
         table_codes: list = None,
     ):
-        """
-        Calculate OperationScope and OperationScopeComposition tables for an operation version, taking as input
+        """Calculate OperationScope and OperationScopeComposition tables for an operation version, taking as input
         a list with the operation table version ids in order to calculate the module versions involved in the operation
         :param tables_vids: List with table version ids
         :param precondition_items: List with precondition codes
@@ -218,12 +215,7 @@ class OperationScopeService:
                             modules_dataframe=modules_info_dataframe,
                         )
                 # Legacy table_codes without lifecycle grouping
-                elif table_codes:
-                    self.process_cross_module(
-                        cross_modules=cross_modules,
-                        modules_dataframe=modules_info_dataframe,
-                    )
-                elif set(cross_modules.keys()) == set(tables_vids):
+                elif table_codes or set(cross_modules.keys()) == set(tables_vids):
                     self.process_cross_module(
                         cross_modules=cross_modules,
                         modules_dataframe=modules_info_dataframe,
@@ -254,8 +246,7 @@ class OperationScopeService:
         release_id=None,
         table_codes=None,
     ):
-        """
-        Extracts modules information of tables version ids and preconditions from database and
+        """Extracts modules information of tables version ids and preconditions from database and
         joins them in a single dataframe
         :param tables_vids: List with table version ids
         :param precondition_items: List with precondition codes
@@ -335,8 +326,7 @@ class OperationScopeService:
         return modules_info_dataframe
 
     def process_repeated(self, modules_vids, modules_info):
-        """
-        Method to calculate OperationScope and OperationScopeComposition tables for repeated operations
+        """Method to calculate OperationScope and OperationScopeComposition tables for repeated operations
         :param modules_vids: list with module version ids
         """
         # Pre-build dict lookup for O(1) access instead of DataFrame boolean filtering per module
@@ -365,8 +355,7 @@ class OperationScopeService:
             )
 
     def process_cross_module(self, cross_modules, modules_dataframe):
-        """
-        Method to calculate OperationScope and OperationScopeComposition tables for a cross module operation
+        """Method to calculate OperationScope and OperationScopeComposition tables for a cross module operation
         :param cross_modules: dictionary with table version ids as key and its module version ids as values
         :param modules_dataframe: dataframe with modules data
         """
@@ -424,8 +413,7 @@ class OperationScopeService:
                 )
 
     def create_operation_scope(self, submission_date, severity: str = None):
-        """
-        Method to populate OperationScope table.
+        """Method to populate OperationScope table.
 
         Args:
             submission_date: The submission date for the operation scope.
@@ -473,8 +461,7 @@ class OperationScopeService:
     def create_operation_scope_composition(
         self, operation_scope, module_vid, module_info=None
     ):
-        """
-        Method to populate OperationScopeComposition table
+        """Method to populate OperationScopeComposition table
         :param operation_scope: Operation scope data
         :param module_vid: Module version id
         :param module_info: Optional dict with module info (code, from_reference_date, to_reference_date)
@@ -490,8 +477,7 @@ class OperationScopeService:
         self.session.add(operation_scope_composition)
 
     def get_scopes_with_status(self):
-        """
-        Method that checks if operation scope exists in database and classifies it based on whether it exists or not
+        """Method that checks if operation scope exists in database and classifies it based on whether it exists or not
         :return two list with existing and new scopes
         """
         existing_scopes = []

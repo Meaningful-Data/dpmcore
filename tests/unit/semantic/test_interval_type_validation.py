@@ -1,12 +1,10 @@
-"""
-Tests for interval type validation in ScalarFactory.
+"""Tests for interval type validation in ScalarFactory.
 
 Tests that the ScalarFactory correctly validates that interval=true can only
 be used with Number and Integer types, not with String, Boolean, Item, etc.
 """
 
 import pytest
-
 from py_dpm.dpm_xl.types.scalar import (
     Boolean,
     Integer,
