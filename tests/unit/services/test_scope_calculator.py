@@ -7,10 +7,13 @@ detect_cross_module_dependencies) and Fix 3
 
 import importlib.util
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 @pytest.fixture(autouse=True)
@@ -61,7 +64,7 @@ def _load_module():
 
     spec = importlib.util.spec_from_file_location(
         mod_name,
-        "src/dpmcore/services/scope_calculator.py",
+        _REPO_ROOT / "src/dpmcore/services/scope_calculator.py",
     )
     mod = importlib.util.module_from_spec(spec)
     # Register before exec so dataclasses can resolve module

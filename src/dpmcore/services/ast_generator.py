@@ -5,15 +5,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from dpmcore.dpm_xl.utils.serialization import serialize_ast
-from dpmcore.services.scope_calculator import (
-    ScopeCalculatorService,
-    ScopeResult,
-)
 from dpmcore.services.semantic import SemanticService
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+
+    from dpmcore.services.scope_calculator import (
+        ScopeCalculatorService,
+        ScopeResult,
+    )
 
 
 class ASTGeneratorService:
@@ -31,8 +32,12 @@ class ASTGeneratorService:
         self.session = session
         self._syntax = SyntaxService()
         self._semantic: Optional[SemanticService] = None
-        self._scope_calc: Optional[ScopeCalculatorService] = None
+        self._scope_calc: Optional["ScopeCalculatorService"] = None
         if session is not None:
+            from dpmcore.services.scope_calculator import (
+                ScopeCalculatorService,
+            )
+
             self._semantic = SemanticService(session)
             self._scope_calc = ScopeCalculatorService(session)
 
@@ -289,9 +294,15 @@ class ASTGeneratorService:
             )
         )
 
+        seen: set = set()
+        deduped_intra = [
+            x for x in all_intra
+            if not (x in seen or seen.add(x))
+        ]
+
         return {
             "dependency_information": {
-                "intra_instance_validations": all_intra,
+                "intra_instance_validations": deduped_intra,
                 "cross_instance_dependencies": all_cross,
                 "alternative_dependencies": alt_deps,
             },

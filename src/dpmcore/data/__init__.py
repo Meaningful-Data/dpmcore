@@ -26,7 +26,7 @@ def _load_module_schema_mapping() -> list:
         Path(__file__).parent
         / "module_schema_mapping.csv"
     )
-    with open(csv_path, newline="") as f:
+    with open(csv_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         return [
             {

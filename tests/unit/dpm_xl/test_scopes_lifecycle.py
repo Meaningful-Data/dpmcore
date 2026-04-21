@@ -7,10 +7,13 @@ starting and ending module groups.
 
 import importlib.util
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 @pytest.fixture(autouse=True)
@@ -79,7 +82,7 @@ def _get_svc_class():
 
     spec = importlib.util.spec_from_file_location(
         mod_name,
-        "src/dpmcore/dpm_xl/utils/scopes_calculator.py",
+        _REPO_ROOT / "src/dpmcore/dpm_xl/utils/scopes_calculator.py",
     )
     mod = importlib.util.module_from_spec(spec)
     sys.modules[mod_name] = mod

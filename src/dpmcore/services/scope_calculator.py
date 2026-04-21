@@ -325,9 +325,7 @@ class ScopeCalculatorService:
                 continue
 
             # Collect tables for this external module
-            tables_dict = self._get_module_tables(
-                vid, release_id
-            )
+            tables_dict = self._get_module_tables(vid)
 
             # Determine ref_period: most specific (non-T) wins
             ref_period = "T"
@@ -493,10 +491,23 @@ class ScopeCalculatorService:
             needed.add(v1)
             needed.add(v2)
 
+        mv_by_vid: Dict[int, Any] = {}
+        if needed:
+            mv_rows = (
+                self.session.query(ModuleVersion)
+                .filter(
+                    ModuleVersion.module_vid.in_(needed)
+                )
+                .all()
+            )
+            mv_by_vid = {mv.module_vid: mv for mv in mv_rows}
+
         vid_to_uri: Dict[int, str] = {}
         for vid in needed:
             uri = self._get_module_uri(
-                module_vid=vid, release_id=release_id
+                module_vid=vid,
+                release_id=release_id,
+                mv=mv_by_vid.get(vid),
             )
             if uri:
                 vid_to_uri[vid] = uri
@@ -517,7 +528,6 @@ class ScopeCalculatorService:
     def _get_module_tables(
         self,
         module_vid: int,
-        release_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Return tables for a module with their variables.
 
