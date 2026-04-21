@@ -34,6 +34,9 @@ collect_ignore_glob = [
     "unit/dpm_xl/test_warning_collector.py",
     "unit/semantic/test_default_value_type_check.py",
     "unit/semantic/test_interval_type_validation.py",
+    # Depends on a fixture database at tests/fixtures/test_data.db that is
+    # not tracked in the repo. Tracked in the cleanup issue.
+    "integration/validation/test_semantic_release.py",
 ]
 
 

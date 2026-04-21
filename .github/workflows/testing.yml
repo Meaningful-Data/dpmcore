@@ -18,7 +18,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        # 3.13 deferred: pyodbc 5.1 sdist does not compile against the
+        # Python 3.13 C API. Re-add once the pyodbc pin is bumped to 5.2+.
+        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
       - name: Checkout code
