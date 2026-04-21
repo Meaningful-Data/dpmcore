@@ -1,8 +1,12 @@
 name: Publish package
 
+run-name: "Publish package ${{ github.event.client_payload.tag_name || github.event.release.tag_name || '' }}"
+
 on:
   release:
-    types: [ published ]
+    types: [published]
+  repository_dispatch:
+    types: [release-published]
 
 permissions:
   contents: read
