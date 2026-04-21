@@ -122,6 +122,8 @@ lint.pydocstyle.convention = "google"
 # Public entry points are in src/dpmcore/services/ and still require
 # docstrings/line-length compliance.
 "src/dpmcore/dpm_xl/**" = [
+    "B904",
+    "C901",
     "D100",
     "D101",
     "D102",
@@ -132,11 +134,17 @@ lint.pydocstyle.convention = "google"
     "D205",
     "D415",
     "D419",
+    "DTZ002",
+    "DTZ007",
+    "E402",
     "E501",
     "F401",
     "F403",
     "F405",
 ]
+# SQLAlchemy 2.0 declarative models use string forward references in
+# Mapped[...] annotations that ruff cannot resolve statically.
+"src/dpmcore/orm/*" = ["F821"]
 "tests/*" = [
     "C901",
     "DTZ",
