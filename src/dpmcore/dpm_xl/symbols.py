@@ -204,7 +204,7 @@ class RecordSet(Operand):
         self.default = None
         self.has_only_global_components = all(
             component.is_global
-                for component in structure.get_key_components().values()
+            for component in structure.get_key_components().values()
         )
 
     def get_key_components(self) -> dict:

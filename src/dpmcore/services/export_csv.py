@@ -80,7 +80,8 @@ class ExportCsvService:
                     future.result()
                 except Exception as exc:
                     raise ExportCsvError(
-                        f"Failed to export table '{table}' from '{access_path}': {exc}"
+                        f"Failed to export table '{table}' from "
+                        f"'{access_path}': {exc}"
                     ) from exc
         return ExportCsvResult(
             tables_exported=len(table_names),
@@ -93,10 +94,11 @@ class ExportCsvService:
     # ------------------------------------------------------------------ #
 
     def _check_mdbtools(self) -> None:
-        missing = []
-        for command in ["mdb-tables", "mdb-export"]:
-            if shutil.which(command) is None:
-                missing.append(command)
+        missing = [
+            command
+            for command in ["mdb-tables", "mdb-export"]
+            if shutil.which(command) is None
+        ]
         if missing:
             raise ExportCsvError(
                 "mdb-tools is not installed or not available in PATH. "

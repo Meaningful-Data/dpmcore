@@ -30,7 +30,10 @@ def _check_if_existing(composition_modules, existing_scopes):
     existing_scopes = existing_scopes[
         existing_scopes[MODULE_VID].isin(composition_modules)
     ][MODULE_VID].tolist()
-    return bool(len(existing_scopes) and set(composition_modules) == set(existing_scopes))
+    return bool(
+        len(existing_scopes)
+        and set(composition_modules) == set(existing_scopes)
+    )
 
 
 class OperationScopeService:
@@ -210,7 +213,9 @@ class OperationScopeService:
                             modules_dataframe=modules_info_dataframe,
                         )
                 # Legacy table_codes without lifecycle grouping
-                elif table_codes or set(cross_modules.keys()) == set(tables_vids):
+                elif table_codes or set(cross_modules.keys()) == set(
+                    tables_vids
+                ):
                     self.process_cross_module(
                         cross_modules=cross_modules,
                         modules_dataframe=modules_info_dataframe,

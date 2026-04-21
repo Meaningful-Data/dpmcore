@@ -207,7 +207,9 @@ class InputAnalyzer(ASTTemplate, ABC):
             dpm_keys = self.key_components[node.table]
             if len(dpm_keys) > 0:
                 for key_name, key_type in zip(
-                    dpm_keys["property_code"], dpm_keys["data_type"], strict=False
+                    dpm_keys["property_code"],
+                    dpm_keys["data_type"],
+                    strict=False,
                 ):
                     if not key_type:
                         type_ = Item()
@@ -243,12 +245,8 @@ class InputAnalyzer(ASTTemplate, ABC):
         components.extend(standard_keys)
         if len(components) == 0:
             set_operand_label(label=label, operand=node)
-            return Scalar(
-                type_=node.type, name=label, origin=label
-            )
-        fact_component = FactComponent(
-            type_=node.type, parent=label
-        )
+            return Scalar(type_=node.type, name=label, origin=label)
+        fact_component = FactComponent(type_=node.type, parent=label)
 
         components.append(fact_component)
         structure = Structure(components)

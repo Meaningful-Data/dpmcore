@@ -31,6 +31,7 @@ class HierarchyService:
     """
 
     def __init__(self, session: "Session") -> None:
+        """Build the service bound to ``session``."""
         self.session = session
 
     def get_all_frameworks(

@@ -28,6 +28,7 @@ class ExplorerService:
     """
 
     def __init__(self, session: "Session") -> None:
+        """Build the service bound to ``session``."""
         self.session = session
 
     def get_variable_by_code(

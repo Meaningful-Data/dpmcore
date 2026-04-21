@@ -436,7 +436,7 @@ class Dimension(AST):
             "<AST(name='{name}', dimension_code='{dimension_code}')>".format(
                 name=self.__class__.__name__,
                 dimension_code=self.dimension_code,
-                )
+            )
         )
 
     __repr__ = __str__

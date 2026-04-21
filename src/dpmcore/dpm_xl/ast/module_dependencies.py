@@ -95,7 +95,8 @@ class ModuleDependencies(ASTTemplate, ABC):
             for attribute in operand_elements:
                 if (
                     getattr(node, attribute, None) is None
-                    and getattr(self.partial_selection, attribute, None) is not None
+                    and getattr(self.partial_selection, attribute, None)
+                    is not None
                 ):
                     setattr(
                         node,

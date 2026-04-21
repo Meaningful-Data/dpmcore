@@ -520,7 +520,9 @@ class Changelog(Base):
         foreign_keys=[release_id]
     )
     changelog_attributes: Mapped[List["ChangelogAttribute"]] = relationship(
-        primaryjoin="Changelog.action_id == foreign(ChangelogAttribute.action_id)",
+        primaryjoin=(
+            "Changelog.action_id == foreign(ChangelogAttribute.action_id)"
+        ),
         back_populates="changelog",
     )
 

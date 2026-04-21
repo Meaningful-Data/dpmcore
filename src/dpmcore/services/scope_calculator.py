@@ -38,6 +38,7 @@ class ScopeCalculatorService:
     """
 
     def __init__(self, session: "Session") -> None:
+        """Build the service bound to ``session``."""
         self.session = session
         self._syntax = SyntaxService()
 

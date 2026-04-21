@@ -69,7 +69,11 @@ def _create_operand_label(node):
 
 
 def _modify_element_info(new_data, element, table_info):
-    if new_data is None and table_info[element] is None or table_info[element] == ["*"]:
+    if (
+        new_data is None
+        and table_info[element] is None
+        or table_info[element] == ["*"]
+    ):
         pass
     elif new_data is not None and table_info[element] is None:
         table_info[element] = new_data
@@ -326,7 +330,8 @@ class OperandsChecking(ASTTemplate, ABC):
             property_id_map = dict(
                 zip(
                     self.open_keys["property_code"],
-                    self.open_keys["property_id"], strict=False,
+                    self.open_keys["property_id"],
+                    strict=False,
                 )
             )
             for node in self.dimension_nodes:
@@ -397,7 +402,11 @@ class OperandsChecking(ASTTemplate, ABC):
         if getop_keys is not None and not getop_keys.empty:
             # Create a mapping from component code to property_id
             property_id_map = dict(
-                zip(getop_keys["property_code"], getop_keys["property_id"], strict=False)
+                zip(
+                    getop_keys["property_code"],
+                    getop_keys["property_id"],
+                    strict=False,
+                )
             )
             for node in self.getop_nodes:
                 if node.component in property_id_map:
@@ -510,7 +519,8 @@ class OperandsChecking(ASTTemplate, ABC):
             for attribute in operand_elements:
                 if (
                     getattr(node, attribute, None) is None
-                    and getattr(self.partial_selection, attribute, None) is not None
+                    and getattr(self.partial_selection, attribute, None)
+                    is not None
                 ):
                     setattr(
                         node,

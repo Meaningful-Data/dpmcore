@@ -25,6 +25,7 @@ class DpmXlService:
     """
 
     def __init__(self, session: Optional["Session"] = None) -> None:
+        """Build the facade, optionally bound to a SQLAlchemy ``session``."""
         self.syntax = SyntaxService()
         self.session = session
 

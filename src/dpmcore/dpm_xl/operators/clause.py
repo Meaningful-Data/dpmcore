@@ -61,7 +61,9 @@ class ClauseOperator(Operator):
                     recordset=operand.name,
                 )
 
-            for name, new_name in list(zip(key_names, new_names, strict=False)):
+            for name, new_name in list(
+                zip(key_names, new_names, strict=False)
+            ):
                 if new_name in (
                     tokens.ROW,
                     tokens.COLUMN,

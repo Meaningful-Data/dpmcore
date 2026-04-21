@@ -31,6 +31,7 @@ class SyntaxService:
     """
 
     def __init__(self) -> None:
+        """Build a stateless syntax validator."""
         self._error_listener = DPMErrorListener()
         self._visitor = ASTVisitor()
 
