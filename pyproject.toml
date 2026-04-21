@@ -42,21 +42,25 @@ documentation = "https://docs.dpmcore.meaningfuldata.eu"
 "Bug Tracker" = "https://github.com/Meaningful-Data/dpmcore/issues"
 
 [project.optional-dependencies]
-server = ["fastapi>=0.115", "uvicorn[standard]>=0.30"]
-django = ["django>=5.2", "mssql-django>=1.5"]
+# Floors aligned with Ubuntu 24.04 (Noble) apt package versions so that
+# ubuntu_test_24_04.yml can install this library with system packages
+# via `pip install --no-dependencies`. Version bumps above these floors
+# should stay within semver compatibility.
+server = ["fastapi>=0.101", "uvicorn[standard]>=0.27"]
+django = ["django>=4.2", "mssql-django>=1.5"]
 postgres = ["psycopg2-binary>=2.9,<3.0"]
-sqlserver = ["pyodbc>=5.2,<6.0"]
-migration = ["pandas>=2.2"]
-data = ["pandas>=2.2"]
+sqlserver = ["pyodbc>=5.0"]
+migration = ["pandas>=2.1.4"]
+data = ["pandas>=2.1.4"]
 cli = ["click>=8.1", "rich>=13.7"]
 all = [
-    "fastapi>=0.115",
-    "uvicorn[standard]>=0.30",
-    "django>=5.2",
+    "fastapi>=0.101",
+    "uvicorn[standard]>=0.27",
+    "django>=4.2",
     "mssql-django>=1.5",
     "psycopg2-binary>=2.9,<3.0",
-    "pyodbc>=5.2,<6.0",
-    "pandas>=2.2",
+    "pyodbc>=5.0",
+    "pandas>=2.1.4",
     "click>=8.1",
     "rich>=13.7",
 ]
