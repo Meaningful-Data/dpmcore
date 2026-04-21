@@ -90,6 +90,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.ruff]
 line-length = 79
+exclude = ["src/dpmcore/dpm_xl/grammar/generated"]
 lint.select = [
     "ASYNC",
     "B",
@@ -116,6 +117,18 @@ lint.pydocstyle.convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "src/dpmcore/django/models/*" = ["D105", "D106"]
 "src/dpmcore/django/admin.py" = ["D101"]
+# AST constructor is a 1:1 mirror of the ANTLR grammar; per-visit-method
+# docstrings would duplicate the grammar. Star-imports from the generated
+# module are intentional.
+"src/dpmcore/dpm_xl/ast/constructor.py" = ["D102", "F403", "F405"]
+# Internal DPM-XL implementation modules rely on star-imports from sibling
+# packages as the established re-export pattern.
+"src/dpmcore/dpm_xl/ast/ml_generation.py" = ["F403", "F405"]
+"src/dpmcore/dpm_xl/ast/module_dependencies.py" = ["F403", "F405"]
+"src/dpmcore/dpm_xl/utils/data_handlers.py" = ["F403", "F405"]
+"src/dpmcore/dpm_xl/utils/operator_mapping.py" = ["F403", "F405"]
+# Package __init__ files re-export via star-imports to flatten the public API.
+"src/dpmcore/dpm_xl/**/__init__.py" = ["F401", "F403"]
 "tests/*" = [
     "C901",
     "DTZ",
@@ -124,7 +137,15 @@ lint.pydocstyle.convention = "google"
     "D102",
     "D103",
     "D104",
+    "D105",
+    "D106",
+    "D107",
+    "D205",
+    "D415",
+    "E501",
     "PERF",
+    "PT009",
+    "PT011",
     "S101",
     "S311",
 ]
