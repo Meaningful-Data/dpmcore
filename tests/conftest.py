@@ -15,7 +15,6 @@ collect_ignore_glob = [
     "integration/api/test_enriched_ast_multi.py",
     "integration/api/test_severity.py",
     "integration/db/test_db_connection_handling.py",
-    "integration/models/test_module_version.py",
     "integration/validation/test_implicit_open_keys.py",
     "unit/api/test_instance.py",
     "unit/dpm/test_module_schema_mapping.py",
