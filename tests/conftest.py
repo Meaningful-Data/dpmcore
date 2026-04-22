@@ -20,8 +20,6 @@ collect_ignore_glob = [
     "integration/queries/test_get_table_details.py",
     "integration/queries/test_hierarchical_query.py",
     "integration/queries/test_query_refactor.py",
-    "integration/releases/test_data_dictionary_releases.py",
-    "integration/releases/test_release_filters_semantic.py",
     "integration/validation/test_implicit_open_keys.py",
     "unit/api/test_instance.py",
     "unit/ast/test_ast_coordinates.py",
