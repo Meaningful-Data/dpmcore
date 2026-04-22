@@ -1,10 +1,17 @@
+from typing import ClassVar
+
 import pandas as pd
 
 from dpmcore import errors
 from dpmcore.dpm_xl.operators.base import Unary
-from dpmcore.dpm_xl.symbols import RecordSet
+from dpmcore.dpm_xl.symbols import RecordSet, Scalar, Structure
 from dpmcore.dpm_xl.types.promotion import unary_implicit_type_promotion
-from dpmcore.dpm_xl.types.scalar import Integer, Number, ScalarFactory
+from dpmcore.dpm_xl.types.scalar import (
+    Integer,
+    Number,
+    ScalarFactory,
+    ScalarType,
+)
 from dpmcore.dpm_xl.utils import tokens
 from dpmcore.dpm_xl.warning_collector import add_semantic_warning
 
@@ -15,10 +22,12 @@ class AggregateOperator(Unary):
     The grouping clause components must be present in the operand recordset.
     """
 
-    interval_allowed: bool = True
+    interval_allowed: ClassVar[bool] = True
 
     @staticmethod
-    def check_grouping(grouping_clause, key_components):
+    def check_grouping(
+        grouping_clause: list[str] | None, key_components: list[str]
+    ) -> None:
 
         if grouping_clause and not all(
             item in key_components for item in grouping_clause
@@ -29,7 +38,9 @@ class AggregateOperator(Unary):
             raise errors.SemanticError("4-4-0-2", not_present=not_present)
 
     @staticmethod
-    def format_structure_with_grouping(operand, grouping_clause):
+    def format_structure_with_grouping(
+        operand: RecordSet, grouping_clause: list[str]
+    ) -> Structure:
         structure = operand.structure
 
         components_to_delete = []
@@ -44,7 +55,9 @@ class AggregateOperator(Unary):
         return structure
 
     @staticmethod
-    def manage_records(records: pd.DataFrame, grouping_clause: list):
+    def manage_records(
+        records: pd.DataFrame | None, grouping_clause: list[str]
+    ) -> pd.DataFrame | None:
         if records is None:
             return records
         columns_to_preserve = ["data_type"]
@@ -69,8 +82,11 @@ class AggregateOperator(Unary):
 
     @classmethod
     def create_grouped_recordset(
-        cls, operand: RecordSet, grouping_clause, final_type
-    ):
+        cls,
+        operand: RecordSet,
+        grouping_clause: list[str],
+        final_type: ScalarType,
+    ) -> RecordSet:
 
         # Creating new structure with only the grouped components
         rslt_structure = cls.format_structure_with_grouping(
@@ -93,16 +109,18 @@ class AggregateOperator(Unary):
         return recordset
 
     @classmethod
-    def validate(cls, operand, grouping_clause):
+    def validate(
+        cls, operand: RecordSet, grouping_clause: list[str] | None
+    ) -> RecordSet | Scalar:
         cls.check_operator_well_defined()
         return_type = (
             None
-            if not cls.return_type
+            if cls.return_type is None
             else ScalarFactory().scalar_factory(cls.return_type.__name__)
         )
         op_type_to_check = (
             None
-            if not cls.type_to_check
+            if cls.type_to_check is None
             else ScalarFactory().scalar_factory(cls.type_to_check.__name__)
         )
 
@@ -120,7 +138,12 @@ class AggregateOperator(Unary):
             operand.records["data_type"] = final_type
 
         if grouping_clause is None:
-            return cls.create_labeled_scalar(operand, final_type)
+            # Aggregate reduces a recordset to a scalar; ``_create_labeled_scalar``
+            # only needs the origin string, not a Scalar operand.
+            origin = cls.create_origin_expression(operand)
+            return cls._create_labeled_scalar(
+                origin=origin, result_type=final_type
+            )
 
         key_components = operand.get_key_components_names()
         cls.check_grouping(grouping_clause, key_components)
@@ -134,7 +157,11 @@ class AggregateOperator(Unary):
         )
 
     @classmethod
-    def generate_origin_expression(cls, operand, group_by=None):
+    def generate_origin_expression(
+        cls,
+        operand: RecordSet | Scalar,
+        group_by: list[str] | None = None,
+    ) -> str:
         operand_name = getattr(operand, "name", None) or getattr(
             operand, "origin", None
         )
@@ -145,31 +172,31 @@ class AggregateOperator(Unary):
 
 
 class MaxAggr(AggregateOperator):
-    op = tokens.MAX_AGGR
+    op: ClassVar[str | None] = tokens.MAX_AGGR
 
 
 class MinAggr(AggregateOperator):
-    op = tokens.MIN_AGGR
+    op: ClassVar[str | None] = tokens.MIN_AGGR
 
 
 class Sum(AggregateOperator):
-    op = tokens.SUM
-    type_to_check = Number
+    op: ClassVar[str | None] = tokens.SUM
+    type_to_check: ClassVar[type[ScalarType] | None] = Number
 
 
 class Count(AggregateOperator):
-    op = tokens.COUNT
-    type_to_check = None
-    return_type = Integer
+    op: ClassVar[str | None] = tokens.COUNT
+    type_to_check: ClassVar[type[ScalarType] | None] = None
+    return_type: ClassVar[type[ScalarType] | None] = Integer
 
 
 class Avg(AggregateOperator):
-    op = tokens.AVG
-    type_to_check = Number
-    return_type = Number
+    op: ClassVar[str | None] = tokens.AVG
+    type_to_check: ClassVar[type[ScalarType] | None] = Number
+    return_type: ClassVar[type[ScalarType] | None] = Number
 
 
 class Median(AggregateOperator):
-    op = tokens.MEDIAN
-    type_to_check = Number
-    return_type = Number
+    op: ClassVar[str | None] = tokens.MEDIAN
+    type_to_check: ClassVar[type[ScalarType] | None] = Number
+    return_type: ClassVar[type[ScalarType] | None] = Number
