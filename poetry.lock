@@ -2722,6 +2722,18 @@ files = [
 ]
 
 [[package]]
+name = "types-antlr4-python3-runtime"
+version = "4.13.0.20260408"
+description = "Typing stubs for antlr4-python3-runtime"
+optional = false
+python-versions = ">=3.10"
+groups = ["dev"]
+files = [
+    {file = "types_antlr4_python3_runtime-4.13.0.20260408-py3-none-any.whl", hash = "sha256:7b0bfb8633c48cde97ee18b504663fec581a7ba608763e4f15c1de79240dba28"},
+    {file = "types_antlr4_python3_runtime-4.13.0.20260408.tar.gz", hash = "sha256:e686001b5a1d1c9dc6ba64d97e06da35f6f7cd885c066bd5f212452061a2c817"},
+]
+
+[[package]]
 name = "types-pyyaml"
 version = "6.0.12.20260408"
 description = "Typing stubs for PyYAML"
@@ -3114,4 +3126,4 @@ sqlserver = ["pyodbc"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10"
-content-hash = "bbe1b838e0516c2ec2f959f506ea4be8106471b9b143f246000101585b13cafc"
+content-hash = "d4d2321e42f8195b75ecca64c943c4c79a43fbcdf0992789a4f391bbce3b6146"

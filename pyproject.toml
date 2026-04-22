@@ -82,6 +82,7 @@ pyroma = ">=4.2"
 httpx = ">=0.28,<1.0"
 pytest-django = ">=4.9"
 django-stubs = ">=5.1"
+types-antlr4-python3-runtime = ">=4.13"
 
 [tool.poetry.group.docs.dependencies]
 sphinx = ">=7.4"
@@ -202,13 +203,6 @@ strict_optional = true
 strict = true
 enable_error_code = ["redundant-expr", "truthy-bool"]
 warn_return_any = false
-
-# Third-party libraries without py.typed and without stubs on PyPI.
-# Narrow overrides to named modules — global ignore_missing_imports
-# would mask real typos.
-[[tool.mypy.overrides]]
-module = ["antlr4", "antlr4.*"]
-ignore_missing_imports = true
 
 # ANTLR-generated parser/lexer/visitor/listener files plus the
 # hand-written pass-through __init__.py. Kept out of scope per issue
