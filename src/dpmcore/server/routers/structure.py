@@ -4,7 +4,16 @@ from __future__ import annotations
 
 import enum
 import json
-from typing import Any, Callable, Dict, Generator, List, Optional
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    ParamSpec,
+    TypeVar,
+)
 
 from fastapi import Depends, Path, Query, Response
 from fastapi.routing import APIRouter
@@ -55,10 +64,16 @@ class ArtefactType(str, enum.Enum):
 ARTEFACT_HANDLERS: Dict[str, Callable[..., Any]] = {}
 
 
-def register_artefact(type_name: str):
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def register_artefact(
+    type_name: str,
+) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
     """Decorator to register a handler for an artefact type."""
 
-    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+    def decorator(fn: Callable[_P, _R]) -> Callable[_P, _R]:
         ARTEFACT_HANDLERS[type_name] = fn
         return fn
 
@@ -420,8 +435,12 @@ def handle_category(
 
     data: Dict[str, Any] = {"categories": results}
     if references == "all":
-        acronyms = list(
-            {r.get("owner") for r in results if r.get("owner") is not None}
+        acronyms: List[str] = list(
+            {
+                owner
+                for r in results
+                if isinstance((owner := r.get("owner")), str)
+            }
         )
         if acronyms:
             data["organisations"] = svc.get_release_organisations(
