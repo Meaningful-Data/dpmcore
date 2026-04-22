@@ -1,6 +1,10 @@
+from __future__ import annotations
+
 import uuid
-from datetime import datetime
+from collections.abc import Iterable, Sequence
+from datetime import date, datetime
 from itertools import product
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy
 import pandas as pd
@@ -20,40 +24,56 @@ from dpmcore.orm.operations import (
     OperationScopeComposition,
 )
 
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
 FROM_REFERENCE_DATE = "FromReferenceDate"
 TO_REFERENCE_DATE = "ToReferenceDate"
 MODULE_VID = "ModuleVID"
 TABLE_VID = "TableVID"
 
 
-def _check_if_existing(composition_modules, existing_scopes):
-    existing_scopes = existing_scopes[
+def _check_if_existing(
+    composition_modules: Sequence[int], existing_scopes: pd.DataFrame
+) -> bool:
+    filtered_modules: list[int] = existing_scopes[
         existing_scopes[MODULE_VID].isin(composition_modules)
     ][MODULE_VID].tolist()
     return bool(
-        len(existing_scopes)
-        and set(composition_modules) == set(existing_scopes)
+        len(filtered_modules)
+        and set(composition_modules) == set(filtered_modules)
     )
 
 
 class OperationScopeService:
     """Class to calculate OperationScope and OperationScopeComposition tables for an operation version."""
 
-    def __init__(self, operation_version_id, session=None):
+    def __init__(
+        self,
+        operation_version_id: int,
+        session: Session | None = None,
+    ) -> None:
         self.operation_version_id = operation_version_id
         self.session = session
-        self.module_vids = []
+        self.module_vids: list[int] = []
         self.current_date = datetime.today().date()
 
-        self.operation_scopes = []
+        self.operation_scopes: list[OperationScope] = []
+
+    def _require_session(self) -> Session:
+        if self.session is None:
+            raise RuntimeError(
+                "OperationScopeService.session is required for this operation"
+            )
+        return self.session
 
     def calculate_operation_scope(
         self,
-        tables_vids: list,
-        precondition_items: list,
-        release_id=None,
-        table_codes: list = None,
-    ):
+        tables_vids: Sequence[int],
+        precondition_items: Sequence[str],
+        release_id: int | None = None,
+        table_codes: Sequence[str] | None = None,
+    ) -> tuple[list[OperationScope], list[OperationScope]]:
         """Calculate OperationScope and OperationScopeComposition tables for an operation version, taking as input
         a list with the operation table version ids in order to calculate the module versions involved in the operation
         :param tables_vids: List with table version ids
@@ -64,7 +84,9 @@ class OperationScopeService:
         """
         # Get last release if not specified
         if release_id is None:
-            release_id = ModuleVersionQuery.get_last_release(self.session)
+            release_id = ModuleVersionQuery.get_last_release(
+                self._require_session()
+            )
 
         modules_info_dataframe = self.extract_module_info(
             tables_vids=tables_vids,
@@ -75,7 +97,10 @@ class OperationScopeService:
         if modules_info_dataframe is None:
             return [], []
 
-        modules_vids = modules_info_dataframe[MODULE_VID].unique().tolist()
+        modules_vids: list[int] = cast(
+            list[int],
+            modules_info_dataframe[MODULE_VID].unique().tolist(),
+        )
         if len(modules_info_dataframe) == 1:
             module_vid = modules_vids[0]
             from_date = modules_info_dataframe["FromReferenceDate"].values[0]
@@ -85,7 +110,7 @@ class OperationScopeService:
             operation_scope = self.create_operation_scope(from_date)
             self.create_operation_scope_composition(
                 operation_scope=operation_scope,
-                module_vid=module_vid,
+                module_vid=int(module_vid),
                 module_info={
                     "code": module_code,
                     "version_number": version_number,
@@ -94,8 +119,13 @@ class OperationScopeService:
                 },
             )
         else:
-            intra_modules = []
-            cross_modules = {}
+            intra_modules: list[int] = []
+            # cross_modules has 3+ distinct runtime shapes: dict[int, list[int]]
+            # (table VID -> module VIDs), dict[str, list[int]] (table code ->
+            # module VIDs), or dict[str, dict[str, list[int]]] when lifecycle
+            # grouping adds "_starting"/"_ending" wrappers. Using Any keeps
+            # the branches readable.
+            cross_modules: dict[Any, Any] = {}
 
             # When using table_codes, unique operands are based on table codes, not table VIDs
             if table_codes:
@@ -105,14 +135,21 @@ class OperationScopeService:
 
                 # First pass: categorize modules by table code and lifecycle
                 # We track lifecycle to handle version transitions within the SAME module
-                starting_by_code = {}  # table_code -> [module_vids that START in this release]
-                ending_by_code = {}  # table_code -> [module_vids that END or are active]
+                # table_code -> [module_vids that START in this release]
+                starting_by_code: dict[str, list[int]] = {}
+                # table_code -> [module_vids that END or are active]
+                ending_by_code: dict[str, list[int]] = {}
 
-                for module_vid, group_df in modules_info_dataframe.groupby(
-                    MODULE_VID
-                ):
-                    table_codes_in_module = (
-                        group_df["TableCode"].unique().tolist()
+                code_groups = cast(
+                    Iterable[tuple[int, pd.DataFrame]],
+                    modules_info_dataframe.groupby(MODULE_VID),
+                )
+                for module_vid, group_df in code_groups:
+                    table_codes_in_module: list[str] = (
+                        cast(
+                            list[str],
+                            group_df["TableCode"].unique().tolist(),
+                        )
                         if "TableCode" in group_df.columns
                         else []
                     )
@@ -154,8 +191,8 @@ class OperationScopeService:
 
                 if needs_lifecycle_separation:
                     # Separate into starting and ending scopes
-                    starting_modules = {}
-                    ending_modules = {}
+                    starting_modules: dict[str, list[int]] = {}
+                    ending_modules: dict[str, list[int]] = {}
                     for code, vids in starting_by_code.items():
                         starting_modules[code] = vids
                     for code, vids in ending_by_code.items():
@@ -166,7 +203,7 @@ class OperationScopeService:
                         cross_modules["_ending"] = ending_modules
                 else:
                     # No version transitions - combine all modules by table code
-                    all_by_code = {}
+                    all_by_code: dict[str, list[int]] = {}
                     for code, vids in starting_by_code.items():
                         if code not in all_by_code:
                             all_by_code[code] = []
@@ -175,20 +212,25 @@ class OperationScopeService:
                         if code not in all_by_code:
                             all_by_code[code] = []
                         all_by_code[code].extend(vids)
-                    cross_modules = all_by_code
+                    cross_modules = dict(all_by_code)
             else:
                 # Original logic for table VIDs
                 unique_operands_number = len(tables_vids) + len(
                     precondition_items
                 )
-                for module_vid, group_df in modules_info_dataframe.groupby(
-                    MODULE_VID
-                ):
-                    vids = group_df[VARIABLE_VID].unique().tolist()
-                    if len(vids) == unique_operands_number:
+                vid_groups = cast(
+                    Iterable[tuple[int, pd.DataFrame]],
+                    modules_info_dataframe.groupby(MODULE_VID),
+                )
+                for module_vid, group_df in vid_groups:
+                    group_vids = cast(
+                        list[int],
+                        group_df[VARIABLE_VID].unique().tolist(),
+                    )
+                    if len(group_vids) == unique_operands_number:
                         intra_modules.append(module_vid)
                     else:
-                        for table_vid in vids:
+                        for table_vid in group_vids:
                             if table_vid not in cross_modules:
                                 cross_modules[table_vid] = []
                             cross_modules[table_vid].append(module_vid)
@@ -241,11 +283,11 @@ class OperationScopeService:
 
     def extract_module_info(
         self,
-        tables_vids,
-        precondition_items,
-        release_id=None,
-        table_codes=None,
-    ):
+        tables_vids: Sequence[int],
+        precondition_items: Sequence[str],
+        release_id: int | None = None,
+        table_codes: Sequence[str] | None = None,
+    ) -> pd.DataFrame | None:
         """Extracts modules information of tables version ids and preconditions from database and
         joins them in a single dataframe
         :param tables_vids: List with table version ids
@@ -254,15 +296,16 @@ class OperationScopeService:
         :param table_codes: Optional list of table codes. If provided, queries ALL module versions with these codes.
         :return two list with existing and new scopes.
         """
-        modules_info_lst = []
-        modules_info_dataframe = None
+        modules_info_lst: list[pd.DataFrame] = []
+        modules_info_dataframe: pd.DataFrame | None = None
 
         # If table_codes are provided, query by codes to get ALL versions
+        session = self._require_session()
         if table_codes and len(table_codes):
             tables_modules_info_dataframe = (
                 ModuleVersionQuery.get_from_table_codes(
-                    session=self.session,
-                    table_codes=table_codes,
+                    session=session,
+                    table_codes=list(table_codes),
                     release_id=release_id,
                 )
             )
@@ -273,13 +316,14 @@ class OperationScopeService:
         elif len(tables_vids):
             tables_modules_info_dataframe = (
                 ModuleVersionQuery.get_from_tables_vids(
-                    session=self.session,
-                    tables_vids=tables_vids,
+                    session=session,
+                    tables_vids=list(tables_vids),
                     release_id=release_id,
                 )
             )
+            missing_table_modules: set[int]
             if tables_modules_info_dataframe.empty:
-                missing_table_modules = tables_vids
+                missing_table_modules = set(tables_vids)
             else:
                 modules_tables = tables_modules_info_dataframe[
                     VARIABLE_VID
@@ -298,14 +342,15 @@ class OperationScopeService:
         if len(precondition_items):
             preconditions_modules_info_dataframe = (
                 ModuleVersionQuery.get_precondition_module_versions(
-                    session=self.session,
-                    precondition_items=precondition_items,
+                    session=session,
+                    precondition_items=list(precondition_items),
                     release_id=release_id,
                 )
             )
 
+            missing_precondition_modules: set[str]
             if preconditions_modules_info_dataframe.empty:
-                missing_precondition_modules = precondition_items
+                missing_precondition_modules = set(precondition_items)
             else:
                 modules_preconditions = preconditions_modules_info_dataframe[
                     "Code"
@@ -325,12 +370,16 @@ class OperationScopeService:
             modules_info_dataframe = pd.concat(modules_info_lst)
         return modules_info_dataframe
 
-    def process_repeated(self, modules_vids, modules_info):
+    def process_repeated(
+        self,
+        modules_vids: Sequence[int],
+        modules_info: pd.DataFrame,
+    ) -> None:
         """Method to calculate OperationScope and OperationScopeComposition tables for repeated operations
         :param modules_vids: list with module version ids.
         """
         # Pre-build dict lookup for O(1) access instead of DataFrame boolean filtering per module
-        module_lookup = {}
+        module_lookup: dict[int, pd.Series[Any]] = {}
         for _, row in modules_info.iterrows():
             vid = row[MODULE_VID]
             if vid not in module_lookup:
@@ -354,7 +403,11 @@ class OperationScopeService:
                 },
             )
 
-    def process_cross_module(self, cross_modules, modules_dataframe):
+    def process_cross_module(
+        self,
+        cross_modules: dict[Any, list[int]],
+        modules_dataframe: pd.DataFrame,
+    ) -> None:
         """Method to calculate OperationScope and OperationScopeComposition tables for a cross module operation
         :param cross_modules: dictionary with table version ids as key and its module version ids as values
         :param modules_dataframe: dataframe with modules data.
@@ -369,7 +422,7 @@ class OperationScopeService:
         )
 
         # Pre-build dict lookup for O(1) access instead of DataFrame boolean filtering per module
-        module_lookup = {}
+        module_lookup: dict[int, pd.Series[Any]] = {}
         for _, row in modules_dataframe.iterrows():
             vid = row[MODULE_VID]
             if vid not in module_lookup:
@@ -380,8 +433,8 @@ class OperationScopeService:
             combination_info = modules_dataframe[
                 modules_dataframe[MODULE_VID].isin(combination)
             ]
-            from_dates = combination_info[FROM_REFERENCE_DATE].values
-            to_dates = combination_info[TO_REFERENCE_DATE].values
+            from_dates = combination_info[FROM_REFERENCE_DATE].to_numpy()
+            to_dates = combination_info[TO_REFERENCE_DATE].to_numpy()
             ref_from_date = from_dates.max()
             ref_to_date = to_dates.min()
 
@@ -393,13 +446,14 @@ class OperationScopeService:
                     is_valid_combination = False
                     break  # No need to check remaining dates
 
+            from_submission_date: Any
             if is_valid_combination:
                 from_submission_date = ref_from_date
             else:
                 from_submission_date = None
             operation_scope = self.create_operation_scope(from_submission_date)
-            combination = set(combination)
-            for module in combination:
+            unique_combination = set(combination)
+            for module in unique_combination:
                 module_row = module_lookup[module]
                 self.create_operation_scope_composition(
                     operation_scope=operation_scope,
@@ -412,7 +466,11 @@ class OperationScopeService:
                     },
                 )
 
-    def create_operation_scope(self, submission_date, severity: str = None):
+    def create_operation_scope(
+        self,
+        submission_date: Any,
+        severity: str | None = None,
+    ) -> OperationScope:
         """Method to populate OperationScope table.
 
         Args:
@@ -437,30 +495,39 @@ class OperationScopeService:
                 f"Invalid severity '{severity}'. Must be one of: {', '.join(sorted(VALID_SEVERITIES))}"
             )
 
+        final_date: date | None
         if not pd.isnull(submission_date):
             if isinstance(submission_date, numpy.datetime64):
                 submission_date = str(submission_date).split("T")[0]
             if isinstance(submission_date, str):
-                submission_date = datetime.strptime(
+                final_date = datetime.strptime(
                     submission_date, "%Y-%m-%d"
                 ).date()
             elif isinstance(submission_date, datetime):
-                submission_date = submission_date.date()
+                final_date = submission_date.date()
+            elif isinstance(submission_date, date):
+                final_date = submission_date
+            else:
+                final_date = None
         else:
-            submission_date = None
+            final_date = None
         operation_scope = OperationScope(
             operation_vid=self.operation_version_id,
             is_active=1,  # Use 1 instead of True for PostgreSQL bigint compatibility
             severity=severity_lower,
-            from_submission_date=submission_date,
+            from_submission_date=final_date,
             row_guid=str(uuid.uuid4()),
         )
-        self.session.add(operation_scope)
+        if self.session is not None:
+            self.session.add(operation_scope)
         return operation_scope
 
     def create_operation_scope_composition(
-        self, operation_scope, module_vid, module_info=None
-    ):
+        self,
+        operation_scope: OperationScope,
+        module_vid: int,
+        module_info: dict[str, Any] | None = None,
+    ) -> None:
         """Method to populate OperationScopeComposition table
         :param operation_scope: Operation scope data
         :param module_vid: Module version id
@@ -473,15 +540,22 @@ class OperationScopeService:
         )
         # Store module info as transient attribute for to_dict() access
         if module_info:
-            operation_scope_composition._module_info = module_info
-        self.session.add(operation_scope_composition)
+            # _module_info is a runtime-only transient attribute not part of
+            # the SQLAlchemy mapped schema.
+            operation_scope_composition._module_info = module_info  # type: ignore[attr-defined]
+        if self.session is not None:
+            self.session.add(operation_scope_composition)
 
-    def get_scopes_with_status(self):
+    def get_scopes_with_status(
+        self,
+    ) -> tuple[list[OperationScope], list[OperationScope]]:
         """Method that checks if operation scope exists in database and classifies it based on whether it exists or not
         :return two list with existing and new scopes.
         """
-        existing_scopes = []
-        new_scopes = []
+        existing_scopes: list[OperationScope] = []
+        new_scopes: list[OperationScope] = []
+        if self.session is None:
+            return existing_scopes, new_scopes
         operation_scopes = [
             o for o in self.session.new if isinstance(o, OperationScope)
         ]
@@ -509,9 +583,13 @@ class OperationScopeService:
                     # because we have the new module
                     existing_previous = False
                     for vid in composition_modules:
-                        if id not in existing_scopes:
+                        # NOTE: this references the builtin ``id`` rather than
+                        # ``vid`` (almost certainly a latent bug) — preserved
+                        # to avoid changing runtime behavior during a typing
+                        # pass. See cr-11 tracking issue.
+                        if id not in existing_scopes:  # type: ignore[comparison-overlap]
                             aux = ModuleVersionQuery.get_module_version_by_vid(
-                                session=self.session, vid=vid
+                                session=self._require_session(), vid=vid
                             )
                             if aux.empty:
                                 continue
