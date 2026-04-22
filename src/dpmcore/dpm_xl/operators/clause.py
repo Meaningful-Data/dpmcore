@@ -198,9 +198,7 @@ class ClauseOperator(Operator):
             result.records = result_dataframe
         else:
             result.records = operand.records
-        # result.name is the ``new_label`` string assigned in the ctor.
-        assert result.name is not None
-        set_operand_label(result.name, result.origin)
+        set_operand_label(new_label, result.origin)
         return result
 
     @classmethod
@@ -306,8 +304,7 @@ class Sub(ClauseOperator):
             structure=operand.structure, name=new_label, origin=origin
         )
         result.records = operand.records
-        assert result.name is not None
-        set_operand_label(result.name, result.origin)
+        set_operand_label(new_label, result.origin)
         return result
 
     @classmethod
