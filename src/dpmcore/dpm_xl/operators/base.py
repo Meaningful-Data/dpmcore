@@ -1,10 +1,11 @@
-from typing import Union
+from typing import Callable, ClassVar, Union, cast
 
 import pandas as pd
 
 from dpmcore.dpm_xl.symbols import (
     ConstantOperand,
     FactComponent,
+    Operand,
     RecordSet,
     Scalar,
     ScalarSet,
@@ -17,13 +18,18 @@ from dpmcore.dpm_xl.types.promotion import (
     unary_implicit_type_promotion,
     unary_implicit_type_promotion_with_mixed_types,
 )
-from dpmcore.dpm_xl.types.scalar import Mixed, Number, ScalarFactory
+from dpmcore.dpm_xl.types.scalar import Mixed, Number, ScalarFactory, ScalarType
 from dpmcore.dpm_xl.utils.operands_mapping import (
     generate_new_label,
     set_operand_label,
 )
 from dpmcore.dpm_xl.warning_collector import add_semantic_warning
 from dpmcore.errors import SemanticError
+
+# A py_op can be any callable; operators set it to a concrete function
+# (e.g. ``operator.add``). Subclasses narrow the signature at the call
+# site via ``isinstance`` checks.
+PyOp = Callable[..., object]
 
 
 class Operator:
@@ -37,15 +43,18 @@ class Operator:
         return_type: Data type to be checked. Operands must comply with this Data type by having it or by applying the Type Promotion.
     """
 
-    op = None
-    py_op = None
-    type_to_check = None
-    do_not_check_with_return_type = False
-    return_type = None
-    propagate_attributes = False
+    op: ClassVar[str | None] = None
+    py_op: ClassVar[PyOp | None] = None
+    type_to_check: ClassVar[type[ScalarType] | None] = None
+    do_not_check_with_return_type: ClassVar[bool] = False
+    return_type: ClassVar[type[ScalarType] | None] = None
+    propagate_attributes: ClassVar[bool] = False
+    interval_allowed: ClassVar[bool] = False
 
     @staticmethod
-    def _create_labeled_scalar(origin, result_type) -> Scalar:
+    def _create_labeled_scalar(
+        origin: str, result_type: ScalarType
+    ) -> Scalar:
         new_label = generate_new_label()
 
         interval = getattr(result_type, "interval", None)
@@ -59,7 +68,11 @@ class Operator:
 
     @classmethod
     def _create_labeled_recordset(
-        cls, origin, rslt_type, rslt_structure, result_dataframe=None
+        cls,
+        origin: str,
+        rslt_type: ScalarType,
+        rslt_structure: Structure,
+        result_dataframe: pd.DataFrame | None = None,
     ) -> RecordSet:
         new_recordset_label = generate_new_label()
         fact_component = FactComponent(
@@ -77,21 +90,17 @@ class Operator:
         return recordset
 
     @classmethod
-    def check_operator_well_defined(cls):
+    def check_operator_well_defined(cls) -> None:
         """ """
         return_type = (
-            cls.return_type
+            None
             if cls.return_type is None
-            else ScalarFactory().scalar_factory(
-                cls.return_type.__class__.__name__
-            )
+            else ScalarFactory().scalar_factory(cls.return_type.__name__)
         )
         op_check_type = (
-            cls.type_to_check
+            None
             if cls.type_to_check is None
-            else ScalarFactory().scalar_factory(
-                cls.type_to_check.__class__.__name__
-            )
+            else ScalarFactory().scalar_factory(cls.type_to_check.__name__)
         )
         well_defined = check_operator(
             return_type=return_type, op_check_type=op_check_type
@@ -100,15 +109,21 @@ class Operator:
             raise Exception("Review this operator {} ".format(cls.op))
 
 
+# Type alias for operands handled by the binary operator pipeline.
+BinaryOperand = Union[Scalar, RecordSet, ConstantOperand, ScalarSet]
+
+
 class Binary(Operator):
-    op = None
-    py_op = None
-    type_to_check = None
-    do_not_check_with_return_type = False
-    return_type = None
+    op: ClassVar[str | None] = None
+    py_op: ClassVar[PyOp | None] = None
+    type_to_check: ClassVar[type[ScalarType] | None] = None
+    do_not_check_with_return_type: ClassVar[bool] = False
+    return_type: ClassVar[type[ScalarType] | None] = None
 
     @classmethod
-    def create_origin_expression(cls, first_operand, second_operand) -> str:
+    def create_origin_expression(
+        cls, first_operand: Operand, second_operand: Operand
+    ) -> str:
         first_operand_origin = first_operand.origin
         second_operand_origin = second_operand.origin
         origin = f"{first_operand_origin} {cls.op} {second_operand_origin}"
@@ -119,8 +134,8 @@ class Binary(Operator):
         cls,
         first_operand: Union[Scalar, ConstantOperand],
         second_operand: Union[Scalar, ConstantOperand],
-        result_type=None,
-    ):
+        result_type: ScalarType | None = None,
+    ) -> Scalar:
         """ """
         origin: str = cls.create_origin_expression(
             first_operand, second_operand
@@ -128,14 +143,23 @@ class Binary(Operator):
         if isinstance(first_operand, ConstantOperand) and isinstance(
             second_operand, ConstantOperand
         ):
+            if cls.py_op is None:
+                raise Exception(f"Operator {cls.op} has no py_op defined")
             value = cls.py_op(first_operand.value, second_operand.value)
             return ConstantOperand(
                 type_=ScalarFactory().scalar_factory(str(result_type)),
-                name=value,
+                # ``name`` here preserves the original runtime behavior of
+                # assigning the computed value directly; downstream code
+                # stringifies as needed. See latent-bug note in the module.
+                name=cast(str, value),
                 origin=origin,
                 value=value,
             )
 
+        if result_type is None:
+            raise Exception(
+                f"Operator {cls.op} requires a result_type for labeled scalar"
+            )
         scalar = cls._create_labeled_scalar(
             origin=origin, result_type=result_type
         )
@@ -144,12 +168,12 @@ class Binary(Operator):
     @classmethod
     def create_labeled_recordset(
         cls,
-        first_operand,
-        second_operand,
-        rslt_structure,
-        rslt_type,
-        result_dataframe=None,
-    ):
+        first_operand: Operand,
+        second_operand: Operand,
+        rslt_structure: Structure,
+        rslt_type: ScalarType,
+        result_dataframe: pd.DataFrame | None = None,
+    ) -> RecordSet:
         origin: str = cls.create_origin_expression(
             first_operand, second_operand
         )
@@ -162,22 +186,32 @@ class Binary(Operator):
         return recordset
 
     @classmethod
-    def create_labeled_precondition(cls, first_operand, second_operand):
+    def create_labeled_precondition(
+        cls, first_operand: ConstantOperand, second_operand: ConstantOperand
+    ) -> object:
+        # Latent bug: ``_create_labeled_precondition`` is not defined on any
+        # subclass. This method is currently unreachable — kept for parity
+        # with the original source; the attribute access is intentionally
+        # ignored.
+        if cls.py_op is None:
+            raise Exception(f"Operator {cls.op} has no py_op defined")
         value = cls.py_op(first_operand.value, second_operand.value)
         origin: str = cls.create_origin_expression(
             first_operand, second_operand
         )
-        precondition = cls._create_labeled_precondition(
+        precondition = cls._create_labeled_precondition(  # type: ignore[attr-defined]
             origin=origin, value=value
         )
         return precondition
 
     @classmethod
-    def types_given_structures(cls, left, right):
+    def types_given_structures(
+        cls, left: BinaryOperand, right: BinaryOperand
+    ) -> tuple[ScalarType, ScalarType, ScalarType | None]:
 
         op_type_to_check = (
             None
-            if not cls.type_to_check
+            if cls.type_to_check is None
             else ScalarFactory().scalar_factory(cls.type_to_check.__name__)
         )
 
@@ -194,17 +228,12 @@ class Binary(Operator):
                 op_type_to_check,
             )
 
-        elif (isinstance(left, RecordSet) and isinstance(right, Scalar)) or (
-            isinstance(left, Scalar) and isinstance(right, RecordSet)
-        ):
-            fact_component = (
-                left.get_fact_component()
-                if isinstance(left, RecordSet)
-                else right.get_fact_component()
-            )
-            scalar = right if isinstance(left, RecordSet) else left
-
-            return fact_component.type, scalar.type, op_type_to_check
+        elif isinstance(left, RecordSet) and isinstance(right, Scalar):
+            fact_component = left.get_fact_component()
+            return fact_component.type, right.type, op_type_to_check
+        elif isinstance(left, Scalar) and isinstance(right, RecordSet):
+            fact_component = right.get_fact_component()
+            return left.type, fact_component.type, op_type_to_check
 
         elif isinstance(left, RecordSet) and isinstance(right, ScalarSet):
             fact_component = left.get_fact_component()
@@ -215,7 +244,12 @@ class Binary(Operator):
             raise NotImplementedError
 
     @classmethod
-    def validate_types(cls, left, right, result_dataframe):
+    def validate_types(
+        cls,
+        left: BinaryOperand,
+        right: BinaryOperand,
+        result_dataframe: pd.DataFrame | None,
+    ) -> tuple[ScalarType, pd.DataFrame | None]:
         """Here the Structures has been validated."""
         cls.check_operator_well_defined()
         left_type, right_type, op_type_to_check = cls.types_given_structures(
@@ -223,10 +257,10 @@ class Binary(Operator):
         )
         return_type = (
             None
-            if not cls.return_type
+            if cls.return_type is None
             else ScalarFactory().scalar_factory(cls.return_type.__name__)
         )
-        error_info = {
+        error_info: dict[str, object] = {
             "left_name": left.name if left.name is not None else left.origin,
             "right_name": right.name
             if right.name is not None
@@ -235,6 +269,10 @@ class Binary(Operator):
         }
         interval_allowed = getattr(cls, "interval_allowed", False)
         if isinstance(left_type, Mixed) or isinstance(right_type, Mixed):
+            if result_dataframe is None:
+                raise Exception(
+                    "Mixed type promotion requires a result dataframe"
+                )
             final_type, result_dataframe = (
                 binary_implicit_type_promotion_with_mixed_types(
                     result_dataframe=result_dataframe,
@@ -267,10 +305,12 @@ class Binary(Operator):
         return final_type, result_dataframe
 
     @classmethod
-    def validate_structures(cls, left, right):
+    def validate_structures(
+        cls, left: BinaryOperand, right: BinaryOperand
+    ) -> tuple[Structure | None, pd.DataFrame | None]:
         """ """
         if isinstance(left, RecordSet) and isinstance(right, RecordSet):
-            result_dataframe = None
+            result_dataframe: pd.DataFrame | None = None
             # structure
             origin = cls.create_origin_expression(left, right)
             result_structure = cls._check_structures(
@@ -331,11 +371,9 @@ class Binary(Operator):
                     )
 
             return result_structure, result_dataframe
-        elif (isinstance(left, RecordSet) and isinstance(right, Scalar)) or (
-            isinstance(left, Scalar) and isinstance(right, RecordSet)
-        ):
-            if isinstance(left, RecordSet):
-                return left.structure, left.records
+        elif isinstance(left, RecordSet) and isinstance(right, Scalar):
+            return left.structure, left.records
+        elif isinstance(left, Scalar) and isinstance(right, RecordSet):
             return right.structure, right.records
         elif isinstance(left, RecordSet) and isinstance(right, ScalarSet):
             return left.structure, left.records
@@ -343,7 +381,9 @@ class Binary(Operator):
             return None, None
 
     @classmethod
-    def check_same_components(cls, left: Structure, right: Structure, origin):
+    def check_same_components(
+        cls, left: Structure, right: Structure, origin: str
+    ) -> None:
         if set(left.get_key_components_names()) != set(
             right.get_key_components_names()
         ):
@@ -378,7 +418,7 @@ class Binary(Operator):
 
     @classmethod
     def _check_structures(
-        cls, left: Structure, right: Structure, origin
+        cls, left: Structure, right: Structure, origin: str
     ) -> Structure:
         """Used for recordset-recordset."""
         if len(left.get_key_components()) == len(right.get_key_components()):
@@ -386,7 +426,7 @@ class Binary(Operator):
             return left
         else:
             is_subset, final_structure = cls.check_is_subset(left, right)
-            if is_subset:
+            if is_subset and final_structure is not None:
                 return final_structure
             raise SemanticError(
                 "2-3",
@@ -399,7 +439,7 @@ class Binary(Operator):
     @staticmethod
     def check_is_subset(
         left: Structure, right: Structure
-    ):  # -> Tuple[bool, Structure| None]:
+    ) -> tuple[bool, Structure | None]:
         """Take two Structures and return a True is one is other's subset and the greatest Structure
         False, None in other case.
         """
@@ -429,7 +469,9 @@ class Binary(Operator):
             return False, None
 
     @classmethod
-    def validate(cls, left, right):
+    def validate(
+        cls, left: BinaryOperand, right: BinaryOperand
+    ) -> Scalar | RecordSet:
         """ """
         rslt_structure, result_dataframe = cls.validate_structures(left, right)
         rslt_type, result_dataframe = cls.validate_types(
@@ -440,34 +482,54 @@ class Binary(Operator):
                 left, right, rslt_structure, rslt_type, result_dataframe
             )
             return recordset
+        # Scalar path: left/right are Scalars or ConstantOperands at this point.
+        if not isinstance(left, (Scalar, ConstantOperand)) or not isinstance(
+            right, (Scalar, ConstantOperand)
+        ):
+            raise Exception(
+                "Invalid operand types for scalar binary operation"
+            )
         labeled_scalar = cls.create_labeled_scalar(
             left, right, result_type=rslt_type
         )
         return labeled_scalar
 
 
+# Operand type accepted by Unary operator methods.
+UnaryOperand = Union[Scalar, RecordSet, ConstantOperand]
+
+
 class Unary(Operator):
-    op = None
-    py_op = None
-    type_to_check = None
-    check_specific_type = False
-    return_type = None
+    op: ClassVar[str | None] = None
+    py_op: ClassVar[PyOp | None] = None
+    type_to_check: ClassVar[type[ScalarType] | None] = None
+    check_specific_type: ClassVar[bool] = False
+    return_type: ClassVar[type[ScalarType] | None] = None
 
     @classmethod
-    def create_origin_expression(cls, operand, *args) -> str:
+    def create_origin_expression(
+        cls, operand: Operand, *args: object
+    ) -> str:
         operand_origin = operand.origin
         origin = f"{cls.op}({operand_origin})"
         return origin
 
     @classmethod
-    def create_labeled_scalar(cls, first_operand, result_type):
+    def create_labeled_scalar(
+        cls,
+        first_operand: Union[Scalar, ConstantOperand],
+        result_type: ScalarType,
+    ) -> Scalar:
         """ """
         origin: str = cls.create_origin_expression(first_operand)
         if isinstance(first_operand, ConstantOperand):
+            if cls.py_op is None:
+                raise Exception(f"Operator {cls.op} has no py_op defined")
             value = cls.py_op(first_operand.value)
             return ConstantOperand(
                 type_=ScalarFactory().scalar_factory(str(result_type)),
-                name=value,
+                # See note above: ``name`` mirrors the runtime value.
+                name=cast(str, value),
                 origin=origin,
                 value=value,
             )
@@ -479,8 +541,12 @@ class Unary(Operator):
 
     @classmethod
     def create_labeled_recordset(
-        cls, first_operand, rslt_structure, rslt_type, result_dataframe=None
-    ):
+        cls,
+        first_operand: Operand,
+        rslt_structure: Structure,
+        rslt_type: ScalarType,
+        result_dataframe: pd.DataFrame | None = None,
+    ) -> RecordSet:
         """ """
         origin: str = cls.create_origin_expression(first_operand)
         recordset = cls._create_labeled_recordset(
@@ -492,32 +558,42 @@ class Unary(Operator):
         return recordset
 
     @classmethod
-    def create_labeled_precondition(cls, operand):
-
+    def create_labeled_precondition(
+        cls, operand: ConstantOperand
+    ) -> object:
+        # Latent bug: ``_create_labeled_precondition`` is not defined on any
+        # subclass. This method is currently unreachable — kept for parity
+        # with the original source; the attribute access is intentionally
+        # ignored.
+        if cls.py_op is None:
+            raise Exception(f"Operator {cls.op} has no py_op defined")
         value = cls.py_op(operand.value)
         origin: str = cls.create_origin_expression(operand)
 
-        precondition = cls._create_labeled_precondition(
+        precondition = cls._create_labeled_precondition(  # type: ignore[attr-defined]
             origin=origin, value=value
         )
         return precondition
 
     @classmethod
-    def validate_types(cls, operand):
+    def validate_types(cls, operand: UnaryOperand) -> Scalar | RecordSet:
 
         # First we check the operator
         cls.check_operator_well_defined()
         return_type = (
             None
-            if not cls.return_type
+            if cls.return_type is None
             else ScalarFactory().scalar_factory(cls.return_type.__name__)
         )
         op_type_to_check = (
             None
-            if not cls.type_to_check
+            if cls.type_to_check is None
             else ScalarFactory().scalar_factory(cls.type_to_check.__name__)
         )
-        error_info = {"operand_name": operand.name, "op": cls.op}
+        error_info: dict[str, object] = {
+            "operand_name": operand.name,
+            "op": cls.op,
+        }
 
         if isinstance(operand, Scalar):
             final_type = unary_implicit_type_promotion(
@@ -535,6 +611,10 @@ class Unary(Operator):
             fact_component_type = operand.structure.components["f"].type
 
             if isinstance(fact_component_type, Mixed):
+                if operand.records is None:
+                    raise Exception(
+                        "Mixed type promotion requires operand records"
+                    )
                 final_type, operand.records = (
                     unary_implicit_type_promotion_with_mixed_types(
                         operand.records,
@@ -570,15 +650,18 @@ class Unary(Operator):
 
 class Complex(Binary):
     @classmethod
-    def validate(cls, operands: list):
+    def validate(  # type: ignore[override]
+        cls, operands: list[BinaryOperand]
+    ) -> Scalar | RecordSet:
 
-        origin = f"{cls.op}({','.join([str(x.value) if isinstance(x, ConstantOperand) else x.name for x in operands])})"
-        recordsets = [
+        origin = f"{cls.op}({','.join([str(x.value) if isinstance(x, ConstantOperand) else str(x.name) for x in operands])})"
+        recordsets: list[RecordSet] = [
             operand for operand in operands if isinstance(operand, RecordSet)
         ]
         if len(recordsets) == 0:
-            types = []
+            types: list[ScalarType] = []
             ref_operand = operands.pop(0)
+            final_type: ScalarType
             for operand in operands:
                 rslt_type = cls.validate_types(ref_operand, operand, None)
                 if rslt_type[0] not in types:
@@ -593,20 +676,25 @@ class Complex(Binary):
 
         ref_recordset = recordsets[0]
         operands.remove(ref_recordset)
-        final_type = None
+        rslt_type_final: ScalarType | None = None
         for operand in operands:
             rslt_structure, rslt_dataframe = cls.validate_structures(
                 ref_recordset, operand
             )
-            final_type, rslt_dataframe = cls.validate_types(
+            rslt_type_final, rslt_dataframe = cls.validate_types(
                 ref_recordset, operand, rslt_dataframe
             )
-            ref_recordset.structure = rslt_structure
+            if rslt_structure is not None:
+                ref_recordset.structure = rslt_structure
             ref_recordset.records = rslt_dataframe
 
+        if rslt_type_final is None:
+            raise Exception(
+                "Complex operator evaluated over empty operand list"
+            )
         return cls._create_labeled_recordset(
             origin=origin,
-            rslt_type=final_type,
+            rslt_type=rslt_type_final,
             rslt_structure=ref_recordset.structure,
             result_dataframe=ref_recordset.records,
         )
