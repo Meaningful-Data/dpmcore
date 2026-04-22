@@ -27,7 +27,6 @@ collect_ignore_glob = [
     "integration/validation/test_implicit_open_keys.py",
     "unit/api/test_instance.py",
     "unit/ast/test_ast_coordinates.py",
-    "unit/cli/test_cli_semantic.py",
     "unit/dpm/test_get_all_tables_for_module.py",
     "unit/dpm/test_module_schema_mapping.py",
     "unit/dpm_xl/test_warning_collector.py",
