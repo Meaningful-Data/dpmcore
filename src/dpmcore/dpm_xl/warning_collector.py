@@ -5,6 +5,7 @@ warnings during semantic analysis instead of emitting them via warnings.warn().
 """
 
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import List, Optional
 
@@ -67,7 +68,7 @@ def add_semantic_warning(message: str) -> None:
 
 
 @contextmanager
-def collect_warnings():
+def collect_warnings() -> Iterator[WarningCollector]:
     """Context manager to collect warnings during semantic analysis.
 
     Usage:
