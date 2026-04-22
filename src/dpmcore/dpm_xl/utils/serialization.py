@@ -735,11 +735,7 @@ def expand_with_expression(node: Any) -> Any:
         if len(expanded_children) == 1:
             return expanded_children[0]
         else:
-            # ASTObjects.Start comes from ast/ which is outside this phase's
-            # type scope; the call target is untyped.
-            return ASTObjects.Start(  # type: ignore[no-untyped-call]
-                children=expanded_children
-            )
+            return ASTObjects.Start(children=expanded_children)
 
     # For other node types, recursively expand children
     if hasattr(node, "__dict__"):
@@ -782,9 +778,8 @@ def apply_partial_selection(
 
     # Apply partial selection to VarID nodes
     if isinstance(expression, ASTObjects.VarID):
-        # Create a new VarID with merged properties
-        # ASTObjects.VarID's constructor is untyped (ast/ is out of scope).
-        new_varid = ASTObjects.VarID(  # type: ignore[no-untyped-call]
+        # Create a new VarID with merged properties.
+        new_varid = ASTObjects.VarID(
             table=partial_selection.table
             if expression.table is None
             else expression.table,
