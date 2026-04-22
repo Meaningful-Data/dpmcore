@@ -16,13 +16,26 @@ Or as a context manager::
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from types import TracebackType
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 # Ensure all ORM modules are imported so relationships resolve.
 import dpmcore.orm  # noqa: F401
+
+if TYPE_CHECKING:
+    from dpmcore.services.ast_generator import ASTGeneratorService
+    from dpmcore.services.data_dictionary import DataDictionaryService
+    from dpmcore.services.dpm_xl import DpmXlService
+    from dpmcore.services.explorer import ExplorerService
+    from dpmcore.services.hierarchy import HierarchyService
+    from dpmcore.services.migration import MigrationService
+    from dpmcore.services.scope_calculator import ScopeCalculatorService
+    from dpmcore.services.semantic import SemanticService
+    from dpmcore.services.structure import StructureService
+    from dpmcore.services.syntax import SyntaxService
 
 
 class _ServiceAccessor:
@@ -38,100 +51,110 @@ class _ServiceAccessor:
     # ------------------------------------------------------------------ #
 
     @property
-    def dpm_xl(self):
+    def dpm_xl(self) -> DpmXlService:
         from dpmcore.services.dpm_xl import DpmXlService
 
         if "dpm_xl" not in self._cache:
             self._cache["dpm_xl"] = DpmXlService(self._session)
-        return self._cache["dpm_xl"]
+        service: DpmXlService = self._cache["dpm_xl"]
+        return service
 
     @property
-    def syntax(self):
+    def syntax(self) -> SyntaxService:
         from dpmcore.services.syntax import SyntaxService
 
         if "syntax" not in self._cache:
             self._cache["syntax"] = SyntaxService()
-        return self._cache["syntax"]
+        service: SyntaxService = self._cache["syntax"]
+        return service
 
     @property
-    def semantic(self):
+    def semantic(self) -> SemanticService:
         from dpmcore.services.semantic import SemanticService
 
         if "semantic" not in self._cache:
             self._cache["semantic"] = SemanticService(self._session)
-        return self._cache["semantic"]
+        service: SemanticService = self._cache["semantic"]
+        return service
 
     @property
-    def ast_generator(self):
+    def ast_generator(self) -> ASTGeneratorService:
         from dpmcore.services.ast_generator import ASTGeneratorService
 
         if "ast_generator" not in self._cache:
             self._cache["ast_generator"] = ASTGeneratorService(self._session)
-        return self._cache["ast_generator"]
+        service: ASTGeneratorService = self._cache["ast_generator"]
+        return service
 
     @property
-    def scope_calculator(self):
+    def scope_calculator(self) -> ScopeCalculatorService:
         from dpmcore.services.scope_calculator import ScopeCalculatorService
 
         if "scope_calculator" not in self._cache:
             self._cache["scope_calculator"] = ScopeCalculatorService(
                 self._session,
             )
-        return self._cache["scope_calculator"]
+        service: ScopeCalculatorService = self._cache["scope_calculator"]
+        return service
 
     # ------------------------------------------------------------------ #
     # Data dictionary / explorer / hierarchy
     # ------------------------------------------------------------------ #
 
     @property
-    def data_dictionary(self):
+    def data_dictionary(self) -> DataDictionaryService:
         from dpmcore.services.data_dictionary import DataDictionaryService
 
         if "data_dictionary" not in self._cache:
             self._cache["data_dictionary"] = DataDictionaryService(
                 self._session,
             )
-        return self._cache["data_dictionary"]
+        service: DataDictionaryService = self._cache["data_dictionary"]
+        return service
 
     @property
-    def explorer(self):
+    def explorer(self) -> ExplorerService:
         from dpmcore.services.explorer import ExplorerService
 
         if "explorer" not in self._cache:
             self._cache["explorer"] = ExplorerService(self._session)
-        return self._cache["explorer"]
+        service: ExplorerService = self._cache["explorer"]
+        return service
 
     @property
-    def hierarchy(self):
+    def hierarchy(self) -> HierarchyService:
         from dpmcore.services.hierarchy import HierarchyService
 
         if "hierarchy" not in self._cache:
             self._cache["hierarchy"] = HierarchyService(self._session)
-        return self._cache["hierarchy"]
+        service: HierarchyService = self._cache["hierarchy"]
+        return service
 
     # ------------------------------------------------------------------ #
     # Structure service
     # ------------------------------------------------------------------ #
 
     @property
-    def structure(self):
+    def structure(self) -> StructureService:
         from dpmcore.services.structure import StructureService
 
         if "structure" not in self._cache:
             self._cache["structure"] = StructureService(self._session)
-        return self._cache["structure"]
+        service: StructureService = self._cache["structure"]
+        return service
 
     # ------------------------------------------------------------------ #
     # Migration (requires Engine, not Session)
     # ------------------------------------------------------------------ #
 
     @property
-    def migration(self):
+    def migration(self) -> MigrationService:
         from dpmcore.services.migration import MigrationService
 
         if "migration" not in self._cache:
             self._cache["migration"] = MigrationService(self._engine)
-        return self._cache["migration"]
+        service: MigrationService = self._cache["migration"]
+        return service
 
 
 class DpmConnection:
@@ -166,7 +189,7 @@ class DpmConnection:
     # ------------------------------------------------------------------ #
 
     @property
-    def orm(self):
+    def orm(self) -> Session:
         """Direct access to the SQLAlchemy session.
 
         Use for advanced ORM queries that bypass the service layer.
@@ -186,7 +209,12 @@ class DpmConnection:
         """Enter the context manager."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         """Close the connection on context exit."""
         self.close()
 
