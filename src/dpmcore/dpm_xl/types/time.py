@@ -1,7 +1,7 @@
 import calendar
 import operator
 from datetime import date, datetime
-from typing import Union
+from typing import Any, Callable
 
 import pandas as pd
 from pandas._libs.missing import NAType
@@ -27,13 +27,13 @@ class TimePeriod:
         else:
             self.period_number = 1
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.period_indicator == "A":
             return f"{self.year}{self.period_indicator}"
         return f"{self.year}{self.period_indicator}{self.period_number}"
 
     @staticmethod
-    def _check_year(year: int):
+    def _check_year(year: int) -> None:
         if year < 1900 or year > 9999:
             raise ValueError(
                 f"Invalid year {year}, must be between 1900 and 9999."
@@ -44,7 +44,7 @@ class TimePeriod:
         return self._year
 
     @year.setter
-    def year(self, value: int):
+    def year(self, value: int) -> None:
         self._check_year(value)
         self._year = value
 
@@ -53,7 +53,7 @@ class TimePeriod:
         return self._period_indicator
 
     @period_indicator.setter
-    def period_indicator(self, value: str):
+    def period_indicator(self, value: str) -> None:
         if value not in PeriodDuration():
             raise ValueError(
                 f"Cannot set period indicator as {value}. Possible values: {PeriodDuration().member_names}"
@@ -65,7 +65,7 @@ class TimePeriod:
         return self._period_number
 
     @period_number.setter
-    def period_number(self, value: int):
+    def period_number(self, value: int) -> None:
         if not PeriodDuration.check_period_range(self.period_indicator, value):
             raise ValueError(
                 f"Period Number must be between 1 and "
@@ -74,13 +74,15 @@ class TimePeriod:
             )
         self._period_number = value
 
-    def _meta_comparison(self, other, py_op) -> bool:
+    def _meta_comparison(
+        self, other: "TimePeriod", py_op: Callable[[int, int], bool]
+    ) -> bool:
         return py_op(
             duration_mapping[self.period_indicator],
             duration_mapping[other.period_indicator],
         )
 
-    def start_date(self, as_date=False) -> Union[date, str]:
+    def start_date(self, as_date: bool = False) -> date | str:
         """Gets the starting date of the Period."""
         date_value = period_to_date(
             year=self.year,
@@ -92,7 +94,7 @@ class TimePeriod:
             return date_value
         return date_value.isoformat()
 
-    def end_date(self, as_date=False) -> Union[date, str]:
+    def end_date(self, as_date: bool = False) -> date | str:
         """Gets the ending date of the Period."""
         date_value = period_to_date(
             year=self.year,
@@ -104,34 +106,41 @@ class TimePeriod:
             return date_value
         return date_value.isoformat()
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, TimePeriod):
+            return NotImplemented
         return self._meta_comparison(other, operator.eq)
 
-    def __ne__(self, other) -> bool:
+    def __ne__(self, other: object) -> bool:
+        if not isinstance(other, TimePeriod):
+            return NotImplemented
         return not self._meta_comparison(other, operator.eq)
 
-    def __lt__(self, other) -> bool:
+    def __lt__(self, other: "TimePeriod") -> bool:
         return self._meta_comparison(other, operator.lt)
 
-    def __le__(self, other) -> bool:
+    def __le__(self, other: "TimePeriod") -> bool:
         return self._meta_comparison(other, operator.le)
 
-    def __gt__(self, other) -> bool:
+    def __gt__(self, other: "TimePeriod") -> bool:
         return self._meta_comparison(other, operator.gt)
 
-    def __ge__(self, other) -> bool:
+    def __ge__(self, other: "TimePeriod") -> bool:
         return self._meta_comparison(other, operator.ge)
 
-    def change_indicator(self, new_indicator):
+    def change_indicator(self, new_indicator: str) -> None:
         if self.period_indicator == new_indicator:
             return
         date_value = period_to_date(
             self.year, self.period_indicator, self.period_number
         )
         self.period_indicator = new_indicator
-        self.period_number = date_to_period(
-            date_value, period_indicator=new_indicator
-        ).period_number
+        new_period = date_to_period(date_value, period_indicator=new_indicator)
+        if new_period is None:
+            raise ValueError(
+                f"Invalid Period Indicator {new_indicator}"
+            )
+        self.period_number = new_period.period_number
 
 
 class Time:
@@ -147,25 +156,19 @@ class Time:
             )
 
     @classmethod
-    def from_dates(cls, date1: date, date2: date):
+    def from_dates(cls, date1: date, date2: date) -> "Time":
         return cls(date1.isoformat(), date2.isoformat())
 
     @classmethod
-    def from_iso_format(cls, dates: str):
+    def from_iso_format(cls, dates: str) -> "Time":
         return cls(*dates.split("/", maxsplit=1))
 
     @property
-    def date1(self, as_date=False) -> Union[date, str]:
-        if as_date:
-            return date.fromisoformat(self._date1)
+    def date1(self) -> str:
         return self._date1
 
-    @property
-    def date2(self) -> Union[date, str]:
-        return self._date2
-
     @date1.setter
-    def date1(self, value: str):
+    def date1(self, value: str) -> None:
         date.fromisoformat(value)
         if value > self.date2:
             raise ValueError(
@@ -173,20 +176,24 @@ class Time:
             )
         self._date1 = value
 
-    def date1_asdate(self):
-        return date.fromisoformat(self._date1)
-
-    def date2_asdate(self):
-        return date.fromisoformat(self._date2)
+    @property
+    def date2(self) -> str:
+        return self._date2
 
     @date2.setter
-    def date2(self, value: str):
+    def date2(self, value: str) -> None:
         date.fromisoformat(value)
         if value < self.date1:
             raise ValueError(
                 f"({value} < {self.date1}). Cannot set date2 with a value lower than date1."
             )
         self._date2 = value
+
+    def date1_asdate(self) -> date:
+        return date.fromisoformat(self._date1)
+
+    def date2_asdate(self) -> date:
+        return date.fromisoformat(self._date2)
 
     @property
     def length(self) -> int:
@@ -196,34 +203,40 @@ class Time:
 
     __len__ = length
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.date1}/{self.date2}"
 
     __repr__ = __str__
 
-    def _meta_comparison(self, other, py_op):
+    def _meta_comparison(
+        self, other: "Time", py_op: Callable[[int, int], bool]
+    ) -> bool:
         return py_op(self.length, other.length)
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Time):
+            return NotImplemented
         return self._meta_comparison(other, operator.eq)
 
-    def __ne__(self, other) -> bool:
+    def __ne__(self, other: object) -> bool:
+        if not isinstance(other, Time):
+            return NotImplemented
         return self._meta_comparison(other, operator.ne)
 
-    def __lt__(self, other) -> bool:
+    def __lt__(self, other: "Time") -> bool:
         return self._meta_comparison(other, operator.lt)
 
-    def __le__(self, other) -> bool:
+    def __le__(self, other: "Time") -> bool:
         return self._meta_comparison(other, operator.le)
 
-    def __gt__(self, other) -> bool:
+    def __gt__(self, other: "Time") -> bool:
         return self._meta_comparison(other, operator.gt)
 
-    def __ge__(self, other) -> bool:
+    def __ge__(self, other: "Time") -> bool:
         return self._meta_comparison(other, operator.ge)
 
     @classmethod
-    def from_time_period(cls, value: TimePeriod):
+    def from_time_period(cls, value: TimePeriod) -> "Time":
         date1 = period_to_date(
             value.year, value.period_indicator, value.period_number, start=True
         )
@@ -236,10 +249,12 @@ class Time:
         return cls.from_dates(date1, date2)
 
 
-def timePeriodParser(str_: str) -> Union[TimePeriod, NAType]:
+def timePeriodParser(str_: str | NAType | None) -> TimePeriod | NAType:
     """Examples: 2020, 2019A, 2018Q3, 2011M12 2023S2."""
     try:
-        if pd.isnull(str_) or len(str_) == 0:
+        if not isinstance(str_, str):
+            return pd.NA
+        if len(str_) == 0:
             return pd.NA
         return TimePeriod(str_)
 
@@ -248,10 +263,12 @@ def timePeriodParser(str_: str) -> Union[TimePeriod, NAType]:
         raise ValueError("Not a valid time period format {}".format(str_))
 
 
-def timeParser(str_: str) -> Union[NAType, Time]:
+def timeParser(str_: str | NAType | None) -> NAType | Time:
     """Example: 2000-01-01/2009-12-31."""
     try:
-        if pd.isnull(str_) or len(str_) == 0:
+        if not isinstance(str_, str):
+            return pd.NA
+        if len(str_) == 0:
             return pd.NA
         return Time.from_iso_format(str_)
 
@@ -260,7 +277,9 @@ def timeParser(str_: str) -> Union[NAType, Time]:
         raise ValueError("Not a valid time format {}".format(str_))
 
 
-def date_to_period(date_value: date, period_indicator):
+def date_to_period(
+    date_value: date, period_indicator: str
+) -> TimePeriod | None:
     if period_indicator == "A":
         return TimePeriod(f"{date_value.year}A")
     elif period_indicator == "S":
@@ -280,9 +299,15 @@ def date_to_period(date_value: date, period_indicator):
         return TimePeriod(
             f"{date_value.year}D{date_value.timetuple().tm_yday}"
         )
+    return None
 
 
-def period_to_date(year, period_indicator, period_number, start=False):
+def period_to_date(
+    year: int,
+    period_indicator: str,
+    period_number: int,
+    start: bool = False,
+) -> date:
     if period_indicator == "A":
         if start:
             return date(year, 1, 1)
@@ -347,9 +372,9 @@ class SingletonMeta(type):
     metaclass because it is best suited for this purpose.
     """
 
-    _instances = {}
+    _instances: dict[type, Any] = {}
 
-    def __call__(cls, *args, **kwargs):
+    def __call__(cls, *args: Any, **kwargs: Any) -> Any:
         """Possible changes to the value of the `__init__` argument do not affect
         the returned instance.
         """
@@ -362,15 +387,15 @@ class SingletonMeta(type):
 class PeriodDuration(metaclass=SingletonMeta):
     periods = {"D": 365, "W": 53, "M": 12, "Q": 4, "S": 2, "A": 1}
 
-    def __contains__(self, item):
+    def __contains__(self, item: object) -> bool:
         return item in self.periods
 
     @property
-    def member_names(self):
+    def member_names(self) -> list[str]:
         return list(self.periods.keys())
 
     @classmethod
-    def check_period_range(cls, letter, value):
+    def check_period_range(cls, letter: str, value: int) -> bool:
         if letter == "A":
             return True
         return value in range(1, cls.periods[letter] + 1)
