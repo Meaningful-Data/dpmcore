@@ -227,11 +227,11 @@ class ASTVisitor(dpm_xlParserVisitor):
 
     def visitKeyNames(self, ctx: dpm_xlParser.KeyNamesContext) -> str:
         child = ctx.getChild(0)
-        return cast(str, child.symbol.text)  # type: ignore[attr-defined]
+        return cast(str, child.symbol.text)
 
     def visitPropertyCode(self, ctx: dpm_xlParser.PropertyCodeContext) -> str:
         child = ctx.getChild(0)
-        return cast(str, child.symbol.text)  # type: ignore[attr-defined]
+        return cast(str, child.symbol.text)
 
     def visitUnaryNumericFunctions(
         self, ctx: dpm_xlParser.UnaryNumericFunctionsContext
@@ -396,7 +396,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         self, ctx: dpm_xlParser.ComparisonOperatorsContext
     ) -> str:
         child = ctx.getChild(0)
-        return cast(str, child.symbol.text)  # type: ignore[attr-defined]
+        return cast(str, child.symbol.text)
 
     def visitNumericExpr(self, ctx: dpm_xlParser.NumericExprContext) -> BinOp:
         return self.create_bin_op(ctx)
@@ -446,12 +446,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         self, ctx: dpm_xlParser.ItemSignatureContext
     ) -> str:
         ctx_list = list(ctx.getChildren())
-        return "".join(
-            [
-                child.symbol.text  # type: ignore[attr-defined]
-                for child in ctx_list
-            ]
-        )
+        return "".join([child.symbol.text for child in ctx_list])
 
     def visitBoolExpr(self, ctx: dpm_xlParser.BoolExprContext) -> BinOp:
         return self.create_bin_op(ctx)
@@ -475,11 +470,11 @@ class ASTVisitor(dpm_xlParserVisitor):
     def visitLiteral(self, ctx: dpm_xlParser.LiteralContext) -> Constant:
 
         if not hasattr(ctx, "children"):
-            symbol = ctx.symbol  # type: ignore[attr-defined]
+            symbol = ctx.symbol
             if symbol.text == "null":
                 return Constant(type_="Null", value=None)
 
-        token = ctx.getChild(0).symbol  # type: ignore[attr-defined]
+        token = ctx.getChild(0).symbol
         value = token.text
         type_ = token.type
 
@@ -521,7 +516,7 @@ class ASTVisitor(dpm_xlParserVisitor):
 
     def visitVarRef(self, ctx: dpm_xlParser.VarRefContext) -> VarRef:
         child = ctx.getChild(0)
-        variable = child.symbol.text[1:]  # type: ignore[attr-defined]
+        variable = child.symbol.text[1:]
         return VarRef(variable=variable)
 
     def visitCellRef(self, ctx: dpm_xlParser.CellRefContext) -> VarID | None:
@@ -538,7 +533,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         self, ctx: dpm_xlParser.PreconditionElemContext
     ) -> PreconditionItem:
         child = ctx.getChild(0)
-        precondition = child.symbol.text[2:]  # type: ignore[attr-defined]
+        precondition = child.symbol.text[2:]
         return PreconditionItem(
             variable_id=precondition, variable_code=precondition
         )  # This is not the variable_id but we keep the name for later
@@ -547,7 +542,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         self, ctx: dpm_xlParser.OperationRefContext
     ) -> OperationRef:
         child = ctx.getChild(0)
-        operation_code = child.symbol.text[1:]  # type: ignore[attr-defined]
+        operation_code = child.symbol.text[1:]
         return OperationRef(operation_code=operation_code)
 
     def create_var_id(
@@ -609,7 +604,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         self, ctx: dpm_xlParser.TableReferenceContext
     ) -> str:
         child = ctx.getChild(0)
-        return cast(str, child.symbol.text)  # type: ignore[attr-defined]
+        return cast(str, child.symbol.text)
 
     def visitCompRef(self, ctx: dpm_xlParser.CompRefContext) -> VarID:
         ctx_list = list(ctx.getChildren())
@@ -704,7 +699,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         self, ctx: dpm_xlParser.TemporaryIdentifierContext
     ) -> TemporaryIdentifier:
         child = ctx.getChild(0)
-        value = child.symbol.text  # type: ignore[attr-defined]
+        value = child.symbol.text
         return TemporaryIdentifier(value=value)
 
     @staticmethod

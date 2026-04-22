@@ -301,8 +301,10 @@ class Binary(Operator):
                     result_dataframe = result_dataframe.drop(
                         columns=["data_type_left", "data_type_right"]
                     )
+                # pandas-stubs rejects ScalarType as a broadcast value;
+                # runtime stores it in an object-dtype column.
                 result_dataframe = result_dataframe.assign(
-                    data_type=final_type
+                    data_type=final_type,  # type: ignore[arg-type]
                 )
 
         return final_type, result_dataframe
@@ -630,7 +632,10 @@ class Unary(Operator):
                     error_info=error_info,
                 )
                 if operand.records is not None:
-                    operand.records["data_type"] = final_type
+                    # Broadcast a ScalarType object into an object-
+                    # dtype column; pandas-stubs overloads don't cover
+                    # this but it works at runtime.
+                    operand.records["data_type"] = final_type  # type: ignore[call-overload]
 
             recordset = cls.create_labeled_recordset(
                 operand,

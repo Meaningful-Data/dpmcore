@@ -503,8 +503,10 @@ class Nvl(ConditionalOperator):
                     result_dataframe = result_dataframe.drop(
                         columns=["data_type_left", "data_type_right"]
                     )
+                # pandas-stubs rejects ScalarType as a broadcast value;
+                # runtime stores it in an object-dtype column.
                 result_dataframe = result_dataframe.assign(
-                    data_type=type_promotion
+                    data_type=type_promotion,  # type: ignore[arg-type]
                 )
 
         return type_promotion, result_dataframe

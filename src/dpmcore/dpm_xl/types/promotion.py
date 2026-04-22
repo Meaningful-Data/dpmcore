@@ -200,7 +200,10 @@ def binary_implicit_type_promotion_with_mixed_types(
 
     # If there is not a data_type column, result_dataframe is the result of merging two recordsets
     if "data_type" not in result_dataframe.columns:
-        result_dataframe["data_type"] = result_dataframe.apply(
+        # pandas-stubs' `apply` overloads don't accept a callable
+        # returning an arbitrary object — ScalarType is our domain
+        # type, which pandas stores as an object-dtype column.
+        result_dataframe["data_type"] = result_dataframe.apply(  # type: ignore[call-overload]
             lambda x: binary_implicit_type_promotion(
                 x["data_type_left"],
                 x["data_type_right"],

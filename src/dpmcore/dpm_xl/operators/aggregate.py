@@ -135,7 +135,8 @@ class AggregateOperator(Unary):
             error_info=error_info,
         )
         if operand.records is not None:
-            operand.records["data_type"] = final_type
+            # Broadcast ScalarType into an object-dtype column.
+            operand.records["data_type"] = final_type  # type: ignore[call-overload]
 
         if grouping_clause is None:
             # Aggregate reduces a recordset to a scalar; ``_create_labeled_scalar``
