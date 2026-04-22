@@ -246,9 +246,7 @@ class ASTToJSONVisitor(NodeVisitor):
                 def _has_range_syntax(values: Any) -> bool:
                     if not values or not isinstance(values, list):
                         return False
-                    return any(
-                        "-" in str(v) for v in values if v and v != "*"
-                    )
+                    return any("-" in str(v) for v in values if v and v != "*")
 
                 # Helper function to detect wildcard syntax (e.g., ['*'])
                 def _has_wildcard_syntax(values: Any) -> bool:
@@ -749,9 +747,7 @@ def expand_with_expression(node: Any) -> Any:
     return node
 
 
-def apply_partial_selection(
-    expression: Any, partial_selection: Any
-) -> Any:
+def apply_partial_selection(expression: Any, partial_selection: Any) -> Any:
     """Apply partial selection to VarID nodes in the expression.
 
     Args:

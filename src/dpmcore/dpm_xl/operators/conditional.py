@@ -436,9 +436,7 @@ class Nvl(ConditionalOperator):
     op: ClassVar[str | None] = tokens.NVL
 
     @classmethod
-    def create_origin_expression(
-        cls, left: Operand, right: Operand
-    ) -> str:
+    def create_origin_expression(cls, left: Operand, right: Operand) -> str:
         left_name = getattr(left, "name", None) or left.origin
         right_name = getattr(right, "name", None) or right.origin
 

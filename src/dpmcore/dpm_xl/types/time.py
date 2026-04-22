@@ -137,9 +137,7 @@ class TimePeriod:
         self.period_indicator = new_indicator
         new_period = date_to_period(date_value, period_indicator=new_indicator)
         if new_period is None:
-            raise ValueError(
-                f"Invalid Period Indicator {new_indicator}"
-            )
+            raise ValueError(f"Invalid Period Indicator {new_indicator}")
         self.period_number = new_period.period_number
 
 

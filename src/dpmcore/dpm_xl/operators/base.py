@@ -18,7 +18,12 @@ from dpmcore.dpm_xl.types.promotion import (
     unary_implicit_type_promotion,
     unary_implicit_type_promotion_with_mixed_types,
 )
-from dpmcore.dpm_xl.types.scalar import Mixed, Number, ScalarFactory, ScalarType
+from dpmcore.dpm_xl.types.scalar import (
+    Mixed,
+    Number,
+    ScalarFactory,
+    ScalarType,
+)
 from dpmcore.dpm_xl.utils.operands_mapping import (
     generate_new_label,
     set_operand_label,
@@ -52,9 +57,7 @@ class Operator:
     interval_allowed: ClassVar[bool] = False
 
     @staticmethod
-    def _create_labeled_scalar(
-        origin: str, result_type: ScalarType
-    ) -> Scalar:
+    def _create_labeled_scalar(origin: str, result_type: ScalarType) -> Scalar:
         new_label = generate_new_label()
 
         interval = getattr(result_type, "interval", None)
@@ -507,9 +510,7 @@ class Unary(Operator):
     return_type: ClassVar[type[ScalarType] | None] = None
 
     @classmethod
-    def create_origin_expression(
-        cls, operand: Operand, *args: object
-    ) -> str:
+    def create_origin_expression(cls, operand: Operand, *args: object) -> str:
         operand_origin = operand.origin
         origin = f"{cls.op}({operand_origin})"
         return origin
@@ -558,9 +559,7 @@ class Unary(Operator):
         return recordset
 
     @classmethod
-    def create_labeled_precondition(
-        cls, operand: ConstantOperand
-    ) -> object:
+    def create_labeled_precondition(cls, operand: ConstantOperand) -> object:
         # Latent bug: ``_create_labeled_precondition`` is not defined on any
         # subclass. This method is currently unreachable — kept for parity
         # with the original source; the attribute access is intentionally

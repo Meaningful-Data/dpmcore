@@ -134,7 +134,5 @@ def generate_xyz(data: pd.DataFrame) -> list[dict[str, Any]]:
     if len(group) > 0:
         data.sort_values(by=group, inplace=True)
     data.drop_duplicates(keep="first", inplace=True)
-    list_xyz = cast(
-        list[dict[str, Any]], data.to_dict(orient="records")
-    )
+    list_xyz = cast(list[dict[str, Any]], data.to_dict(orient="records"))
     return list_xyz

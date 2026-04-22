@@ -341,7 +341,9 @@ def unary_check_interval(
             return None
         if return_type is not None and isinstance(return_type, Number):
             return_type.set_interval(operand.interval)  # type: ignore[attr-defined]
-        if op_type_to_check is not None and isinstance(op_type_to_check, Number):
+        if op_type_to_check is not None and isinstance(
+            op_type_to_check, Number
+        ):
             op_type_to_check.set_interval(operand.interval)  # type: ignore[attr-defined]
     elif not interval_allowed and getattr(operand, "interval", None):
         origin = (

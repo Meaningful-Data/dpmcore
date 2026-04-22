@@ -59,9 +59,7 @@ class ClauseOperator(Operator):
 
         if cls.op == tokens.RENAME:
             if new_names is None:
-                raise errors.SemanticError(
-                    "4-5-1-2", duplicated=[]
-                )
+                raise errors.SemanticError("4-5-1-2", duplicated=[])
             if len(new_names) > len(set(new_names)):
                 seen: set[str] = set()
                 duplicated = list(

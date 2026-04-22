@@ -1009,7 +1009,10 @@ def _apply_fallback_for_equal_dates(
         if mid is None or cur_srid is None:
             continue
         for mv in by_mid.get(mid, []):
-            if mv.start_release_id is not None and mv.start_release_id < cur_srid:
+            if (
+                mv.start_release_id is not None
+                and mv.start_release_id < cur_srid
+            ):
                 if mv.from_reference_date != mv.to_reference_date:
                     replacement[cur_vid] = mv
                     break

@@ -141,9 +141,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         right: AST = self._visit(ctx_list[2])
         return TemporaryAssignment(left=left, op=op, right=right)
 
-    def visitExpr(
-        self, ctx: dpm_xlParser.ExpressionContext
-    ) -> AST | None:
+    def visitExpr(self, ctx: dpm_xlParser.ExpressionContext) -> AST | None:
         child = ctx.getChild(0)
         if isinstance(child, dpm_xlParser.ParExprContext):
             return self.visitParExpr(child)
@@ -231,9 +229,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         child = ctx.getChild(0)
         return cast(str, child.symbol.text)  # type: ignore[attr-defined]
 
-    def visitPropertyCode(
-        self, ctx: dpm_xlParser.PropertyCodeContext
-    ) -> str:
+    def visitPropertyCode(self, ctx: dpm_xlParser.PropertyCodeContext) -> str:
         child = ctx.getChild(0)
         return cast(str, child.symbol.text)  # type: ignore[attr-defined]
 
@@ -278,9 +274,7 @@ class ASTVisitor(dpm_xlParserVisitor):
             raise errors.SyntaxError_(code="0-1", message=error.msg)
         return BinOp(left=left, op=op, right=pattern)
 
-    def visitIsnullExpr(
-        self, ctx: dpm_xlParser.IsnullExprContext
-    ) -> UnaryOp:
+    def visitIsnullExpr(self, ctx: dpm_xlParser.IsnullExprContext) -> UnaryOp:
         ctx_list = list(ctx.getChildren())
         op = self._symbol_text(ctx_list[0])
         operand: AST = self._visit(ctx_list[2])
@@ -294,9 +288,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         condition: AST = self._visit(ctx_list[4])
         return FilterOp(selection=selection, condition=condition)
 
-    def visitNvlFunction(
-        self, ctx: dpm_xlParser.NvlFunctionContext
-    ) -> BinOp:
+    def visitNvlFunction(self, ctx: dpm_xlParser.NvlFunctionContext) -> BinOp:
         ctx_list = list(ctx.getChildren())
         op = self._symbol_text(ctx_list[0])
         left: AST = self._visit(ctx_list[2])
@@ -406,9 +398,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         child = ctx.getChild(0)
         return cast(str, child.symbol.text)  # type: ignore[attr-defined]
 
-    def visitNumericExpr(
-        self, ctx: dpm_xlParser.NumericExprContext
-    ) -> BinOp:
+    def visitNumericExpr(self, ctx: dpm_xlParser.NumericExprContext) -> BinOp:
         return self.create_bin_op(ctx)
 
     def visitConcatExpr(self, ctx: dpm_xlParser.ConcatExprContext) -> BinOp:
@@ -435,14 +425,10 @@ class ASTVisitor(dpm_xlParserVisitor):
         right: AST = self._visit(ctx_list[2])
         return BinOp(left=left, op=op, right=right)
 
-    def visitSetOperand(
-        self, ctx: dpm_xlParser.SetOperandContext
-    ) -> AST:
+    def visitSetOperand(self, ctx: dpm_xlParser.SetOperandContext) -> AST:
         return cast(AST, self._visit(ctx.getChild(1)))
 
-    def visitSetElements(
-        self, ctx: dpm_xlParser.SetElementsContext
-    ) -> Set:
+    def visitSetElements(self, ctx: dpm_xlParser.SetElementsContext) -> Set:
         ctx_list = list(ctx.getChildren())
         set_elements: list[AST] = []
         for child in ctx_list:
@@ -538,9 +524,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         variable = child.symbol.text[1:]  # type: ignore[attr-defined]
         return VarRef(variable=variable)
 
-    def visitCellRef(
-        self, ctx: dpm_xlParser.CellRefContext
-    ) -> VarID | None:
+    def visitCellRef(self, ctx: dpm_xlParser.CellRefContext) -> VarID | None:
         ctx_list = list(ctx.getChildren())
 
         child = ctx_list[0]
@@ -676,9 +660,7 @@ class ASTVisitor(dpm_xlParserVisitor):
                 sheets.append(child.symbol.text[1:])
         return sheets
 
-    def visitInterval(
-        self, ctx: dpm_xlParser.IntervalContext
-    ) -> bool | None:
+    def visitInterval(self, ctx: dpm_xlParser.IntervalContext) -> bool | None:
         interval: bool | None = None
         ctx_list = list(ctx.getChildren())
         symbol_text: str = self._symbol_text(ctx_list[2])
@@ -692,10 +674,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         self, ctx: dpm_xlParser.DefaultContext
     ) -> Constant | None:
         third = ctx.getChild(2)
-        if (
-            isinstance(third, TerminalNodeImpl)
-            and third.symbol.text == "null"
-        ):
+        if isinstance(third, TerminalNodeImpl) and third.symbol.text == "null":
             return None
         default_value: Constant = self.visitLiteral(
             cast(dpm_xlParser.LiteralContext, third)

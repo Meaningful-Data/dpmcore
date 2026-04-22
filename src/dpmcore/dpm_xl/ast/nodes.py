@@ -793,9 +793,7 @@ class SubOp(AST):
     :parameter value: Value to substitute (can be a literal, select, or itemReference)
     """
 
-    def __init__(
-        self, operand: AST, property_code: str, value: AST
-    ) -> None:
+    def __init__(self, operand: AST, property_code: str, value: AST) -> None:
         super().__init__()
         self.operand: AST = operand
         self.property_code = property_code

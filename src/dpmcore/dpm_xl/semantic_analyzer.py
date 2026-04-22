@@ -197,9 +197,7 @@ class InputAnalyzer(ASTTemplate, ABC):
         raise SemanticError("7-1")
 
     @staticmethod
-    def __check_default_value(
-        default_value: Any, type_: ScalarType
-    ) -> None:
+    def __check_default_value(default_value: Any, type_: ScalarType) -> None:
         if default_value is None:
             return
         default_type = ScalarFactory().scalar_factory(code=default_value.type)

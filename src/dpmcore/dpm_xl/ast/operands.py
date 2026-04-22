@@ -149,9 +149,7 @@ def _expand_ranges_from_data(node: VarID, node_data: pd.DataFrame) -> None:
 
     # Expand cols if they contain range syntax
     if _has_range_syntax(node.cols):
-        actual_cols = list(
-            node_data["column_code"].dropna().unique().tolist()
-        )
+        actual_cols = list(node_data["column_code"].dropna().unique().tolist())
         if actual_cols:
             node.cols = sorted(actual_cols)
 

@@ -141,7 +141,9 @@ class MLGeneration(ASTTemplate):
             operation_scope_service.calculate_operation_scope(
                 tables_vids=list(self.table_vid_dict.values()),
                 precondition_items=[
-                    item for item in self.precondition_items if item is not None
+                    item
+                    for item in self.precondition_items
+                    if item is not None
                 ],
                 only_last_release=False,  # type: ignore[call-arg]
             )
@@ -545,7 +547,10 @@ class MLGeneration(ASTTemplate):
             precondition_found = False
             for precondition in preconditions_vars:
                 variable_code = node.variable_code
-                if variable_code is not None and precondition.Code in variable_code:
+                if (
+                    variable_code is not None
+                    and precondition.Code in variable_code
+                ):
                     variable_id = precondition.VariableID
                     precondition_found = True
                     precondition_code = precondition.Code
@@ -702,9 +707,7 @@ class MLGeneration(ASTTemplate):
 
     def _get_op_version_id(self, operation_code: str) -> int:
         if self.operations_data is None:
-            raise RuntimeError(
-                "_get_op_version_id requires operations_data"
-            )
+            raise RuntimeError("_get_op_version_id requires operations_data")
         op_version_id = self.operations_data[
             self.operations_data["Code"] == operation_code
         ]["OperationVID"].values[0]

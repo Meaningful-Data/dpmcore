@@ -6,8 +6,6 @@ from dpmcore.dpm_xl.operators.base import (
 )
 from dpmcore.dpm_xl.operators.base import (
     PyOp,
-)
-from dpmcore.dpm_xl.operators.base import (
     Unary,
 )
 from dpmcore.dpm_xl.types.scalar import Boolean, ScalarType

@@ -101,9 +101,7 @@ class AttributeComponent(Component):
     These components are drop normally except for rename and where operators.
     """
 
-    def __init__(
-        self, name: str, type_: ScalarType, parent: str
-    ) -> None:
+    def __init__(self, name: str, type_: ScalarType, parent: str) -> None:
         super().__init__(name, type_, parent)
 
 
@@ -114,7 +112,9 @@ class Structure:
         # Runtime isinstance guard kept defensively even though the
         # annotated type already excludes non-Component entries.
         components_names = [
-            c.name for c in components if isinstance(c, Component)  # type: ignore[redundant-expr]
+            c.name
+            for c in components
+            if isinstance(c, Component)  # type: ignore[redundant-expr]
         ]
         if len(components_names) != len(set(components_names)) or len(
             components
@@ -127,9 +127,7 @@ class Structure:
         ]
         if len(facts_components) > 1:
             raise Exception("Duplicated Fact Component")
-        self.components: dict[str, Component] = {
-            c.name: c for c in components
-        }
+        self.components: dict[str, Component] = {c.name: c for c in components}
 
     def get_key_components(self) -> dict[str, KeyComponent]:
         dpm_components = self.get_dpm_components()

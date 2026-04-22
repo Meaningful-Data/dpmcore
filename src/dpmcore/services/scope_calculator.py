@@ -81,16 +81,12 @@ class ScopeCalculatorService:
             # version id (int). Passing codes as ``tables_vids`` is a latent
             # semantic mismatch — preserved to avoid behavior changes in
             # this typing pass.
-            table_vids: list[str] = (
-                list(oc.tables.keys()) if oc.tables else []
-            )
+            table_vids: list[str] = list(oc.tables.keys()) if oc.tables else []
             # NOTE: oc.preconditions is a bool sentinel (True once a
             # precondition has been visited), but callers historically
             # treated it as a list. The `or []` pattern therefore yields
             # Literal[True] on the populated branch. Preserved as-is.
-            precondition_items: list[str] = (
-                [] if not oc.preconditions else []
-            )
+            precondition_items: list[str] = [] if not oc.preconditions else []
 
             scope_svc = OperationScopeService(
                 operation_version_id=operation_version_id,

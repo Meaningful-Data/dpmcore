@@ -64,9 +64,7 @@ def filter_datapoints_df(
     return df
 
 
-def filter_module_by_table_df(
-    df: pd.DataFrame, table: str
-) -> list[str]:
+def filter_module_by_table_df(df: pd.DataFrame, table: str) -> list[str]:
     """Returns a list of modules that contain the table."""
     module_list: list[str] = df[df["table_code"] == table][
         "module_code"

@@ -30,7 +30,11 @@ if TYPE_CHECKING:
     )
     from dpmcore.orm.operations import OperandReference, OperationVersion
     from dpmcore.orm.packaging import Module, ModuleParameters, ModuleVersion
-    from dpmcore.orm.rendering import HeaderVersion, TableVersion, TableVersionCell
+    from dpmcore.orm.rendering import (
+        HeaderVersion,
+        TableVersion,
+        TableVersionCell,
+    )
 
 
 # ------------------------------------------------------------------
