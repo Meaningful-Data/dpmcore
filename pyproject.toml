@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Python library for DPM 2.0 Refit regulatory reporting (ORM, services, REST API)"
 license = { text = "Apache-2.0" }
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<4.0"
 authors = [
     { name = "MeaningfulData S.L.", email = "info@meaningfuldata.eu" },
 ]
@@ -50,8 +50,10 @@ server = ["fastapi>=0.101", "uvicorn[standard]>=0.27"]
 django = ["django>=4.2", "mssql-django>=1.4"]
 postgres = ["psycopg2-binary>=2.9,<3.0"]
 sqlserver = ["pyodbc>=5.0"]
-migration = ["pandas>=2.1.4"]
-data = ["pandas>=2.1.4"]
+# pandas / numpy ranges mirror vtlengine's published pins so that
+# dpmcore + vtlengine can be co-installed without resolver conflicts.
+migration = ["pandas>=2.1.4,<3.0", "numpy>=2.2.0,<2.3"]
+data = ["pandas>=2.1.4,<3.0", "numpy>=2.2.0,<2.3"]
 cli = ["click>=8.1", "rich>=13.7"]
 all = [
     "fastapi>=0.101",
@@ -60,7 +62,8 @@ all = [
     "mssql-django>=1.4",
     "psycopg2-binary>=2.9,<3.0",
     "pyodbc>=5.0",
-    "pandas>=2.1.4",
+    "pandas>=2.1.4,<3.0",
+    "numpy>=2.2.0,<2.3",
     "click>=8.1",
     "rich>=13.7",
 ]
@@ -82,7 +85,7 @@ pyroma = ">=4.2"
 httpx = ">=0.28,<1.0"
 pytest-django = ">=4.9"
 django-stubs = ">=5.1"
-pandas-stubs = ">=2.1,<3.0"
+pandas-stubs = ">=2.2.2,<3.0"
 
 [tool.poetry.group.docs.dependencies]
 sphinx = ">=7.4"
