@@ -6,6 +6,8 @@ OperatorArgument, OperandReference, and OperandReferenceLocation
 models.
 """
 
+from __future__ import annotations
+
 from datetime import date
 from typing import TYPE_CHECKING, List, Optional
 
@@ -29,9 +31,11 @@ if TYPE_CHECKING:
         Item,
         Property,
         SubCategory,
+        SubCategoryItem,
     )
     from dpmcore.orm.packaging import ModuleVersion
-    from dpmcore.orm.variables import Variable
+    from dpmcore.orm.rendering import Cell
+    from dpmcore.orm.variables import Variable, VariableCalculation
 
 
 # ------------------------------------------------------------------

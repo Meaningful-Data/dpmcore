@@ -6,6 +6,8 @@ Framework, Module, ModuleVersion, ModuleVersionComposition,
 ModuleParameters, and OperationCodePrefix.
 """
 
+from __future__ import annotations
+
 from datetime import date
 from typing import TYPE_CHECKING, List, Optional
 
@@ -23,9 +25,11 @@ from dpmcore.orm.base import Base
 from dpmcore.orm.infrastructure import Concept, Release
 
 if TYPE_CHECKING:
+    from dpmcore.orm.operations import OperationScopeComposition
+    from dpmcore.orm.rendering import Table, TableVersion
     from dpmcore.orm.variables import (
-        Table,
-        TableVersion,
+        CompoundKey,
+        VariableCalculation,
         VariableVersion,
     )
 

@@ -6,6 +6,8 @@ properties, contexts, and their versioned and compositional
 relationships.
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import (
@@ -25,11 +27,8 @@ if TYPE_CHECKING:
         OperandReference,
         Operator,
     )
-    from dpmcore.orm.rendering import HeaderVersion
-    from dpmcore.orm.variables import (
-        TableVersion,
-        VariableVersion,
-    )
+    from dpmcore.orm.rendering import HeaderVersion, TableVersion
+    from dpmcore.orm.variables import VariableVersion
 
 
 # ------------------------------------------------------------------
