@@ -1,4 +1,4 @@
-from typing import ClassVar, List, Union
+from typing import ClassVar, List
 
 from dpmcore import errors
 from dpmcore.dpm_xl.operators.base import Binary, Operator
