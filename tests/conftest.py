@@ -29,8 +29,6 @@ collect_ignore_glob = [
     "unit/ast/test_ast_coordinates.py",
     "unit/dpm/test_get_all_tables_for_module.py",
     "unit/dpm/test_module_schema_mapping.py",
-    "unit/semantic/test_default_value_type_check.py",
-    "unit/semantic/test_interval_type_validation.py",
     # Depends on a fixture database at tests/fixtures/test_data.db that is
     # not tracked in the repo. Tracked in the cleanup issue.
     "integration/validation/test_semantic_release.py",
