@@ -134,27 +134,6 @@ class ASTToJSONVisitor(NodeVisitor):
                         result[node_attr] = node_value
                     elif node_attr not in result:
                         # No context value and node value is None
-                        # Check data type to determine if interval should be False or None
-                        # Extract data_type from node.data if available
-                        data_type: str | None = None
-                        if hasattr(node, "data") and node.data is not None:
-                            if hasattr(node.data, "to_dict"):
-                                # DataFrame - get first entry's data_type
-                                first_records: list[dict[str, Any]] = (
-                                    node.data.to_dict("records")
-                                )
-                                if first_records:
-                                    data_type = first_records[0].get(
-                                        "data_type"
-                                    )
-                            elif isinstance(node.data, list) and node.data:
-                                # List - get first entry's data_type
-                                data_type = (
-                                    node.data[0].get("data_type")
-                                    if isinstance(node.data[0], dict)
-                                    else None
-                                )
-
                         # Set interval to False for all data types
                         result[node_attr] = False
                     # If context already set this field, don't override
