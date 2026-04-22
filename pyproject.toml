@@ -187,8 +187,11 @@ lint.pydocstyle.convention = "google"
 ]
 
 [tool.mypy]
-files = "src"
-exclude = "src/dpmcore/dpm_xl/grammar/generated/.*"
+files = ["src"]
+exclude = [
+    "^src/dpmcore/dpm_xl/grammar/",
+    "^tests/",
+]
 disallow_untyped_defs = true
 disallow_untyped_calls = true
 ignore_errors = false
@@ -199,6 +202,22 @@ strict_optional = true
 strict = true
 enable_error_code = ["redundant-expr", "truthy-bool"]
 warn_return_any = false
+
+# Third-party libraries without py.typed and without stubs on PyPI.
+# Narrow overrides to named modules — global ignore_missing_imports
+# would mask real typos.
+[[tool.mypy.overrides]]
+module = ["antlr4", "antlr4.*"]
+ignore_missing_imports = true
+
+# ANTLR-generated parser/lexer/visitor/listener files plus the
+# hand-written pass-through __init__.py. Kept out of scope per issue
+# #11 (grammar is regenerated from the .g4 sources). The exclude
+# pattern above does not apply when paths are passed on the CLI;
+# this override provides the authoritative suppression.
+[[tool.mypy.overrides]]
+module = ["dpmcore.dpm_xl.grammar", "dpmcore.dpm_xl.grammar.*"]
+ignore_errors = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
