@@ -221,6 +221,18 @@ ignore_errors = true
 module = ["pyodbc"]
 ignore_missing_imports = true
 
+# Django ORM field declarations (CharField(...), ForeignKey(...),
+# etc.) collapse to Field[Any, Any] without the full mypy_django_plugin
+# setup. The plugin requires a DJANGO_SETTINGS_MODULE that dpmcore
+# (being a library consumed by Django projects) deliberately does
+# not provide. Disable var-annotated here so model files don't need
+# an explicit generic annotation on every field; all other strict
+# checks remain active. Consumers who wire up the plugin in their
+# own project get full field typing.
+[[tool.mypy.overrides]]
+module = ["dpmcore.django.models.*"]
+disable_error_code = ["var-annotated"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
