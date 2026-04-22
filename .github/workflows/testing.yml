@@ -18,10 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        # 3.10 deferred: SQLAlchemy 2.0 `Mapped[Optional[...]]` annotations
-        # raise "typing.Optional requires a single type. Got MappedColumn"
-        # at import under 3.10. Works on 3.11+. Fix tracked separately.
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - name: Checkout code
@@ -41,9 +38,8 @@ jobs:
         run: poetry run ruff format --no-cache --check
       - name: Run lint checks
         run: poetry run ruff check --output-format=github
-      # Disabled pending codebase type-debt cleanup (tracked separately).
-      # - name: Run type checks
-      #   run: poetry run mypy --show-error-codes --pretty
+      - name: Run type checks
+        run: poetry run mypy --show-error-codes --pretty
       - name: Run tests
         # --cov-fail-under=0 overrides the 100% gate declared in
         # [tool.coverage.report]; the gate is re-enforced by the
