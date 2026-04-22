@@ -12,8 +12,6 @@ PATH_RULES = [
 # be ported to the current `dpmcore` layout — tracked in the codebase
 # cleanup issue. Excluded here so the ~12 working test files can run.
 collect_ignore_glob = [
-    "unit/api/test_instance.py",
-    "unit/dpm/test_module_schema_mapping.py",
     # Depends on a fixture database at tests/fixtures/test_data.db that is
     # not tracked in the repo. Tracked in the cleanup issue.
     "integration/validation/test_semantic_release.py",
