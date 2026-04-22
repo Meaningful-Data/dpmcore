@@ -111,7 +111,8 @@ class ASTGeneratorService:
         This is the highest-level output, suitable for execution
         engines and validation frameworks.
         """
-        if self._semantic is None:
+        session = self.session
+        if self._semantic is None or session is None:
             return {
                 "success": False,
                 "enriched_ast": None,
@@ -140,11 +141,11 @@ class ASTGeneratorService:
                     }
 
                 ast = self._semantic.ast
-                module_analyzer = ModuleAnalyzer(self.session)
+                module_analyzer = ModuleAnalyzer(session)
                 mode, modules = module_analyzer.visit(ast)
 
                 ml = MLGeneration(
-                    session=self.session,
+                    session=session,
                     ast=ast,
                     release_id=release_id,
                     module_code=module_code,

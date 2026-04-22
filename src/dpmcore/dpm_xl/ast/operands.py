@@ -64,7 +64,9 @@ IMPLICIT_OPEN_KEYS = {
 }
 
 
-_HEADERS_CACHE: Dict[Tuple[Hashable, int, Tuple[str, ...]], pd.DataFrame] = {}
+_HEADERS_CACHE: Dict[
+    Tuple[Hashable, int | None, Tuple[str, ...]], pd.DataFrame
+] = {}
 
 
 def _create_operand_label(node: VarID | PreconditionItem) -> None:
@@ -168,7 +170,7 @@ class OperandsChecking(ASTTemplate, ABC):
         session: Session,
         expression: str,
         ast: AST,
-        release_id: int,
+        release_id: int | None,
         is_scripting: bool = False,
     ) -> None:
         self.expression = expression

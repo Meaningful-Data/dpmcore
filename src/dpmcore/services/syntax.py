@@ -32,7 +32,8 @@ class SyntaxService:
 
     def __init__(self) -> None:
         """Build a stateless syntax validator."""
-        self._error_listener = DPMErrorListener()
+        # DPMErrorListener lives in grammar/ (untyped generated code).
+        self._error_listener = DPMErrorListener()  # type: ignore[no-untyped-call]
         self._visitor = ASTVisitor()
 
     # ------------------------------------------------------------------ #
@@ -81,7 +82,7 @@ class SyntaxService:
     # Internal helpers
     # ------------------------------------------------------------------ #
 
-    def _parse(self, expression: str):
+    def _parse(self, expression: str) -> Any:
         """Run ANTLR lexer + parser, return the parse tree."""
         input_stream = InputStream(expression)
         lexer = dpm_xlLexer(input_stream)
@@ -90,7 +91,8 @@ class SyntaxService:
 
         parser = dpm_xlParser(token_stream)
         parser._listeners = [self._error_listener]
-        tree = parser.start()
+        # parser.start lives in grammar/ (untyped generated code).
+        tree = parser.start()  # type: ignore[no-untyped-call]
 
         if parser._syntaxErrors > 0:
             raise SyntaxError_("Syntax errors detected")

@@ -213,6 +213,14 @@ warn_return_any = false
 module = ["dpmcore.dpm_xl.grammar", "dpmcore.dpm_xl.grammar.*"]
 ignore_errors = true
 
+# pyodbc ships a .pyi stub alongside its C extension but does not
+# include a py.typed marker, so mypy refuses to load the stubs under
+# strict mode. Allow the bare import; narrow enough that real typos
+# in other third-party imports still surface.
+[[tool.mypy.overrides]]
+module = ["pyodbc"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [

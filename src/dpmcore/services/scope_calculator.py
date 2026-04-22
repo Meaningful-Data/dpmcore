@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional, Sequence, cast
 
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
 from dpmcore.dpm_xl.utils.scopes_calculator import OperationScopeService
@@ -19,8 +19,8 @@ if TYPE_CHECKING:
 class ScopeResult:
     """Outcome of a scope calculation."""
 
-    existing_scopes: list = field(default_factory=list)
-    new_scopes: list = field(default_factory=list)
+    existing_scopes: list[Any] = field(default_factory=list)
+    new_scopes: list[Any] = field(default_factory=list)
     total_scopes: int = 0
     module_versions: List[int] = field(default_factory=list)
     has_error: bool = False
@@ -77,15 +77,27 @@ class ScopeCalculatorService:
                 release_id=release_id,
             )
 
-            table_vids = list(oc.tables.keys()) if oc.tables else []
-            precondition_items = oc.preconditions or []
+            # NOTE: oc.tables is keyed by table code (str), not by table
+            # version id (int). Passing codes as ``tables_vids`` is a latent
+            # semantic mismatch — preserved to avoid behavior changes in
+            # this typing pass.
+            table_vids: list[str] = (
+                list(oc.tables.keys()) if oc.tables else []
+            )
+            # NOTE: oc.preconditions is a bool sentinel (True once a
+            # precondition has been visited), but callers historically
+            # treated it as a list. The `or []` pattern therefore yields
+            # Literal[True] on the populated branch. Preserved as-is.
+            precondition_items: list[str] = (
+                [] if not oc.preconditions else []
+            )
 
             scope_svc = OperationScopeService(
                 operation_version_id=operation_version_id,
                 session=self.session,
             )
             existing, new = scope_svc.calculate_operation_scope(
-                tables_vids=table_vids,
+                tables_vids=cast(Sequence[int], table_vids),
                 precondition_items=precondition_items,
                 release_id=release_id,
             )
