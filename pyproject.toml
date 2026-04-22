@@ -253,6 +253,15 @@ markers = [
     "django: Django integration tests",
 ]
 addopts = "-v --tb=short --strict-markers --strict-config --import-mode=importlib"
+# coverage.py's own .coverage SQLite files are not closed before the
+# interpreter exits under sys.monitoring on Windows/Python 3.13 — a
+# known upstream issue. The warnings are cosmetic (coverage owns
+# those connections; our tests do not leak). Filter by module so we
+# still see ResourceWarnings from our code.
+filterwarnings = [
+    "ignore::ResourceWarning:coverage.collector",
+    "ignore::ResourceWarning:coverage.bytecode",
+]
 
 [tool.coverage.run]
 branch = true
