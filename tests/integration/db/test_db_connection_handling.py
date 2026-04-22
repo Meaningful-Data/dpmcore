@@ -29,13 +29,10 @@ def sqlite_url(tmp_path):
 
 def test_connect_creates_engine_and_session(sqlite_url):
     """connect() returns a DpmConnection with an engine and session."""
-    conn = connect(sqlite_url)
-    try:
+    with connect(sqlite_url) as conn:
         assert isinstance(conn, DpmConnection)
         assert conn.engine is not None
         assert conn.session is not None
-    finally:
-        conn.close()
 
 
 def test_connect_context_manager_closes(sqlite_url):
