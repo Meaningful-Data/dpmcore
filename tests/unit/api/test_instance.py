@@ -1,9 +1,10 @@
-import unittest
-import tempfile
 import json
+import tempfile
+import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
+import pytest
 from py_dpm.api.dpm.instance import InstanceAPI
 
 
@@ -44,18 +45,15 @@ class TestInstanceAPI(unittest.TestCase):
 
         # Call the method
         result = self.api.build_package_from_dict(
-            self.sample_instance_data,
-            self.output_folder,
-            file_prefix="test"
+            self.sample_instance_data, self.output_folder, file_prefix="test"
         )
 
         # Assertions
         mock_from_dict.assert_called_once_with(self.sample_instance_data)
         mock_instance.build_package.assert_called_once_with(
-            output_folder=self.output_folder,
-            file_prefix="test"
+            output_folder=self.output_folder, file_prefix="test"
         )
-        self.assertEqual(result, expected_path)
+        assert result == expected_path
 
     @patch("py_dpm.instance.instance.Instance.from_dict")
     def test_build_package_from_dict_without_prefix(self, mock_from_dict):
@@ -68,17 +66,15 @@ class TestInstanceAPI(unittest.TestCase):
 
         # Call the method
         result = self.api.build_package_from_dict(
-            self.sample_instance_data,
-            self.output_folder
+            self.sample_instance_data, self.output_folder
         )
 
         # Assertions
         mock_from_dict.assert_called_once_with(self.sample_instance_data)
         mock_instance.build_package.assert_called_once_with(
-            output_folder=self.output_folder,
-            file_prefix=None
+            output_folder=self.output_folder, file_prefix=None
         )
-        self.assertEqual(result, expected_path)
+        assert result == expected_path
 
     @patch("py_dpm.instance.instance.Instance.from_json_file")
     def test_build_package_from_json(self, mock_from_json):
@@ -96,18 +92,15 @@ class TestInstanceAPI(unittest.TestCase):
 
         # Call the method
         result = self.api.build_package_from_json(
-            json_file,
-            self.output_folder,
-            file_prefix="test"
+            json_file, self.output_folder, file_prefix="test"
         )
 
         # Assertions
         mock_from_json.assert_called_once_with(json_file)
         mock_instance.build_package.assert_called_once_with(
-            output_folder=self.output_folder,
-            file_prefix="test"
+            output_folder=self.output_folder, file_prefix="test"
         )
-        self.assertEqual(result, expected_path)
+        assert result == expected_path
 
     @patch("py_dpm.instance.instance.Instance.from_json_file")
     def test_build_package_from_json_with_string_path(self, mock_from_json):
@@ -125,26 +118,24 @@ class TestInstanceAPI(unittest.TestCase):
 
         # Call the method with string path
         result = self.api.build_package_from_json(
-            str(json_file),
-            str(self.output_folder)
+            str(json_file), str(self.output_folder)
         )
 
         # Assertions
         mock_from_json.assert_called_once_with(json_file)
         mock_instance.build_package.assert_called_once()
-        self.assertEqual(result, expected_path)
+        assert result == expected_path
 
     def test_build_package_from_json_file_not_found(self):
         """Test that FileNotFoundError is raised for non-existent JSON file."""
         non_existent_file = self.output_folder / "non_existent.json"
 
-        with self.assertRaises(FileNotFoundError) as context:
+        with pytest.raises(FileNotFoundError) as context:
             self.api.build_package_from_json(
-                non_existent_file,
-                self.output_folder
+                non_existent_file, self.output_folder
             )
 
-        self.assertIn("JSON file not found", str(context.exception))
+        assert "JSON file not found" in str(context.value)
 
 
 if __name__ == "__main__":

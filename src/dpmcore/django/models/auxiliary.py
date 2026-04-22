@@ -28,9 +28,7 @@ class AuxCellMapping(models.Model):
         managed = False
         db_table = "Aux_CellMapping"
         app_label = "dpmcore_django"
-        unique_together = (
-            ("new_cell_id", "new_table_vid"),
-        )
+        unique_together = (("new_cell_id", "new_table_vid"),)
 
 
 class AuxCellStatus(models.Model):

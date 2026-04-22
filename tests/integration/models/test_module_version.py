@@ -1,24 +1,18 @@
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from py_dpm.dpm.models import (
     Base,
-    ModuleVersion,
-    TableVersion,
-    ModuleVersionComposition,
-    Table,
     Module,
+    ModuleParameters,
+    ModuleVersion,
+    ModuleVersionComposition,
     Release,
-    CompoundKey,
-    Concept,
-    DpmClass,
-    Organisation,
+    Table,
+    TableVersion,
     Variable,
     VariableVersion,
-    ModuleParameters,
 )
-
-
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 
@@ -64,23 +58,31 @@ def test_module_version_table_versions_relationship(session):
     session.flush()
 
     # Create Module Version
-    mv = ModuleVersion(modulevid=100, moduleid=10, code="MV_TEST", startreleaseid=1)
+    mv = ModuleVersion(
+        modulevid=100, moduleid=10, code="MV_TEST", startreleaseid=1
+    )
 
     # Create Table Version
-    tv = TableVersion(tablevid=200, tableid=20, code="TV_TEST", startreleaseid=1)
+    tv = TableVersion(
+        tablevid=200, tableid=20, code="TV_TEST", startreleaseid=1
+    )
 
     session.add_all([mv, tv])
     session.flush()
 
     # Link them
-    mvc = ModuleVersionComposition(modulevid=100, tablevid=200, tableid=20, order=1)
+    mvc = ModuleVersionComposition(
+        modulevid=100, tablevid=200, tableid=20, order=1
+    )
     session.add(mvc)
     session.commit()
 
     # 2. Verify Relationship
     # Fetch ModuleVersion back
     fetched_mv = (
-        session.query(ModuleVersion).filter(ModuleVersion.modulevid == 100).one()
+        session.query(ModuleVersion)
+        .filter(ModuleVersion.modulevid == 100)
+        .one()
     )
 
     assert len(fetched_mv.table_versions) == 1
@@ -143,7 +145,7 @@ def test_module_version_table_versions_is_viewonly(session):
 
 # Tests for get_from_release_id classmethod
 class TestGetFromReleaseId:
-    """Integration tests for ModuleVersion.get_from_release_id()"""
+    """Integration tests for ModuleVersion.get_from_release_id()."""
 
     @pytest.fixture
     def setup_releases(self, session):
@@ -151,22 +153,33 @@ class TestGetFromReleaseId:
         release_ids = [101, 102, 103, 104]
         releases = []
         for rid in release_ids:
-            existing = session.query(Release).filter(Release.releaseid == rid).first()
+            existing = (
+                session.query(Release).filter(Release.releaseid == rid).first()
+            )
             if not existing:
                 releases.append(Release(releaseid=rid, code=f"R{rid}"))
         if releases:
             session.add_all(releases)
             session.flush()
-        return session.query(Release).filter(Release.releaseid.in_(release_ids)).all()
+        return (
+            session.query(Release)
+            .filter(Release.releaseid.in_(release_ids))
+            .all()
+        )
 
     def test_get_from_release_id_requires_module_identifier(self, session):
         """Test that ValueError is raised when no module identifier is provided."""
-        with pytest.raises(ValueError, match="Either module_id or module_code must be provided"):
+        with pytest.raises(
+            ValueError,
+            match="Either module_id or module_code must be provided",
+        ):
             ModuleVersion.get_from_release_id(session, release_id=1)
 
     def test_get_from_release_id_rejects_both_identifiers(self, session):
         """Test that ValueError is raised when both module identifiers are provided."""
-        with pytest.raises(ValueError, match="Specify only one of module_id or module_code"):
+        with pytest.raises(
+            ValueError, match="Specify only one of module_id or module_code"
+        ):
             ModuleVersion.get_from_release_id(
                 session, release_id=1, module_id=1, module_code="TEST"
             )
@@ -284,9 +297,10 @@ class TestGetFromReleaseId:
         assert result.modulevid == 1002  # Should be the previous version
         assert result.start_release.releaseid == 101
 
-    def test_get_from_release_id_finrep9_integration(self, session, setup_releases):
-        """
-        Integration test: FINREP9 module with release_id=104 should return
+    def test_get_from_release_id_finrep9_integration(
+        self, session, setup_releases
+    ):
+        """Integration test: FINREP9 module with release_id=104 should return
         module version with start_release.releaseid=101 when current version
         has equal fromreferencedate and toreferencedate.
         """
@@ -359,7 +373,9 @@ class TestGetFromReleaseId:
             startreleaseid=102,
             endreleaseid=None,
             fromreferencedate=date(2022, 1, 1),
-            toreferencedate=date(2025, 12, 31),  # Different from fromreferencedate
+            toreferencedate=date(
+                2025, 12, 31
+            ),  # Different from fromreferencedate
         )
 
         session.add_all([mv_previous, mv_current])
@@ -376,7 +392,7 @@ class TestGetFromReleaseId:
 
 # Tests for _apply_fallback_for_equal_dates helper method
 class TestApplyFallbackForEqualDates:
-    """Tests for ModuleVersion._apply_fallback_for_equal_dates()"""
+    """Tests for ModuleVersion._apply_fallback_for_equal_dates()."""
 
     @pytest.fixture
     def setup_fallback_data(self, session):
@@ -386,7 +402,9 @@ class TestApplyFallbackForEqualDates:
         # Create releases
         release_ids = [301, 302, 303]
         for rid in release_ids:
-            existing = session.query(Release).filter(Release.releaseid == rid).first()
+            existing = (
+                session.query(Release).filter(Release.releaseid == rid).first()
+            )
             if not existing:
                 session.add(Release(releaseid=rid, code=f"R{rid}"))
         session.flush()
@@ -400,7 +418,9 @@ class TestApplyFallbackForEqualDates:
 
         # Check if module versions already exist
         mv_previous = (
-            session.query(ModuleVersion).filter(ModuleVersion.modulevid == 4000).first()
+            session.query(ModuleVersion)
+            .filter(ModuleVersion.modulevid == 4000)
+            .first()
         )
         if not mv_previous:
             mv_previous = ModuleVersion(
@@ -416,7 +436,9 @@ class TestApplyFallbackForEqualDates:
             session.add(mv_previous)
 
         mv_current = (
-            session.query(ModuleVersion).filter(ModuleVersion.modulevid == 4001).first()
+            session.query(ModuleVersion)
+            .filter(ModuleVersion.modulevid == 4001)
+            .first()
         )
         if not mv_current:
             mv_current = ModuleVersion(
@@ -451,10 +473,13 @@ class TestApplyFallbackForEqualDates:
         result = ModuleVersion._apply_fallback_for_equal_dates(session, df)
         assert result.empty
 
-    def test_no_equal_dates_returns_unchanged(self, session, setup_fallback_data):
+    def test_no_equal_dates_returns_unchanged(
+        self, session, setup_fallback_data
+    ):
         """DataFrame without equal dates should return unchanged."""
-        import pandas as pd
         from datetime import date
+
+        import pandas as pd
 
         # Create DataFrame with different from/to dates
         df = pd.DataFrame(
@@ -477,8 +502,9 @@ class TestApplyFallbackForEqualDates:
 
     def test_equal_dates_triggers_fallback(self, session, setup_fallback_data):
         """Rows with equal dates should get replaced with previous version."""
-        import pandas as pd
         from datetime import date
+
+        import pandas as pd
 
         # Create DataFrame with the "current" version (equal dates)
         df = pd.DataFrame(
@@ -508,8 +534,9 @@ class TestApplyFallbackForEqualDates:
 
     def test_no_previous_version_keeps_original(self, session):
         """If no previous version exists, keep original row."""
-        import pandas as pd
         from datetime import date
+
+        import pandas as pd
 
         # Create a module with only one version (no previous)
         release = Release(releaseid=310, code="R310")
@@ -552,7 +579,7 @@ class TestApplyFallbackForEqualDates:
 
 # Tests for get_from_tables_vids fallback behavior
 class TestGetFromTablesVidsFallback:
-    """Tests for fallback behavior in get_from_tables_vids()"""
+    """Tests for fallback behavior in get_from_tables_vids()."""
 
     @pytest.fixture
     def setup_tables_data(self, session):
@@ -562,7 +589,9 @@ class TestGetFromTablesVidsFallback:
         # Create releases
         release_ids = [401, 402, 403]
         for rid in release_ids:
-            existing = session.query(Release).filter(Release.releaseid == rid).first()
+            existing = (
+                session.query(Release).filter(Release.releaseid == rid).first()
+            )
             if not existing:
                 session.add(Release(releaseid=rid, code=f"R{rid}"))
         session.flush()
@@ -582,7 +611,11 @@ class TestGetFromTablesVidsFallback:
             session.flush()
 
         # Check if table version already exists
-        tv = session.query(TableVersion).filter(TableVersion.tablevid == 401).first()
+        tv = (
+            session.query(TableVersion)
+            .filter(TableVersion.tablevid == 401)
+            .first()
+        )
         if not tv:
             tv = TableVersion(
                 tablevid=401, tableid=401, code="T_01.00", startreleaseid=401
@@ -592,7 +625,9 @@ class TestGetFromTablesVidsFallback:
 
         # Check if module versions already exist
         mv_previous = (
-            session.query(ModuleVersion).filter(ModuleVersion.modulevid == 6000).first()
+            session.query(ModuleVersion)
+            .filter(ModuleVersion.modulevid == 6000)
+            .first()
         )
         if not mv_previous:
             mv_previous = ModuleVersion(
@@ -608,7 +643,9 @@ class TestGetFromTablesVidsFallback:
             session.add(mv_previous)
 
         mv_current = (
-            session.query(ModuleVersion).filter(ModuleVersion.modulevid == 6001).first()
+            session.query(ModuleVersion)
+            .filter(ModuleVersion.modulevid == 6001)
+            .first()
         )
         if not mv_current:
             mv_current = ModuleVersion(
@@ -653,7 +690,9 @@ class TestGetFromTablesVidsFallback:
         from datetime import date
 
         result = ModuleVersion.get_from_tables_vids(
-            session, tables_vids=[setup_tables_data["table_vid"]], release_id=403
+            session,
+            tables_vids=[setup_tables_data["table_vid"]],
+            release_id=403,
         )
 
         assert not result.empty
@@ -663,10 +702,14 @@ class TestGetFromTablesVidsFallback:
         assert result.iloc[0]["FromReferenceDate"] == date(2020, 1, 1)
         assert result.iloc[0]["ToReferenceDate"] == date(2023, 12, 31)
 
-    def test_variable_vid_preserved_after_fallback(self, session, setup_tables_data):
+    def test_variable_vid_preserved_after_fallback(
+        self, session, setup_tables_data
+    ):
         """Test that variable_vid (TableVID) is preserved after fallback."""
         result = ModuleVersion.get_from_tables_vids(
-            session, tables_vids=[setup_tables_data["table_vid"]], release_id=403
+            session,
+            tables_vids=[setup_tables_data["table_vid"]],
+            release_id=403,
         )
 
         assert not result.empty
@@ -676,7 +719,7 @@ class TestGetFromTablesVidsFallback:
 
 # Tests for get_from_table_codes fallback behavior
 class TestGetFromTableCodesFallback:
-    """Tests for fallback behavior in get_from_table_codes()"""
+    """Tests for fallback behavior in get_from_table_codes()."""
 
     @pytest.fixture
     def setup_table_codes_data(self, session):
@@ -686,7 +729,9 @@ class TestGetFromTableCodesFallback:
         # Create releases
         release_ids = [501, 502, 503]
         for rid in release_ids:
-            existing = session.query(Release).filter(Release.releaseid == rid).first()
+            existing = (
+                session.query(Release).filter(Release.releaseid == rid).first()
+            )
             if not existing:
                 session.add(Release(releaseid=rid, code=f"R{rid}"))
         session.flush()
@@ -706,7 +751,11 @@ class TestGetFromTableCodesFallback:
             session.flush()
 
         # Check if table version already exists
-        tv = session.query(TableVersion).filter(TableVersion.tablevid == 501).first()
+        tv = (
+            session.query(TableVersion)
+            .filter(TableVersion.tablevid == 501)
+            .first()
+        )
         if not tv:
             tv = TableVersion(
                 tablevid=501, tableid=501, code="G_01.00", startreleaseid=501
@@ -716,7 +765,9 @@ class TestGetFromTableCodesFallback:
 
         # Check if module versions already exist
         mv_previous = (
-            session.query(ModuleVersion).filter(ModuleVersion.modulevid == 7000).first()
+            session.query(ModuleVersion)
+            .filter(ModuleVersion.modulevid == 7000)
+            .first()
         )
         if not mv_previous:
             mv_previous = ModuleVersion(
@@ -732,7 +783,9 @@ class TestGetFromTableCodesFallback:
             session.add(mv_previous)
 
         mv_current = (
-            session.query(ModuleVersion).filter(ModuleVersion.modulevid == 7001).first()
+            session.query(ModuleVersion)
+            .filter(ModuleVersion.modulevid == 7001)
+            .first()
         )
         if not mv_current:
             mv_current = ModuleVersion(
@@ -790,7 +843,9 @@ class TestGetFromTableCodesFallback:
         assert result.iloc[0]["FromReferenceDate"] == date(2020, 1, 1)
         assert result.iloc[0]["ToReferenceDate"] == date(2023, 12, 31)
 
-    def test_table_code_preserved_after_fallback(self, session, setup_table_codes_data):
+    def test_table_code_preserved_after_fallback(
+        self, session, setup_table_codes_data
+    ):
         """Test that TableCode column is preserved after fallback."""
         result = ModuleVersion.get_from_table_codes(
             session,
@@ -800,12 +855,14 @@ class TestGetFromTableCodesFallback:
 
         assert not result.empty
         # TableCode should still be the original
-        assert result.iloc[0]["TableCode"] == setup_table_codes_data["table_code"]
+        assert (
+            result.iloc[0]["TableCode"] == setup_table_codes_data["table_code"]
+        )
 
 
 # Tests for get_precondition_module_versions fallback behavior
 class TestGetPreconditionModuleVersionsFallback:
-    """Tests for fallback behavior in get_precondition_module_versions()"""
+    """Tests for fallback behavior in get_precondition_module_versions()."""
 
     @pytest.fixture
     def setup_precondition_data(self, session):
@@ -815,7 +872,9 @@ class TestGetPreconditionModuleVersionsFallback:
         # Create releases
         release_ids = [601, 602, 603]
         for rid in release_ids:
-            existing = session.query(Release).filter(Release.releaseid == rid).first()
+            existing = (
+                session.query(Release).filter(Release.releaseid == rid).first()
+            )
             if not existing:
                 session.add(Release(releaseid=rid, code=f"R{rid}"))
         session.flush()
@@ -828,7 +887,9 @@ class TestGetPreconditionModuleVersionsFallback:
             session.flush()
 
         # Check if variable already exists
-        variable = session.query(Variable).filter(Variable.variableid == 601).first()
+        variable = (
+            session.query(Variable).filter(Variable.variableid == 601).first()
+        )
         if not variable:
             variable = Variable(variableid=601, type="Filing Indicator")
             session.add(variable)
@@ -852,7 +913,9 @@ class TestGetPreconditionModuleVersionsFallback:
 
         # Check if module versions already exist
         mv_previous = (
-            session.query(ModuleVersion).filter(ModuleVersion.modulevid == 8000).first()
+            session.query(ModuleVersion)
+            .filter(ModuleVersion.modulevid == 8000)
+            .first()
         )
         if not mv_previous:
             mv_previous = ModuleVersion(
@@ -868,7 +931,9 @@ class TestGetPreconditionModuleVersionsFallback:
             session.add(mv_previous)
 
         mv_current = (
-            session.query(ModuleVersion).filter(ModuleVersion.modulevid == 8001).first()
+            session.query(ModuleVersion)
+            .filter(ModuleVersion.modulevid == 8001)
+            .first()
         )
         if not mv_current:
             mv_current = ModuleVersion(
@@ -924,7 +989,9 @@ class TestGetPreconditionModuleVersionsFallback:
         assert result.iloc[0]["FromReferenceDate"] == date(2020, 1, 1)
         assert result.iloc[0]["ToReferenceDate"] == date(2023, 12, 31)
 
-    def test_code_preserved_after_fallback(self, session, setup_precondition_data):
+    def test_code_preserved_after_fallback(
+        self, session, setup_precondition_data
+    ):
         """Test that Code (VariableVersion code) is preserved after fallback."""
         result = ModuleVersion.get_precondition_module_versions(
             session,
@@ -934,4 +1001,6 @@ class TestGetPreconditionModuleVersionsFallback:
 
         assert not result.empty
         # Code should still be the original variable version code
-        assert result.iloc[0]["Code"] == setup_precondition_data["variable_code"]
+        assert (
+            result.iloc[0]["Code"] == setup_precondition_data["variable_code"]
+        )

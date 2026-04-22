@@ -177,9 +177,7 @@ class DpmModelAdmin(admin.ModelAdmin):
             parts = str(object_id).split(COMPOSITE_SEP)
             if len(parts) == len(fields):
                 lookup: dict[str, str] = {}
-                for name, value in zip(
-                    fields, parts, strict=True
-                ):
+                for name, value in zip(fields, parts, strict=True):
                     field = self.model._meta.get_field(name)
                     if field.is_relation:
                         lookup[field.attname] = value
@@ -194,9 +192,7 @@ class DpmModelAdmin(admin.ModelAdmin):
                     ValueError,
                 ):
                     return None
-        return super().get_object(
-            request, object_id, from_field
-        )
+        return super().get_object(request, object_id, from_field)
 
 
 # ── Infrastructure (21 models) ──────────────────────────────────

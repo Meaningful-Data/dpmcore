@@ -1,0 +1,70 @@
+name: Ubuntu 24.04 Tests
+
+on:
+  push:
+    branches: ["master", "develop"]
+  pull_request:
+    branches: ["master", "develop"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies (apt)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-pip \
+            python3-pandas \
+            python3-click \
+            python3-rich \
+            python3-pytest \
+            python3-httpx \
+            unixodbc-dev
+
+      - name: Install pip-only dependencies
+        # ANTLR runtime pinned to 4.9.x to match the grammar files
+        # committed in src/dpmcore/dpm_xl/grammar/generated/ (Noble ships
+        # 4.13 via apt, which is ATN-incompatible).
+        run: |
+          pip install --break-system-packages \
+            "sqlalchemy>=2.0,<3.0" \
+            "antlr4-python3-runtime>=4.9,<4.10" \
+            "fastapi>=0.101" \
+            "uvicorn[standard]>=0.27" \
+            "django>=4.2" \
+            "mssql-django>=1.5" \
+            "psycopg2-binary>=2.9,<3.0" \
+            "pyodbc>=5.2,<6.0" \
+            "pytest-asyncio>=0.24" \
+            "pytest-cov>=6.0" \
+            "pytest-django>=4.9" \
+            "coverage>=7.6,<8.0"
+
+      - name: Install poetry
+        run: |
+          pip install --break-system-packages poetry
+          poetry config virtualenvs.create false
+
+      - name: Build wheel
+        run: poetry build -f wheel -o .
+
+      - name: Install built package
+        run: |
+          pip install \
+            "./dpmcore-$(poetry version -s)-py3-none-any.whl" \
+            --no-dependencies --break-system-packages
+
+      - name: Run tests
+        run: >-
+          pytest
+          --verbose --tb=short
+          --strict-markers --strict-config
+          --durations=10 tests/

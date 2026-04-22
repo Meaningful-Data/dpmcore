@@ -1,10 +1,9 @@
 import pandas as pd
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 from py_dpm.dpm.models import Base, TableVersion
 from py_dpm.dpm.queries.filters import filter_by_release
 from py_dpm.dpm_xl.ast import operands as operands_module
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 
 def _make_session():
@@ -16,8 +15,7 @@ def _make_session():
 
 
 def test_filter_by_release_uses_is_null_for_end_release():
-    """
-    Ensure filter_by_release uses SQLAlchemy .is_(None) semantics for end_col,
+    """Ensure filter_by_release uses SQLAlchemy .is_(None) semantics for end_col,
     resulting in an 'IS NULL' predicate rather than '= NULL' in the SQL.
 
     This is important for PostgreSQL, which is strict about boolean expressions
@@ -35,7 +33,8 @@ def test_filter_by_release_uses_is_null_for_end_release():
 
     sql = str(
         filtered.statement.compile(
-            dialect=session.get_bind().dialect, compile_kwargs={"literal_binds": True}
+            dialect=session.get_bind().dialect,
+            compile_kwargs={"literal_binds": True},
         )
     ).upper()
 
@@ -44,16 +43,19 @@ def test_filter_by_release_uses_is_null_for_end_release():
     assert "= NULL" not in sql
 
 
-def test_operands_check_headers_calls_filter_by_release_with_correct_args(monkeypatch):
-    """
-    Verify that OperandsChecking.check_headers wires filter_by_release correctly:
+def test_operands_check_headers_calls_filter_by_release_with_correct_args(
+    monkeypatch,
+):
+    """Verify that OperandsChecking.check_headers wires filter_by_release correctly:
     - start_col is TableVersion.startreleaseid
     - end_col is TableVersion.endreleaseid
-    - release_id matches the instance's release_id
+    - release_id matches the instance's release_id.
     """
     called = {}
 
-    def fake_filter_by_release(query, start_col, end_col, release_id=None, release_code=None):
+    def fake_filter_by_release(
+        query, start_col, end_col, release_id=None, release_code=None
+    ):
         called["query"] = query
         called["start_col"] = start_col
         called["end_col"] = end_col
@@ -61,7 +63,9 @@ def test_operands_check_headers_calls_filter_by_release_with_correct_args(monkey
         called["release_code"] = release_code
         return query
 
-    monkeypatch.setattr(operands_module, "filter_by_release", fake_filter_by_release)
+    monkeypatch.setattr(
+        operands_module, "filter_by_release", fake_filter_by_release
+    )
 
     # Stub out the pandas helpers used inside check_headers so that no real DB
     # access is attempted.
@@ -105,4 +109,3 @@ def test_operands_check_headers_calls_filter_by_release_with_correct_args(monkey
     assert called["end_col"] is TableVersion.endreleaseid
     assert called["release_id"] == 7
     assert called["release_code"] is None
-

@@ -4,7 +4,11 @@ from dpmcore.dpm_xl.model_queries import (
     ViewModulesQuery,
 )
 from dpmcore.dpm_xl.utils.operands_mapping import LabelHandler
-from dpmcore.dpm_xl.utils.tokens import CROSS_MODULE, INTRA_MODULE, REPEATED_INTRA_MODULE
+from dpmcore.dpm_xl.utils.tokens import (
+    CROSS_MODULE,
+    INTRA_MODULE,
+    REPEATED_INTRA_MODULE,
+)
 
 
 class ModuleAnalyzer(ASTTemplate):
@@ -21,9 +25,7 @@ class ModuleAnalyzer(ASTTemplate):
         return LabelHandler().labels.__next__()
 
     def extract_modules(self, tables):
-        return ViewModulesQuery.get_modules(
-            self.session, tables
-        )
+        return ViewModulesQuery.get_modules(self.session, tables)
 
     def module_analysis(self):
         unique_modules = []

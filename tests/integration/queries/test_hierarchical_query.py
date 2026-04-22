@@ -1,15 +1,14 @@
 import pytest
-from datetime import date
+from py_dpm.api.dpm.data_dictionary import DataDictionaryAPI
 from py_dpm.dpm.models import (
     Base,
     Framework,
     Module,
     ModuleVersion,
+    ModuleVersionComposition,
     Table,
     TableVersion,
-    ModuleVersionComposition,
 )
-from py_dpm.api.dpm.data_dictionary import DataDictionaryAPI
 from py_dpm.dpm.queries.hierarchical_queries import HierarchicalQuery
 
 
@@ -90,9 +89,13 @@ def test_get_all_frameworks_filtering(session):
     mod = Module(moduleid=1, frameworkid=1)
 
     # Active in Release 1
-    mv1 = ModuleVersion(modulevid=11, moduleid=1, startreleaseid=1, endreleaseid=2)
+    mv1 = ModuleVersion(
+        modulevid=11, moduleid=1, startreleaseid=1, endreleaseid=2
+    )
     # Active in Release 2
-    mv2 = ModuleVersion(modulevid=12, moduleid=1, startreleaseid=2, endreleaseid=None)
+    mv2 = ModuleVersion(
+        modulevid=12, moduleid=1, startreleaseid=2, endreleaseid=None
+    )
 
     # Setup meaningless table associations just to satisfy join
     t = Table(tableid=1)

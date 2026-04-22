@@ -1,11 +1,11 @@
 """Tests for the semantic validation warning collector."""
 
-import pytest
 import threading
+
 from py_dpm.dpm_xl.warning_collector import (
     WarningCollector,
-    collect_warnings,
     add_semantic_warning,
+    collect_warnings,
     get_active_collector,
 )
 
@@ -25,7 +25,11 @@ class TestWarningCollector:
         collector.add_warning("Warning 1")
         collector.add_warning("Warning 2")
         collector.add_warning("Warning 3")
-        assert collector.get_warnings() == ["Warning 1", "Warning 2", "Warning 3"]
+        assert collector.get_warnings() == [
+            "Warning 1",
+            "Warning 2",
+            "Warning 3",
+        ]
 
     def test_get_warnings_returns_copy(self):
         """Test that get_warnings returns a copy of the list."""
@@ -105,7 +109,9 @@ class TestCollectWarningsContextManager:
                 add_semantic_warning(f"Thread {thread_id} warning")
                 results[thread_id] = collector.get_combined_warning()
 
-        threads = [threading.Thread(target=thread_func, args=(i,)) for i in range(3)]
+        threads = [
+            threading.Thread(target=thread_func, args=(i,)) for i in range(3)
+        ]
         for t in threads:
             t.start()
         for t in threads:

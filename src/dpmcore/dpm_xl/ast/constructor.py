@@ -1,37 +1,46 @@
-"""
-AST.ASTConstructor.py
+"""AST.ASTConstructor.py.
 =====================
 
 Description
 -----------
 Generate an AST based on object of AST.ASTObjects.
 """
+
 import re
 
 from antlr4.tree.Tree import TerminalNodeImpl
 
-from dpmcore.dpm_xl.ast.nodes import *
 from dpmcore import errors
-from dpmcore.errors import SemanticError
-from dpmcore.dpm_xl.utils.tokens import TABLE_GROUP_PREFIX
+from dpmcore.dpm_xl.ast.nodes import *
 from dpmcore.dpm_xl.grammar.generated.dpm_xlParser import dpm_xlParser
-from dpmcore.dpm_xl.grammar.generated.dpm_xlParserVisitor import dpm_xlParserVisitor
+from dpmcore.dpm_xl.grammar.generated.dpm_xlParserVisitor import (
+    dpm_xlParserVisitor,
+)
+from dpmcore.dpm_xl.utils.tokens import TABLE_GROUP_PREFIX
+from dpmcore.errors import SemanticError
 
 
 class ASTVisitor(dpm_xlParserVisitor):
-    """
-    Class to walk to generate an AST which nodes are defined at AST.ASTObjects
-    """
+    """Class to walk to generate an AST which nodes are defined at AST.ASTObjects."""
 
     def visitStart(self, ctx: dpm_xlParser.StartContext):
         ctx_list = list(ctx.getChildren())
 
         expression_nodes = []
-        expressions = [expr for expr in ctx_list if isinstance(expr, dpm_xlParser.StatementContext)]
-        if len(ctx_list) > 3 and isinstance(ctx_list[2], dpm_xlParser.StatementsContext):
+        expressions = [
+            expr
+            for expr in ctx_list
+            if isinstance(expr, dpm_xlParser.StatementContext)
+        ]
+        if len(ctx_list) > 3 and isinstance(
+            ctx_list[2], dpm_xlParser.StatementsContext
+        ):
             statements_list = list(ctx_list[2].getChildren())
-            expressions += [statement for statement in statements_list if
-                            isinstance(statement, dpm_xlParser.StatementContext)]
+            expressions += [
+                statement
+                for statement in statements_list
+                if isinstance(statement, dpm_xlParser.StatementContext)
+            ]
 
         if len(expressions) > 0:
             for expression in expressions:
@@ -40,16 +49,22 @@ class ASTVisitor(dpm_xlParserVisitor):
         start = Start(children=expression_nodes)
         return start
 
-    def visitExprWithSelection(self, ctx: dpm_xlParser.ExprWithSelectionContext):
+    def visitExprWithSelection(
+        self, ctx: dpm_xlParser.ExprWithSelectionContext
+    ):
         ctx_list = list(ctx.getChildren())
         partial_selection = self.visit(ctx_list[1])
         expression = self.visit(ctx_list[3])
-        return WithExpression(partial_selection=partial_selection, expression=expression)
+        return WithExpression(
+            partial_selection=partial_selection, expression=expression
+        )
 
     def visitPartialSelect(self, ctx: dpm_xlParser.PartialSelectContext):
         return self.visit(ctx.getChild(1))
 
-    def visitPersistentAssignmentExpression(self, ctx: dpm_xlParser.PersistentAssignmentExpressionContext):
+    def visitPersistentAssignmentExpression(
+        self, ctx: dpm_xlParser.PersistentAssignmentExpressionContext
+    ):
 
         ctx_list = list(ctx.getChildren())
         left = self.visit(ctx_list[0])
@@ -57,7 +72,9 @@ class ASTVisitor(dpm_xlParserVisitor):
         right = self.visit(ctx_list[2])
         return PersistentAssignment(left=left, op=op, right=right)
 
-    def visitTemporaryAssignmentExpression(self, ctx: dpm_xlParser.TemporaryAssignmentExpressionContext):
+    def visitTemporaryAssignmentExpression(
+        self, ctx: dpm_xlParser.TemporaryAssignmentExpressionContext
+    ):
         ctx_list = list(ctx.getChildren())
         left = self.visit(ctx_list[0])
         op = ctx_list[1].symbol.text
@@ -126,11 +143,17 @@ class ASTVisitor(dpm_xlParserVisitor):
             elif not isinstance(child, TerminalNodeImpl):
                 operand = self.visit(child)
 
-        return AggregationOp(op=op, operand=operand, grouping_clause=grouping_clause)
+        return AggregationOp(
+            op=op, operand=operand, grouping_clause=grouping_clause
+        )
 
     def visitGroupingClause(self, ctx: dpm_xlParser.GroupingClauseContext):
         ctx_list = list(ctx.getChildren())
-        components = [self.visit(child) for child in ctx_list if isinstance(child, dpm_xlParser.KeyNamesContext)]
+        components = [
+            self.visit(child)
+            for child in ctx_list
+            if isinstance(child, dpm_xlParser.KeyNamesContext)
+        ]
         return GroupingClause(components=components)
 
     def visitKeyNames(self, ctx: dpm_xlParser.KeyNamesContext):
@@ -139,20 +162,26 @@ class ASTVisitor(dpm_xlParserVisitor):
     def visitPropertyCode(self, ctx: dpm_xlParser.PropertyCodeContext):
         return ctx.getChild(0).symbol.text
 
-    def visitUnaryNumericFunctions(self, ctx: dpm_xlParser.UnaryNumericFunctionsContext):
+    def visitUnaryNumericFunctions(
+        self, ctx: dpm_xlParser.UnaryNumericFunctionsContext
+    ):
         ctx_list = list(ctx.getChildren())
         op = ctx_list[0].symbol.text
         operand = self.visit(ctx_list[2])
         return UnaryOp(op=op, operand=operand)
 
-    def visitBinaryNumericFunctions(self, ctx: dpm_xlParser.BinaryNumericFunctionsContext):
+    def visitBinaryNumericFunctions(
+        self, ctx: dpm_xlParser.BinaryNumericFunctionsContext
+    ):
         ctx_list = list(ctx.getChildren())
         op = ctx_list[0].symbol.text
         left = self.visit(ctx_list[2])
         right = self.visit(ctx_list[4])
         return BinOp(op=op, left=left, right=right)
 
-    def visitComplexNumericFunctions(self, ctx: dpm_xlParser.ComplexNumericFunctionsContext):
+    def visitComplexNumericFunctions(
+        self, ctx: dpm_xlParser.ComplexNumericFunctionsContext
+    ):
         ctx_list = list(ctx.getChildren())
         op = ctx_list[0].symbol.text
         operands = []
@@ -191,7 +220,9 @@ class ASTVisitor(dpm_xlParserVisitor):
         right = self.visit(ctx_list[4])
         return BinOp(op=op, left=left, right=right)
 
-    def visitTimeShiftFunction(self, ctx: dpm_xlParser.TimeShiftFunctionContext):
+    def visitTimeShiftFunction(
+        self, ctx: dpm_xlParser.TimeShiftFunctionContext
+    ):
         ctx_list = list(ctx.getChildren())
         operand = self.visit(ctx_list[2])
         component = None
@@ -199,10 +230,16 @@ class ASTVisitor(dpm_xlParserVisitor):
         shift_number = ctx_list[6].symbol.text
         if len(ctx_list) > 8:
             component = self.visit(ctx_list[8])
-        return TimeShiftOp(operand=operand, component=component, period_indicator=period_indicator,
-                           shift_number=shift_number)
+        return TimeShiftOp(
+            operand=operand,
+            component=component,
+            period_indicator=period_indicator,
+            shift_number=shift_number,
+        )
 
-    def visitUnaryStringFunction(self, ctx: dpm_xlParser.UnaryStringFunctionContext):
+    def visitUnaryStringFunction(
+        self, ctx: dpm_xlParser.UnaryStringFunctionContext
+    ):
         ctx_list = list(ctx.getChildren())
         op = ctx_list[0].symbol.text
         operand = self.visit(ctx_list[2])
@@ -222,7 +259,9 @@ class ASTVisitor(dpm_xlParserVisitor):
             return RenameOp(operand=operand, rename_nodes=rename_nodes)
         elif isinstance(ctx_list[2], dpm_xlParser.SubExprContext):
             property_code, value = self.visitSubExpr(ctx_list[2])
-            return SubOp(operand=operand, property_code=property_code, value=value)
+            return SubOp(
+                operand=operand, property_code=property_code, value=value
+            )
 
     def visitWhereExpr(self, ctx: dpm_xlParser.WhereExprContext):
         return self.visit(ctx.getChild(1))
@@ -267,7 +306,9 @@ class ASTVisitor(dpm_xlParserVisitor):
     def visitSelect(self, ctx: dpm_xlParser.SelectContext):
         return self.visit(ctx.getChild(1))
 
-    def visitComparisonOperators(self, ctx: dpm_xlParser.ComparisonOperatorsContext):
+    def visitComparisonOperators(
+        self, ctx: dpm_xlParser.ComparisonOperatorsContext
+    ):
         return ctx.getChild(0).symbol.text
 
     def visitNumericExpr(self, ctx: dpm_xlParser.NumericExprContext):
@@ -284,7 +325,9 @@ class ASTVisitor(dpm_xlParserVisitor):
         condition = self.visit(ctx_list[1])
         then_expr = self.visit(ctx_list[3])
         else_expr = self.visit(ctx_list[5]) if len(ctx_list) > 5 else None
-        return CondExpr(condition=condition, then_expr=then_expr, else_expr=else_expr)
+        return CondExpr(
+            condition=condition, then_expr=then_expr, else_expr=else_expr
+        )
 
     def visitInExpr(self, ctx: dpm_xlParser.InExprContext):
         ctx_list = list(ctx.getChildren())
@@ -306,64 +349,72 @@ class ASTVisitor(dpm_xlParserVisitor):
 
     def visitItemReference(self, ctx: dpm_xlParser.ItemReferenceContext):
         item = self.visit(ctx.getChild(1))
-        return Scalar(item=item, scalar_type='Item')
+        return Scalar(item=item, scalar_type="Item")
 
     def visitItemSignature(self, ctx: dpm_xlParser.ItemSignatureContext):
         ctx_list = list(ctx.getChildren())
-        return ''.join([child.symbol.text for child in ctx_list])
+        return "".join([child.symbol.text for child in ctx_list])
 
     def visitBoolExpr(self, ctx: dpm_xlParser.BoolExprContext):
         return self.create_bin_op(ctx)
 
-    def visitPropertyReferenceExpr(self, ctx: dpm_xlParser.PropertyReferenceExprContext):
+    def visitPropertyReferenceExpr(
+        self, ctx: dpm_xlParser.PropertyReferenceExprContext
+    ):
         return self.visit(ctx.getChild(0))
 
-    def visitPropertyReference(self, ctx: dpm_xlParser.PropertyReferenceContext):
+    def visitPropertyReference(
+        self, ctx: dpm_xlParser.PropertyReferenceContext
+    ):
         code = self.visit(ctx.getChild(1))
         return PropertyReference(code=code)
 
-    def visitItemReferenceExpr(self, ctx: dpm_xlParser.ItemReferenceExprContext):
+    def visitItemReferenceExpr(
+        self, ctx: dpm_xlParser.ItemReferenceExprContext
+    ):
         return self.visitChildren(ctx)
 
     def visitLiteral(self, ctx: dpm_xlParser.LiteralContext):
 
-        if not hasattr(ctx, 'children') and ctx.symbol.text == 'null':
-            return Constant(type_='Null', value=None)
+        if not hasattr(ctx, "children") and ctx.symbol.text == "null":
+            return Constant(type_="Null", value=None)
 
         token = ctx.getChild(0).symbol
         value = token.text
         type_ = token.type
 
         if type_ == dpm_xlParser.INTEGER_LITERAL:
-            return Constant(type_='Integer', value=int(value))
+            return Constant(type_="Integer", value=int(value))
         elif type_ == dpm_xlParser.DECIMAL_LITERAL:
-            return Constant(type_='Number', value=float(value))
+            return Constant(type_="Number", value=float(value))
         elif type_ == dpm_xlParser.PERCENT_LITERAL:
-            return Constant(type_='Number', value=float(value.replace('%', '')) / 100)
+            return Constant(
+                type_="Number", value=float(value.replace("%", "")) / 100
+            )
         elif type_ == dpm_xlParser.STRING_LITERAL:
             value = value[1:-1]
-            if value == 'null':
+            if value == "null":
                 raise SemanticError("0-3")
-            return Constant(type_='String', value=value)
+            return Constant(type_="String", value=value)
         elif type_ == dpm_xlParser.BOOLEAN_LITERAL:
-            if value == 'true':
+            if value == "true":
                 constant_value = True
-            elif value == 'false':
+            elif value == "false":
                 constant_value = False
             else:
                 raise NotImplementedError
-            return Constant(type_='Boolean', value=constant_value)
+            return Constant(type_="Boolean", value=constant_value)
         elif type_ == dpm_xlParser.DATE_LITERAL:
-            return Constant(type_='Date', value=value.replace('#', ''))
+            return Constant(type_="Date", value=value.replace("#", ""))
         elif type_ == dpm_xlParser.TIME_PERIOD_LITERAL:
-            return Constant(type_='TimePeriod', value=value.replace('#', ''))
+            return Constant(type_="TimePeriod", value=value.replace("#", ""))
         elif type_ == dpm_xlParser.TIME_INTERVAL_LITERAL:
-            return Constant(type_='TimeInterval', value=value.replace('#', ''))
+            return Constant(type_="TimeInterval", value=value.replace("#", ""))
         elif type_ == dpm_xlParser.EMPTY_LITERAL:
             value = value[1:-1]
-            return Constant(type_='String', value=value)
+            return Constant(type_="String", value=value)
         elif type_ == dpm_xlParser.NULL_LITERAL:
-            return Constant(type_='Null', value=None)
+            return Constant(type_="Null", value=None)
         else:
             raise NotImplementedError
 
@@ -384,7 +435,9 @@ class ASTVisitor(dpm_xlParserVisitor):
     def visitPreconditionElem(self, ctx: dpm_xlParser.PreconditionElemContext):
         child = ctx.getChild(0)
         precondition = child.symbol.text[2:]
-        return PreconditionItem(variable_id=precondition, variable_code=precondition)  # This is not the variable_id but we keep the name for later
+        return PreconditionItem(
+            variable_id=precondition, variable_code=precondition
+        )  # This is not the variable_id but we keep the name for later
 
     def visitOperationRef(self, ctx: dpm_xlParser.OperationRefContext):
         child = ctx.getChild(0)
@@ -400,27 +453,34 @@ class ASTVisitor(dpm_xlParserVisitor):
         for child in ctx_list:
             if isinstance(child, dpm_xlParser.RowArgContext):
                 if rows is not None:
-                    raise errors.SemanticError("0-2", argument='rows')
+                    raise errors.SemanticError("0-2", argument="rows")
                 rows = self.visitRowArg(child)
             elif isinstance(child, dpm_xlParser.ColArgContext):
                 if cols is not None:
-                    raise errors.SemanticError("0-2", argument='columns')
+                    raise errors.SemanticError("0-2", argument="columns")
                 cols = self.visitColArg(child)
             elif isinstance(child, dpm_xlParser.SheetArgContext):
                 if sheets is not None:
-                    raise errors.SemanticError("0-2", argument='sheets')
+                    raise errors.SemanticError("0-2", argument="sheets")
                 sheets = self.visitSheetArg(child)
             elif isinstance(child, dpm_xlParser.IntervalArgContext):
                 if interval is not None:
-                    raise errors.SemanticError("0-2", argument='interval')
+                    raise errors.SemanticError("0-2", argument="interval")
                 interval = self.visitIntervalArg(child)
             elif isinstance(child, dpm_xlParser.DefaultArgContext):
                 if default is not None:
-                    raise errors.SemanticError("0-2", argument='default')
+                    raise errors.SemanticError("0-2", argument="default")
                 default = self.visitDefaultArg(child)
 
-        return VarID(table=table, rows=rows, cols=cols, sheets=sheets, interval=interval, default=default,
-                     is_table_group=is_table_group)
+        return VarID(
+            table=table,
+            rows=rows,
+            cols=cols,
+            sheets=sheets,
+            interval=interval,
+            default=default,
+            is_table_group=is_table_group,
+        )
 
     def visitTableRef(self, ctx: dpm_xlParser.TableRefContext):
         ctx_list = list(ctx.getChildren())
@@ -428,9 +488,13 @@ class ASTVisitor(dpm_xlParserVisitor):
         is_group = False
         if table_reference[0] == TABLE_GROUP_PREFIX:
             is_group = True
-        return self.create_var_id(ctx_list=ctx_list, table=table_reference[1:], is_table_group=is_group)
+        return self.create_var_id(
+            ctx_list=ctx_list,
+            table=table_reference[1:],
+            is_table_group=is_group,
+        )
 
-    def visitTableReference(self, ctx:dpm_xlParser.TableReferenceContext):
+    def visitTableReference(self, ctx: dpm_xlParser.TableReferenceContext):
         return ctx.getChild(0).symbol.text
 
     def visitCompRef(self, ctx: dpm_xlParser.CompRefContext):
@@ -444,7 +508,9 @@ class ASTVisitor(dpm_xlParserVisitor):
         for child in ctx_list:
             if isinstance(child, dpm_xlParser.RowElemContext):
                 rows.append(self.visitRowElem(child))
-            elif isinstance(child, TerminalNodeImpl) and child.symbol.text not in (',', '(', ')'):
+            elif isinstance(
+                child, TerminalNodeImpl
+            ) and child.symbol.text not in (",", "(", ")"):
                 rows.append(child.symbol.text[1:])
         return rows
 
@@ -455,7 +521,9 @@ class ASTVisitor(dpm_xlParserVisitor):
         for child in ctx_list:
             if isinstance(child, dpm_xlParser.ColElemContext):
                 cols.append(self.visitColElem(child))
-            elif isinstance(child, TerminalNodeImpl) and child.symbol.text not in (',', '(', ')'):
+            elif isinstance(
+                child, TerminalNodeImpl
+            ) and child.symbol.text not in (",", "(", ")"):
                 cols.append(child.symbol.text[1:])
         return cols
 
@@ -466,21 +534,32 @@ class ASTVisitor(dpm_xlParserVisitor):
         for child in ctx_list:
             if isinstance(child, dpm_xlParser.SheetElemContext):
                 sheets.append(self.visitSheetElem(child))
-            elif isinstance(child, TerminalNodeImpl) and child.symbol.text not in (',', '(', ')'):
+            elif isinstance(
+                child, TerminalNodeImpl
+            ) and child.symbol.text not in (",", "(", ")"):
                 sheets.append(child.symbol.text[1:])
         return sheets
 
     def visitInterval(self, ctx: dpm_xlParser.IntervalContext):
         interval = None
         ctx_list = list(ctx.getChildren())
-        if ctx_list[2].symbol.text and ctx_list[2].symbol.text.lower() == 'true':
+        if (
+            ctx_list[2].symbol.text
+            and ctx_list[2].symbol.text.lower() == "true"
+        ):
             interval = True
-        if ctx_list[2].symbol.text and ctx_list[2].symbol.text.lower() == 'false':
+        if (
+            ctx_list[2].symbol.text
+            and ctx_list[2].symbol.text.lower() == "false"
+        ):
             interval = False
         return interval
 
     def visitDefault(self, ctx: dpm_xlParser.DefaultContext):
-        if isinstance(ctx.getChild(2), TerminalNodeImpl) and ctx.getChild(2).symbol.text == 'null':
+        if (
+            isinstance(ctx.getChild(2), TerminalNodeImpl)
+            and ctx.getChild(2).symbol.text == "null"
+        ):
             return None
         default_value = self.visitLiteral(ctx.getChild(2))
         return default_value
@@ -502,7 +581,9 @@ class ASTVisitor(dpm_xlParserVisitor):
     def visitVarID(self, ctx: dpm_xlParser.VarIDContext):
         return self.visit(ctx.getChild(1))
 
-    def visitTemporaryIdentifier(self, ctx: dpm_xlParser.TemporaryIdentifierContext):
+    def visitTemporaryIdentifier(
+        self, ctx: dpm_xlParser.TemporaryIdentifierContext
+    ):
         value = ctx.getChild(0).symbol.text
         return TemporaryIdentifier(value=value)
 

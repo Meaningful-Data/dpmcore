@@ -25,7 +25,6 @@ from dpmcore.orm.base import Base
 
 if TYPE_CHECKING:
     from dpmcore.orm.glossary import ContextComposition
-    from dpmcore.orm.operations import Operator
 
 
 # ------------------------------------------------------------------
@@ -84,9 +83,7 @@ class ConceptRelation(Base):
         "ConceptRelationID", Integer, primary_key=True
     )
     type: Mapped[Optional[str]] = mapped_column("Type", String(50))
-    row_guid: Mapped[Optional[str]] = mapped_column(
-        "RowGUID", String(36)
-    )
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
 
     related_concepts: Mapped[List["RelatedConcept"]] = relationship(
         back_populates="concept_relation",
@@ -120,9 +117,7 @@ class RelatedConcept(Base):
     is_related_concept: Mapped[Optional[bool]] = mapped_column(
         "IsRelatedConcept", Boolean
     )
-    row_guid: Mapped[Optional[str]] = mapped_column(
-        "RowGUID", String(36)
-    )
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
 
     concept: Mapped["Concept"] = relationship(
         back_populates="related_concepts"
@@ -150,15 +145,11 @@ class Organisation(Base):
 
     __tablename__ = "Organisation"
 
-    org_id: Mapped[int] = mapped_column(
-        "OrgID", Integer, primary_key=True
-    )
+    org_id: Mapped[int] = mapped_column("OrgID", Integer, primary_key=True)
     name: Mapped[Optional[str]] = mapped_column(
         "Name", String(200), unique=True
     )
-    acronym: Mapped[Optional[str]] = mapped_column(
-        "Acronym", String(20)
-    )
+    acronym: Mapped[Optional[str]] = mapped_column("Acronym", String(20))
     id_prefix: Mapped[Optional[int]] = mapped_column(
         "IDPrefix", Integer, unique=True
     )
@@ -231,9 +222,7 @@ class User(Base):
 
     __tablename__ = "User"
 
-    user_id: Mapped[int] = mapped_column(
-        "UserID", Integer, primary_key=True
-    )
+    user_id: Mapped[int] = mapped_column("UserID", Integer, primary_key=True)
     org_id: Mapped[Optional[int]] = mapped_column(
         "OrgID", Integer, ForeignKey("Organisation.OrgID")
     )
@@ -257,9 +246,7 @@ class Role(Base):
 
     __tablename__ = "Role"
 
-    role_id: Mapped[int] = mapped_column(
-        "RoleID", Integer, primary_key=True
-    )
+    role_id: Mapped[int] = mapped_column("RoleID", Integer, primary_key=True)
     name: Mapped[Optional[str]] = mapped_column("Name", String(50))
 
     user_roles: Mapped[List["UserRole"]] = relationship(
@@ -326,9 +313,7 @@ class DataType(Base):
         Integer,
         ForeignKey("DataType.DataTypeID"),
     )
-    is_active: Mapped[Optional[bool]] = mapped_column(
-        "IsActive", Boolean
-    )
+    is_active: Mapped[Optional[bool]] = mapped_column("IsActive", Boolean)
 
     parent_datatype: Mapped[Optional["DataType"]] = relationship(
         remote_side=[data_type_id],
@@ -360,9 +345,7 @@ class DpmClass(Base):
 
     __tablename__ = "DPMClass"
 
-    class_id: Mapped[int] = mapped_column(
-        "ClassID", Integer, primary_key=True
-    )
+    class_id: Mapped[int] = mapped_column("ClassID", Integer, primary_key=True)
     name: Mapped[Optional[str]] = mapped_column("Name", String(50))
     type: Mapped[Optional[str]] = mapped_column("Type", String(20))
     owner_class_id: Mapped[Optional[int]] = mapped_column(
@@ -416,9 +399,7 @@ class DpmAttribute(Base):
     dpm_class: Mapped[Optional["DpmClass"]] = relationship(
         back_populates="dpm_attributes"
     )
-    changelog_attributes: Mapped[
-        List["ChangelogAttribute"]
-    ] = relationship(
+    changelog_attributes: Mapped[List["ChangelogAttribute"]] = relationship(
         back_populates="dpm_attribute",
     )
     translations: Mapped[List["Translation"]] = relationship(
@@ -469,16 +450,10 @@ class Translation(Base):
         ForeignKey("Language.LanguageCode"),
         primary_key=True,
     )
-    translation: Mapped[Optional[str]] = mapped_column(
-        "Translation", Text
-    )
-    row_guid: Mapped[Optional[str]] = mapped_column(
-        "RowGUID", String(36)
-    )
+    translation: Mapped[Optional[str]] = mapped_column("Translation", Text)
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
 
-    concept: Mapped["Concept"] = relationship(
-        foreign_keys=[concept_guid]
-    )
+    concept: Mapped["Concept"] = relationship(foreign_keys=[concept_guid])
     dpm_attribute: Mapped["DpmAttribute"] = relationship(
         back_populates="translations"
     )
@@ -486,9 +461,7 @@ class Translation(Base):
         foreign_keys=[translator_id],
         back_populates="translations",
     )
-    language: Mapped["Language"] = relationship(
-        back_populates="translations"
-    )
+    language: Mapped["Language"] = relationship(back_populates="translations")
 
 
 # ------------------------------------------------------------------
@@ -529,24 +502,16 @@ class Changelog(Base):
     change_type: Mapped[Optional[str]] = mapped_column(
         "ChangeType", String(255)
     )
-    status: Mapped[Optional[str]] = mapped_column(
-        "Status", String(1)
-    )
-    user_email: Mapped[Optional[str]] = mapped_column(
-        "UserEmail", String(255)
-    )
+    status: Mapped[Optional[str]] = mapped_column("Status", String(1))
+    user_email: Mapped[Optional[str]] = mapped_column("UserEmail", String(255))
     release_id: Mapped[Optional[int]] = mapped_column(
         "ReleaseID", Integer, ForeignKey("Release.ReleaseID")
     )
-    entity_id: Mapped[Optional[int]] = mapped_column(
-        "EntityID", Integer
-    )
+    entity_id: Mapped[Optional[int]] = mapped_column("EntityID", Integer)
     entity_code: Mapped[Optional[str]] = mapped_column(
         "EntityCode", String(255)
     )
-    action_id: Mapped[int] = mapped_column(
-        "ActionID", Integer
-    )
+    action_id: Mapped[int] = mapped_column("ActionID", Integer)
 
     dpm_class: Mapped[Optional["DpmClass"]] = relationship(
         foreign_keys=[class_id]
@@ -554,10 +519,10 @@ class Changelog(Base):
     release: Mapped[Optional["Release"]] = relationship(
         foreign_keys=[release_id]
     )
-    changelog_attributes: Mapped[
-        List["ChangelogAttribute"]
-    ] = relationship(
-        primaryjoin="Changelog.action_id == foreign(ChangelogAttribute.action_id)",
+    changelog_attributes: Mapped[List["ChangelogAttribute"]] = relationship(
+        primaryjoin=(
+            "Changelog.action_id == foreign(ChangelogAttribute.action_id)"
+        ),
         back_populates="changelog",
     )
 
@@ -583,20 +548,14 @@ class ChangelogAttribute(Base):
     changelog_attribute_id: Mapped[int] = mapped_column(
         "ChangeLogAttributeID", Integer, primary_key=True
     )
-    action_id: Mapped[int] = mapped_column(
-        "ActionID", Integer
-    )
+    action_id: Mapped[int] = mapped_column("ActionID", Integer)
     attribute_id: Mapped[Optional[int]] = mapped_column(
         "AttributeID",
         Integer,
         ForeignKey("DPMAttribute.AttributeID"),
     )
-    old_value: Mapped[Optional[str]] = mapped_column(
-        "OldValue", String(255)
-    )
-    new_value: Mapped[Optional[str]] = mapped_column(
-        "NewValue", String(255)
-    )
+    old_value: Mapped[Optional[str]] = mapped_column("OldValue", String(255))
+    new_value: Mapped[Optional[str]] = mapped_column("NewValue", String(255))
 
     dpm_attribute: Mapped[Optional["DpmAttribute"]] = relationship(
         foreign_keys=[attribute_id]
@@ -666,9 +625,7 @@ class DocumentVersion(Base):
     """
 
     __tablename__ = "DocumentVersion"
-    __table_args__ = (
-        UniqueConstraint("DocumentID", "PublicationDate"),
-    )
+    __table_args__ = (UniqueConstraint("DocumentID", "PublicationDate"),)
 
     document_vid: Mapped[int] = mapped_column(
         "DocumentVID", Integer, primary_key=True
@@ -677,9 +634,7 @@ class DocumentVersion(Base):
         "DocumentID", Integer, ForeignKey("Document.DocumentID")
     )
     code: Mapped[Optional[str]] = mapped_column("Code", String(20))
-    version: Mapped[Optional[str]] = mapped_column(
-        "Version", String(20)
-    )
+    version: Mapped[Optional[str]] = mapped_column("Version", String(20))
     publication_date: Mapped[Optional[date]] = mapped_column(
         "PublicationDate", Date
     )
@@ -734,9 +689,7 @@ class Subdivision(Base):
         Integer,
         ForeignKey("SubdivisionType.SubdivisionTypeID"),
     )
-    number: Mapped[Optional[str]] = mapped_column(
-        "Number", String(20)
-    )
+    number: Mapped[Optional[str]] = mapped_column("Number", String(20))
     parent_subdivision_id: Mapped[Optional[int]] = mapped_column(
         "ParentSubdivisionID",
         Integer,
@@ -745,17 +698,13 @@ class Subdivision(Base):
     structure_path: Mapped[Optional[str]] = mapped_column(
         "StructurePath", String(255)
     )
-    text_excerpt: Mapped[Optional[str]] = mapped_column(
-        "TextExcerpt", Text
-    )
+    text_excerpt: Mapped[Optional[str]] = mapped_column("TextExcerpt", Text)
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
         String(36),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column(
-        "OwnerID", Integer
-    )
+    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
 
     document_version: Mapped[Optional["DocumentVersion"]] = relationship(
         back_populates="subdivisions"
@@ -830,16 +779,12 @@ class Reference(Base):
         ForeignKey("Concept.ConceptGUID"),
         primary_key=True,
     )
-    row_guid: Mapped[Optional[str]] = mapped_column(
-        "RowGUID", String(36)
-    )
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
 
     subdivision: Mapped["Subdivision"] = relationship(
         back_populates="references"
     )
-    concept: Mapped["Concept"] = relationship(
-        foreign_keys=[concept_guid]
-    )
+    concept: Mapped["Concept"] = relationship(foreign_keys=[concept_guid])
 
 
 # ------------------------------------------------------------------
@@ -871,12 +816,8 @@ class Release(Base):
     description: Mapped[Optional[str]] = mapped_column(
         "Description", String(255)
     )
-    status: Mapped[Optional[str]] = mapped_column(
-        "Status", String(50)
-    )
-    is_current: Mapped[Optional[bool]] = mapped_column(
-        "IsCurrent", Boolean
-    )
+    status: Mapped[Optional[str]] = mapped_column("Status", String(50))
+    is_current: Mapped[Optional[bool]] = mapped_column("IsCurrent", Boolean)
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
         String(36),
@@ -885,15 +826,9 @@ class Release(Base):
     error_date: Mapped[Optional[datetime]] = mapped_column(
         "ErrorDate", DateTime
     )
-    type: Mapped[Optional[str]] = mapped_column(
-        "Type", String(20)
-    )
-    error: Mapped[Optional[str]] = mapped_column(
-        "Error", String(4000)
-    )
-    owner_id: Mapped[Optional[int]] = mapped_column(
-        "OwnerID", Integer
-    )
+    type: Mapped[Optional[str]] = mapped_column("Type", String(20))
+    error: Mapped[Optional[str]] = mapped_column("Error", String(4000))
+    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
@@ -901,10 +836,8 @@ class Release(Base):
     changelogs: Mapped[List["Changelog"]] = relationship(
         back_populates="release",
     )
-    variable_generations: Mapped[List["VariableGeneration"]] = (
-        relationship(
-            back_populates="release",
-        )
+    variable_generations: Mapped[List["VariableGeneration"]] = relationship(
+        back_populates="release",
     )
 
 
@@ -933,18 +866,12 @@ class VariableGeneration(Base):
     start_date: Mapped[Optional[datetime]] = mapped_column(
         "StartDate", DateTime
     )
-    end_date: Mapped[Optional[datetime]] = mapped_column(
-        "EndDate", DateTime
-    )
-    status: Mapped[Optional[str]] = mapped_column(
-        "Status", String(50)
-    )
+    end_date: Mapped[Optional[datetime]] = mapped_column("EndDate", DateTime)
+    status: Mapped[Optional[str]] = mapped_column("Status", String(50))
     release_id: Mapped[Optional[int]] = mapped_column(
         "ReleaseID", Integer, ForeignKey("Release.ReleaseID")
     )
-    error: Mapped[Optional[str]] = mapped_column(
-        "Error", String(4000)
-    )
+    error: Mapped[Optional[str]] = mapped_column("Error", String(4000))
 
     release: Mapped[Optional["Release"]] = relationship(
         back_populates="variable_generations"

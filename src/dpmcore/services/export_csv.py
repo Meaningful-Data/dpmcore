@@ -6,12 +6,12 @@ writes the raw CSV output directly to disk.
 
 from __future__ import annotations
 
-import subprocess
 import shutil
+import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 _DATE_FORMAT_TABLES = ("Release",)
 
@@ -66,11 +66,11 @@ class ExportCsvService:
             future_to_table = {}
             for table in table_names:
                 future = executor.submit(
-                        self._export_table,
-                        access_path,
-                        table,
-                        output_dir / f"{table}.csv",
-                    )
+                    self._export_table,
+                    access_path,
+                    table,
+                    output_dir / f"{table}.csv",
+                )
 
                 future_to_table[future] = table
 
@@ -80,7 +80,8 @@ class ExportCsvService:
                     future.result()
                 except Exception as exc:
                     raise ExportCsvError(
-                        f"Failed to export table '{table}' from '{access_path}': {exc}"
+                        f"Failed to export table '{table}' from "
+                        f"'{access_path}': {exc}"
                     ) from exc
         return ExportCsvResult(
             tables_exported=len(table_names),
@@ -93,10 +94,11 @@ class ExportCsvService:
     # ------------------------------------------------------------------ #
 
     def _check_mdbtools(self) -> None:
-        missing = []
-        for command in ["mdb-tables", "mdb-export"]:
-            if shutil.which(command) is None:
-                missing.append(command)
+        missing = [
+            command
+            for command in ["mdb-tables", "mdb-export"]
+            if shutil.which(command) is None
+        ]
         if missing:
             raise ExportCsvError(
                 "mdb-tools is not installed or not available in PATH. "

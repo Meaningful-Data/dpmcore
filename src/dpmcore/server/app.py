@@ -89,8 +89,7 @@ def create_app(
             {
                 "name": "Validation",
                 "description": (
-                    "DPM-XL expression validation "
-                    "(syntax and semantic)."
+                    "DPM-XL expression validation (syntax and semantic)."
                 ),
             },
             {
@@ -149,7 +148,8 @@ def create_app(
         from dpmcore.services.dpm_xl import DpmXlService
 
         result = DpmXlService(session).validate_semantic(
-            body.expression, release_id=body.release_id,
+            body.expression,
+            release_id=body.release_id,
         )
         return SemanticResponse(
             is_valid=result["is_valid"],

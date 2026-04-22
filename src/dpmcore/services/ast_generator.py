@@ -24,6 +24,7 @@ class ASTGeneratorService:
     """
 
     def __init__(self, session: Optional["Session"] = None) -> None:
+        """Build the service, optionally bound to a SQLAlchemy ``session``."""
         self.session = session
         self._syntax = SyntaxService()
         self._semantic: Optional[SemanticService] = None
@@ -71,7 +72,9 @@ class ASTGeneratorService:
             return {
                 "success": False,
                 "ast": None,
-                "error": "No database session — cannot perform semantic analysis.",
+                "error": (
+                    "No database session — cannot perform semantic analysis."
+                ),
             }
 
         result = self._semantic.validate(expression, release_id=release_id)

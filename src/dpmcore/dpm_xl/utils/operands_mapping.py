@@ -34,14 +34,16 @@ def iter_all_strings():
 
 def set_operand_label(label: str, operand: Union[str, VarID]):
     if isinstance(operand, VarID):
-        LabelHandler().operands_labels[label] = generate_operand_expression(operand)
-        LabelHandler().labels_type[label] = 'single'
+        LabelHandler().operands_labels[label] = generate_operand_expression(
+            operand
+        )
+        LabelHandler().labels_type[label] = "single"
     elif isinstance(operand, PreconditionItem):
         LabelHandler().operands_labels[label] = f"v_{operand.variable_code}"
-        LabelHandler().labels_type[label] = 'single'
+        LabelHandler().labels_type[label] = "single"
     else:
         LabelHandler().operands_labels[label] = operand
-        LabelHandler().labels_type[label] = 'not_single'
+        LabelHandler().labels_type[label] = "not_single"
 
 
 def generate_operand_expression(operand: VarID):
@@ -52,7 +54,9 @@ def generate_operand_expression(operand: VarID):
     if operand.cols:
         operand_expression += f", {','.join(['c' + x for x in operand.cols])}"
     if operand.sheets:
-        operand_expression += f", {','.join(['s' + x for x in operand.sheets])}"
+        operand_expression += (
+            f", {','.join(['s' + x for x in operand.sheets])}"
+        )
     operand_expression += " }"
     return operand_expression
 
@@ -61,6 +65,7 @@ def get_operand_from_label(label: str):
     if label in LabelHandler().operands_labels:
         return LabelHandler().operands_labels[label]
     return None
+
 
 def get_type_from_label(label: str):
     if label in LabelHandler().labels_type:

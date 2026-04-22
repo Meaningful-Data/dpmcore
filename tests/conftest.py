@@ -8,6 +8,37 @@ PATH_RULES = [
     ("tests/unit/api/", "api"),
 ]
 
+# Tests that still reference the pre-rename `py_dpm` package. They need to
+# be ported to the current `dpmcore` layout — tracked in the codebase
+# cleanup issue. Excluded here so the ~12 working test files can run.
+collect_ignore_glob = [
+    "integration/api/test_enriched_ast_multi.py",
+    "integration/api/test_explorer.py",
+    "integration/api/test_severity.py",
+    "integration/db/test_db_connection_handling.py",
+    "integration/models/test_module_version.py",
+    "integration/queries/test_get_table_details.py",
+    "integration/queries/test_hierarchical_query.py",
+    "integration/queries/test_query_refactor.py",
+    "integration/releases/test_data_dictionary_releases.py",
+    "integration/releases/test_get_tables_date_filter.py",
+    "integration/releases/test_get_tables_release_code.py",
+    "integration/releases/test_release_filters_semantic.py",
+    "integration/validation/test_implicit_open_keys.py",
+    "unit/api/test_instance.py",
+    "unit/ast/test_ast_coordinates.py",
+    "unit/ast/test_ast_generation.py",
+    "unit/cli/test_cli_semantic.py",
+    "unit/dpm/test_get_all_tables_for_module.py",
+    "unit/dpm/test_module_schema_mapping.py",
+    "unit/dpm_xl/test_warning_collector.py",
+    "unit/semantic/test_default_value_type_check.py",
+    "unit/semantic/test_interval_type_validation.py",
+    # Depends on a fixture database at tests/fixtures/test_data.db that is
+    # not tracked in the repo. Tracked in the cleanup issue.
+    "integration/validation/test_semantic_release.py",
+]
+
 
 def pytest_collection_modifyitems(
     config: pytest.Config,

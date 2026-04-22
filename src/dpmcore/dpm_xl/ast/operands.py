@@ -1,12 +1,15 @@
-from abc import ABC
-
-import pandas as pd
 import warnings
+from abc import ABC
 from typing import Dict, Hashable, Tuple
 
-# Suppress pandas UserWarning about SQLAlchemy connection types
-warnings.filterwarnings("ignore", message=".*pandas only supports SQLAlchemy.*")
+import pandas as pd
 
+# Suppress pandas UserWarning about SQLAlchemy connection types
+warnings.filterwarnings(
+    "ignore", message=".*pandas only supports SQLAlchemy.*"
+)
+
+from dpmcore import errors
 from dpmcore.dpm_xl.ast.nodes import (
     Dimension,
     GetOp,
@@ -22,9 +25,6 @@ from dpmcore.dpm_xl.ast.nodes import (
 )
 from dpmcore.dpm_xl.ast.template import ASTTemplate
 from dpmcore.dpm_xl.ast.where_clause import WhereClauseChecker
-from dpmcore.dpm_xl.types.scalar import Integer, Mixed, Number, ScalarFactory
-from dpmcore import errors
-from dpmcore.errors import SemanticError
 from dpmcore.dpm_xl.model_queries import (
     ItemCategoryQuery,
     OperationQuery,
@@ -32,18 +32,21 @@ from dpmcore.dpm_xl.model_queries import (
     ViewDatapointsQuery,
     ViewKeyComponentsQuery,
     ViewOpenKeysQuery,
-    compile_query_for_pandas,
-    read_sql_with_connection,
 )
+from dpmcore.dpm_xl.types.scalar import Integer, Mixed, Number, ScalarFactory
+from dpmcore.dpm_xl.utils.data_handlers import filter_all_data
+from dpmcore.dpm_xl.utils.filters import filter_by_release
+from dpmcore.dpm_xl.utils.operands_mapping import (
+    generate_new_label,
+    set_operand_label,
+)
+from dpmcore.errors import SemanticError
 from dpmcore.orm.rendering import (
     Header,
     Table,
     TableVersion,
     TableVersionHeader,
 )
-from dpmcore.dpm_xl.utils.filters import filter_by_release
-from dpmcore.dpm_xl.utils.operands_mapping import generate_new_label, set_operand_label
-from dpmcore.dpm_xl.utils.data_handlers import filter_all_data
 
 operand_elements = ["table", "rows", "cols", "sheets", "default", "interval"]
 
@@ -66,9 +69,11 @@ def _create_operand_label(node):
 
 
 def _modify_element_info(new_data, element, table_info):
-    if new_data is None and table_info[element] is None:
-        pass
-    elif table_info[element] == ["*"]:
+    if (
+        new_data is None
+        and table_info[element] is None
+        or table_info[element] == ["*"]
+    ):
         pass
     elif new_data is not None and table_info[element] is None:
         table_info[element] = new_data
@@ -107,8 +112,7 @@ def _has_range_syntax(values):
 
 
 def _expand_ranges_from_data(node, node_data):
-    """
-    Expand range-type values in VarID node's rows/cols/sheets to actual codes from the database.
+    """Expand range-type values in VarID node's rows/cols/sheets to actual codes from the database.
 
     When a VarID has range syntax like ['0010-0080'], this function replaces it with
     the actual codes found in node_data (e.g., ['0010', '0020', '0030', ...]).
@@ -147,7 +151,9 @@ def _expand_ranges_from_data(node, node_data):
 
 
 class OperandsChecking(ASTTemplate, ABC):
-    def __init__(self, session, expression, ast, release_id, is_scripting=False):
+    def __init__(
+        self, session, expression, ast, release_id, is_scripting=False
+    ):
         self.expression = expression
         self.release_id = release_id
         self.AST = ast
@@ -159,14 +165,10 @@ class OperandsChecking(ASTTemplate, ABC):
         self.items = []
         self.preconditions = False
         self.dimension_codes = []
-        self.dimension_nodes = (
-            []
-        )  # Store references to Dimension nodes for property_id enrichment
+        self.dimension_nodes = []  # Store references to Dimension nodes for property_id enrichment
         self.open_keys = None
         self.getop_components = []  # Store GetOp component codes for property_id lookup
-        self.getop_nodes = (
-            []
-        )  # Store references to GetOp nodes for property_id enrichment
+        self.getop_nodes = []  # Store references to GetOp nodes for property_id enrichment
 
         self.operations = []
         self.operations_data = None
@@ -240,7 +242,9 @@ class OperandsChecking(ASTTemplate, ABC):
                 read_sql_with_connection,
             )
 
-            compiled_query = compile_query_for_pandas(query.statement, self.session)
+            compiled_query = compile_query_for_pandas(
+                query.statement, self.session
+            )
             df_headers = read_sql_with_connection(compiled_query, self.session)
             _HEADERS_CACHE[cache_key] = df_headers
 
@@ -261,7 +265,9 @@ class OperandsChecking(ASTTemplate, ABC):
     def check_items(self):
         if len(self.items) == 0:
             return
-        df_items = ItemCategoryQuery.get_items(self.session, self.items, self.release_id)
+        df_items = ItemCategoryQuery.get_items(
+            self.session, self.items, self.release_id
+        )
         if len(df_items.iloc[:, 0].values) < len(set(self.items)):
             not_found_items = list(
                 set(self.items).difference(set(df_items["Signature"]))
@@ -277,7 +283,9 @@ class OperandsChecking(ASTTemplate, ABC):
             code for code in self.dimension_codes if code in IMPLICIT_OPEN_KEYS
         ]
         database_codes = [
-            code for code in self.dimension_codes if code not in IMPLICIT_OPEN_KEYS
+            code
+            for code in self.dimension_codes
+            if code not in IMPLICIT_OPEN_KEYS
         ]
 
         # Query database only for non-implicit keys
@@ -287,9 +295,13 @@ class OperandsChecking(ASTTemplate, ABC):
             )
             if len(self.open_keys) < len(database_codes):
                 not_found_dimensions = list(
-                    set(database_codes).difference(self.open_keys["property_code"])
+                    set(database_codes).difference(
+                        self.open_keys["property_code"]
+                    )
                 )
-                raise errors.SemanticError("1-5", open_keys=not_found_dimensions)
+                raise errors.SemanticError(
+                    "1-5", open_keys=not_found_dimensions
+                )
         else:
             self.open_keys = pd.DataFrame(
                 columns=["property_id", "property_code", "data_type"]
@@ -316,11 +328,17 @@ class OperandsChecking(ASTTemplate, ABC):
         if self.open_keys is not None and not self.open_keys.empty:
             # Create a mapping from dimension_code to property_id
             property_id_map = dict(
-                zip(self.open_keys["property_code"], self.open_keys["property_id"])
+                zip(
+                    self.open_keys["property_code"],
+                    self.open_keys["property_id"],
+                    strict=False,
+                )
             )
             for node in self.dimension_nodes:
                 if node.dimension_code in property_id_map:
-                    node.property_id = int(property_id_map[node.dimension_code])
+                    node.property_id = int(
+                        property_id_map[node.dimension_code]
+                    )
 
     def check_getop_components(self):
         """Check and enrich GetOp nodes with property_id for their component codes.
@@ -335,10 +353,14 @@ class OperandsChecking(ASTTemplate, ABC):
 
         # Separate implicit keys from database-backed keys
         implicit_codes = [
-            code for code in self.getop_components if code in IMPLICIT_OPEN_KEYS
+            code
+            for code in self.getop_components
+            if code in IMPLICIT_OPEN_KEYS
         ]
         database_codes = [
-            code for code in self.getop_components if code not in IMPLICIT_OPEN_KEYS
+            code
+            for code in self.getop_components
+            if code not in IMPLICIT_OPEN_KEYS
         ]
 
         # Query property_ids for GetOp components (same query as dimensions)
@@ -351,7 +373,9 @@ class OperandsChecking(ASTTemplate, ABC):
                 not_found_components = list(
                     set(database_codes).difference(getop_keys["property_code"])
                 )
-                raise errors.SemanticError("1-5", open_keys=not_found_components)
+                raise errors.SemanticError(
+                    "1-5", open_keys=not_found_components
+                )
         else:
             getop_keys = pd.DataFrame(
                 columns=["property_id", "property_code", "data_type"]
@@ -369,14 +393,20 @@ class OperandsChecking(ASTTemplate, ABC):
                 for code in implicit_codes
             ]
             implicit_df = pd.DataFrame(implicit_rows)
-            getop_keys = pd.concat([getop_keys, implicit_df], ignore_index=True)
+            getop_keys = pd.concat(
+                [getop_keys, implicit_df], ignore_index=True
+            )
 
         # Enrich GetOp nodes with property_id
         # This is required by adam-engine for [get ...] operations
         if getop_keys is not None and not getop_keys.empty:
             # Create a mapping from component code to property_id
             property_id_map = dict(
-                zip(getop_keys["property_code"], getop_keys["property_id"])
+                zip(
+                    getop_keys["property_code"],
+                    getop_keys["property_id"],
+                    strict=False,
+                )
             )
             for node in self.getop_nodes:
                 if node.component in property_id_map:
@@ -474,7 +504,9 @@ class OperandsChecking(ASTTemplate, ABC):
     # Start of visiting nodes
     def visit_WithExpression(self, node: WithExpression):
         if node.partial_selection.is_table_group:
-            raise errors.SemanticError("1-10", table=node.partial_selection.table)
+            raise errors.SemanticError(
+                "1-10", table=node.partial_selection.table
+            )
         self.partial_selection: VarID = node.partial_selection
         self.visit(node.expression)
 
@@ -487,9 +519,14 @@ class OperandsChecking(ASTTemplate, ABC):
             for attribute in operand_elements:
                 if (
                     getattr(node, attribute, None) is None
-                    and not getattr(self.partial_selection, attribute, None) is None
+                    and getattr(self.partial_selection, attribute, None)
+                    is not None
                 ):
-                    setattr(node, attribute, getattr(self.partial_selection, attribute))
+                    setattr(
+                        node,
+                        attribute,
+                        getattr(self.partial_selection, attribute),
+                    )
 
         if not node.table:
             raise errors.SemanticError("1-4", table=node.table)
@@ -497,7 +534,11 @@ class OperandsChecking(ASTTemplate, ABC):
         _create_operand_label(node)
         set_operand_label(node.label, node)
 
-        table_info = {"rows": node.rows, "cols": node.cols, "sheets": node.sheets}
+        table_info = {
+            "rows": node.rows,
+            "cols": node.cols,
+            "sheets": node.sheets,
+        }
 
         if node.table not in self.tables:
             self.tables[node.table] = table_info
@@ -557,7 +598,9 @@ class OperandsChecking(ASTTemplate, ABC):
 
     def visit_OperationRef(self, node: OperationRef):
         if not self.is_scripting:
-            raise errors.SemanticError("6-2", operation_code=node.operation_code)
+            raise errors.SemanticError(
+                "6-2", operation_code=node.operation_code
+            )
 
     def visit_PersistentAssignment(self, node: PersistentAssignment):
         # TODO: visit node.left when there are calculations variables in database
@@ -579,25 +622,26 @@ class OperandsChecking(ASTTemplate, ABC):
                 not_found_operations = list(
                     set(self.operations).difference(set(df_operations["Code"]))
                 )
-                raise errors.SemanticError("1-8", operations=not_found_operations)
+                raise errors.SemanticError(
+                    "1-8", operations=not_found_operations
+                )
             self.operations_data = df_operations
 
 
 def extract_data_types(node: VarID, database_types: pd.Series) -> None:
-    """
-    Extract data type of var ids from database information
+    """Extract data type of var ids from database information
     :param node: Var id
     :param database_types: Series that contains the data types of node elements
-    :return: None
+    :return: None.
     """
     unique_types = database_types.unique()
     scalar_factory = ScalarFactory()
     if len(unique_types) == 1:
         data_type = scalar_factory.database_types_mapping(unique_types[0])
         if node.interval and isinstance(data_type(), Number):
-            setattr(node, "type", data_type(node.interval))
+            node.type = data_type(node.interval)
         else:
-            setattr(node, "type", data_type())
+            node.type = data_type()
     else:
         data_types = {
             scalar_factory.database_types_mapping(data_type)
@@ -605,8 +649,12 @@ def extract_data_types(node: VarID, database_types: pd.Series) -> None:
         }
         if len(data_types) == 1:
             data_type = data_types.pop()
-            setattr(node, "type", data_type())
-        elif len(data_types) == 2 and Number in data_types and Integer in data_types:
-            setattr(node, "type", Number())
+            node.type = data_type()
+        elif (
+            len(data_types) == 2
+            and Number in data_types
+            and Integer in data_types
+        ):
+            node.type = Number()
         else:
-            setattr(node, "type", Mixed())
+            node.type = Mixed()

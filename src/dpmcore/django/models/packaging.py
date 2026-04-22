@@ -220,9 +220,7 @@ class ModuleVersionComposition(models.Model):
         managed = False
         db_table = "ModuleVersionComposition"
         app_label = "dpmcore_django"
-        unique_together = (
-            ("module_vid", "table_id"),
-        )
+        unique_together = (("module_vid", "table_id"),)
 
 
 class ModuleParameters(models.Model):
@@ -252,9 +250,7 @@ class ModuleParameters(models.Model):
         app_label = "dpmcore_django"
         verbose_name = "module parameter"
         verbose_name_plural = "module parameters"
-        unique_together = (
-            ("module_vid", "variable_vid"),
-        )
+        unique_together = (("module_vid", "variable_vid"),)
 
 
 class OperationCodePrefix(models.Model):

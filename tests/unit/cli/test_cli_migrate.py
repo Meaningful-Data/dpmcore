@@ -8,7 +8,7 @@ from click.testing import CliRunner
 from dpmcore.cli.main import main
 
 
-@pytest.fixture()
+@pytest.fixture
 def runner():
     return CliRunner()
 
@@ -54,7 +54,11 @@ class TestMigrateMissingOptions:
             ["migrate", "--database", "sqlite:///test.db"],
         )
         assert result.exit_code != 0
-        assert "source" in result.output.lower() or "missing" in result.output.lower() or "required" in result.output.lower()
+        assert (
+            "source" in result.output.lower()
+            or "missing" in result.output.lower()
+            or "required" in result.output.lower()
+        )
 
     def test_missing_database(self, runner, tmp_path):
         fake_accdb = tmp_path / "test.accdb"

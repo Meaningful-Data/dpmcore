@@ -10,9 +10,9 @@ from typing import List, Optional
 class ReleaseKeyword(enum.Enum):
     """Special release tokens from the SDMX URL scheme."""
 
-    LATEST = "~"          # latest (any status)
-    LATEST_STABLE = "+"   # latest with status='Final'
-    ALL = "*"             # all releases
+    LATEST = "~"  # latest (any status)
+    LATEST_STABLE = "+"  # latest with status='Final'
+    ALL = "*"  # all releases
 
 
 @dataclass(frozen=True)

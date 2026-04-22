@@ -151,6 +151,7 @@ class DpmConnection:
         url: str,
         pool_config: Optional[Dict[str, Any]] = None,
     ) -> None:
+        """Build a connection for ``url`` with optional ``pool_config``."""
         engine_kwargs: Dict[str, Any] = {"pool_pre_ping": True}
         if pool_config:
             engine_kwargs.update(pool_config)
@@ -166,8 +167,10 @@ class DpmConnection:
 
     @property
     def orm(self):
-        """Direct access to the SQLAlchemy session for advanced ORM
-        queries."""
+        """Direct access to the SQLAlchemy session.
+
+        Use for advanced ORM queries that bypass the service layer.
+        """
         return self.session
 
     # ------------------------------------------------------------------ #
@@ -180,12 +183,15 @@ class DpmConnection:
         self.engine.dispose()
 
     def __enter__(self) -> "DpmConnection":
+        """Enter the context manager."""
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Close the connection on context exit."""
         self.close()
 
     def __repr__(self) -> str:
+        """Return a debug representation of the connection."""
         return f"<DpmConnection url={self.engine.url!r}>"
 
 

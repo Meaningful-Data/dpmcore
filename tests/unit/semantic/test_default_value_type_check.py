@@ -1,12 +1,10 @@
-"""
-Tests for default value type checking in semantic analyzer.
+"""Tests for default value type checking in semantic analyzer.
 
 Tests that the semantic analyzer correctly validates that default value types
 are compatible with the operand's expected data type.
 """
 
 import pytest
-
 from py_dpm.dpm_xl.ast.nodes import Constant
 from py_dpm.dpm_xl.semantic_analyzer import InputAnalyzer
 from py_dpm.dpm_xl.types.scalar import (
@@ -75,7 +73,9 @@ class TestCheckDefaultValue:
         expected_type = Number()
 
         # Should not raise any exception
-        InputAnalyzer._InputAnalyzer__check_default_value(default_value, expected_type)
+        InputAnalyzer._InputAnalyzer__check_default_value(
+            default_value, expected_type
+        )
 
     def test_integer_default_for_string_is_valid(self):
         """Integer default for String operand should be valid (Integer can be promoted to String)."""
@@ -83,7 +83,9 @@ class TestCheckDefaultValue:
         expected_type = String()
 
         # Should not raise any exception
-        InputAnalyzer._InputAnalyzer__check_default_value(default_value, expected_type)
+        InputAnalyzer._InputAnalyzer__check_default_value(
+            default_value, expected_type
+        )
 
     def test_number_default_for_string_is_valid(self):
         """Number default for String operand should be valid (Number can be promoted to String)."""
@@ -91,7 +93,9 @@ class TestCheckDefaultValue:
         expected_type = String()
 
         # Should not raise any exception
-        InputAnalyzer._InputAnalyzer__check_default_value(default_value, expected_type)
+        InputAnalyzer._InputAnalyzer__check_default_value(
+            default_value, expected_type
+        )
 
     def test_boolean_default_for_string_is_valid(self):
         """Boolean default for String operand should be valid (Boolean can be promoted to String)."""
@@ -99,7 +103,9 @@ class TestCheckDefaultValue:
         expected_type = String()
 
         # Should not raise any exception
-        InputAnalyzer._InputAnalyzer__check_default_value(default_value, expected_type)
+        InputAnalyzer._InputAnalyzer__check_default_value(
+            default_value, expected_type
+        )
 
     def test_boolean_default_for_boolean_is_valid(self):
         """Boolean default for Boolean operand should be valid."""
@@ -107,7 +113,9 @@ class TestCheckDefaultValue:
         expected_type = Boolean()
 
         # Should not raise any exception
-        InputAnalyzer._InputAnalyzer__check_default_value(default_value, expected_type)
+        InputAnalyzer._InputAnalyzer__check_default_value(
+            default_value, expected_type
+        )
 
     def test_string_default_for_string_is_valid(self):
         """String default for String operand should be valid."""
@@ -115,7 +123,9 @@ class TestCheckDefaultValue:
         expected_type = String()
 
         # Should not raise any exception
-        InputAnalyzer._InputAnalyzer__check_default_value(default_value, expected_type)
+        InputAnalyzer._InputAnalyzer__check_default_value(
+            default_value, expected_type
+        )
 
     def test_string_default_for_item_raises_error(self):
         """String default for Item operand should raise SemanticError 3-6."""
@@ -137,7 +147,9 @@ class TestCheckDefaultValue:
         expected_type = String()
 
         # Should not raise any exception
-        InputAnalyzer._InputAnalyzer__check_default_value(default_value, expected_type)
+        InputAnalyzer._InputAnalyzer__check_default_value(
+            default_value, expected_type
+        )
 
     def test_none_default_value_is_valid(self):
         """None default value should be valid (no check performed)."""

@@ -1,12 +1,17 @@
 [project]
 name = "dpmcore"
-version = "0.0.1"
-description = "Your opinionated Python DPM library"
+version = "0.1.0"
+description = "Python library for DPM 2.0 Refit regulatory reporting (ORM, services, REST API)"
 license = { text = "Apache-2.0" }
-readme = "README.rst"
+readme = "README.md"
 requires-python = ">=3.10"
 authors = [
     { name = "MeaningfulData S.L.", email = "info@meaningfuldata.eu" },
+]
+maintainers = [
+    { name = "Antonio Olleros", email = "antonio.olleros@meaningfuldata.eu" },
+    { name = "Andres Manuel Sole Castillo", email = "andres.sole@meaningfuldata.eu" },
+    { name = "Francisco Javier Hernandez del Caño", email = "javier.hernandez@meaningfuldata.eu" },
 ]
 keywords = [
     "dpm",
@@ -24,30 +29,37 @@ classifiers = [
 ]
 dependencies = [
     "sqlalchemy>=2.0,<3.0",
-    "antlr4-python3-runtime>=4.9.2,<4.9.3",
+    # Runtime must match the ANTLR version used to generate the grammar
+    # in src/dpmcore/dpm_xl/grammar/generated/. Regenerating with a newer
+    # ANTLR is tracked separately.
+    "antlr4-python3-runtime>=4.9,<4.10",
 ]
 
 [project.urls]
 homepage = "https://dpmcore.meaningfuldata.eu"
 repository = "https://github.com/Meaningful-Data/dpmcore"
-documentation = "https://meaningful-data.github.io/dpmcore"
+documentation = "https://docs.dpmcore.meaningfuldata.eu"
 "Bug Tracker" = "https://github.com/Meaningful-Data/dpmcore/issues"
 
 [project.optional-dependencies]
-server = ["fastapi>=0.100", "uvicorn[standard]>=0.20"]
-django = ["django>=5.2", "mssql-django>=1.5"]
+# Floors aligned with Ubuntu 24.04 (Noble) apt package versions so that
+# ubuntu_test_24_04.yml can install this library with system packages
+# via `pip install --no-dependencies`. Version bumps above these floors
+# should stay within semver compatibility.
+server = ["fastapi>=0.101", "uvicorn[standard]>=0.27"]
+django = ["django>=4.2", "mssql-django>=1.5"]
 postgres = ["psycopg2-binary>=2.9,<3.0"]
-sqlserver = ["pyodbc>=5.1,<5.2"]
+sqlserver = ["pyodbc>=5.0"]
 migration = ["pandas>=2.1.4"]
 data = ["pandas>=2.1.4"]
 cli = ["click>=8.1", "rich>=13.7"]
 all = [
-    "fastapi>=0.100",
-    "uvicorn[standard]>=0.20",
-    "django>=5.2",
+    "fastapi>=0.101",
+    "uvicorn[standard]>=0.27",
+    "django>=4.2",
     "mssql-django>=1.5",
     "psycopg2-binary>=2.9,<3.0",
-    "pyodbc>=5.1,<5.2",
+    "pyodbc>=5.0",
     "pandas>=2.1.4",
     "click>=8.1",
     "rich>=13.7",
@@ -59,24 +71,23 @@ dpmcore = "dpmcore.cli.main:main"
 [tool.poetry]
 packages = [{ include = "dpmcore", from = "src" }]
 
-[dependency-groups]
-dev = [
-    "coverage>=7.0,<8.0",
-    "ruff>=0.4.0",
-    "mypy>=1.10.0",
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.21.1",
-    "pytest-cov>=4.0.0",
-    "pyroma>=4.2",
-    "httpx (>=0.28.1,<0.29.0)",
-    "pytest-django>=4.8",
-    "django-stubs>=5.0",
-]
-docs = [
-    "sphinx>=7.2.6",
-    "sphinx-rtd-theme>=1.3.0",
-    "sphinx-autodoc-typehints>=1.24.0",
-]
+[tool.poetry.group.dev.dependencies]
+coverage = ">=7.6,<8.0"
+ruff = ">=0.14"
+mypy = ">=1.13"
+pytest = ">=8.3"
+pytest-asyncio = ">=0.24"
+pytest-cov = ">=6.0"
+pyroma = ">=4.2"
+httpx = ">=0.28,<1.0"
+pytest-django = ">=4.9"
+django-stubs = ">=5.1"
+
+[tool.poetry.group.docs.dependencies]
+sphinx = ">=7.4"
+sphinx-rtd-theme = ">=3.0"
+sphinx-autodoc-typehints = ">=2.3"
+sphinx-multiversion = ">=0.2.4"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -84,6 +95,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.ruff]
 line-length = 79
+exclude = ["src/dpmcore/dpm_xl/grammar/generated"]
 lint.select = [
     "ASYNC",
     "B",
@@ -110,6 +122,44 @@ lint.pydocstyle.convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "src/dpmcore/django/models/*" = ["D105", "D106"]
 "src/dpmcore/django/admin.py" = ["D101"]
+# DPM-XL engine internals: mirrors ANTLR grammar semantics, follows its
+# own naming conventions, and uses star-imports as a re-export pattern.
+# Public entry points are in src/dpmcore/services/ and still require
+# docstrings/line-length compliance.
+"src/dpmcore/dpm_xl/**" = [
+    "B007",
+    "B023",
+    "B904",
+    "C901",
+    "D100",
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+    "D105",
+    "D107",
+    "D205",
+    "D415",
+    "D419",
+    "DTZ002",
+    "DTZ007",
+    "E402",
+    "E501",
+    "ERA001",
+    "F401",
+    "F403",
+    "F405",
+    "PERF203",
+    "PERF401",
+    "PERF402",
+    "PERF403",
+    "SIM102",
+    "SIM103",
+    "SIM108",
+]
+# SQLAlchemy 2.0 declarative models use string forward references in
+# Mapped[...] annotations that ruff cannot resolve statically.
+"src/dpmcore/orm/*" = ["F821"]
 "tests/*" = [
     "C901",
     "DTZ",
@@ -118,13 +168,27 @@ lint.pydocstyle.convention = "google"
     "D102",
     "D103",
     "D104",
+    "D105",
+    "D106",
+    "D107",
+    "D205",
+    "D415",
+    "E402",
+    "E501",
+    "ERA001",
     "PERF",
+    "PT009",
+    "PT011",
     "S101",
     "S311",
+    "S603",
+    "S607",
+    "SIM117",
 ]
 
 [tool.mypy]
 files = "src"
+exclude = "src/dpmcore/dpm_xl/grammar/generated/.*"
 disallow_untyped_defs = true
 disallow_untyped_calls = true
 ignore_errors = false
@@ -144,7 +208,7 @@ markers = [
     "api: REST API tests",
     "django: Django integration tests",
 ]
-addopts = "-v --tb=short --strict-markers --strict-config"
+addopts = "-v --tb=short --strict-markers --strict-config --import-mode=importlib"
 
 [tool.coverage.run]
 branch = true

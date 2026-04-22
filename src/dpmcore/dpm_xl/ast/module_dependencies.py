@@ -1,9 +1,9 @@
 from abc import ABC
 
+from dpmcore import errors
 from dpmcore.dpm_xl.ast.nodes import *
 from dpmcore.dpm_xl.ast.template import ASTTemplate
 from dpmcore.dpm_xl.ast.where_clause import WhereClauseChecker
-from dpmcore import errors
 from dpmcore.dpm_xl.model_queries import (
     ItemCategoryQuery,
     TableVersionQuery,
@@ -27,7 +27,9 @@ def filter_datapoints_df(df, table, table_info: dict, release_id: int = None):
         if v is not None:
             if "-" in v[0]:
                 low_limit, high_limit = v[0].split("-")
-                df = df[(df[mapping_dictionary[k]].between(low_limit, high_limit))]
+                df = df[
+                    (df[mapping_dictionary[k]].between(low_limit, high_limit))
+                ]
             elif v[0] == "*":
                 continue
             else:
@@ -39,15 +41,15 @@ def filter_datapoints_df(df, table, table_info: dict, release_id: int = None):
 
 
 def filter_module_by_table_df(df, table):
-    """
-    Returns a list of modules that contain the table
-    """
+    """Returns a list of modules that contain the table."""
     module_list = df[df["table_code"] == table]["module_code"].tolist()
     return module_list
 
 
 class ModuleDependencies(ASTTemplate, ABC):
-    def __init__(self, session, ast, release_id, date, module_ref, is_scripting=False):
+    def __init__(
+        self, session, ast, release_id, date, module_ref, is_scripting=False
+    ):
         self.release_id = release_id
         self.AST = ast
         self.tables = {}
@@ -78,7 +80,9 @@ class ModuleDependencies(ASTTemplate, ABC):
     # Start of visiting nodes
     def visit_WithExpression(self, node: WithExpression):
         if node.partial_selection.is_table_group:
-            raise errors.SemanticError("1-10", table=node.partial_selection.table)
+            raise errors.SemanticError(
+                "1-10", table=node.partial_selection.table
+            )
         self.partial_selection: VarID = node.partial_selection
         self.visit(node.expression)
 
@@ -91,14 +95,23 @@ class ModuleDependencies(ASTTemplate, ABC):
             for attribute in operand_elements:
                 if (
                     getattr(node, attribute, None) is None
-                    and not getattr(self.partial_selection, attribute, None) is None
+                    and getattr(self.partial_selection, attribute, None)
+                    is not None
                 ):
-                    setattr(node, attribute, getattr(self.partial_selection, attribute))
+                    setattr(
+                        node,
+                        attribute,
+                        getattr(self.partial_selection, attribute),
+                    )
 
         if not node.table:
             raise errors.SemanticError("1-4", table=node.table)
 
-        table_info = {"rows": node.rows, "cols": node.cols, "sheets": node.sheets}
+        table_info = {
+            "rows": node.rows,
+            "cols": node.cols,
+            "sheets": node.sheets,
+        }
 
         if node.table not in self.tables:
             self.tables[node.table] = table_info
@@ -152,7 +165,9 @@ class ModuleDependencies(ASTTemplate, ABC):
             if not ItemCategoryQuery.get_property_from_code(
                 node.dimension_code, self.session
             ):
-                raise errors.SemanticError("1-5", open_keys=node.dimension_code)
+                raise errors.SemanticError(
+                    "1-5", open_keys=node.dimension_code
+                )
 
     def visit_VarRef(self, node: VarRef):
         if not VariableVersionQuery.check_variable_exists(
@@ -206,7 +221,9 @@ class ModuleDependencies(ASTTemplate, ABC):
 
     def visit_OperationRef(self, node: OperationRef):
         if not self.is_scripting:
-            raise errors.SemanticError("6-2", operation_code=node.operation_code)
+            raise errors.SemanticError(
+                "6-2", operation_code=node.operation_code
+            )
 
     def visit_PersistentAssignment(self, node: PersistentAssignment):
         # TODO: visit node.left when there are calculations variables in database

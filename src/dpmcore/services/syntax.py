@@ -31,6 +31,7 @@ class SyntaxService:
     """
 
     def __init__(self) -> None:
+        """Build a stateless syntax validator."""
         self._error_listener = DPMErrorListener()
         self._visitor = ASTVisitor()
 
@@ -45,7 +46,7 @@ class SyntaxService:
         syntax.
         """
         try:
-            parse_tree = self._parse(expression)
+            self._parse(expression)
             return SyntaxResult(
                 is_valid=True,
                 error_message=None,

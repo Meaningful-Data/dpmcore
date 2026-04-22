@@ -323,9 +323,7 @@ class OperationScopeComposition(models.Model):
         managed = False
         db_table = "OperationScopeComposition"
         app_label = "dpmcore_django"
-        unique_together = (
-            ("operation_scope_id", "module_vid"),
-        )
+        unique_together = (("operation_scope_id", "module_vid"),)
 
 
 class Operator(models.Model):

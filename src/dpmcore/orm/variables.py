@@ -48,34 +48,24 @@ class Variable(Base):
     variable_id: Mapped[int] = mapped_column(
         "VariableID", Integer, primary_key=True
     )
-    type: Mapped[Optional[str]] = mapped_column(
-        "Type", String(20)
-    )
+    type: Mapped[Optional[str]] = mapped_column("Type", String(20))
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
         String(36),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column(
-        "OwnerID", Integer
-    )
+    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
     )
-    variable_versions: Mapped[List["VariableVersion"]] = (
-        relationship(
-            back_populates="variable",
-        )
-    )
-    variable_calculations: Mapped[
-        List["VariableCalculation"]
-    ] = relationship(
+    variable_versions: Mapped[List["VariableVersion"]] = relationship(
         back_populates="variable",
     )
-    operand_references: Mapped[
-        List["OperandReference"]
-    ] = relationship(
+    variable_calculations: Mapped[List["VariableCalculation"]] = relationship(
+        back_populates="variable",
+    )
+    operand_references: Mapped[List["OperandReference"]] = relationship(
         back_populates="variable",
     )
 
@@ -104,9 +94,7 @@ class VariableVersion(Base):
     """
 
     __tablename__ = "VariableVersion"
-    __table_args__ = (
-        UniqueConstraint("VariableID", "StartReleaseID"),
-    )
+    __table_args__ = (UniqueConstraint("VariableID", "StartReleaseID"),)
 
     variable_vid: Mapped[int] = mapped_column(
         "VariableVID", Integer, primary_key=True
@@ -124,9 +112,7 @@ class VariableVersion(Base):
     subcategory_vid: Mapped[Optional[int]] = mapped_column(
         "SubCategoryVID",
         Integer,
-        ForeignKey(
-            "SubCategoryVersion.SubCategoryVID"
-        ),
+        ForeignKey("SubCategoryVersion.SubCategoryVID"),
     )
     context_id: Mapped[Optional[int]] = mapped_column(
         "ContextID",
@@ -141,12 +127,8 @@ class VariableVersion(Base):
     is_multi_valued: Mapped[Optional[bool]] = mapped_column(
         "IsMultiValued", Boolean
     )
-    code: Mapped[Optional[str]] = mapped_column(
-        "Code", String(20)
-    )
-    name: Mapped[Optional[str]] = mapped_column(
-        "Name", String(50)
-    )
+    code: Mapped[Optional[str]] = mapped_column("Code", String(20))
+    name: Mapped[Optional[str]] = mapped_column("Name", String(50))
     start_release_id: Mapped[Optional[int]] = mapped_column(
         "StartReleaseID",
         Integer,
@@ -169,15 +151,13 @@ class VariableVersion(Base):
     property: Mapped[Optional["Property"]] = relationship(
         foreign_keys=[property_id]
     )
-    subcategory_version: Mapped[
-        Optional["SubCategoryVersion"]
-    ] = relationship(foreign_keys=[subcategory_vid])
+    subcategory_version: Mapped[Optional["SubCategoryVersion"]] = relationship(
+        foreign_keys=[subcategory_vid]
+    )
     context: Mapped[Optional["Context"]] = relationship(
         foreign_keys=[context_id]
     )
-    key: Mapped[Optional["CompoundKey"]] = relationship(
-        foreign_keys=[key_id]
-    )
+    key: Mapped[Optional["CompoundKey"]] = relationship(foreign_keys=[key_id])
     start_release: Mapped[Optional["Release"]] = relationship(
         foreign_keys=[start_release_id]
     )
@@ -187,24 +167,16 @@ class VariableVersion(Base):
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
     )
-    key_compositions: Mapped[
-        List["KeyComposition"]
-    ] = relationship(
+    key_compositions: Mapped[List["KeyComposition"]] = relationship(
         back_populates="variable_version",
     )
-    module_parameters: Mapped[
-        List["ModuleParameters"]
-    ] = relationship(
+    module_parameters: Mapped[List["ModuleParameters"]] = relationship(
         back_populates="variable_version",
     )
-    table_version_cells: Mapped[
-        List["TableVersionCell"]
-    ] = relationship(
+    table_version_cells: Mapped[List["TableVersionCell"]] = relationship(
         back_populates="variable_version",
     )
-    header_versions: Mapped[
-        List["HeaderVersion"]
-    ] = relationship(
+    header_versions: Mapped[List["HeaderVersion"]] = relationship(
         back_populates="key_variable_version",
     )
 
@@ -246,15 +218,13 @@ class VariableCalculation(Base):
         ForeignKey("OperationVersion.OperationVID"),
         primary_key=True,
     )
-    from_reference_date: Mapped[Optional[date]] = (
-        mapped_column("FromReferenceDate", Date)
+    from_reference_date: Mapped[Optional[date]] = mapped_column(
+        "FromReferenceDate", Date
     )
-    to_reference_date: Mapped[Optional[date]] = (
-        mapped_column("ToReferenceDate", Date)
+    to_reference_date: Mapped[Optional[date]] = mapped_column(
+        "ToReferenceDate", Date
     )
-    row_guid: Mapped[Optional[str]] = mapped_column(
-        "RowGUID", String(36)
-    )
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
 
     module: Mapped["Module"] = relationship(
         back_populates="variable_calculations"
@@ -262,9 +232,7 @@ class VariableCalculation(Base):
     variable: Mapped["Variable"] = relationship(
         back_populates="variable_calculations"
     )
-    operation_version: Mapped[
-        "OperationVersion"
-    ] = relationship(
+    operation_version: Mapped["OperationVersion"] = relationship(
         back_populates="variable_calculations"
     )
 
@@ -285,9 +253,7 @@ class CompoundKey(Base):
 
     __tablename__ = "CompoundKey"
 
-    key_id: Mapped[int] = mapped_column(
-        "KeyID", Integer, primary_key=True
-    )
+    key_id: Mapped[int] = mapped_column("KeyID", Integer, primary_key=True)
     signature: Mapped[Optional[str]] = mapped_column(
         "Signature", String(255), unique=True
     )
@@ -296,26 +262,18 @@ class CompoundKey(Base):
         String(36),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column(
-        "OwnerID", Integer
-    )
+    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
     )
-    key_compositions: Mapped[
-        List["KeyComposition"]
-    ] = relationship(
+    key_compositions: Mapped[List["KeyComposition"]] = relationship(
         back_populates="compound_key",
     )
-    module_versions: Mapped[
-        List["ModuleVersion"]
-    ] = relationship(
+    module_versions: Mapped[List["ModuleVersion"]] = relationship(
         back_populates="global_key",
     )
-    table_versions: Mapped[
-        List["TableVersion"]
-    ] = relationship(
+    table_versions: Mapped[List["TableVersion"]] = relationship(
         back_populates="key",
     )
 
@@ -348,9 +306,7 @@ class KeyComposition(Base):
         ForeignKey("VariableVersion.VariableVID"),
         primary_key=True,
     )
-    row_guid: Mapped[Optional[str]] = mapped_column(
-        "RowGUID", String(36)
-    )
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
 
     compound_key: Mapped["CompoundKey"] = relationship(
         back_populates="key_compositions"

@@ -1,5 +1,6 @@
-from click.testing import CliRunner
 from unittest.mock import patch
+
+from click.testing import CliRunner
 
 from dpmcore.cli.main import main
 from dpmcore.services.export_csv import ExportCsvResult

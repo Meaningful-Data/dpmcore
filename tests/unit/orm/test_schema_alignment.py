@@ -19,7 +19,6 @@ import subprocess
 from typing import Dict, Set
 
 import pytest
-from sqlalchemy import inspect as sa_inspect
 
 from dpmcore.orm import Base
 
@@ -138,9 +137,7 @@ def test_orm_tables_exist_in_db(
 ) -> None:
     """Every ORM table must correspond to a real Access DB table."""
     extra = set(orm_schema) - set(accdb_schema)
-    assert not extra, (
-        f"ORM tables not present in Access DB: {sorted(extra)}"
-    )
+    assert not extra, f"ORM tables not present in Access DB: {sorted(extra)}"
 
 
 @pytest.mark.parametrize(
@@ -172,6 +169,6 @@ def test_columns_match(
         errors.append(
             f"  columns in ORM but missing from DB: {sorted(extra_in_orm)}"
         )
-    assert not errors, (
-        f"Column mismatch for [{table_name}]:\n" + "\n".join(errors)
+    assert not errors, f"Column mismatch for [{table_name}]:\n" + "\n".join(
+        errors
     )

@@ -2,6 +2,7 @@ from abc import ABC
 
 import pandas as pd
 
+from dpmcore import errors
 from dpmcore.dpm_xl.ast.nodes import (
     AggregationOp,
     BinOp,
@@ -17,7 +18,6 @@ from dpmcore.dpm_xl.ast.nodes import (
     PreconditionItem,
     PropertyReference,
     RenameOp,
-    Scalar as ScalarNode,
     Set,
     Start,
     SubOp,
@@ -29,11 +29,21 @@ from dpmcore.dpm_xl.ast.nodes import (
     WhereClauseOp,
     WithExpression,
 )
+from dpmcore.dpm_xl.ast.nodes import (
+    Scalar as ScalarNode,
+)
 from dpmcore.dpm_xl.ast.template import ASTTemplate
+from dpmcore.dpm_xl.symbols import (
+    ConstantOperand,
+    FactComponent,
+    KeyComponent,
+    RecordSet,
+    Scalar,
+    ScalarSet,
+    Structure,
+)
 from dpmcore.dpm_xl.types.scalar import Item, Mixed, Null, ScalarFactory
-from dpmcore.dpm_xl.types.promotion import binary_implicit_type_promotion
-from dpmcore import errors
-from dpmcore.errors import SemanticError
+from dpmcore.dpm_xl.utils.data_handlers import filter_all_data
 from dpmcore.dpm_xl.utils.operands_mapping import set_operand_label
 from dpmcore.dpm_xl.utils.operator_mapping import (
     AGGR_OP_MAPPING,
@@ -55,21 +65,11 @@ from dpmcore.dpm_xl.utils.tokens import (
     TIME_SHIFT,
     WHERE,
 )
-from dpmcore.dpm_xl.utils.data_handlers import filter_all_data
-from dpmcore.dpm_xl.symbols import (
-    ConstantOperand,
-    FactComponent,
-    KeyComponent,
-    RecordSet,
-    Scalar,
-    ScalarSet,
-    Structure,
-)
 from dpmcore.dpm_xl.warning_collector import add_semantic_warning
+from dpmcore.errors import SemanticError
 
 
 class InputAnalyzer(ASTTemplate, ABC):
-
     def __init__(self, expression):
         super().__init__()
         self.data = None
@@ -84,8 +84,12 @@ class InputAnalyzer(ASTTemplate, ABC):
         # Implicit open keys that are always available without being declared
         # These are special dimensions that arise from the reporting context itself
         self.global_variables = {
-            "refPeriod": ScalarFactory().database_types_mapping("d")(),  # date type
-            "entityID": ScalarFactory().database_types_mapping("s")(),  # string type
+            "refPeriod": ScalarFactory().database_types_mapping(
+                "d"
+            )(),  # date type
+            "entityID": ScalarFactory().database_types_mapping(
+                "s"
+            )(),  # string type
         }
 
     # Start of visiting nodes.
@@ -146,7 +150,9 @@ class InputAnalyzer(ASTTemplate, ABC):
     def visit_CondExpr(self, node: CondExpr):
         condition_symbol = self.visit(node.condition)
         then_symbol = self.visit(node.then_expr)
-        else_symbol = None if node.else_expr is None else self.visit(node.else_expr)
+        else_symbol = (
+            None if node.else_expr is None else self.visit(node.else_expr)
+        )
         result = CONDITIONAL_OP_MAPPING[IF].validate(
             condition_symbol, then_symbol, else_symbol
         )
@@ -168,7 +174,9 @@ class InputAnalyzer(ASTTemplate, ABC):
 
         # Check if default_type can be promoted TO type_ (unidirectional check)
         # Get the set of types that default_type can be promoted to
-        default_implicities = implicit_type_promotion_dict[default_type.__class__]
+        default_implicities = implicit_type_promotion_dict[
+            default_type.__class__
+        ]
 
         # If expected type is not in the set of types default can be promoted to,
         # raise a semantic error
@@ -179,10 +187,12 @@ class InputAnalyzer(ASTTemplate, ABC):
 
     def visit_VarID(self, node: VarID):
 
-        self.__check_default_value(node.default, getattr(node, "type"))
+        self.__check_default_value(node.default, node.type)
 
         # filter by table_code
-        df = filter_all_data(self.data, node.table, node.rows, node.cols, node.sheets)
+        df = filter_all_data(
+            self.data, node.table, node.rows, node.cols, node.sheets
+        )
 
         scalar_factory = ScalarFactory()
         interval = getattr(node, "interval", None)
@@ -197,15 +207,22 @@ class InputAnalyzer(ASTTemplate, ABC):
             dpm_keys = self.key_components[node.table]
             if len(dpm_keys) > 0:
                 for key_name, key_type in zip(
-                    dpm_keys["property_code"], dpm_keys["data_type"]
+                    dpm_keys["property_code"],
+                    dpm_keys["data_type"],
+                    strict=False,
                 ):
                     if not key_type:
                         type_ = Item()
                     else:
-                        type_ = ScalarFactory().database_types_mapping(key_type)()
+                        type_ = ScalarFactory().database_types_mapping(
+                            key_type
+                        )()
                     components.append(
                         KeyComponent(
-                            name=key_name, type_=type_, subtype=DPM, parent=label
+                            name=key_name,
+                            type_=type_,
+                            subtype=DPM,
+                            parent=label,
                         )
                     )
 
@@ -228,8 +245,8 @@ class InputAnalyzer(ASTTemplate, ABC):
         components.extend(standard_keys)
         if len(components) == 0:
             set_operand_label(label=label, operand=node)
-            return Scalar(type_=getattr(node, "type"), name=label, origin=label)
-        fact_component = FactComponent(type_=getattr(node, "type"), parent=label)
+            return Scalar(type_=node.type, name=label, origin=label)
+        fact_component = FactComponent(type_=node.type, parent=label)
 
         components.append(fact_component)
         structure = Structure(components)
@@ -263,9 +280,13 @@ class InputAnalyzer(ASTTemplate, ABC):
                 ]
                 # Further filter: only report duplicates where NO key is NULL (fully specified duplicates)
                 mask_has_null = (
-                    repeated_identifiers[standard_key_names].isnull().any(axis=1)
+                    repeated_identifiers[standard_key_names]
+                    .isnull()
+                    .any(axis=1)
                 )
-                fully_specified_duplicates = repeated_identifiers[~mask_has_null]
+                fully_specified_duplicates = repeated_identifiers[
+                    ~mask_has_null
+                ]
 
                 if len(fully_specified_duplicates) > 0:
                     repeated_values = ""
@@ -315,9 +336,9 @@ class InputAnalyzer(ASTTemplate, ABC):
             grouping_clause = node.grouping_clause.components
 
         if isinstance(operand.get_fact_component().type, Mixed):
-            origin_expression = AGGR_OP_MAPPING[node.op].generate_origin_expression(
-                operand, grouping_clause
-            )
+            origin_expression = AGGR_OP_MAPPING[
+                node.op
+            ].generate_origin_expression(operand, grouping_clause)
             raise errors.SemanticError("4-4-0-3", origin=origin_expression)
 
         result = AGGR_OP_MAPPING[node.op].validate(operand, grouping_clause)
@@ -350,7 +371,9 @@ class InputAnalyzer(ASTTemplate, ABC):
             origin_elements = [str(child.value) for child in node.children]
         else:
             common_type_code = "Item"
-            origin_elements = ["[" + child.item + "]" for child in node.children]
+            origin_elements = [
+                "[" + child.item + "]" for child in node.children
+            ]
         common_type = ScalarFactory().scalar_factory(common_type_code)
         origin = ", ".join(origin_elements)
         origin = "{" + origin + "}"
@@ -431,12 +454,11 @@ class InputAnalyzer(ASTTemplate, ABC):
         return result
 
     def visit_PreconditionItem(self, node: PreconditionItem) -> Scalar:
-        """
-        Return a ScalarType Boolean with True value is precondition is satisfied otherwise False.
+        """Return a ScalarType Boolean with True value is precondition is satisfied otherwise False.
         Example:
         "table_code","ColumnID","RowID","SheetID","column_code","row_code","sheet_code","cell_code","CellID","VariableVID","data_type_code"
         S.01.01.01.01,,,,,,,,,xxxxxxx,BOO
-        We can check with table_code or VariableVID, here for now, we use table_code
+        We can check with table_code or VariableVID, here for now, we use table_code.
         """
         type_ = ScalarFactory().scalar_factory(code="Boolean")
 

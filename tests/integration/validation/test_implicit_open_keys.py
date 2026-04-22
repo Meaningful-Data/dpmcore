@@ -5,20 +5,16 @@ available when explicitly mentioned, without needing to be declared in the datab
 """
 
 import os
-
-import pytest
-from dotenv import load_dotenv
 from urllib.parse import quote_plus
 
+from dotenv import load_dotenv
 from py_dpm.api.dpm_xl.semantic import validate_expression
-
 
 load_dotenv()
 
 
 def _semantic_db_kwargs():
-    """
-    Build DB configuration for semantic validation from environment/.env.
+    """Build DB configuration for semantic validation from environment/.env.
 
     Prefers server databases configured via PYDPM_RDBMS/PYDPM_DB_* variables.
     Falls back to legacy USE_POSTGRES/POSTGRES_* configuration, then finally
@@ -38,7 +34,9 @@ def _semantic_db_kwargs():
 
         if all([host, db, user, password]):
             if rdbms == "postgres":
-                connection_url = f"postgresql://{user}:{password}@{host}:{port}/{db}"
+                connection_url = (
+                    f"postgresql://{user}:{password}@{host}:{port}/{db}"
+                )
             else:
                 # SQL Server connection using ODBC connection string
                 server_with_port = f"{host},{port}" if port else host
@@ -82,7 +80,9 @@ def _semantic_db_kwargs():
         password = os.getenv("POSTGRES_PASS")
 
         if all([host, db, user, password]):
-            connection_url = f"postgresql://{user}:{password}@{host}:{port}/{db}"
+            connection_url = (
+                f"postgresql://{user}:{password}@{host}:{port}/{db}"
+            )
             return {"connection_url": connection_url}
 
     if use_sqlite:

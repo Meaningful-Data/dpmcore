@@ -1,29 +1,29 @@
-import pytest
-from py_dpm.api.dpm.data_dictionary import DataDictionaryAPI
 import inspect
 
+import pytest
+from py_dpm.api.dpm.data_dictionary import DataDictionaryAPI
 from py_dpm.dpm.models import (
     Base,
+    Cell,
+    DataType,
+    Framework,
     Header,
     HeaderVersion,
-    SubCategory,
-    SubCategoryVersion,
-    SubCategoryItem,
-    Table,
-    TableVersion,
-    TableVersionHeader,
-    ModuleVersionComposition,
-    ModuleVersion,
-    Module,
-    Framework,
-    Property,
-    DataType,
     Item,
     ItemCategory,
-    Cell,
-    TableVersionCell,
-    VariableVersion,
+    Module,
+    ModuleVersion,
+    ModuleVersionComposition,
+    Property,
     Release,
+    SubCategory,
+    SubCategoryItem,
+    SubCategoryVersion,
+    Table,
+    TableVersion,
+    TableVersionCell,
+    TableVersionHeader,
+    VariableVersion,
 )
 from py_dpm.dpm.queries.hierarchical_queries import HierarchicalQuery
 
@@ -81,7 +81,23 @@ def test_get_table_details_structure(session):
     )
 
     session.add_all(
-        [fw, mod, mv, t, tv, h, hv, dt, prop, prop_item, tvh, mvc, vv, cell, tvc]
+        [
+            fw,
+            mod,
+            mv,
+            t,
+            tv,
+            h,
+            hv,
+            dt,
+            prop,
+            prop_item,
+            tvh,
+            mvc,
+            vv,
+            cell,
+            tvc,
+        ]
     )
     session.commit()
 
@@ -132,8 +148,12 @@ def test_get_table_details_filtering(session):
         endreleaseid=None,
     )
 
-    mv1 = ModuleVersion(modulevid=11, moduleid=1, startreleaseid=1, endreleaseid=2)
-    mv2 = ModuleVersion(modulevid=12, moduleid=1, startreleaseid=2, endreleaseid=None)
+    mv1 = ModuleVersion(
+        modulevid=11, moduleid=1, startreleaseid=1, endreleaseid=2
+    )
+    mv2 = ModuleVersion(
+        modulevid=12, moduleid=1, startreleaseid=2, endreleaseid=None
+    )
 
     mvc1 = ModuleVersionComposition(modulevid=11, tablevid=101, tableid=1)
     mvc2 = ModuleVersionComposition(modulevid=12, tablevid=102, tableid=1)
@@ -149,12 +169,16 @@ def test_get_table_details_filtering(session):
     session.commit()
 
     # Filter for Release 1
-    res1 = HierarchicalQuery.get_table_details(session, "T_MULTI", release_id=1)
+    res1 = HierarchicalQuery.get_table_details(
+        session, "T_MULTI", release_id=1
+    )
     assert res1["tableVid"] == 101  # TV1
     assert res1["tableTitle"] == "Table V1"
 
     # Filter for Release 2
-    res2 = HierarchicalQuery.get_table_details(session, "T_MULTI", release_id=2)
+    res2 = HierarchicalQuery.get_table_details(
+        session, "T_MULTI", release_id=2
+    )
     assert res2["tableVid"] == 102  # TV2
     assert res2["tableTitle"] == "Table V2"
 
@@ -184,8 +208,12 @@ def test_get_table_details_filtering_release_code(session):
         endreleaseid=None,
     )
 
-    mv1 = ModuleVersion(modulevid=21, moduleid=2, startreleaseid=1, endreleaseid=2)
-    mv2 = ModuleVersion(modulevid=22, moduleid=2, startreleaseid=2, endreleaseid=None)
+    mv1 = ModuleVersion(
+        modulevid=21, moduleid=2, startreleaseid=1, endreleaseid=2
+    )
+    mv2 = ModuleVersion(
+        modulevid=22, moduleid=2, startreleaseid=2, endreleaseid=None
+    )
 
     mvc1 = ModuleVersionComposition(modulevid=21, tablevid=201, tableid=10)
     mvc2 = ModuleVersionComposition(modulevid=22, tablevid=202, tableid=10)
@@ -223,7 +251,9 @@ def test_get_table_details_implementation_avoids_func_null_and_text():
 def test_get_table_details_missing_table_raises_value_error(session):
     # No tables created for this code; should raise a ValueError
     with pytest.raises(ValueError) as excinfo:
-        HierarchicalQuery.get_table_details(session, table_code="UNKNOWN_TABLE")
+        HierarchicalQuery.get_table_details(
+            session, table_code="UNKNOWN_TABLE"
+        )
 
     # Optional: check that the message is the expected one
     assert "Table UNKNOWN_TABLE was not found." in str(excinfo.value)
@@ -239,7 +269,11 @@ def test_get_table_details_property_code_and_enumerations(session):
     # Table and version
     t = Table(tableid=200)
     tv = TableVersion(
-        tablevid=2000, tableid=200, code="T_ENUM", name="Table Enum", startreleaseid=1
+        tablevid=2000,
+        tableid=200,
+        code="T_ENUM",
+        name="Table Enum",
+        startreleaseid=1,
     )
     mvc = ModuleVersionComposition(modulevid=10, tablevid=2000, tableid=200)
 
@@ -272,7 +306,10 @@ def test_get_table_details_property_code_and_enumerations(session):
     # Enumeration setup: SubCategory -> SubCategoryVersion -> SubCategoryItem
     subcat = SubCategory(subcategoryid=10, categoryid=None)
     scv = SubCategoryVersion(
-        subcategoryvid=3000, subcategoryid=10, startreleaseid=1, endreleaseid=None
+        subcategoryvid=3000,
+        subcategoryid=10,
+        startreleaseid=1,
+        endreleaseid=None,
     )
     enum_item = Item(itemid=2, name="EnumItem")
     ic_enum = ItemCategory(

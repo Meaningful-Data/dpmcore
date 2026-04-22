@@ -1,0 +1,72 @@
+name: Publish documentation
+
+run-name: "Publish documentation ${{ github.event.client_payload.tag_name || github.event.release.tag_name || '' }}"
+
+on:
+  release:
+    types: [published]
+  repository_dispatch:
+    types: [release-published]
+  workflow_dispatch:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Pages
+        id: pages
+        uses: actions/configure-pages@v5
+      - name: Install poetry
+        run: pipx install poetry
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: poetry install --with docs
+      - name: Build with Sphinx Multi-Version
+        run: poetry run sphinx-multiversion docs _site
+      - name: Generate root redirect
+        run: |
+          cat > _site/index.html <<'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta http-equiv="refresh" content="0; url=master/">
+            <title>dpmcore documentation</title>
+          </head>
+          <body>
+            <p>Redirecting to <a href="master/">master</a>...</p>
+          </body>
+          </html>
+          EOF
+      - name: Copy CNAME to root
+        run: cp docs/CNAME _site/CNAME
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v4
+
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

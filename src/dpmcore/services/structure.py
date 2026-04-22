@@ -117,9 +117,7 @@ class StructureService:
         """Return all releases sorted by date ascending (cached)."""
         if self._releases_cache is None:
             self._releases_cache = (
-                self.session.query(Release)
-                .order_by(Release.date.asc())
-                .all()
+                self.session.query(Release).order_by(Release.date.asc()).all()
             )
         return self._releases_cache
 
@@ -235,7 +233,8 @@ class StructureService:
         return None
 
     def _get_owner_acronym(
-        self, owner_id: Optional[int],
+        self,
+        owner_id: Optional[int],
     ) -> Optional[str]:
         """Resolve Organisation.acronym from an owner_id (cached)."""
         if owner_id is None:
@@ -246,9 +245,7 @@ class StructureService:
                 .filter(Organisation.org_id == owner_id)
                 .first()
             )
-            self._owner_cache[owner_id] = (
-                org.acronym if org else None
-            )
+            self._owner_cache[owner_id] = org.acronym if org else None
         return self._owner_cache[owner_id]
 
     def _bulk_load_category_data(
@@ -340,7 +337,8 @@ class StructureService:
                 items = (
                     [
                         _item_to_dict(
-                            items_by_id[ic.item_id], ic,
+                            items_by_id[ic.item_id],
+                            ic,
                         )
                         for ic in alive_ics
                         if ic.item_id in items_by_id
@@ -404,12 +402,11 @@ class StructureService:
             )
 
             if params.wants_all_releases:
-                all_entries.extend(
-                    v_dict for _, v_dict in versions
-                )
+                all_entries.extend(v_dict for _, v_dict in versions)
             elif versions:
                 v = self._version_at_release(
-                    versions, target_release,
+                    versions,
+                    target_release,
                 )
                 if v is not None:
                     all_entries.append(v)
@@ -440,9 +437,7 @@ class StructureService:
         # Query matching categories
         q = self.session.query(Category)
 
-        owners = (
-            None if params.is_owner_wildcard else params.owners
-        )
+        owners = None if params.is_owner_wildcard else params.owners
         if owners:
             q = (
                 q.join(
@@ -457,9 +452,7 @@ class StructureService:
             )
 
         if not params.is_id_wildcard:
-            numeric_ids = [
-                int(v) for v in params.ids if v.isdigit()
-            ]
+            numeric_ids = [int(v) for v in params.ids if v.isdigit()]
             if numeric_ids:
                 q = q.filter(
                     or_(

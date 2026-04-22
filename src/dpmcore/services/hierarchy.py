@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from sqlalchemy import and_, or_
-
 from dpmcore.dpm_xl.utils.filters import filter_by_release
 from dpmcore.orm.packaging import (
     Framework,
@@ -15,9 +13,7 @@ from dpmcore.orm.packaging import (
 )
 from dpmcore.orm.rendering import (
     Cell,
-    Header,
     HeaderVersion,
-    Table,
     TableVersion,
     TableVersionCell,
     TableVersionHeader,
@@ -35,6 +31,7 @@ class HierarchyService:
     """
 
     def __init__(self, session: "Session") -> None:
+        """Build the service bound to ``session``."""
         self.session = session
 
     def get_all_frameworks(
@@ -58,7 +55,8 @@ class HierarchyService:
         )
         if release_id is not None:
             q = filter_by_release(
-                q, release_id=release_id,
+                q,
+                release_id=release_id,
                 start_col=ModuleVersion.start_release_id,
                 end_col=ModuleVersion.end_release_id,
             )
@@ -76,7 +74,8 @@ class HierarchyService:
         )
         if release_id is not None:
             q = filter_by_release(
-                q, release_id=release_id,
+                q,
+                release_id=release_id,
                 start_col=TableVersion.start_release_id,
                 end_col=TableVersion.end_release_id,
             )
@@ -124,14 +123,16 @@ class HierarchyService:
             )
             .join(
                 ModuleVersion,
-                ModuleVersionComposition.module_vid == ModuleVersion.module_vid,
+                ModuleVersionComposition.module_vid
+                == ModuleVersion.module_vid,
             )
             .join(Module, ModuleVersion.module_id == Module.module_id)
             .filter(Module.code == module_code)
         )
         if release_id is not None:
             q = filter_by_release(
-                q, release_id=release_id,
+                q,
+                release_id=release_id,
                 start_col=ModuleVersion.start_release_id,
                 end_col=ModuleVersion.end_release_id,
             )

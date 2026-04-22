@@ -1,5 +1,4 @@
-"""
-Unit tests for AST coordinate assignment functionality.
+"""Unit tests for AST coordinate assignment functionality.
 
 Tests the _add_coordinates_to_ast and _clean_ast_data_entries methods
 in ASTGeneratorAPI to prevent regressions in x/y/z coordinate assignment.
@@ -14,6 +13,7 @@ Rules:
 """
 
 import copy
+
 import pytest
 from py_dpm.api.dpm_xl.ast_generator import ASTGeneratorAPI
 
@@ -33,9 +33,19 @@ class TestAddCoordinatesToAst:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0020", "column": "0010"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0010", "column": "0010"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0020",
+                    "column": "0010",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0010",
+                    "column": "0010",
+                },
+            ],
         }
 
         result = api._add_coordinates_to_ast(ast, context=None)
@@ -49,9 +59,19 @@ class TestAddCoordinatesToAst:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0020"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0010", "column": "0010"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0010",
+                    "column": "0020",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0010",
+                    "column": "0010",
+                },
+            ],
         }
 
         result = api._add_coordinates_to_ast(ast, context=None)
@@ -65,9 +85,21 @@ class TestAddCoordinatesToAst:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0010", "sheet": "0020"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0010", "column": "0010", "sheet": "0010"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0010",
+                    "column": "0010",
+                    "sheet": "0020",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0010",
+                    "column": "0010",
+                    "sheet": "0010",
+                },
+            ],
         }
 
         result = api._add_coordinates_to_ast(ast, context=None)
@@ -83,9 +115,19 @@ class TestAddCoordinatesToAst:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0010"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0010", "column": "0020"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0010",
+                    "column": "0010",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0010",
+                    "column": "0020",
+                },
+            ],
         }
 
         result = api._add_coordinates_to_ast(ast, context=None)
@@ -98,9 +140,19 @@ class TestAddCoordinatesToAst:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0010"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0020", "column": "0010"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0010",
+                    "column": "0010",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0020",
+                    "column": "0010",
+                },
+            ],
         }
 
         result = api._add_coordinates_to_ast(ast, context=None)
@@ -113,9 +165,21 @@ class TestAddCoordinatesToAst:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0010", "sheet": "0010"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0020", "column": "0010", "sheet": "0010"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0010",
+                    "column": "0010",
+                    "sheet": "0010",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0020",
+                    "column": "0010",
+                    "sheet": "0010",
+                },
+            ],
         }
 
         result = api._add_coordinates_to_ast(ast, context=None)
@@ -130,10 +194,25 @@ class TestAddCoordinatesToAst:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0010"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0020", "column": "0010"},
-                {"datapoint": 3, "operand_reference_id": 102, "row": "0030", "column": "0010"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0010",
+                    "column": "0010",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0020",
+                    "column": "0010",
+                },
+                {
+                    "datapoint": 3,
+                    "operand_reference_id": 102,
+                    "row": "0030",
+                    "column": "0010",
+                },
+            ],
         }
 
         result = api._add_coordinates_to_ast(ast, context=None)
@@ -152,10 +231,25 @@ class TestAddCoordinatesToAst:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0010"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0010", "column": "0020"},
-                {"datapoint": 3, "operand_reference_id": 102, "row": "0010", "column": "0030"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0010",
+                    "column": "0010",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0010",
+                    "column": "0020",
+                },
+                {
+                    "datapoint": 3,
+                    "operand_reference_id": 102,
+                    "row": "0010",
+                    "column": "0030",
+                },
+            ],
         }
 
         result = api._add_coordinates_to_ast(ast, context=None)
@@ -174,11 +268,31 @@ class TestAddCoordinatesToAst:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0010"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0010", "column": "0020"},
-                {"datapoint": 3, "operand_reference_id": 102, "row": "0020", "column": "0010"},
-                {"datapoint": 4, "operand_reference_id": 103, "row": "0020", "column": "0020"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0010",
+                    "column": "0010",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0010",
+                    "column": "0020",
+                },
+                {
+                    "datapoint": 3,
+                    "operand_reference_id": 102,
+                    "row": "0020",
+                    "column": "0010",
+                },
+                {
+                    "datapoint": 4,
+                    "operand_reference_id": 103,
+                    "row": "0020",
+                    "column": "0020",
+                },
+            ],
         }
 
         result = api._add_coordinates_to_ast(ast, context=None)
@@ -200,9 +314,19 @@ class TestAddCoordinatesToAst:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0020", "column": "0010"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0030", "column": "0010"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0020",
+                    "column": "0010",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0030",
+                    "column": "0010",
+                },
+            ],
         }
         # Context has different order than sorted data would give
         context = {"rows": ["0030", "0020", "0010"]}
@@ -218,9 +342,19 @@ class TestAddCoordinatesToAst:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0020", "column": "0010"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0010", "column": "0010"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0020",
+                    "column": "0010",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0010",
+                    "column": "0010",
+                },
+            ],
         }
 
         result = api._add_coordinates_to_ast(ast, context=None)
@@ -238,10 +372,25 @@ class TestAddCoordinatesToAst:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0010"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0010", "column": "0020"},
-                {"datapoint": 3, "operand_reference_id": 102, "row": "0010", "column": "0030"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0010",
+                    "column": "0010",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0010",
+                    "column": "0020",
+                },
+                {
+                    "datapoint": 3,
+                    "operand_reference_id": 102,
+                    "row": "0010",
+                    "column": "0030",
+                },
+            ],
         }
         # Context with wildcard - should fall back to data-extracted values
         context = {"cols": ["*"]}
@@ -261,10 +410,25 @@ class TestAddCoordinatesToAst:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0010"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0020", "column": "0010"},
-                {"datapoint": 3, "operand_reference_id": 102, "row": "0030", "column": "0010"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0010",
+                    "column": "0010",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0020",
+                    "column": "0010",
+                },
+                {
+                    "datapoint": 3,
+                    "operand_reference_id": 102,
+                    "row": "0030",
+                    "column": "0010",
+                },
+            ],
         }
         # Context with wildcard - should fall back to data-extracted values
         context = {"rows": ["*"]}
@@ -280,10 +444,7 @@ class TestAddCoordinatesToAst:
 
     def test_empty_data_array(self, api):
         """Empty data array should not cause errors."""
-        ast = {
-            "class_name": "VarID",
-            "data": []
-        }
+        ast = {"class_name": "VarID", "data": []}
 
         result = api._add_coordinates_to_ast(ast, context=None)
 
@@ -294,9 +455,17 @@ class TestAddCoordinatesToAst:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "column": "0010"},
-                {"datapoint": 2, "operand_reference_id": 101, "column": "0020"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "column": "0010",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "column": "0020",
+                },
+            ],
         }
 
         result = api._add_coordinates_to_ast(ast, context=None)
@@ -318,14 +487,21 @@ class TestAddCoordinatesToAst:
             "left": {
                 "class_name": "VarID",
                 "data": [
-                    {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0010"},
-                    {"datapoint": 2, "operand_reference_id": 101, "row": "0020", "column": "0010"},
-                ]
+                    {
+                        "datapoint": 1,
+                        "operand_reference_id": 100,
+                        "row": "0010",
+                        "column": "0010",
+                    },
+                    {
+                        "datapoint": 2,
+                        "operand_reference_id": 101,
+                        "row": "0020",
+                        "column": "0010",
+                    },
+                ],
             },
-            "right": {
-                "class_name": "Constant",
-                "value": 0
-            }
+            "right": {"class_name": "Constant", "value": 0},
         }
 
         result = api._add_coordinates_to_ast(ast, context=None)
@@ -342,17 +518,37 @@ class TestAddCoordinatesToAst:
             "left": {
                 "class_name": "VarID",
                 "data": [
-                    {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0010"},
-                    {"datapoint": 2, "operand_reference_id": 101, "row": "0020", "column": "0010"},
-                ]
+                    {
+                        "datapoint": 1,
+                        "operand_reference_id": 100,
+                        "row": "0010",
+                        "column": "0010",
+                    },
+                    {
+                        "datapoint": 2,
+                        "operand_reference_id": 101,
+                        "row": "0020",
+                        "column": "0010",
+                    },
+                ],
             },
             "right": {
                 "class_name": "VarID",
                 "data": [
-                    {"datapoint": 3, "operand_reference_id": 102, "row": "0010", "column": "0010"},
-                    {"datapoint": 4, "operand_reference_id": 103, "row": "0010", "column": "0020"},
-                ]
-            }
+                    {
+                        "datapoint": 3,
+                        "operand_reference_id": 102,
+                        "row": "0010",
+                        "column": "0010",
+                    },
+                    {
+                        "datapoint": 4,
+                        "operand_reference_id": 103,
+                        "row": "0010",
+                        "column": "0020",
+                    },
+                ],
+            },
         }
 
         result = api._add_coordinates_to_ast(ast, context=None)
@@ -374,9 +570,19 @@ class TestAddCoordinatesToAst:
         original_ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0010"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0020", "column": "0010"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0010",
+                    "column": "0010",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0020",
+                    "column": "0010",
+                },
+            ],
         }
         original_copy = copy.deepcopy(original_ast)
 
@@ -396,12 +602,16 @@ class TestCleanAstDataEntries:
     # ========== BASE FIELDS RETENTION ==========
 
     def test_datapoint_always_kept(self, api):
-        """datapoint field should always be kept."""
+        """Datapoint field should always be kept."""
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 123, "operand_reference_id": 456, "data_type": "m"},
-            ]
+                {
+                    "datapoint": 123,
+                    "operand_reference_id": 456,
+                    "data_type": "m",
+                },
+            ],
         }
 
         result = api._clean_ast_data_entries(ast)
@@ -413,8 +623,12 @@ class TestCleanAstDataEntries:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 123, "operand_reference_id": 456, "data_type": "m"},
-            ]
+                {
+                    "datapoint": 123,
+                    "operand_reference_id": 456,
+                    "data_type": "m",
+                },
+            ],
         }
 
         result = api._clean_ast_data_entries(ast)
@@ -428,8 +642,13 @@ class TestCleanAstDataEntries:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 123, "operand_reference_id": 456, "x": 1, "row": "0010"},
-            ]
+                {
+                    "datapoint": 123,
+                    "operand_reference_id": 456,
+                    "x": 1,
+                    "row": "0010",
+                },
+            ],
         }
 
         result = api._clean_ast_data_entries(ast)
@@ -442,8 +661,13 @@ class TestCleanAstDataEntries:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 123, "operand_reference_id": 456, "y": 1, "column": "0010"},
-            ]
+                {
+                    "datapoint": 123,
+                    "operand_reference_id": 456,
+                    "y": 1,
+                    "column": "0010",
+                },
+            ],
         }
 
         result = api._clean_ast_data_entries(ast)
@@ -456,8 +680,13 @@ class TestCleanAstDataEntries:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 123, "operand_reference_id": 456, "z": 1, "sheet": "0010"},
-            ]
+                {
+                    "datapoint": 123,
+                    "operand_reference_id": 456,
+                    "z": 1,
+                    "sheet": "0010",
+                },
+            ],
         }
 
         result = api._clean_ast_data_entries(ast)
@@ -471,7 +700,7 @@ class TestCleanAstDataEntries:
             "class_name": "VarID",
             "data": [
                 {"datapoint": 123, "operand_reference_id": 456, "row": "0010"},
-            ]
+            ],
         }
 
         result = api._clean_ast_data_entries(ast)
@@ -483,8 +712,12 @@ class TestCleanAstDataEntries:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 123, "operand_reference_id": 456, "column": "0010"},
-            ]
+                {
+                    "datapoint": 123,
+                    "operand_reference_id": 456,
+                    "column": "0010",
+                },
+            ],
         }
 
         result = api._clean_ast_data_entries(ast)
@@ -496,8 +729,12 @@ class TestCleanAstDataEntries:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 123, "operand_reference_id": 456, "sheet": "0010"},
-            ]
+                {
+                    "datapoint": 123,
+                    "operand_reference_id": 456,
+                    "sheet": "0010",
+                },
+            ],
         }
 
         result = api._clean_ast_data_entries(ast)
@@ -519,7 +756,7 @@ class TestCleanAstDataEntries:
                     "table_code": "F_01.01",
                     "table_vid": 1234,
                 },
-            ]
+            ],
         }
 
         result = api._clean_ast_data_entries(ast)
@@ -544,7 +781,7 @@ class TestCleanAstDataEntries:
                     "y": 2,
                     "column": "0020",
                 },
-            ]
+            ],
         }
 
         result = api._clean_ast_data_entries(ast)
@@ -567,12 +804,15 @@ class TestCleanAstDataEntries:
                     "sheet": "0030",
                     "data_type": "m",
                 },
-            ]
+            ],
         }
 
         result = api._clean_ast_data_entries(ast)
 
-        assert set(result["data"][0].keys()) == {"datapoint", "operand_reference_id"}
+        assert set(result["data"][0].keys()) == {
+            "datapoint",
+            "operand_reference_id",
+        }
 
     # ========== NESTED STRUCTURE TESTS ==========
 
@@ -583,9 +823,15 @@ class TestCleanAstDataEntries:
             "left": {
                 "class_name": "VarID",
                 "data": [
-                    {"datapoint": 123, "operand_reference_id": 456, "x": 1, "row": "0010", "data_type": "m"},
-                ]
-            }
+                    {
+                        "datapoint": 123,
+                        "operand_reference_id": 456,
+                        "x": 1,
+                        "row": "0010",
+                        "data_type": "m",
+                    },
+                ],
+            },
         }
 
         result = api._clean_ast_data_entries(ast)
@@ -611,9 +857,21 @@ class TestCoordinateAndCleanIntegration:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0010", "data_type": "m"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0020", "column": "0010", "data_type": "m"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0010",
+                    "column": "0010",
+                    "data_type": "m",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0020",
+                    "column": "0010",
+                    "data_type": "m",
+                },
+            ],
         }
 
         with_coords = api._add_coordinates_to_ast(ast, context=None)
@@ -624,7 +882,9 @@ class TestCoordinateAndCleanIntegration:
             assert "x" in entry, "x should be present when rows vary"
             assert "row" in entry, "row should be kept when x is present"
             # y and column should NOT be present (single column)
-            assert "y" not in entry, "y should NOT be present when column is fixed"
+            assert "y" not in entry, (
+                "y should NOT be present when column is fixed"
+            )
             assert "column" not in entry, "column should NOT be kept when no y"
             # Base fields always present
             assert "datapoint" in entry
@@ -637,9 +897,21 @@ class TestCoordinateAndCleanIntegration:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0010", "data_type": "m"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0010", "column": "0020", "data_type": "m"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0010",
+                    "column": "0010",
+                    "data_type": "m",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0010",
+                    "column": "0020",
+                    "data_type": "m",
+                },
+            ],
         }
 
         with_coords = api._add_coordinates_to_ast(ast, context=None)
@@ -658,10 +930,25 @@ class TestCoordinateAndCleanIntegration:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0010"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0010", "column": "0020"},
-                {"datapoint": 3, "operand_reference_id": 102, "row": "0010", "column": "0030"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0010",
+                    "column": "0010",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0010",
+                    "column": "0020",
+                },
+                {
+                    "datapoint": 3,
+                    "operand_reference_id": 102,
+                    "row": "0010",
+                    "column": "0030",
+                },
+            ],
         }
 
         with_coords = api._add_coordinates_to_ast(ast, context=None)
@@ -670,7 +957,9 @@ class TestCoordinateAndCleanIntegration:
         for entry in result["data"]:
             assert "y" in entry, "y should be present when columns vary"
             assert "column" in entry, "column should be kept when y is present"
-            assert "x" not in entry, "x should NOT be present when row is fixed"
+            assert "x" not in entry, (
+                "x should NOT be present when row is fixed"
+            )
             assert "row" not in entry, "row should NOT be kept when no x"
 
     def test_single_column_pipeline_removes_column(self, api):
@@ -678,9 +967,19 @@ class TestCoordinateAndCleanIntegration:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0010"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0020", "column": "0010"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0010",
+                    "column": "0010",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0020",
+                    "column": "0010",
+                },
+            ],
         }
 
         with_coords = api._add_coordinates_to_ast(ast, context=None)
@@ -697,9 +996,21 @@ class TestCoordinateAndCleanIntegration:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0010", "sheet": "0010"},
-                {"datapoint": 2, "operand_reference_id": 101, "row": "0020", "column": "0020", "sheet": "0020"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0010",
+                    "column": "0010",
+                    "sheet": "0010",
+                },
+                {
+                    "datapoint": 2,
+                    "operand_reference_id": 101,
+                    "row": "0020",
+                    "column": "0020",
+                    "sheet": "0020",
+                },
+            ],
         }
 
         with_coords = api._add_coordinates_to_ast(ast, context=None)
@@ -719,8 +1030,15 @@ class TestCoordinateAndCleanIntegration:
         ast = {
             "class_name": "VarID",
             "data": [
-                {"datapoint": 1, "operand_reference_id": 100, "row": "0010", "column": "0010", "sheet": "0010", "data_type": "m"},
-            ]
+                {
+                    "datapoint": 1,
+                    "operand_reference_id": 100,
+                    "row": "0010",
+                    "column": "0010",
+                    "sheet": "0010",
+                    "data_type": "m",
+                },
+            ],
         }
 
         with_coords = api._add_coordinates_to_ast(ast, context=None)
@@ -755,7 +1073,7 @@ class TestCoordinateAndCleanIntegration:
                     "table_code": "F_01.01",
                     "table_vid": 1234,
                 },
-            ]
+            ],
         }
 
         with_coords = api._add_coordinates_to_ast(ast, context=None)

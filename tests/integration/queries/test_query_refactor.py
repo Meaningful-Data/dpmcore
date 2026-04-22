@@ -1,7 +1,6 @@
 import pytest
-from datetime import date
 from py_dpm.api.dpm.data_dictionary import DataDictionaryAPI
-from py_dpm.dpm.models import Base, TableVersion, ItemCategory
+from py_dpm.dpm.models import Base, ItemCategory, TableVersion
 from py_dpm.dpm.queries.tables import TableQuery
 
 
@@ -58,7 +57,9 @@ def test_get_available_tables_filtered(api_with_data):
 
     assert any(t["code"] == "T1" for t in tables_r1)
     assert not any(t["code"] == "T2" for t in tables_r1)
-    assert not any(t["code"] == "T3" for t in tables_r1)  # EndRelease 1 > 1 False.
+    assert not any(
+        t["code"] == "T3" for t in tables_r1
+    )  # EndRelease 1 > 1 False.
 
     # Release 2
     tables_r2 = api_with_data.get_tables(release_id=2)
