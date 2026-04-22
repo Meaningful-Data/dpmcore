@@ -647,10 +647,14 @@ class MLGeneration(ASTTemplate):
         property_row = ItemCategoryQuery.get_property_from_code(
             code=node.dimension_code, session=self.session_queries
         )
+        if property_row is None:
+            raise RuntimeError(
+                f"Property with code {node.dimension_code!r} not found"
+            )
         operand_ref = OperandReference(
             op_node=op_node,
             OperandReference=node.source_reference,
-            PropertyID=property_row.ItemID,
+            PropertyID=property_row.item_id,
         )
         self.session.add(operand_ref)
 
