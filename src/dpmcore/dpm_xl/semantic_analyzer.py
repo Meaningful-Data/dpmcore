@@ -1,4 +1,5 @@
 from abc import ABC
+from typing import Any, cast
 
 import pandas as pd
 
@@ -33,16 +34,25 @@ from dpmcore.dpm_xl.ast.nodes import (
     Scalar as ScalarNode,
 )
 from dpmcore.dpm_xl.ast.template import ASTTemplate
+from dpmcore.dpm_xl.operators.clause import Sub as SubOperator
 from dpmcore.dpm_xl.symbols import (
+    Component,
     ConstantOperand,
     FactComponent,
     KeyComponent,
+    Operand,
     RecordSet,
     Scalar,
     ScalarSet,
     Structure,
 )
-from dpmcore.dpm_xl.types.scalar import Item, Mixed, Null, ScalarFactory
+from dpmcore.dpm_xl.types.scalar import (
+    Item,
+    Mixed,
+    Null,
+    ScalarFactory,
+    ScalarType,
+)
 from dpmcore.dpm_xl.utils.data_handlers import filter_all_data
 from dpmcore.dpm_xl.utils.operands_mapping import set_operand_label
 from dpmcore.dpm_xl.utils.operator_mapping import (
@@ -70,20 +80,20 @@ from dpmcore.errors import SemanticError
 
 
 class InputAnalyzer(ASTTemplate, ABC):
-    def __init__(self, expression):
+    def __init__(self, expression: str) -> None:
         super().__init__()
-        self.data = None
-        self.key_components = {}
-        self.open_keys = None
+        self.data: pd.DataFrame | None = None
+        self.key_components: dict[str, pd.DataFrame] = {}
+        self.open_keys: pd.DataFrame | None = None
         self.result: bool = False
         self._expression: str = expression  # For debugging purposes only
         self.preconditions: bool = False
 
-        self.calculations_outputs = {}
+        self.calculations_outputs: dict[str, Operand] = {}
 
         # Implicit open keys that are always available without being declared
         # These are special dimensions that arise from the reporting context itself
-        self.global_variables = {
+        self.global_variables: dict[str, ScalarType] = {
             "refPeriod": ScalarFactory().database_types_mapping(
                 "d"
             )(),  # date type
@@ -94,9 +104,11 @@ class InputAnalyzer(ASTTemplate, ABC):
 
     # Start of visiting nodes.
 
-    def visit_Start(self, node: Start):
+    def visit_Start(  # type: ignore[override]
+        self, node: Start
+    ) -> Operand | list[Operand]:
 
-        result = []
+        result: list[Operand] = []
         for child in node.children:
             result_symbol = self.visit(child)
 
@@ -116,38 +128,58 @@ class InputAnalyzer(ASTTemplate, ABC):
                         raise errors.SemanticError("2-1")
 
             if len(node.children) == 1:
-                return result_symbol
-            result.append(result_symbol)
+                return cast(Operand, result_symbol)
+            result.append(cast(Operand, result_symbol))
 
         return result
 
-    def visit_PersistentAssignment(self, node: PersistentAssignment):
-        return self.visit(node.right)
+    def visit_PersistentAssignment(  # type: ignore[override]
+        self, node: PersistentAssignment
+    ) -> Operand:
+        return cast(Operand, self.visit(node.right))
 
-    def visit_TemporaryAssignment(self, node: TemporaryAssignment):
+    def visit_TemporaryAssignment(  # type: ignore[override]
+        self, node: TemporaryAssignment
+    ) -> Operand:
 
-        right = self.visit(node.right)
-        right.name = node.left.value
+        right = cast(Operand, self.visit(node.right))
+        right.name = cast(str, node.left.value)
         self.calculations_outputs[right.name] = right
         return right
 
-    def visit_ParExpr(self, node: ParExpr):
-        return self.visit(node.expression)
+    def visit_ParExpr(  # type: ignore[override]
+        self, node: ParExpr
+    ) -> Operand:
+        return cast(Operand, self.visit(node.expression))
 
-    def visit_BinOp(self, node: BinOp):
+    def visit_BinOp(  # type: ignore[override]
+        self, node: BinOp
+    ) -> Operand:
         left_symbol = self.visit(node.left)
         right_symbol = self.visit(node.right)
-        result = BIN_OP_MAPPING[node.op].validate(left_symbol, right_symbol)
+        # node.op is declared ``str | None`` on the AST base, but BinOp always
+        # constructs with a concrete str; narrow via cast so lookups type-check.
+        op = cast(str, node.op)
+        # BIN_OP_MAPPING is typed as ``dict[str, type[Operator]]`` after mypy
+        # inference, and the Operator base class does not declare ``validate``
+        # (Binary/ConditionalOperator subclasses do). Runtime dispatch is safe.
+        operator_cls = cast(Any, BIN_OP_MAPPING[op])
+        result = operator_cls.validate(left_symbol, right_symbol)
 
-        return result
+        return cast(Operand, result)
 
-    def visit_UnaryOp(self, node: UnaryOp):
+    def visit_UnaryOp(  # type: ignore[override]
+        self, node: UnaryOp
+    ) -> Operand:
         operand_symbol = self.visit(node.operand)
-        result = UNARY_OP_MAPPING[node.op].validate_types(operand_symbol)
+        op = cast(str, node.op)
+        result = UNARY_OP_MAPPING[op].validate_types(operand_symbol)
 
         return result
 
-    def visit_CondExpr(self, node: CondExpr):
+    def visit_CondExpr(  # type: ignore[override]
+        self, node: CondExpr
+    ) -> Operand:
         condition_symbol = self.visit(node.condition)
         then_symbol = self.visit(node.then_expr)
         else_symbol = (
@@ -156,16 +188,18 @@ class InputAnalyzer(ASTTemplate, ABC):
         result = CONDITIONAL_OP_MAPPING[IF].validate(
             condition_symbol, then_symbol, else_symbol
         )
-        return result
+        return cast(Operand, result)
 
-    def visit_VarRef(self, node: VarRef):
+    def visit_VarRef(self, node: VarRef) -> None:
         raise SemanticError("7-2")
 
-    def visit_PropertyReference(self, node: PropertyReference):
+    def visit_PropertyReference(self, node: PropertyReference) -> None:
         raise SemanticError("7-1")
 
     @staticmethod
-    def __check_default_value(default_value, type_):
+    def __check_default_value(
+        default_value: Any, type_: ScalarType
+    ) -> None:
         if default_value is None:
             return
         default_type = ScalarFactory().scalar_factory(code=default_value.type)
@@ -185,32 +219,52 @@ class InputAnalyzer(ASTTemplate, ABC):
                 "3-6", expected_type=type_, default_type=default_type
             )
 
-    def visit_VarID(self, node: VarID):
+    def visit_VarID(  # type: ignore[override]
+        self, node: VarID
+    ) -> Operand:
 
-        self.__check_default_value(node.default, node.type)
+        # node.type is ScalarType | None on AST base but ``visit_VarID`` is only
+        # reached after operand checks populate it; same for label/table.
+        node_type = cast(ScalarType, node.type)
+        self.__check_default_value(node.default, node_type)
+
+        table_code = cast(str, node.table)
+        rows = list(node.rows) if node.rows is not None else []
+        cols = list(node.cols) if node.cols is not None else []
+        sheets = list(node.sheets) if node.sheets is not None else []
 
         # filter by table_code
         df = filter_all_data(
-            self.data, node.table, node.rows, node.cols, node.sheets
+            cast(pd.DataFrame, self.data),
+            table_code,
+            rows,
+            cols,
+            sheets,
         )
 
         scalar_factory = ScalarFactory()
-        interval = getattr(node, "interval", None)
-        data_types = df["data_type"].apply(
-            lambda x: scalar_factory.from_database_to_scalar_types(x, interval)
-        )
+        interval = getattr(node, "interval", None) or False
+
+        # pandas' typeshed declares Series.apply to return scalar literal
+        # types, but downstream code expects the column to hold live
+        # ScalarType objects; cast at the boundary only.
+        def _to_scalar_type(x: Any) -> Any:
+            return scalar_factory.from_database_to_scalar_types(x, interval)
+
+        data_types = df["data_type"].apply(_to_scalar_type)
         df["data_type"] = data_types
 
-        label = getattr(node, "label", None)
-        components = []
-        if self.key_components and node.table in self.key_components:
-            dpm_keys = self.key_components[node.table]
+        label = cast(str, node.label)
+        components: list[Component] = []
+        if self.key_components and table_code in self.key_components:
+            dpm_keys = self.key_components[table_code]
             if len(dpm_keys) > 0:
                 for key_name, key_type in zip(
                     dpm_keys["property_code"],
                     dpm_keys["data_type"],
                     strict=False,
                 ):
+                    type_: ScalarType
                     if not key_type:
                         type_ = Item()
                     else:
@@ -226,7 +280,7 @@ class InputAnalyzer(ASTTemplate, ABC):
                         )
                     )
 
-        standard_keys = []
+        standard_keys: list[KeyComponent] = []
         self._check_standard_key(standard_keys, df["row_code"], "r", label)
         self._check_standard_key(standard_keys, df["column_code"], "c", label)
         self._check_standard_key(standard_keys, df["sheet_code"], "s", label)
@@ -245,8 +299,8 @@ class InputAnalyzer(ASTTemplate, ABC):
         components.extend(standard_keys)
         if len(components) == 0:
             set_operand_label(label=label, operand=node)
-            return Scalar(type_=node.type, name=label, origin=label)
-        fact_component = FactComponent(type_=node.type, parent=label)
+            return Scalar(type_=node_type, name=label, origin=label)
+        fact_component = FactComponent(type_=node_type, parent=label)
 
         components.append(fact_component)
         structure = Structure(components)
@@ -308,20 +362,33 @@ class InputAnalyzer(ASTTemplate, ABC):
         return recordset
 
     @staticmethod
-    def _check_standard_key(key_components, elements, name, parent):
+    def _check_standard_key(
+        key_components: list[KeyComponent],
+        elements: "pd.Series[Any]",
+        name: str,
+        parent: str,
+    ) -> None:
         if len(elements) > 1 and len(elements.unique()) > 1:
             key_component = KeyComponent(
                 name=name, type_=Null(), subtype=STANDARD, parent=parent
             )
             key_components.append(key_component)
 
-    def visit_Constant(self, node: Constant):
-        constant_type = ScalarFactory().scalar_factory(code=node.type)
+    def visit_Constant(  # type: ignore[override]
+        self, node: Constant
+    ) -> ConstantOperand:
+        # ``Constant.type`` legacy-shares the AST ``type`` attribute but stores
+        # a string code (see nodes.py comment). Reflect that at the call site.
+        constant_type = ScalarFactory().scalar_factory(
+            code=cast(str | None, node.type)
+        )
         return ConstantOperand(
             type_=constant_type, name=None, origin=node.value, value=node.value
         )
 
-    def visit_AggregationOp(self, node: AggregationOp):
+    def visit_AggregationOp(  # type: ignore[override]
+        self, node: AggregationOp
+    ) -> Operand:
         operand = self.visit(node.operand)
         if not isinstance(operand, RecordSet):
             raise errors.SemanticError("4-4-0-1", op=node.op)
@@ -335,25 +402,30 @@ class InputAnalyzer(ASTTemplate, ABC):
         if node.grouping_clause:
             grouping_clause = node.grouping_clause.components
 
+        op = cast(str, node.op)
         if isinstance(operand.get_fact_component().type, Mixed):
-            origin_expression = AGGR_OP_MAPPING[
-                node.op
-            ].generate_origin_expression(operand, grouping_clause)
+            origin_expression = AGGR_OP_MAPPING[op].generate_origin_expression(
+                operand, grouping_clause
+            )
             raise errors.SemanticError("4-4-0-3", origin=origin_expression)
 
-        result = AGGR_OP_MAPPING[node.op].validate(operand, grouping_clause)
-        return result
+        result = AGGR_OP_MAPPING[op].validate(operand, grouping_clause)
+        return cast(Operand, result)
 
-    def visit_Dimension(self, node: Dimension):
+    def visit_Dimension(  # type: ignore[override]
+        self, node: Dimension
+    ) -> Scalar:
         # Check if this is an implicit open key (refPeriod, entityID)
         if node.dimension_code in self.global_variables:
-            type_ = self.global_variables[node.dimension_code]
-            return Scalar(type_=type_, name=None, origin=node.dimension_code)
+            gtype = self.global_variables[node.dimension_code]
+            return Scalar(type_=gtype, name=None, origin=node.dimension_code)
 
         # Otherwise, look up from the database-backed open_keys
-        dimension_data = self.open_keys[
-            self.open_keys["property_code"] == node.dimension_code
+        open_keys = cast(pd.DataFrame, self.open_keys)
+        dimension_data = open_keys[
+            open_keys["property_code"] == node.dimension_code
         ].reset_index(drop=True)
+        type_: ScalarType
         if dimension_data["data_type"][0] is not None:
             type_code = dimension_data["data_type"][0]
             type_ = ScalarFactory().database_types_mapping(code=type_code)()
@@ -361,18 +433,30 @@ class InputAnalyzer(ASTTemplate, ABC):
             type_ = ScalarFactory().scalar_factory(code="Item")
         return Scalar(type_=type_, name=None, origin=node.dimension_code)
 
-    def visit_Set(self, node: Set):
+    def visit_Set(  # type: ignore[override]
+        self, node: Set
+    ) -> ScalarSet:
 
+        common_type_code: str
         if isinstance(node.children[0], Constant):
-            types = {child.type for child in node.children}
+            # ``Constant.type`` is stored as a str (see visit_Constant); the
+            # shared AST annotation is ScalarType | None, so narrow at use.
+            constant_children = cast(list[Constant], node.children)
+            types: set[str] = {
+                cast(str, child.type) for child in constant_children
+            }
             if len(types) > 1:
                 raise errors.SemanticError("11", types=", ".join(types))
             common_type_code = types.pop()
-            origin_elements = [str(child.value) for child in node.children]
+            origin_elements = [str(child.value) for child in constant_children]
         else:
             common_type_code = "Item"
+            # Non-constant set members are AST.Scalar (via ASTTemplate); they
+            # expose ``item``. We keep the runtime attribute access but tell
+            # mypy about the underlying type.
+            scalar_children = cast(list[ScalarNode], node.children)
             origin_elements = [
-                "[" + child.item + "]" for child in node.children
+                "[" + child.item + "]" for child in scalar_children
             ]
         common_type = ScalarFactory().scalar_factory(common_type_code)
         origin = ", ".join(origin_elements)
@@ -380,38 +464,55 @@ class InputAnalyzer(ASTTemplate, ABC):
 
         return ScalarSet(type_=common_type, name=None, origin=origin)
 
-    def visit_Scalar(self, node: ScalarNode):
+    def visit_Scalar(  # type: ignore[override]
+        self, node: ScalarNode
+    ) -> Scalar:
         type_ = ScalarFactory().scalar_factory(node.scalar_type)
         return Scalar(type_=type_, origin=node.item, name=None)
 
-    def visit_ComplexNumericOp(self, node: ComplexNumericOp):
-        if node.op not in COMPLEX_OP_MAPPING:
+    def visit_ComplexNumericOp(  # type: ignore[override]
+        self, node: ComplexNumericOp
+    ) -> Operand:
+        op = cast(str, node.op)
+        if op not in COMPLEX_OP_MAPPING:
             raise NotImplementedError
 
         symbols = [self.visit(operand) for operand in node.operands]
 
-        result = COMPLEX_OP_MAPPING[node.op].validate(symbols)
-        return result
+        result = COMPLEX_OP_MAPPING[op].validate(symbols)
+        return cast(Operand, result)
 
-    def visit_FilterOp(self, node: FilterOp):
+    def visit_FilterOp(  # type: ignore[override]
+        self, node: FilterOp
+    ) -> Operand:
         selection = self.visit(node.selection)
         condition = self.visit(node.condition)
         result = CONDITIONAL_OP_MAPPING[FILTER].validate(selection, condition)
-        return result
+        return cast(Operand, result)
 
-    def visit_TimeShiftOp(self, node: TimeShiftOp):
+    def visit_TimeShiftOp(  # type: ignore[override]
+        self, node: TimeShiftOp
+    ) -> Operand:
         operand = self.visit(node.operand)
         if not isinstance(operand, (RecordSet, Scalar, ConstantOperand)):
             raise errors.SemanticError("4-7-1", op=TIME_SHIFT)
+        # TimeShift.validate expects ``component_name: str`` and
+        # ``shift_number: int`` but the AST carries ``str | None`` and ``str``
+        # respectively; narrow at the call site. Runtime semantics remain the
+        # same because TimeShift also rejects None/non-ints internally.
+        component_name = cast(str, node.component)
+        shift_number = int(node.shift_number)
         result = TIME_OPERATORS[TIME_SHIFT].validate(
             operand=operand,
-            component_name=node.component,
+            component_name=component_name,
             period=node.period_indicator,
-            shift_number=node.shift_number,
+            shift_number=shift_number,
         )
         return result
 
-    def visit_WhereClauseOp(self, node: WhereClauseOp):
+    def visit_WhereClauseOp(  # type: ignore[override]
+        self, node: WhereClauseOp
+    ) -> RecordSet:
 
         operand = self.visit(node.operand)
 
@@ -427,10 +528,12 @@ class InputAnalyzer(ASTTemplate, ABC):
         )
         return result
 
-    def visit_RenameOp(self, node: RenameOp):
+    def visit_RenameOp(  # type: ignore[override]
+        self, node: RenameOp
+    ) -> RecordSet:
         operand = self.visit(node.operand)
-        names = []
-        new_names = []
+        names: list[str] = []
+        new_names: list[str] = []
         for rename_node in node.rename_nodes:
             names.append(rename_node.old_name)
             new_names.append(rename_node.new_name)
@@ -439,21 +542,32 @@ class InputAnalyzer(ASTTemplate, ABC):
         )
         return result
 
-    def visit_GetOp(self, node: GetOp):
+    def visit_GetOp(  # type: ignore[override]
+        self, node: GetOp
+    ) -> RecordSet:
         operand = self.visit(node.operand)
         key_names = [node.component]
         result = CLAUSE_OP_MAPPING[GET].validate(operand, key_names)
         return result
 
-    def visit_SubOp(self, node: SubOp):
+    def visit_SubOp(  # type: ignore[override]
+        self, node: SubOp
+    ) -> RecordSet:
         operand = self.visit(node.operand)
         value = self.visit(node.value)
-        result = CLAUSE_OP_MAPPING[SUB].validate(
+        # CLAUSE_OP_MAPPING[SUB] is the ``Sub`` subclass at runtime, whose
+        # ``validate`` intentionally narrows the base signature (see
+        # operators/clause.py). Call it directly so mypy sees the correct
+        # signature; the mapping lookup would yield the erased base type.
+        _ = CLAUSE_OP_MAPPING[SUB]
+        result = SubOperator.validate(
             operand=operand, property_code=node.property_code, value=value
         )
         return result
 
-    def visit_PreconditionItem(self, node: PreconditionItem) -> Scalar:
+    def visit_PreconditionItem(  # type: ignore[override]
+        self, node: PreconditionItem
+    ) -> Scalar:
         """Return a ScalarType Boolean with True value is precondition is satisfied otherwise False.
         Example:
         "table_code","ColumnID","RowID","SheetID","column_code","row_code","sheet_code","cell_code","CellID","VariableVID","data_type_code"
@@ -462,14 +576,19 @@ class InputAnalyzer(ASTTemplate, ABC):
         """
         type_ = ScalarFactory().scalar_factory(code="Boolean")
 
-        return Scalar(type_=type_, name=node.label, origin=node.label)
+        label = cast(str, node.label)
+        return Scalar(type_=type_, name=label, origin=label)
 
-    def visit_OperationRef(self, node: OperationRef):
+    def visit_OperationRef(  # type: ignore[override]
+        self, node: OperationRef
+    ) -> Operand:
 
         operation_code = node.operation_code
         if operation_code not in self.calculations_outputs:
             raise errors.SemanticError("1-9", operation_code=operation_code)
         return self.calculations_outputs[operation_code]
 
-    def visit_WithExpression(self, node: WithExpression):
-        return self.visit(node.expression)
+    def visit_WithExpression(  # type: ignore[override]
+        self, node: WithExpression
+    ) -> Operand:
+        return cast(Operand, self.visit(node.expression))
