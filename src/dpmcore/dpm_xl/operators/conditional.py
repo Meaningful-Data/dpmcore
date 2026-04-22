@@ -1,4 +1,4 @@
-from typing import Union
+from typing import ClassVar, Union
 
 import pandas as pd
 
@@ -6,6 +6,7 @@ from dpmcore import errors
 from dpmcore.dpm_xl.operators.base import Binary, Operator
 from dpmcore.dpm_xl.symbols import (
     ConstantOperand,
+    Operand,
     RecordSet,
     Scalar,
     Structure,
@@ -15,21 +16,31 @@ from dpmcore.dpm_xl.types.promotion import (
     binary_implicit_type_promotion_with_mixed_types,
     unary_implicit_type_promotion,
 )
-from dpmcore.dpm_xl.types.scalar import Mixed, ScalarFactory
+from dpmcore.dpm_xl.types.scalar import Mixed, ScalarFactory, ScalarType
 from dpmcore.dpm_xl.utils import tokens
 from dpmcore.dpm_xl.warning_collector import add_semantic_warning
 from dpmcore.errors import SemanticError
 
+# Type aliases used throughout the conditional operators pipeline.
+CondOperand = Union[RecordSet, Scalar]
+
 
 class ConditionalOperator(Operator):
-    propagate_attributes = False
+    propagate_attributes: ClassVar[bool] = False
 
     @classmethod
-    def validate(cls, *args):
+    def validate(cls, *args: object) -> None:
+        # Abstract-ish placeholder; concrete subclasses override with their
+        # own signatures. Kept for runtime parity.
         pass
 
     @classmethod
-    def create_labeled_scalar(cls, rslt_structure, rslt_type, origin):
+    def create_labeled_scalar(
+        cls,
+        rslt_structure: CondOperand | ConstantOperand,
+        rslt_type: ScalarType,
+        origin: str,
+    ) -> Scalar:
         """ """
         if not isinstance(rslt_structure, ConstantOperand):
             scalar = cls._create_labeled_scalar(
@@ -47,16 +58,23 @@ class ConditionalOperator(Operator):
 
     @classmethod
     def _check_same_recordset_structures(
-        cls, left: RecordSet, right: RecordSet, origin
+        cls, left: RecordSet, right: RecordSet, origin: str
     ) -> bool:
         """Used for recordset-recordset."""
-        left = left.structure
-        right = right.structure
-        if len(left.get_key_components()) == len(right.get_key_components()):
+        left_structure = left.structure
+        right_structure = right.structure
+        if len(left_structure.get_key_components()) == len(
+            right_structure.get_key_components()
+        ):
             # For better error management
             class_check = Binary()
-            class_check.op = cls.op
-            class_check.check_same_components(left, right, origin)
+            # Binary.op is a ClassVar; overriding on the instance preserves
+            # existing runtime behavior of piping cls.op into downstream
+            # errors.
+            class_check.op = cls.op  # type: ignore[misc]
+            class_check.check_same_components(
+                left_structure, right_structure, origin
+            )
             return True
         return False
 
@@ -118,7 +136,7 @@ class ConditionalOperator(Operator):
     @classmethod
     def check_condition_is_subset(
         cls, selection: RecordSet, condition: RecordSet
-    ):
+    ) -> bool:
 
         selection_dpm_components = selection.get_dpm_components()
         condition_dpm_components = condition.get_dpm_components()
@@ -138,7 +156,9 @@ class ConditionalOperator(Operator):
         return False
 
     @staticmethod
-    def generate_result_dataframe(left: RecordSet, right: RecordSet):
+    def generate_result_dataframe(
+        left: RecordSet, right: RecordSet
+    ) -> pd.DataFrame | None:
         if left.records is not None and right.records is not None:
             result_dataframe = pd.merge(
                 left.records,
@@ -162,10 +182,15 @@ class ConditionalOperator(Operator):
 class IfOperator(ConditionalOperator):
     """ """
 
-    op = tokens.IF
+    op: ClassVar[str | None] = tokens.IF
 
     @classmethod
-    def create_origin_expression(cls, condition, then_op, else_op=None) -> str:
+    def create_origin_expression(
+        cls,
+        condition: Operand,
+        then_op: Operand,
+        else_op: Operand | None = None,
+    ) -> str:
         condition_name = getattr(condition, "name", None) or condition.origin
         then_name = getattr(then_op, "name", None) or then_op.origin
         if else_op:
@@ -176,7 +201,7 @@ class IfOperator(ConditionalOperator):
         return origin
 
     @classmethod
-    def check_condition(cls, condition: Union[RecordSet, Scalar]) -> bool:
+    def check_condition(cls, condition: CondOperand) -> bool:
         """Check if the condition has Boolean type."""
         if isinstance(condition, RecordSet):
             condition_type = condition.structure.components["f"].type
@@ -198,23 +223,25 @@ class IfOperator(ConditionalOperator):
     @classmethod
     def check_structures(
         cls,
-        condition: Union[RecordSet, Scalar],
-        first: Union[RecordSet, Scalar],
-        second: Union[RecordSet, Scalar],
-        origin,
-    ):
+        condition: CondOperand,
+        first: CondOperand,
+        second: CondOperand | None,
+        origin: str,
+    ) -> tuple[Structure | CondOperand, pd.DataFrame | None]:
         """ """
         if isinstance(condition, Scalar):
-            if second:
+            if second is not None:
                 # Helper: treat recordsets with only global key components as scalars
                 # Per DPM-XL spec, single-cell selections have only global keys
+                # ``CondOperand`` narrows to RecordSet when not Scalar, so the
+                # ``isinstance(..., RecordSet)`` check on the right of ``or``
+                # is technically redundant; the short-circuit still guards
+                # attribute access at runtime if CondOperand is widened later.
                 first_is_scalar = isinstance(first, Scalar) or (
-                    isinstance(first, RecordSet)
-                    and first.has_only_global_components
+                    first.has_only_global_components
                 )
                 second_is_scalar = isinstance(second, Scalar) or (
-                    isinstance(second, RecordSet)
-                    and second.has_only_global_components
+                    second.has_only_global_components
                 )
 
                 if (
@@ -227,6 +254,7 @@ class IfOperator(ConditionalOperator):
                         first, second, origin, subset_allowed=False
                     ):
                         return first.structure, first.records
+                    raise SemanticError("4-6-1-3")
                 elif first_is_scalar and second_is_scalar:
                     # Both are scalars (or single-cell recordsets with only global keys)
                     return first, None
@@ -239,24 +267,24 @@ class IfOperator(ConditionalOperator):
                     return first.structure, first.records
                 return first, None
         else:  # RecordSet condition
-            if second:
+            if second is not None:
                 # Determine structure for each recordset operand
+                then_struct: Structure | None = None
+                then_records: pd.DataFrame | None = None
                 if isinstance(first, RecordSet):
                     then_struct, then_records = cls._check_if_structures(
                         condition, first, origin
                     )
-                else:
-                    then_struct, then_records = None, None
 
+                else_struct: Structure | None = None
+                else_records: pd.DataFrame | None = None
                 if isinstance(second, RecordSet):
                     else_struct, else_records = cls._check_if_structures(
                         condition, second, origin
                     )
-                else:
-                    else_struct, else_records = None, None
 
                 # Pick the largest result structure
-                if then_struct and else_struct:
+                if then_struct is not None and else_struct is not None:
                     is_sub, largest = Binary.check_is_subset(
                         then_struct, else_struct
                     )
@@ -271,9 +299,9 @@ class IfOperator(ConditionalOperator):
                     if largest is then_struct:
                         return then_struct, then_records
                     return else_struct, else_records
-                elif then_struct:
+                elif then_struct is not None:
                     return then_struct, then_records
-                elif else_struct:
+                elif else_struct is not None:
                     return else_struct, else_records
                 else:
                     return condition.structure, condition.records
@@ -285,7 +313,7 @@ class IfOperator(ConditionalOperator):
     @classmethod
     def _check_if_structures(
         cls, condition: RecordSet, operand: RecordSet, origin: str
-    ):
+    ) -> tuple[Structure, pd.DataFrame | None]:
         """Bidirectional structure check for IF operator.
         Returns (result_structure, result_records) where result is the superset.
         """
@@ -309,7 +337,7 @@ class IfOperator(ConditionalOperator):
         is_subset, superset = Binary.check_is_subset(
             condition.structure, operand.structure
         )
-        if is_subset:
+        if is_subset and superset is not None:
             if superset is condition.structure:
                 return condition.structure, condition.records
             else:
@@ -322,21 +350,28 @@ class IfOperator(ConditionalOperator):
     @classmethod
     def check_types(
         cls,
-        first: Union[RecordSet, Scalar],
-        result_dataframe: pd.DataFrame,
-        second: Union[RecordSet, Scalar] = None,
-    ):
-        if second:
+        first: CondOperand,
+        result_dataframe: pd.DataFrame | None,
+        second: CondOperand | None = None,
+    ) -> tuple[ScalarType, pd.DataFrame | None]:
+        first_type: ScalarType
+        if second is not None:
             if isinstance(first, RecordSet):
                 first_type = first.structure.components["f"].type
             else:
                 first_type = first.type
+            second_type: ScalarType
             if isinstance(second, RecordSet):
                 second_type = second.structure.components["f"].type
             else:
                 second_type = second.type
             if isinstance(first_type, Mixed) or isinstance(second_type, Mixed):
-                result_dataframe = cls.generate_result_dataframe(first, second)
+                if isinstance(first, RecordSet) and isinstance(
+                    second, RecordSet
+                ):
+                    result_dataframe = cls.generate_result_dataframe(
+                        first, second
+                    )
         else:
             if isinstance(first, RecordSet):
                 first_type = first.structure.components["f"].type
@@ -345,6 +380,10 @@ class IfOperator(ConditionalOperator):
             return first_type, result_dataframe
 
         if isinstance(first_type, Mixed) or isinstance(second_type, Mixed):
+            if result_dataframe is None:
+                raise Exception(
+                    "Mixed type promotion requires a result dataframe"
+                )
             type_promotion, result_dataframe = (
                 binary_implicit_type_promotion_with_mixed_types(
                     result_dataframe, first_type, second_type
@@ -358,12 +397,12 @@ class IfOperator(ConditionalOperator):
         return type_promotion, result_dataframe
 
     @classmethod
-    def validate(
+    def validate(  # type: ignore[override]
         cls,
-        condition: Union[RecordSet, Scalar],
-        then_op: Union[RecordSet, Scalar],
-        else_op: Union[RecordSet, Scalar] = None,
-    ) -> Union[RecordSet, Scalar]:
+        condition: CondOperand,
+        then_op: CondOperand,
+        else_op: CondOperand | None = None,
+    ) -> CondOperand:
         """ """
         origin = cls.create_origin_expression(condition, then_op, else_op)
         # check condition
@@ -394,10 +433,12 @@ class IfOperator(ConditionalOperator):
 class Nvl(ConditionalOperator):
     """ """
 
-    op = tokens.NVL
+    op: ClassVar[str | None] = tokens.NVL
 
     @classmethod
-    def create_origin_expression(cls, left, right) -> str:
+    def create_origin_expression(
+        cls, left: Operand, right: Operand
+    ) -> str:
         left_name = getattr(left, "name", None) or left.origin
         right_name = getattr(right, "name", None) or right.origin
 
@@ -407,10 +448,10 @@ class Nvl(ConditionalOperator):
     @classmethod
     def check_structures(
         cls,
-        left: Union[RecordSet, Scalar],
-        right: Union[RecordSet, Scalar],
+        left: CondOperand,
+        right: CondOperand,
         origin: str,
-    ):
+    ) -> tuple[Structure | CondOperand | None, pd.DataFrame | None]:
         if isinstance(left, RecordSet) and isinstance(right, RecordSet):
             if cls._check_structures(left, right, origin):
                 result_dataframe = cls.generate_result_dataframe(left, right)
@@ -421,26 +462,35 @@ class Nvl(ConditionalOperator):
             raise SemanticError("4-6-2-1")
         elif isinstance(left, Scalar) and isinstance(right, Scalar):
             return left, None
+        return None, None
 
     @classmethod
     def check_types(
         cls,
-        first: Union[RecordSet, Scalar],
-        result_dataframe,
-        second: Union[RecordSet, Scalar] = None,
-    ):
+        first: CondOperand,
+        result_dataframe: pd.DataFrame | None,
+        second: CondOperand | None = None,
+    ) -> tuple[ScalarType, pd.DataFrame | None]:
         """ """
+        first_type: ScalarType
         if isinstance(first, RecordSet):
             first_type = first.structure.components["f"].type
         else:
             first_type = first.type
 
+        second_type: ScalarType
         if isinstance(second, RecordSet):
             second_type = second.structure.components["f"].type
-        else:
+        elif isinstance(second, Scalar):
             second_type = second.type
+        else:
+            raise Exception("Nvl requires a second operand")
 
         if isinstance(first_type, Mixed) or isinstance(second_type, Mixed):
+            if result_dataframe is None:
+                raise Exception(
+                    "Mixed type promotion requires a result dataframe"
+                )
             type_promotion, result_dataframe = (
                 binary_implicit_type_promotion_with_mixed_types(
                     result_dataframe, first_type, second_type
@@ -462,9 +512,9 @@ class Nvl(ConditionalOperator):
         return type_promotion, result_dataframe
 
     @classmethod
-    def validate(
-        cls, left: Union[RecordSet, Scalar], right: Union[RecordSet, Scalar]
-    ) -> Union[RecordSet, Scalar]:
+    def validate(  # type: ignore[override]
+        cls, left: CondOperand, right: CondOperand
+    ) -> CondOperand:
         """ """
         origin: str = cls.create_origin_expression(left, right)
         # check structures
@@ -484,6 +534,10 @@ class Nvl(ConditionalOperator):
                 result_dataframe=rslt_dataframe,
             )
             return recordset
+        if rslt_structure is None:
+            raise Exception(
+                "Nvl produced no result structure; unhandled operand combination"
+            )
         labeled_scalar = cls.create_labeled_scalar(
             rslt_structure=rslt_structure, rslt_type=rslt_type, origin=origin
         )
@@ -491,11 +545,13 @@ class Nvl(ConditionalOperator):
 
 
 class Filter(ConditionalOperator):
-    op = tokens.FILTER
-    propagate_attributes = False
+    op: ClassVar[str | None] = tokens.FILTER
+    propagate_attributes: ClassVar[bool] = False
 
     @classmethod
-    def create_origin_expression(cls, selection, condition) -> str:
+    def create_origin_expression(
+        cls, selection: Operand, condition: Operand
+    ) -> str:
         selection_name = getattr(selection, "name", None) or getattr(
             selection, "origin", None
         )
@@ -525,7 +581,9 @@ class Filter(ConditionalOperator):
             )
 
     @classmethod
-    def validate(cls, selection, condition):
+    def validate(  # type: ignore[override]
+        cls, selection: Operand, condition: Operand
+    ) -> RecordSet:
 
         if isinstance(selection, RecordSet) and isinstance(
             condition, RecordSet
@@ -547,7 +605,7 @@ class Filter(ConditionalOperator):
                 selection, condition
             )
 
-            result_dataframe = None
+            result_dataframe: pd.DataFrame | None = None
             if selection.records is not None and condition.records is not None:
                 result_dataframe = cls.generate_result_dataframe(
                     selection, condition
@@ -564,8 +622,12 @@ class Filter(ConditionalOperator):
 
     @classmethod
     def create_labeled_recordset(
-        cls, selection, condition, result_structure, result_dataframe
-    ):
+        cls,
+        selection: RecordSet,
+        condition: RecordSet,
+        result_structure: Structure,
+        result_dataframe: pd.DataFrame | None,
+    ) -> RecordSet:
         origin: str = cls.create_origin_expression(selection, condition)
         recordset = cls._create_labeled_recordset(
             origin=origin,
