@@ -55,9 +55,7 @@ def test_get_all_frameworks_returns_framework_rows(memory_session):
         )
     )
     session.add(
-        ModuleVersionComposition(
-            module_vid=10, table_vid=1000, table_id=100
-        )
+        ModuleVersionComposition(module_vid=10, table_vid=1000, table_id=100)
     )
     session.commit()
 

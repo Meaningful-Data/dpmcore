@@ -67,8 +67,6 @@ def test_release_id_takes_precedence_over_release_code(service_with_releases):
     ``date`` > ``release_id`` > ``release_code``. Only release_id is
     consulted here and the result mirrors release_id=1.
     """
-    tables = service_with_releases.get_tables(
-        release_code="2.0", release_id=1
-    )
+    tables = service_with_releases.get_tables(release_code="2.0", release_id=1)
     assert "T1" in tables
     assert "T2" not in tables

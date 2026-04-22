@@ -11,8 +11,6 @@ still exists: structure lookup, release filtering, and the handling of
 missing tables.
 """
 
-import pytest
-
 from dpmcore.orm.packaging import (
     Framework,
     Module,
@@ -37,15 +35,11 @@ def test_get_table_details_structure(memory_session):
 
     session.add(Framework(framework_id=1, code="FW1"))
     session.add(Module(module_id=1, framework_id=1))
-    session.add(
-        ModuleVersion(module_vid=10, module_id=1, start_release_id=1)
-    )
+    session.add(ModuleVersion(module_vid=10, module_id=1, start_release_id=1))
 
     session.add(Table(table_id=100))
     session.add(
-        TableVersion(
-            table_vid=1000, table_id=100, code="T1", name="Table 1"
-        )
+        TableVersion(table_vid=1000, table_id=100, code="T1", name="Table 1")
     )
 
     session.add(Header(header_id=1, direction="X", is_key=True))
@@ -69,14 +63,10 @@ def test_get_table_details_structure(memory_session):
     )
 
     session.add(
-        ModuleVersionComposition(
-            module_vid=10, table_vid=1000, table_id=100
-        )
+        ModuleVersionComposition(module_vid=10, table_vid=1000, table_id=100)
     )
 
-    session.add(
-        VariableVersion(variable_vid=500, variable_id=50, code="V1")
-    )
+    session.add(VariableVersion(variable_vid=500, variable_id=50, code="V1"))
     session.add(Cell(cell_id=900, table_id=100, column_id=1))
     session.add(
         TableVersionCell(
@@ -139,14 +129,10 @@ def test_get_table_details_filtering_by_release_id(memory_session):
     session.add(Header(header_id=99))
     session.add(HeaderVersion(header_vid=999, header_id=99))
     session.add(
-        TableVersionHeader(
-            table_vid=101, header_vid=999, header_id=99
-        )
+        TableVersionHeader(table_vid=101, header_vid=999, header_id=99)
     )
     session.add(
-        TableVersionHeader(
-            table_vid=102, header_vid=999, header_id=99
-        )
+        TableVersionHeader(table_vid=102, header_vid=999, header_id=99)
     )
     session.commit()
 

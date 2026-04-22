@@ -27,7 +27,6 @@ def service_with_dates(memory_session):
         Module 1  2023-01-01 -- 2023-12-31   contains T1 + T3
         Module 2  2024-01-01 -- (ongoing)    contains T2 + T3
     """
-
     session = memory_session
 
     session.add_all([Table(table_id=1), Table(table_id=2), Table(table_id=3)])
