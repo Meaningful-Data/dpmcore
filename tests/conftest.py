@@ -18,7 +18,6 @@ collect_ignore_glob = [
     "integration/models/test_module_version.py",
     "integration/validation/test_implicit_open_keys.py",
     "unit/api/test_instance.py",
-    "unit/ast/test_ast_coordinates.py",
     "unit/dpm/test_module_schema_mapping.py",
     # Depends on a fixture database at tests/fixtures/test_data.db that is
     # not tracked in the repo. Tracked in the cleanup issue.
