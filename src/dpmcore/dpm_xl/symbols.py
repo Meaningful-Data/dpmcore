@@ -1,6 +1,8 @@
-from typing import List, Union
+from typing import Any, List, Union
 
-from dpmcore.dpm_xl.types.scalar import ScalarFactory
+import pandas as pd
+
+from dpmcore.dpm_xl.types.scalar import ScalarFactory, ScalarType
 from dpmcore.dpm_xl.utils.tokens import DPM, STANDARD
 from dpmcore.errors import SemanticError
 
@@ -22,7 +24,7 @@ class Operand:
     D: First operand of the equality (Origin: A + B)
     """
 
-    def __init__(self, name: Union[str, None], origin: str):
+    def __init__(self, name: Union[str, None], origin: str) -> None:
         self.name = name
         self.origin = origin
 
@@ -30,11 +32,13 @@ class Operand:
 class Scalar(Operand):
     """Operand to be used when finding a single Cell Reference or an Item."""
 
-    def __init__(self, type_, name, origin):
+    def __init__(
+        self, type_: ScalarType, name: str | None, origin: str
+    ) -> None:
         super().__init__(name, origin)
         self.type = type_
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "<{class_name}(type='{type}',)>".format(
             class_name=self.__class__.__name__, type=self.type
         )
@@ -44,7 +48,11 @@ class Component:
     """Superclass of all components inside a recordset."""
 
     def __init__(
-        self, name: str, type_, parent: str, is_global: bool = False
+        self,
+        name: str,
+        type_: ScalarType,
+        parent: str,
+        is_global: bool = False,
     ) -> None:
         if type_.__class__ in ScalarFactory().all_types():
             self.name = name
@@ -68,7 +76,7 @@ class KeyComponent(Component):
     def __init__(
         self,
         name: str,
-        type_: ScalarFactory().all_types,
+        type_: ScalarType,
         subtype: str,
         parent: str,
         is_global: bool = False,
@@ -84,7 +92,7 @@ class KeyComponent(Component):
 class FactComponent(Component):
     """Component used to specify the data type of the recordset."""
 
-    def __init__(self, type_: ScalarFactory().all_types, parent: str) -> None:
+    def __init__(self, type_: ScalarType, parent: str) -> None:
         super().__init__("f", type_, parent)
 
 
@@ -94,7 +102,7 @@ class AttributeComponent(Component):
     """
 
     def __init__(
-        self, name: str, type_: ScalarFactory().all_types, parent: str
+        self, name: str, type_: ScalarType, parent: str
     ) -> None:
         super().__init__(name, type_, parent)
 
@@ -103,8 +111,10 @@ class Structure:
     """Structure for the Recordset. Components must have unique names and only one Fact Component can be present."""
 
     def __init__(self, components: List[Component]) -> None:
+        # Runtime isinstance guard kept defensively even though the
+        # annotated type already excludes non-Component entries.
         components_names = [
-            c.name for c in components if isinstance(c, Component)
+            c.name for c in components if isinstance(c, Component)  # type: ignore[redundant-expr]
         ]
         if len(components_names) != len(set(components_names)) or len(
             components
@@ -117,9 +127,11 @@ class Structure:
         ]
         if len(facts_components) > 1:
             raise Exception("Duplicated Fact Component")
-        self.components = {c.name: c for c in components}
+        self.components: dict[str, Component] = {
+            c.name: c for c in components
+        }
 
-    def get_key_components(self) -> dict:
+    def get_key_components(self) -> dict[str, KeyComponent]:
         dpm_components = self.get_dpm_components()
         standard_components = self.get_standard_components()
         return {**dpm_components, **standard_components}
@@ -127,7 +139,7 @@ class Structure:
     def get_key_components_names(self) -> List[str]:
         return list(self.get_key_components())
 
-    def get_dpm_components(self) -> dict:
+    def get_dpm_components(self) -> dict[str, KeyComponent]:
         dpm_components = {
             elto_k: elto_v
             for elto_k, elto_v in self.components.items()
@@ -135,7 +147,7 @@ class Structure:
         }
         return dpm_components
 
-    def get_standard_components(self):
+    def get_standard_components(self) -> dict[str, KeyComponent]:
         standard_components = {
             elto_k: elto_v
             for elto_k, elto_v in self.components.items()
@@ -148,7 +160,7 @@ class Structure:
     def get_standard_components_names(self) -> List[str]:
         return list(self.get_standard_components())
 
-    def get_fact_component(self):
+    def get_fact_component(self) -> FactComponent:
         fact_component = [
             elto_v
             for elto_v in self.components.values()
@@ -156,7 +168,7 @@ class Structure:
         ]
         return fact_component[0]
 
-    def get_attributes(self):
+    def get_attributes(self) -> dict[str, AttributeComponent]:
         attributes = {
             elto_k: elto_v
             for elto_k, elto_v in self.components.items()
@@ -164,18 +176,18 @@ class Structure:
         }
         return attributes
 
-    def replace_components_parent(self, parent: str):
+    def replace_components_parent(self, parent: str) -> None:
         for component in self.get_key_components().values():
             component.parent = parent
 
-    def get_attributes_names(self):
+    def get_attributes_names(self) -> list[str]:
         return [
             attribute
             for attribute in self.components
             if isinstance(self.components[attribute], AttributeComponent)
         ]
 
-    def remove_attributes(self):
+    def remove_attributes(self) -> None:
         attributes_names = self.get_attributes_names()
         for attribute_name in attributes_names:
             del self.components[attribute_name]
@@ -197,47 +209,57 @@ class RecordSet(Operand):
             raise Exception("Data Validation Error")
         super().__init__(name, origin)
         self.structure: Structure = structure
-        self.records = None
+        self.records: pd.DataFrame | None = None
         self.name = name
-        self.errors = None
-        self.interval = None
-        self.default = None
+        self.errors: Any = None
+        self.interval: bool | None = None
+        self.default: Any = None
         self.has_only_global_components = all(
             component.is_global
             for component in structure.get_key_components().values()
         )
 
-    def get_key_components(self) -> dict:
+    def get_key_components(self) -> dict[str, KeyComponent]:
         return self.structure.get_key_components()
 
     def get_key_components_names(self) -> List[str]:
         return self.structure.get_key_components_names()
 
-    def get_dpm_components(self):
+    def get_dpm_components(self) -> dict[str, KeyComponent]:
         return self.structure.get_dpm_components()
 
-    def get_standard_components(self):
+    def get_standard_components(self) -> dict[str, KeyComponent]:
         return self.structure.get_standard_components()
 
     def get_standard_components_names(self) -> List[str]:
         return self.structure.get_standard_components_names()
 
-    def get_fact_component(self):
+    def get_fact_component(self) -> FactComponent:
         return self.structure.get_fact_component()
 
-    def get_attributes(self):
+    def get_attributes(self) -> dict[str, AttributeComponent]:
         return self.structure.get_attributes()
 
 
 class ScalarSet(Operand):
     """Scalar set are a collection of scalars used in the IN operator."""
 
-    def __init__(self, type_, name, origin):
+    def __init__(
+        self, type_: ScalarType, name: str | None, origin: str
+    ) -> None:
         super().__init__(name, origin)
         self.type = type_
 
 
 class ConstantOperand(Scalar):
-    def __init__(self, type_, name, origin, value):
+    def __init__(
+        self,
+        type_: ScalarType,
+        name: str | None,
+        origin: str,
+        value: object,
+    ) -> None:
         super().__init__(name=name, origin=origin, type_=type_)
+        # value can be any of str | int | float | bool | None at runtime;
+        # `object` captures the common interface without the looseness of Any.
         self.value = value  # TODO: Check this
