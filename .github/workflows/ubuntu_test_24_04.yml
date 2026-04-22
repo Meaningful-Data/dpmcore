@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install system dependencies (apt)
         # Noble ships python3-antlr4 4.9.2-1, which matches the runtime
