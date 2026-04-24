@@ -1,3 +1,5 @@
+"""Meilisearch operations JSON generation service."""
+
 from __future__ import annotations
 
 import json
@@ -8,7 +10,7 @@ from typing import Any, DefaultDict, Dict, Iterable, List, Optional, Set, Tuple
 
 from sqlalchemy.orm import Session, selectinload
 
-from dpmcore.orm.infrastructure import Concept, Organisation
+from dpmcore.orm.infrastructure import Concept
 from dpmcore.orm.operations import (
     OperandReference,
     OperandReferenceLocation,
@@ -100,7 +102,7 @@ def _iso_date(value: Any) -> Optional[str]:
     return str(value)
 
 
-def calculate_applicable(modules: List[Dict[str, Any]]) -> bool:
+def calculate_applicable(modules: List[Dict[str, Any]]) -> bool:  # noqa: C901
     """Calculate the ``applicable`` field from module reference dates."""
     if len(modules) == 0:
         return False
@@ -148,7 +150,7 @@ _SQLITE_CHUNK_SIZE = 999
 
 
 def _chunked_query(base_query: Any, column: Any, ids: Any) -> List[Any]:
-    """Split a large IN clause into 999-item batches for SQLite compatibility."""
+    """Split a large IN clause into 999-item batches for SQLite."""
     ids_list = list(ids)
     result: List[Any] = []
     for i in range(0, len(ids_list), _SQLITE_CHUNK_SIZE):
@@ -161,9 +163,11 @@ class MeiliJsonService:
     """Generate the operations JSON consumed by Meilisearch."""
 
     def __init__(self, session: Optional[Session] = None) -> None:
+        """Initialise the service with an optional SQLAlchemy session."""
         self._session = session
 
     def generate(self, output_file: str) -> MeiliJsonResult:
+        """Generate the operations JSON and write it to *output_file*."""
         if self._session is None:
             raise MeiliJsonError(
                 "A database session is required to generate Meilisearch JSON."
@@ -204,6 +208,7 @@ class MeiliJsonService:
         existing_file: str,
         output_file: str,
     ) -> MeiliJsonResult:
+        """Merge *new_file* into *existing_file*, replacing by owner."""
         try:
             with open(new_file, encoding="utf-8") as handle:
                 new_operations = json.load(handle)
@@ -255,7 +260,7 @@ class MeiliJsonService:
 
         return list(query.all())
 
-    def _bulk_load_related_data(
+    def _bulk_load_related_data(  # noqa: C901
         self,
         *,
         operation_versions: List[OperationVersion],
@@ -550,22 +555,22 @@ class MeiliJsonService:
                         loc.cell_id if loc.cell_id is not None else -1,
                     ),
                 )
-                for location in locations:
-                    result.append(
-                        {
-                            "cellid_id": location.cell_id,
-                            "table": location.table,
-                            "row": location.row,
-                            "column": location.column,
-                            "sheet": location.sheet,
-                            "variableid": ctx.operand_ref_map.get(
-                                reference.operand_reference_id
-                            ),
-                        }
-                    )
+                result.extend(
+                    {
+                        "cellid_id": location.cell_id,
+                        "table": location.table,
+                        "row": location.row,
+                        "column": location.column,
+                        "sheet": location.sheet,
+                        "variableid": ctx.operand_ref_map.get(
+                            reference.operand_reference_id
+                        ),
+                    }
+                    for location in locations
+                )
         return result
 
-    def _build_payload(
+    def _build_payload(  # noqa: C901
         self,
         operation_versions: Iterable[OperationVersion],
         ctx: BulkDataContext,
@@ -765,6 +770,10 @@ class MeiliJsonService:
                     )
                 )
 
+                prev_refs = self._get_operation_info_optimized(
+                    operation_vid=previous_version.operation_vid,
+                    ctx=ctx,
+                )
                 previous_versions_data.append(
                     {
                         "ID": previous_version.operation_vid,
@@ -821,10 +830,7 @@ class MeiliJsonService:
                             else None
                         ),
                         "operationScopes": previous_scope_list,
-                        "operandReferences": self._get_operation_info_optimized(
-                            operation_vid=previous_version.operation_vid,
-                            ctx=ctx,
-                        ),
+                        "operandReferences": prev_refs,
                     }
                 )
 

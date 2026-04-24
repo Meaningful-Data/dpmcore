@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -8,15 +10,13 @@ from dpmcore.services.ecb_validations_import import (
     EcbValidationsImportService,
 )
 
-from unittest.mock import MagicMock, patch
 
-
-@pytest.fixture()
+@pytest.fixture
 def sqlite_engine():
     return create_engine("sqlite:///:memory:")
 
 
-@pytest.fixture()
+@pytest.fixture
 def sqlite_engine_with_schema():
     engine = create_engine("sqlite:///:memory:")
     from dpmcore.orm.base import Base
@@ -25,12 +25,12 @@ def sqlite_engine_with_schema():
     return engine
 
 
-@pytest.fixture()
+@pytest.fixture
 def service(sqlite_engine):
     return EcbValidationsImportService(sqlite_engine)
 
 
-@pytest.fixture()
+@pytest.fixture
 def service_with_schema(sqlite_engine_with_schema):
     return EcbValidationsImportService(sqlite_engine_with_schema)
 

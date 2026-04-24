@@ -139,13 +139,19 @@ def export_csv(source: str, output_dir: str) -> None:
     "--access-file",
     type=click.Path(exists=True, dir_okay=False, path_type=str),
     default=None,
-    help="Access .accdb / .mdb file. Exported to a temporary CSV directory before building.",
+    help=(
+        "Access .accdb / .mdb file. Exported to a temporary"
+        " CSV directory before building."
+    ),
 )
 @click.option(
     "--ecb-validations-file",
     type=click.Path(exists=True, dir_okay=False, path_type=str),
     default=None,
-    help="Optional ECB validations CSV file to import before generating the JSON.",
+    help=(
+        "Optional ECB validations CSV file to import"
+        " before generating the JSON."
+    ),
 )
 @click.option(
     "--output",

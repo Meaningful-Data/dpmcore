@@ -1,3 +1,5 @@
+"""Import ECB validation rules from a CSV file into the DPM database."""
+
 from __future__ import annotations
 
 import re
@@ -24,7 +26,6 @@ from dpmcore.orm.rendering import Cell, TableVersion
 from dpmcore.services.scope_calculator import ScopeCalculatorService
 from dpmcore.services.syntax import SyntaxService
 
-
 _RELEASE_CODE_MAP = {"3.2": "3.4"}
 
 
@@ -34,6 +35,8 @@ class EcbValidationsImportError(Exception):
 
 @dataclass(frozen=True)
 class EcbValidationsImportResult:
+    """Outcome of a successful ECB validations import run."""
+
     operations_created: int
     operation_versions_created: int
     preconditions_created: int
@@ -44,10 +47,14 @@ class EcbValidationsImportResult:
 
 
 class EcbValidationsImportService:
+    """Import ECB validation rules from a CSV export into a DPM database."""
+
     def __init__(self, engine: Engine) -> None:
+        """Initialise the service with a SQLAlchemy engine."""
         self._engine = engine
 
     def import_csv(self, csv_path: str) -> EcbValidationsImportResult:
+        """Parse *csv_path* and persist the ECB validations it contains."""
         path = Path(csv_path)
         if not path.exists():
             raise EcbValidationsImportError(
@@ -102,8 +109,8 @@ class EcbValidationsImportService:
             return None
         for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
             try:
-                return datetime.strptime(text, fmt).date()
-            except ValueError:
+                return datetime.strptime(text, fmt).date()  # noqa: DTZ007
+            except ValueError:  # noqa: PERF203
                 continue
         raise EcbValidationsImportError(
             f"Unsupported submission date {value!r}"
@@ -350,7 +357,8 @@ class EcbValidationsImportService:
             return cache[cache_key], 0
 
         precondition_code = (
-            f"precond_EGDQ_{md5(text.encode()).hexdigest()[:8]}"
+            "precond_EGDQ_"
+            + md5(text.encode(), usedforsecurity=False).hexdigest()[:8]
         )
         operation = (
             session.query(Operation)
@@ -406,14 +414,15 @@ class EcbValidationsImportService:
 
         return op_version.operation_vid, created_count
 
-    def _import_ecb_validations_df(
+    def _import_ecb_validations_df(  # noqa: C901
         self, session: Session, df: Any
     ) -> EcbValidationsImportResult:
         required_columns = {"vr_code", "start_release"}
         missing = required_columns - set(df.columns)
         if missing:
             raise EcbValidationsImportError(
-                f"ECB validations file is missing required columns: {sorted(missing)}"
+                "ECB validations file is missing required"
+                f" columns: {sorted(missing)}"
             )
 
         ecb_org = self._get_or_create_ecb_organisation(session)
@@ -621,8 +630,9 @@ class EcbValidationsImportService:
                     )
                     if scope_result.has_error:
                         warnings.append(
-                            f"Scope calculation failed for '{code}' in release "
-                            f"{release_id}: {scope_result.error_message}"
+                            f"Scope calculation failed for '{code}' in"
+                            f" release {release_id}:"
+                            f" {scope_result.error_message}"
                         )
                         continue
 

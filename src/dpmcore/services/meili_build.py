@@ -1,3 +1,5 @@
+"""End-to-end Meilisearch JSON build service."""
+
 from __future__ import annotations
 
 import tempfile
@@ -8,10 +10,10 @@ from typing import Optional
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from dpmcore.services.ecb_validations_import import EcbValidationsImportService
 from dpmcore.services.export_csv import ExportCsvService
 from dpmcore.services.meili_json import MeiliJsonResult, MeiliJsonService
 from dpmcore.services.migration import MigrationService
-from dpmcore.services.ecb_validations_import import EcbValidationsImportService
 
 
 class MeiliBuildError(Exception):
@@ -40,6 +42,7 @@ class MeiliBuildService:
         access_file: Optional[str] = None,
         ecb_validations_file: Optional[str] = None,
     ) -> MeiliBuildResult:
+        """Build the Meilisearch JSON and write it to *output_file*."""
         if access_file and source_dir:
             raise MeiliBuildError(
                 "Use either '--access-file' or '--source-dir', not both."

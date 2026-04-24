@@ -1,8 +1,8 @@
 import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from types import SimpleNamespace
 
 from dpmcore.services.meili_json import (
     BulkDataContext,
@@ -14,7 +14,6 @@ from dpmcore.services.meili_json import (
     create_substrings,
     get_scope_module_key,
 )
-
 
 # ---------------------------------------------------------------------------
 # create_substrings

@@ -108,8 +108,8 @@ class ExportCsvService:
             )
 
     def _list_tables(self, access_path: str) -> List[str]:
-        raw = subprocess.check_output(
-            ["mdb-tables", access_path],
+        raw = subprocess.check_output(  # noqa: S603
+            ["mdb-tables", access_path],  # noqa: S607
             text=True,
         )
         return [
