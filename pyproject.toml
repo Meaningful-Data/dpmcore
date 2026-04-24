@@ -54,7 +54,7 @@ sqlserver = ["pyodbc>=5.0"]
 # dpmcore + vtlengine can be co-installed without resolver conflicts.
 migration = ["pandas>=2.1.4,<3.0", "numpy>=2.2.0,<2.3"]
 data = ["pandas>=2.1.4,<3.0", "numpy>=2.2.0,<2.3"]
-cli = ["click>=8.1", "rich>=13.7"]
+cli = ["click>=8.1", "rich>=15.0.0"]
 all = [
     "fastapi>=0.101",
     "uvicorn[standard]>=0.27",
@@ -65,7 +65,7 @@ all = [
     "pandas>=2.1.4,<3.0",
     "numpy>=2.2.0,<2.3",
     "click>=8.1",
-    "rich>=13.7",
+    "rich>=15.0.0",
 ]
 
 [project.scripts]
