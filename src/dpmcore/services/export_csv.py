@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# Access system tables that should never be migrated.
+_SYSTEM_TABLE_PREFIXES = ("MSys", "~")
 _DATE_FORMAT_TABLES = ("Release",)
 
 
@@ -104,12 +106,16 @@ class ExportCsvService:
             )
 
     def _list_tables(self, access_path: str) -> List[str]:
-        raw = subprocess.check_output(  # noqa: S603
-            ["mdb-tables", "-1", access_path],  # noqa: S607
+        raw = subprocess.check_output(
+            ["mdb-tables", access_path],
             text=True,
         )
-        return [line.strip() for line in raw.splitlines() if line.strip()]
-
+        return [
+            table_name
+            for token in raw.split()
+            if (table_name := token.strip())
+               and not any(table_name.startswith(prefix) for prefix in _SYSTEM_TABLE_PREFIXES)
+        ]
     def _export_table(
         self, access_path: str, table: str, target_path: Path
     ) -> None:

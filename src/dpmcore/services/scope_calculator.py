@@ -76,7 +76,7 @@ class ScopeCalculatorService:
                 release_id=release_id,
             )
 
-            table_vids = list(oc.tables.keys()) if oc.tables else []
+            table_codes_list = list(oc.tables.keys()) if oc.tables else []
             precondition_items = oc.preconditions or []
 
             scope_svc = OperationScopeService(
@@ -84,9 +84,10 @@ class ScopeCalculatorService:
                 session=self.session,
             )
             existing, new = scope_svc.calculate_operation_scope(
-                tables_vids=table_vids,
+                tables_vids=[],
                 precondition_items=precondition_items,
                 release_id=release_id,
+                table_codes=table_codes_list or None,
             )
 
             all_scopes = existing + new

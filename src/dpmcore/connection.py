@@ -133,6 +133,14 @@ class _ServiceAccessor:
             self._cache["migration"] = MigrationService(self._engine)
         return self._cache["migration"]
 
+    @property
+    def meili_json(self):
+        from dpmcore.services.meili_json import MeiliJsonService
+
+        if "meili_json" not in self._cache:
+            self._cache["meili_json"] = MeiliJsonService(self._session)
+        return self._cache["meili_json"]
+
 
 class DpmConnection:
     """A connection to a DPM database.
