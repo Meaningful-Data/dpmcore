@@ -11,6 +11,7 @@ connection layer (``dpmcore.connection``).
 from dpmcore.services.ast_generator import ASTGeneratorService
 from dpmcore.services.data_dictionary import DataDictionaryService
 from dpmcore.services.dpm_xl import DpmXlService
+from dpmcore.services.ecb_validations_import import EcbValidationsImportService
 from dpmcore.services.explorer import ExplorerService
 from dpmcore.services.export_csv import ExportCsvService
 from dpmcore.services.hierarchy import HierarchyService
@@ -21,7 +22,6 @@ from dpmcore.services.scope_calculator import ScopeCalculatorService
 from dpmcore.services.semantic import SemanticService
 from dpmcore.services.structure import StructureService
 from dpmcore.services.syntax import SyntaxService
-from dpmcore.services.ecb_validations_import import EcbValidationsImportService
 
 __all__ = [
     "SyntaxService",

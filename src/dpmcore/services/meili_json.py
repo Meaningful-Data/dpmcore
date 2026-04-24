@@ -460,7 +460,11 @@ class MeiliJsonService:
 
         for composition in compositions:
             module_version = composition.module_version
-            module = module_version.module
+            module = (
+                module_version.module
+                if module_version is not None  # type: ignore[redundant-expr]
+                else None
+            )
             framework = module.framework if module is not None else None
 
             if module_version is None:

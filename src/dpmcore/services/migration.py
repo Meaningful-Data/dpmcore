@@ -100,7 +100,6 @@ class MigrationService:
 
     def migrate_from_csv_dir(self, csv_dir: str) -> MigrationResult:
         """Load every CSV file from *csv_dir* into the target database."""
-
         path = Path(csv_dir)
         if not path.exists():
             raise MigrationError(f"CSV directory '{csv_dir}' does not exist.")
@@ -137,7 +136,7 @@ class MigrationService:
 
     def _extract_with_mdbtools(self, access_path: str) -> Dict[str, Any]:
         """Use ``mdb-tables`` / ``mdb-export`` (subprocess)."""
-        import pandas as pd  # lazy
+        import pandas as pd  # type: ignore[import-untyped]  # lazy
 
         raw = subprocess.check_output(  # noqa: S603
             ["mdb-tables", "-1", access_path],  # noqa: S607
@@ -253,7 +252,6 @@ class MigrationService:
         backend: str,
     ) -> MigrationResult:
         """Create schema, load *data*, and build a standard result."""
-
         self._create_schema()
         warnings = self._load_data(data)
 
@@ -304,9 +302,9 @@ class MigrationService:
         return df
 
     @staticmethod
-    def _coerce_temporal_columns_for_schema(df: Any, orm_table: Any) -> Any:
+    def _coerce_temporal_columns_for_schema(df: Any, orm_table: Any) -> Any:  # noqa: C901
         """Convert date/datetime columns to Python objects before loading."""
-        import pandas as pd
+        import pandas as pd  # lazy
         from sqlalchemy.sql.sqltypes import Date, DateTime
 
         # fromisoformat() (Python 3.11+) covers all YYYY-MM-DD* variants;
@@ -339,8 +337,8 @@ class MigrationService:
                 pass
             for fmt in _DATE_FMTS + _DATETIME_FMTS:
                 try:
-                    return datetime.strptime(text, fmt).date()
-                except ValueError:
+                    return datetime.strptime(text, fmt).date()  # noqa: DTZ007
+                except ValueError:  # noqa: PERF203
                     continue
             raise MigrationError(f"Unsupported date value {value!r}")
 
@@ -354,16 +352,16 @@ class MigrationService:
                 pass
             for fmt in _DATETIME_FMTS:
                 try:
-                    return datetime.strptime(text, fmt)
-                except ValueError:
+                    return datetime.strptime(text, fmt)  # noqa: DTZ007
+                except ValueError:  # noqa: PERF203
                     continue
             for fmt in _DATE_FMTS:
                 try:
                     return datetime.combine(
-                        datetime.strptime(text, fmt).date(),
+                        datetime.strptime(text, fmt).date(),  # noqa: DTZ007
                         datetime.min.time(),
                     )
-                except ValueError:
+                except ValueError:  # noqa: PERF203
                     continue
             raise MigrationError(f"Unsupported datetime value {value!r}")
 
@@ -384,7 +382,7 @@ class MigrationService:
                         converted_values.append(
                             parse_datetime_value(raw_value)
                         )
-                except MigrationError:
+                except MigrationError:  # noqa: PERF203
                     bad_values.append(raw_value)
 
             if bad_values:
@@ -462,6 +460,6 @@ class MigrationService:
                 index=False,
             )
         except Exception as exc:
-            msg = f"Failed to load table '{table_name}': {exc}"
-            logger.warning(msg)
-            warnings.append(msg)
+            raise MigrationError(
+                f"Failed to load table '{table_name}': {exc}"
+            ) from exc

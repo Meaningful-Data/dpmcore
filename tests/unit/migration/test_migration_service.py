@@ -240,6 +240,7 @@ class TestMigrateCsvDir:
         self, service
     ):
         import pandas as pd
+
         from dpmcore.orm.base import Base
 
         df = pd.DataFrame(
@@ -259,6 +260,7 @@ class TestMigrateCsvDir:
 
     def test_coerce_temporal_columns_handles_missing_values(self, service):
         import pandas as pd
+
         from dpmcore.orm.base import Base
 
         df = pd.DataFrame(
