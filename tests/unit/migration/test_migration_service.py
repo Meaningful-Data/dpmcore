@@ -140,18 +140,14 @@ class TestLoadData:
 
         assert len(rows) == 2
 
-    def test_load_failure_returns_warning(self, sqlite_engine):
+    def test_load_failure_raises_migration_error(self, sqlite_engine):
         service = MigrationService(sqlite_engine)
 
-        # Table does not exist — to_sql with append on a non-existent
-        # table will still create it with pandas, so we mock to_sql.
         df = MagicMock()
         df.to_sql.side_effect = Exception("boom")
 
-        warnings = service._load_data({"bad_table": df})
-
-        assert len(warnings) == 1
-        assert "bad_table" in warnings[0]
+        with pytest.raises(MigrationError, match="bad_table"):
+            service._load_data({"bad_table": df})
 
 
 class TestSystemTablesFiltered:
@@ -173,3 +169,106 @@ class TestSystemTablesFiltered:
         assert "~TmpTable" not in result.table_details
         assert "Users" in result.table_details
         assert "Orders" in result.table_details
+
+
+class TestMigrateCsvDir:
+    def test_migrate_from_csv_dir_success(self, service, tmp_path):
+        (tmp_path / "Release.csv").write_text(
+            "ReleaseID,Code\n1,4.0\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "Organisation.csv").write_text(
+            "OrgID,Name,Acronym,IDPrefix\n1,European Banking Authority,EBA,1\n",
+            encoding="utf-8",
+        )
+
+        result = service.migrate_from_csv_dir(str(tmp_path))
+
+        assert result.backend_used == "csv"
+        assert result.tables_migrated == 2
+        assert result.total_rows == 2
+        assert result.table_details["Release"] == 1
+        assert result.table_details["Organisation"] == 1
+
+    def test_migrate_from_csv_dir_empty_dir_raises(self, service, tmp_path):
+        with pytest.raises(MigrationError, match="No CSV files found"):
+            service.migrate_from_csv_dir(str(tmp_path))
+
+    def test_extract_from_csv_dir_preserves_row_column_sheet_as_strings(
+        self,
+        service,
+        tmp_path,
+    ):
+        (tmp_path / "OperandReferenceLocation.csv").write_text(
+            "OperandReferenceID,CellID,Table,Row,Column,Sheet\n"
+            "1,10,T_01,01,002,003\n",
+            encoding="utf-8",
+        )
+
+        data = service._extract_from_csv_dir(tmp_path)
+        df = data["OperandReferenceLocation"]
+
+        assert df["Row"].iloc[0] == "01"
+        assert df["Column"].iloc[0] == "002"
+        assert df["Sheet"].iloc[0] == "003"
+        assert df["OperandReferenceID"].iloc[0] == 1
+        assert df["CellID"].iloc[0] == 10
+
+    def test_coerce_numeric_columns_for_csv_preserves_coordinates_and_numeric_ids(self, service):
+        import pandas as pd
+
+        df = pd.DataFrame(
+            {
+                "Row": ["01"],
+                "Column": ["002"],
+                "Sheet": ["003"],
+                "OperandReferenceID": ["1"],
+                "CellID": ["10"],
+                "Label": ["ABC"],
+            }
+        )
+
+        result = service._coerce_numeric_columns_for_csv(df)
+
+        assert result["Row"].iloc[0] == "01"
+        assert result["Column"].iloc[0] == "002"
+        assert result["Sheet"].iloc[0] == "003"
+        assert result["OperandReferenceID"].iloc[0] == 1
+        assert result["CellID"].iloc[0] == 10
+        assert result["Label"].iloc[0] == "ABC"
+
+    def test_coerce_temporal_columns_for_schema_parses_dd_mm_yyyy(self, service):
+        import pandas as pd
+        from dpmcore.orm.base import Base
+
+        df = pd.DataFrame(
+            {
+                "OperationScopeID": [1],
+                "OperationVID": [10],
+                "IsActive": [1],
+                "Severity": ["warning"],
+                "FromSubmissionDate": ["17/03/2026"],
+            }
+        )
+
+        orm_table = Base.metadata.tables["OperationScope"]
+        result = service._coerce_temporal_columns_for_schema(df, orm_table)
+
+        assert str(result["FromSubmissionDate"].iloc[0]) == "2026-03-17"
+
+    def test_coerce_temporal_columns_handles_missing_values(self, service):
+        import pandas as pd
+        from dpmcore.orm.base import Base
+
+        df = pd.DataFrame(
+            {
+                "FromSubmissionDate": ["", None],
+            }
+        )
+
+        orm_table = Base.metadata.tables["OperationScope"]
+        result = service._coerce_temporal_columns_for_schema(df, orm_table)
+
+        assert result["FromSubmissionDate"].iloc[0] is None
+        assert result["FromSubmissionDate"].iloc[1] is None
+
