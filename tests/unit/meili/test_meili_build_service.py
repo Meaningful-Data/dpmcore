@@ -24,7 +24,7 @@ class TestMeiliBuildService:
         ):
             result = MeiliBuildService().build(output_file=str(output_file))
 
-        migrate_csv.assert_called_once_with("data/DPM")
+        migrate_csv.assert_called_once_with(str(Path("data/DPM")))
         assert result.operations_written == 12
         assert result.used_access_file is False
         assert result.ecb_validations_imported is False
