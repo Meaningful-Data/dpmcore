@@ -352,8 +352,12 @@ class TestScript:
         ml_mod.MLGeneration = lambda **kw: {"ml": kw["ast"]}
         ma_mod = MagicMock()
         ma_mod.ModuleAnalyzer.return_value.visit.return_value = ("MODE", [])
-        monkeypatch.setitem(sys.modules, "dpmcore.dpm_xl.ast.ml_generation", ml_mod)
-        monkeypatch.setitem(sys.modules, "dpmcore.dpm_xl.ast.module_analyzer", ma_mod)
+        monkeypatch.setitem(
+            sys.modules, "dpmcore.dpm_xl.ast.ml_generation", ml_mod
+        )
+        monkeypatch.setitem(
+            sys.modules, "dpmcore.dpm_xl.ast.module_analyzer", ma_mod
+        )
 
     def test_no_session_returns_error(self):
         svc, _ = _build_svc(session=None)
@@ -403,15 +407,19 @@ class TestScript:
         )
         svc._semantic.ast = "AST"
 
-        svc._scope_calc.calculate_from_expression.return_value = SimpleNamespace(
-            has_error=False,
-            existing_scopes=[],
-            new_scopes=[],
+        svc._scope_calc.calculate_from_expression.return_value = (
+            SimpleNamespace(
+                has_error=False,
+                existing_scopes=[],
+                new_scopes=[],
+            )
         )
         svc._scope_calc.detect_cross_module_dependencies.return_value = {
             "intra_instance_validations": ["v1"],
             "cross_instance_dependencies": [],
-            "dependency_modules": {"http://m": {"tables": {}, "variables": {}}},
+            "dependency_modules": {
+                "http://m": {"tables": {}, "variables": {}}
+            },
         }
         svc._scope_calc.detect_alternative_dependencies.return_value = []
 
@@ -435,10 +443,12 @@ class TestScript:
             is_valid=True, error_message=None
         )
         svc._semantic.ast = "AST"
-        svc._scope_calc.calculate_from_expression.return_value = SimpleNamespace(
-            has_error=True,
-            existing_scopes=[],
-            new_scopes=[],
+        svc._scope_calc.calculate_from_expression.return_value = (
+            SimpleNamespace(
+                has_error=True,
+                existing_scopes=[],
+                new_scopes=[],
+            )
         )
         out = svc.script(
             "x",
