@@ -87,6 +87,7 @@ class ScopeCalculatorService:
             # treated it as a list. The `or []` pattern therefore yields
             # Literal[True] on the populated branch. Preserved as-is.
             precondition_items: list[str] = [] if not oc.preconditions else []
+            table_codes_list = list(oc.tables.keys()) if oc.tables else []
 
             scope_svc = OperationScopeService(
                 operation_version_id=operation_version_id,
@@ -96,6 +97,7 @@ class ScopeCalculatorService:
                 tables_vids=cast(Sequence[int], table_vids),
                 precondition_items=precondition_items,
                 release_id=release_id,
+                table_codes=table_codes_list or None,
             )
 
             all_scopes = existing + new

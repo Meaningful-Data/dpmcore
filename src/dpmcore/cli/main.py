@@ -128,6 +128,85 @@ def export_csv(source: str, output_dir: str) -> None:
     console.print("Review results with manual inspection and/or git diff.")
 
 
+@main.command("build-meili-json")
+@click.option(
+    "--source-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=str),
+    default=None,
+    help="Directory containing exported CSV tables. Defaults to data/DPM.",
+)
+@click.option(
+    "--access-file",
+    type=click.Path(exists=True, dir_okay=False, path_type=str),
+    default=None,
+    help=(
+        "Access .accdb / .mdb file. Exported to a temporary"
+        " CSV directory before building."
+    ),
+)
+@click.option(
+    "--ecb-validations-file",
+    type=click.Path(exists=True, dir_okay=False, path_type=str),
+    default=None,
+    help=(
+        "Optional ECB validations CSV file to import"
+        " before generating the JSON."
+    ),
+)
+@click.option(
+    "--output",
+    default="operations.json",
+    show_default=True,
+    type=click.Path(dir_okay=False, path_type=str),
+    help="Output JSON file.",
+)
+def build_meili_json(
+    source_dir: str | None,
+    access_file: str | None,
+    ecb_validations_file: str | None,
+    output: str,
+) -> None:
+    """Build the Meilisearch operations JSON from CSV tables or Access."""
+    try:
+        from rich.console import Console
+    except ImportError:
+        click.echo(
+            "Install 'rich' for pretty output: pip install dpmcore[cli]",
+            err=True,
+        )
+        sys.exit(1)
+
+    from dpmcore.services.meili_build import MeiliBuildError, MeiliBuildService
+
+    console = Console()
+
+    try:
+        result = MeiliBuildService().build(
+            output_file=output,
+            source_dir=source_dir,
+            access_file=access_file,
+            ecb_validations_file=ecb_validations_file,
+        )
+    except MeiliBuildError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        sys.exit(1)
+
+    console.print(
+        f"[green]Generated[/green] {result.operations_written} operations "
+        f"into [cyan]{result.output_file}[/cyan]"
+    )
+
+    if result.used_access_file:
+        console.print("[green]Main DPM source loaded from Access file[/green]")
+    else:
+        console.print(
+            "[green]Main DPM source loaded from CSV directory[/green]"
+        )
+
+    if result.ecb_validations_imported:
+        console.print("[green]ECB validations imported[/green]")
+
+
 @main.command()
 @click.option(
     "--database",

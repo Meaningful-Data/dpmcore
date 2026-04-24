@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from dpmcore.services.dpm_xl import DpmXlService
     from dpmcore.services.explorer import ExplorerService
     from dpmcore.services.hierarchy import HierarchyService
+    from dpmcore.services.meili_json import MeiliJsonService
     from dpmcore.services.migration import MigrationService
     from dpmcore.services.scope_calculator import ScopeCalculatorService
     from dpmcore.services.semantic import SemanticService
@@ -154,6 +155,15 @@ class _ServiceAccessor:
         if "migration" not in self._cache:
             self._cache["migration"] = MigrationService(self._engine)
         service: MigrationService = self._cache["migration"]
+        return service
+
+    @property
+    def meili_json(self) -> MeiliJsonService:
+        from dpmcore.services.meili_json import MeiliJsonService
+
+        if "meili_json" not in self._cache:
+            self._cache["meili_json"] = MeiliJsonService(self._session)
+        service: MeiliJsonService = self._cache["meili_json"]
         return service
 
 
