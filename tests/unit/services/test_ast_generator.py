@@ -267,7 +267,7 @@ class TestExtractTimeShifts:
 
         class Boom:
             def __getattr__(self, item):
-                raise RuntimeError("boom")
+                raise AttributeError("boom")
 
         assert Cls._extract_time_shifts(Boom()) == {}
 
