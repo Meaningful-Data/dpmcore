@@ -51,9 +51,7 @@ def _patch_orm(monkeypatch):
     }
     for mod_name, stub in stubs.items():
         if mod_name not in sys.modules:
-            monkeypatch.setitem(
-                sys.modules, mod_name, stub
-            )
+            monkeypatch.setitem(sys.modules, mod_name, stub)
 
 
 def _make_module_df(rows):
@@ -102,21 +100,15 @@ class TestLifecycleSupplement:
         - Tables B and C: only mod 30 (no transition).
         """
         rows = [
-            (10, 100, "A", "MOD_OLD", "1.0",
-             1, 5, "2020-01-01", "2024-12-31"),
-            (20, 100, "A", "MOD_NEW", "2.0",
-             5, None, "2025-01-01", None),
-            (30, 200, "B", "MOD_X", "1.0",
-             1, None, "2020-01-01", None),
-            (30, 300, "C", "MOD_X", "1.0",
-             1, None, "2020-01-01", None),
+            (10, 100, "A", "MOD_OLD", "1.0", 1, 5, "2020-01-01", "2024-12-31"),
+            (20, 100, "A", "MOD_NEW", "2.0", 5, None, "2025-01-01", None),
+            (30, 200, "B", "MOD_X", "1.0", 1, None, "2020-01-01", None),
+            (30, 300, "C", "MOD_X", "1.0", 1, None, "2020-01-01", None),
         ]
         df = _make_module_df(rows)
 
         SvcClass = _get_svc_class()
-        svc = SvcClass(
-            operation_version_id=1, session=MagicMock()
-        )
+        svc = SvcClass(operation_version_id=1, session=MagicMock())
 
         captured_calls = []
 
@@ -124,12 +116,8 @@ class TestLifecycleSupplement:
             captured_calls.append(kwargs["cross_modules"])
 
         svc.process_cross_module = capture_cross_module
-        svc.get_scopes_with_status = MagicMock(
-            return_value=([], [])
-        )
-        svc.extract_module_info = MagicMock(
-            return_value=df
-        )
+        svc.get_scopes_with_status = MagicMock(return_value=([], []))
+        svc.extract_module_info = MagicMock(return_value=df)
 
         svc.calculate_operation_scope(
             tables_vids=[],
@@ -158,28 +146,20 @@ class TestLifecycleSupplement:
     ):
         """When no transition, modules are combined."""
         rows = [
-            (10, 100, "A", "MOD_X", "1.0",
-             1, None, "2020-01-01", None),
-            (10, 200, "B", "MOD_X", "1.0",
-             1, None, "2020-01-01", None),
+            (10, 100, "A", "MOD_X", "1.0", 1, None, "2020-01-01", None),
+            (10, 200, "B", "MOD_X", "1.0", 1, None, "2020-01-01", None),
         ]
         df = _make_module_df(rows)
 
         SvcClass = _get_svc_class()
-        svc = SvcClass(
-            operation_version_id=1, session=MagicMock()
-        )
+        svc = SvcClass(operation_version_id=1, session=MagicMock())
 
         captured_repeated = []
-        svc.process_repeated = lambda mvids, minfo: (
-            captured_repeated.append(mvids)
+        svc.process_repeated = lambda mvids, minfo: captured_repeated.append(
+            mvids
         )
-        svc.get_scopes_with_status = MagicMock(
-            return_value=([], [])
-        )
-        svc.extract_module_info = MagicMock(
-            return_value=df
-        )
+        svc.get_scopes_with_status = MagicMock(return_value=([], []))
+        svc.extract_module_info = MagicMock(return_value=df)
 
         svc.calculate_operation_scope(
             tables_vids=[],

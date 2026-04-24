@@ -22,24 +22,15 @@ def _parse_date(date_str: str) -> Optional[datetime]:
 @lru_cache(maxsize=1)
 def _load_module_schema_mapping() -> list:
     """Load the module schema mapping CSV file."""
-    csv_path = (
-        Path(__file__).parent
-        / "module_schema_mapping.csv"
-    )
+    csv_path = Path(__file__).parent / "module_schema_mapping.csv"
     with open(csv_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         return [
             {
                 "module_code": row["module_code"],
-                "xbrl_schema_ref": row[
-                    "xbrl_schema_ref"
-                ],
-                "from_date": _parse_date(
-                    row["from_date"]
-                ),
-                "to_date": _parse_date(
-                    row["to_date"]
-                ),
+                "xbrl_schema_ref": row["xbrl_schema_ref"],
+                "from_date": _parse_date(row["from_date"]),
+                "to_date": _parse_date(row["to_date"]),
                 "version": row["version"],
             }
             for row in reader
@@ -85,11 +76,7 @@ def get_module_schema_ref(
     """
     mappings = _load_module_schema_mapping()
     upper = module_code.upper()
-    candidates = [
-        m
-        for m in mappings
-        if m["module_code"].upper() == upper
-    ]
+    candidates = [m for m in mappings if m["module_code"].upper() == upper]
     if not candidates:
         return None
 
@@ -109,9 +96,7 @@ def get_module_schema_ref(
     for c in reversed(candidates):
         from_d = c["from_date"]
         to_d = c["to_date"]
-        if from_d and from_d <= ref and (
-            to_d is None or ref <= to_d
-        ):
+        if from_d and from_d <= ref and (to_d is None or ref <= to_d):
             return c["xbrl_schema_ref"]
 
     return None

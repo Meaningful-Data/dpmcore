@@ -21,15 +21,9 @@ def _patch_orm(monkeypatch):
     """Prevent ORM import chain on Python 3.10."""
     # Stub dpmcore.data so static CSV lookup returns None
     data_stub = MagicMock()
-    data_stub.get_module_schema_ref_by_version = (
-        MagicMock(return_value=None)
-    )
-    data_stub.get_module_schema_ref = MagicMock(
-        return_value=None
-    )
-    monkeypatch.setitem(
-        sys.modules, "dpmcore.data", data_stub
-    )
+    data_stub.get_module_schema_ref_by_version = MagicMock(return_value=None)
+    data_stub.get_module_schema_ref = MagicMock(return_value=None)
+    monkeypatch.setitem(sys.modules, "dpmcore.data", data_stub)
 
     for mod_name in [
         "dpmcore",
@@ -51,9 +45,7 @@ def _patch_orm(monkeypatch):
         "dpmcore.services.syntax",
     ]:
         if mod_name not in sys.modules:
-            monkeypatch.setitem(
-                sys.modules, mod_name, MagicMock()
-            )
+            monkeypatch.setitem(sys.modules, mod_name, MagicMock())
 
 
 def _load_module():
@@ -75,12 +67,8 @@ def _load_module():
 
 def _scope(module_vids):
     """Build a mock scope with the given module VIDs."""
-    comps = [
-        SimpleNamespace(module_vid=v) for v in module_vids
-    ]
-    return SimpleNamespace(
-        operation_scope_compositions=comps
-    )
+    comps = [SimpleNamespace(module_vid=v) for v in module_vids]
+    return SimpleNamespace(operation_scope_compositions=comps)
 
 
 # ------------------------------------------------------------------ #
@@ -120,9 +108,7 @@ class TestFilterValidDependencyModules:
             existing_scopes=[_scope([10, 20])],
             new_scopes=[_scope([10, 30])],
         )
-        valid = svc.filter_valid_dependency_modules(
-            sr, primary_module_vid=10
-        )
+        valid = svc.filter_valid_dependency_modules(sr, primary_module_vid=10)
         assert valid == {20, 30}
 
     def test_primary_not_in_scope_returns_empty(self):
@@ -132,9 +118,7 @@ class TestFilterValidDependencyModules:
             existing_scopes=[_scope([20, 30])],
             new_scopes=[],
         )
-        valid = svc.filter_valid_dependency_modules(
-            sr, primary_module_vid=10
-        )
+        valid = svc.filter_valid_dependency_modules(sr, primary_module_vid=10)
         assert valid == set()
 
     def test_single_module_scopes_excluded(self):
@@ -145,9 +129,7 @@ class TestFilterValidDependencyModules:
             existing_scopes=[_scope([10])],
             new_scopes=[_scope([10, 20])],
         )
-        valid = svc.filter_valid_dependency_modules(
-            sr, primary_module_vid=10
-        )
+        valid = svc.filter_valid_dependency_modules(sr, primary_module_vid=10)
         assert valid == {20}
 
 
@@ -163,10 +145,8 @@ class TestDetectAlternativeDependencies:
         Svc, SR = _load_module()
         svc = Svc(MagicMock())
         if uri_map is not None:
-            svc._get_module_uri = (
-                lambda module_vid, release_id=None, mv=None: (
-                    uri_map.get(module_vid)
-                )
+            svc._get_module_uri = lambda module_vid, release_id=None, mv=None: (
+                uri_map.get(module_vid)
             )
         return svc, SR
 
@@ -186,9 +166,7 @@ class TestDetectAlternativeDependencies:
             scope_results=[sr], primary_module_vid=1
         )
         assert len(result) == 1
-        assert result[0] == sorted(
-            ["http://uri/a", "http://uri/b"]
-        )
+        assert result[0] == sorted(["http://uri/a", "http://uri/b"])
 
     def test_co_occurring_not_alternative(self):
         """A and B appear together -> not alternatives."""
@@ -275,14 +253,10 @@ class TestDetectCrossModuleDependencies:
     def _make_svc(self):
         Svc, SR = _load_module()
         svc = Svc(MagicMock())
-        svc._get_module_uri = (
-            lambda module_vid, release_id=None, mv=None: (
-                f"http://uri/mod_{module_vid}"
-            )
+        svc._get_module_uri = lambda module_vid, release_id=None, mv=None: (
+            f"http://uri/mod_{module_vid}"
         )
-        svc._get_module_tables = (
-            lambda module_vid, release_id=None: {}
-        )
+        svc._get_module_tables = lambda module_vid, release_id=None: {}
         return svc, SR
 
     def test_intra_module_returns_op_code(self):
@@ -297,9 +271,7 @@ class TestDetectCrossModuleDependencies:
             primary_module_vid=10,
             operation_code="v1234",
         )
-        assert info["intra_instance_validations"] == [
-            "v1234"
-        ]
+        assert info["intra_instance_validations"] == ["v1234"]
         assert info["cross_instance_dependencies"] == []
 
     def test_intra_empty_when_no_op_code(self):
@@ -340,13 +312,9 @@ class TestDetectCrossModuleDependencies:
             operation_code="v1234",
         )
         assert info["intra_instance_validations"] == []
-        assert (
-            len(info["cross_instance_dependencies"]) == 1
-        )
+        assert len(info["cross_instance_dependencies"]) == 1
         dep = info["cross_instance_dependencies"][0]
-        assert dep["modules"][0]["URI"] == (
-            "http://uri/mod_20"
-        )
+        assert dep["modules"][0]["URI"] == ("http://uri/mod_20")
         assert dep["affected_operations"] == ["v1234"]
 
     def test_no_valid_deps_returns_intra(self):
@@ -361,9 +329,7 @@ class TestDetectCrossModuleDependencies:
             primary_module_vid=10,
             operation_code="v1234",
         )
-        assert info["intra_instance_validations"] == [
-            "v1234"
-        ]
+        assert info["intra_instance_validations"] == ["v1234"]
         assert info["cross_instance_dependencies"] == []
 
     def test_alternative_deps_included(self):
@@ -406,14 +372,12 @@ class TestDetectCrossModuleDependencies:
     def test_ref_period_from_time_shifts(self):
         """ref_period uses time_shifts when provided."""
         svc, SR = self._make_svc()
-        svc._get_module_tables = (
-            lambda vid, release_id=None: {
-                "C_01.00": {
-                    "variables": {},
-                    "open_keys": {},
-                }
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "C_01.00": {
+                "variables": {},
+                "open_keys": {},
             }
-        )
+        }
 
         mv = MagicMock()
         mv.module_vid = 20
@@ -465,14 +429,12 @@ class TestDetectCrossModuleDependencies:
     def test_dependency_modules_in_output(self):
         """dependency_modules dict is populated."""
         svc, SR = self._make_svc()
-        svc._get_module_tables = (
-            lambda vid, release_id=None: {
-                "T_01": {
-                    "variables": {"v1": "x"},
-                    "open_keys": {},
-                }
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "T_01": {
+                "variables": {"v1": "x"},
+                "open_keys": {},
             }
-        )
+        }
 
         mv = MagicMock()
         mv.module_vid = 20
@@ -495,9 +457,7 @@ class TestDetectCrossModuleDependencies:
         dm = info["dependency_modules"]
         assert "http://uri/mod_20" in dm
         assert "T_01" in dm["http://uri/mod_20"]["tables"]
-        assert dm["http://uri/mod_20"]["variables"] == {
-            "v1": "x"
-        }
+        assert dm["http://uri/mod_20"]["variables"] == {"v1": "x"}
 
     def test_empty_dependency_modules_when_not_cross(self):
         """dependency_modules is empty for intra-module."""
@@ -546,8 +506,7 @@ class TestGetModuleUri:
 
         uri = svc._get_module_uri(10, release_id=5)
         expected = (
-            "http://www.eba.europa.eu/eu/fr/xbrl/crr"
-            "/fws/crr/3.4/mod/corep"
+            "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/crr/3.4/mod/corep"
         )
         assert uri == expected
 
@@ -569,9 +528,7 @@ class TestGetModuleUri:
         # Only one query (for Release), not two
         q.filter.return_value.first.return_value = release
 
-        uri = svc._get_module_uri(
-            10, release_id=5, mv=mv
-        )
+        uri = svc._get_module_uri(10, release_id=5, mv=mv)
         assert uri is not None
         assert "corep" in uri
 
@@ -583,9 +540,7 @@ class TestGetModuleUri:
         mv.module = MagicMock()
         mv.module.framework = None
 
-        assert (
-            svc._get_module_uri(10, mv=mv) is None
-        )
+        assert svc._get_module_uri(10, mv=mv) is None
 
 
 def _load_ast_generator():
