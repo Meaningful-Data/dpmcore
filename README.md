@@ -188,6 +188,71 @@ pip install dpmcore[cli,migration]
 dpmcore migrate --source /path/to/dpm.accdb --database sqlite:///dpm.db
 ```
 
+**Export Access to CSV** (requires `migration` extra and [mdb-tools](https://github.com/mdbtools/mdbtools)):
+
+Export every user table from an `.accdb` / `.mdb` file to individual CSV
+files. Tables are exported in parallel (up to 8 workers).
+
+```python
+from pathlib import Path
+from dpmcore.services.export_csv import ExportCsvService
+
+result = ExportCsvService().export("/path/to/dpm.accdb", Path("data/DPM"))
+print(f"Exported {result.tables_exported} tables to {result.output_dir}")
+```
+
+Or from the command line:
+
+```bash
+dpmcore export-csv /path/to/dpm.accdb --output-dir data/DPM
+```
+
+The `--output-dir` option defaults to `data/DPM`.
+
+**Build Meilisearch JSON** (requires `migration` extra):
+
+Generate a Meilisearch-ready JSON document that contains all DPM operation
+versions with their scopes, module assignments, operand references, and
+version history. The pipeline is:
+*Access → CSV → in-memory SQLite → JSON* (the CSV and SQLite steps are handled
+transparently when `access_file` is supplied).
+
+```python
+from dpmcore.services.meili_build import MeiliBuildService
+
+# From a directory of pre-exported CSV tables
+result = MeiliBuildService().build(
+    output_file="operations.json",
+    source_dir="data/DPM",
+)
+print(f"Wrote {result.operations_written} operations to {result.output_file}")
+
+# Directly from an Access file — CSV export is handled transparently
+result = MeiliBuildService().build(
+    output_file="operations.json",
+    access_file="/path/to/dpm.accdb",
+    ecb_validations_file="validation_versions.csv",  # optional
+)
+```
+
+Or from the command line:
+
+```bash
+# From a pre-exported CSV directory
+dpmcore build-meili-json --source-dir data/DPM --output operations.json
+
+# Directly from an Access file
+dpmcore build-meili-json --access-file /path/to/dpm.accdb --output operations.json
+
+# With optional ECB validations CSV
+dpmcore build-meili-json --access-file /path/to/dpm.accdb \
+    --ecb-validations-file validation_versions.csv \
+    --output operations.json
+```
+
+The `--output` option defaults to `operations.json`. `--source-dir` and
+`--access-file` are mutually exclusive.
+
 **Unified facade:**
 
 ```python
@@ -295,9 +360,12 @@ src/dpmcore/
 │   ├── explorer.py        ExplorerService
 │   ├── hierarchy.py       HierarchyService
 │   ├── dpm_xl.py          DpmXlService (facade)
-│   └── migration.py       MigrationService (Access import)
+│   ├── migration.py       MigrationService (Access import)
+│   ├── export_csv.py      ExportCsvService (Access → CSV)
+│   ├── meili_build.py     MeiliBuildService (end-to-end pipeline)
+│   └── meili_json.py      MeiliJsonService (JSON generation)
 ├── cli/
-│   └── main.py            Click CLI (migrate, serve)
+│   └── main.py            Click CLI (migrate, export-csv, build-meili-json, serve)
 └── dpm_xl/                DPM-XL engine internals
     ├── grammar/           ANTLR4 grammar + generated parser
     ├── ast/               AST nodes, visitor, operands
