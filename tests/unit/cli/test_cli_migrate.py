@@ -54,7 +54,11 @@ class TestMigrateMissingOptions:
             ["migrate", "--database", "sqlite:///test.db"],
         )
         assert result.exit_code != 0
-        assert "source" in result.output.lower() or "missing" in result.output.lower() or "required" in result.output.lower()
+        assert (
+            "source" in result.output.lower()
+            or "missing" in result.output.lower()
+            or "required" in result.output.lower()
+        )
 
     def test_missing_database(self, runner, tmp_path):
         fake_accdb = tmp_path / "test.accdb"
@@ -113,7 +117,6 @@ class TestVersion:
         assert "dpmcore" in result.output
 
 
-
 class TestExportCsvCli:
     def test_exit_0_and_table_count_in_output(self, runner, tmp_path):
         fake_accdb = tmp_path / "source.accdb"
@@ -160,8 +163,8 @@ class TestBuildMeiliJsonCli:
         mock_result.ecb_validations_imported = False
 
         with patch(
-                "dpmcore.services.meili_build.MeiliBuildService.build",
-                return_value=mock_result,
+            "dpmcore.services.meili_build.MeiliBuildService.build",
+            return_value=mock_result,
         ):
             result = runner.invoke(
                 main,
@@ -179,7 +182,9 @@ class TestBuildMeiliJsonCli:
         access_file = tmp_path / "source.accdb"
         access_file.touch()
         validation_file = tmp_path / "ecb_validations_file.csv"
-        validation_file.write_text("vr_code,start_release\nV1,4.0\n", encoding="utf-8")
+        validation_file.write_text(
+            "vr_code,start_release\nV1,4.0\n", encoding="utf-8"
+        )
         output_file = tmp_path / "operations.json"
 
         mock_result = MagicMock()
@@ -208,9 +213,13 @@ class TestBuildMeiliJsonCli:
         assert result.exit_code == 0
         assert "ECB validations imported" in result.output
         assert build_mock.call_args.kwargs["access_file"] == str(access_file)
-        assert build_mock.call_args.kwargs["ecb_validations_file"] == str(validation_file)
+        assert build_mock.call_args.kwargs["ecb_validations_file"] == str(
+            validation_file
+        )
 
-    def test_build_rejects_source_dir_and_access_file_together(self, runner, tmp_path):
+    def test_build_rejects_source_dir_and_access_file_together(
+        self, runner, tmp_path
+    ):
         source_dir = tmp_path / "csv"
         source_dir.mkdir()
 
@@ -241,8 +250,8 @@ class TestBuildMeiliJsonCli:
         mock_result.ecb_validations_imported = False
 
         with patch(
-                "dpmcore.services.meili_build.MeiliBuildService.build",
-                return_value=mock_result,
+            "dpmcore.services.meili_build.MeiliBuildService.build",
+            return_value=mock_result,
         ):
             result = runner.invoke(
                 main,
@@ -266,8 +275,8 @@ class TestBuildMeiliJsonCli:
         mock_result.ecb_validations_imported = False
 
         with patch(
-                "dpmcore.services.meili_build.MeiliBuildService.build",
-                return_value=mock_result,
+            "dpmcore.services.meili_build.MeiliBuildService.build",
+            return_value=mock_result,
         ):
             result = runner.invoke(
                 main,
@@ -327,4 +336,3 @@ class TestBuildMeiliJsonCli:
         assert result.exit_code == 0
         assert build_mock.call_args.kwargs["source_dir"] == str(source_dir)
         assert build_mock.call_args.kwargs["access_file"] is None
-

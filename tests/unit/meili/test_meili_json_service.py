@@ -20,6 +20,7 @@ from dpmcore.services.meili_json import (
 # create_substrings
 # ---------------------------------------------------------------------------
 
+
 def test_create_substrings_produces_all_contiguous():
     result = create_substrings("ABC")
     assert "A" in result
@@ -47,12 +48,14 @@ def test_create_substrings_single_char():
 # _iso_date
 # ---------------------------------------------------------------------------
 
+
 def test_iso_date_none_returns_none():
     assert _iso_date(None) is None
 
 
 def test_iso_date_with_isoformat_object():
     from datetime import date
+
     assert _iso_date(date(2024, 1, 15)) == "2024-01-15"
 
 
@@ -63,6 +66,7 @@ def test_iso_date_fallback_to_str():
 # ---------------------------------------------------------------------------
 # get_scope_module_key
 # ---------------------------------------------------------------------------
+
 
 def test_get_scope_module_key_stable_order():
     modules = [
@@ -95,6 +99,7 @@ def test_get_scope_module_key_none_values_coerced_to_empty_string():
 # calculate_applicable
 # ---------------------------------------------------------------------------
 
+
 def test_calculate_applicable_empty_modules_returns_false():
     assert calculate_applicable([]) is False
 
@@ -110,7 +115,12 @@ def test_calculate_applicable_single_module_open_ended():
 
 
 def test_calculate_applicable_single_module_no_from_date():
-    modules = [{"moduleVersionFromReferenceDate": None, "moduleVersionToReferenceDate": None}]
+    modules = [
+        {
+            "moduleVersionFromReferenceDate": None,
+            "moduleVersionToReferenceDate": None,
+        }
+    ]
     assert calculate_applicable(modules) is False
 
 
@@ -136,32 +146,56 @@ def test_calculate_applicable_single_module_valid_date_range():
 
 def test_calculate_applicable_multiple_modules_all_open():
     modules = [
-        {"moduleVersionFromReferenceDate": "2024-01-01", "moduleVersionToReferenceDate": None},
-        {"moduleVersionFromReferenceDate": "2023-01-01", "moduleVersionToReferenceDate": None},
+        {
+            "moduleVersionFromReferenceDate": "2024-01-01",
+            "moduleVersionToReferenceDate": None,
+        },
+        {
+            "moduleVersionFromReferenceDate": "2023-01-01",
+            "moduleVersionToReferenceDate": None,
+        },
     ]
     assert calculate_applicable(modules) is True
 
 
 def test_calculate_applicable_multiple_modules_no_from_dates():
     modules = [
-        {"moduleVersionFromReferenceDate": None, "moduleVersionToReferenceDate": None},
-        {"moduleVersionFromReferenceDate": None, "moduleVersionToReferenceDate": None},
+        {
+            "moduleVersionFromReferenceDate": None,
+            "moduleVersionToReferenceDate": None,
+        },
+        {
+            "moduleVersionFromReferenceDate": None,
+            "moduleVersionToReferenceDate": None,
+        },
     ]
     assert calculate_applicable(modules) is False
 
 
 def test_calculate_applicable_multiple_modules_max_from_equals_min_to():
     modules = [
-        {"moduleVersionFromReferenceDate": "2025-01-01", "moduleVersionToReferenceDate": "2025-06-01"},
-        {"moduleVersionFromReferenceDate": "2024-01-01", "moduleVersionToReferenceDate": "2025-01-01"},
+        {
+            "moduleVersionFromReferenceDate": "2025-01-01",
+            "moduleVersionToReferenceDate": "2025-06-01",
+        },
+        {
+            "moduleVersionFromReferenceDate": "2024-01-01",
+            "moduleVersionToReferenceDate": "2025-01-01",
+        },
     ]
     assert calculate_applicable(modules) is False
 
 
 def test_calculate_applicable_multiple_modules_valid_range():
     modules = [
-        {"moduleVersionFromReferenceDate": "2023-01-01", "moduleVersionToReferenceDate": "2025-01-01"},
-        {"moduleVersionFromReferenceDate": "2024-01-01", "moduleVersionToReferenceDate": "2026-01-01"},
+        {
+            "moduleVersionFromReferenceDate": "2023-01-01",
+            "moduleVersionToReferenceDate": "2025-01-01",
+        },
+        {
+            "moduleVersionFromReferenceDate": "2024-01-01",
+            "moduleVersionToReferenceDate": "2026-01-01",
+        },
     ]
     assert calculate_applicable(modules) is True
 
@@ -169,6 +203,7 @@ def test_calculate_applicable_multiple_modules_valid_range():
 # ---------------------------------------------------------------------------
 # _chunked_query
 # ---------------------------------------------------------------------------
+
 
 def test_chunked_query_single_chunk():
     mock_query = MagicMock()
@@ -204,9 +239,15 @@ def test_chunked_query_empty_ids_returns_empty():
 # MeiliJsonService._get_operation_info_optimized
 # ---------------------------------------------------------------------------
 
+
 def test_get_operation_info_optimized_no_nodes_returns_empty():
     service = MeiliJsonService(MagicMock())
-    assert service._get_operation_info_optimized(operation_vid=1, ctx=BulkDataContext()) == []
+    assert (
+        service._get_operation_info_optimized(
+            operation_vid=1, ctx=BulkDataContext()
+        )
+        == []
+    )
 
 
 def test_get_operation_info_optimized_returns_location_data():
@@ -256,6 +297,7 @@ def test_get_operation_info_optimized_no_locations_returns_empty():
 # ---------------------------------------------------------------------------
 # MeiliJsonService._process_scope_compositions
 # ---------------------------------------------------------------------------
+
 
 def test_process_scope_compositions_empty_context_returns_empty():
     service = MeiliJsonService(MagicMock())
@@ -340,6 +382,7 @@ def test_process_scope_compositions_include_release_info_adds_release_fields():
 # ---------------------------------------------------------------------------
 # MeiliJsonService._build_payload
 # ---------------------------------------------------------------------------
+
 
 def test_build_payload_skips_none_operation():
     service = MeiliJsonService(MagicMock())
@@ -441,7 +484,9 @@ def test_build_payload_mixed_valid_and_skipped():
     no_expr.operation.type = "validation"
     no_expr.expression = ""
 
-    result = service._build_payload([valid, precondition, no_expr], BulkDataContext())
+    result = service._build_payload(
+        [valid, precondition, no_expr], BulkDataContext()
+    )
 
     assert len(result) == 1
     assert result[0]["ID"] == 1
@@ -495,7 +540,7 @@ def test_build_payload_scope_with_single_module():
     scope_entry = record["operationScopes"][0]
     assert scope_entry["operationScopeSeverity"] == "Warning"
     assert scope_entry["isActive"] is True
-    assert scope_entry["applicable"] is True   # open-ended from date
+    assert scope_entry["applicable"] is True  # open-ended from date
     assert scope_entry["modules"][0]["code"] == "M1"
 
 
@@ -525,7 +570,10 @@ def test_build_payload_crossmodule_detected_when_scope_has_two_modules():
     scope.severity = "fatal"
     scope.is_active = -1
     ctx.scopes_by_opvid[42] = [scope]
-    ctx.compositions_by_scopeid[1] = [_make_composition("A"), _make_composition("B")]
+    ctx.compositions_by_scopeid[1] = [
+        _make_composition("A"),
+        _make_composition("B"),
+    ]
 
     result = service._build_payload([op_version], ctx)
 
@@ -559,7 +607,7 @@ def test_build_payload_multiscope_detected_when_scopes_have_different_modules():
     record = result[0]
     assert record["multiscope"] is True
     assert set(record["multiscopemodules"]) == {"A", "B"}
-    assert record["crossmodule"] is False   # each scope has only 1 module
+    assert record["crossmodule"] is False  # each scope has only 1 module
 
 
 def test_build_payload_deduplicates_scopes_with_identical_module_key():
@@ -626,7 +674,10 @@ def test_build_payload_previous_version_with_precondition():
     result = service._build_payload([op_version], ctx)
 
     precond = result[0]["versions"][0]["precondition"]
-    assert precond == {"preconditionVID": 99, "preconditionExpression": "y != 0"}
+    assert precond == {
+        "preconditionVID": 99,
+        "preconditionExpression": "y != 0",
+    }
 
 
 def test_build_payload_parent_operation_resolved():
@@ -678,6 +729,7 @@ def test_build_payload_tables_field_populated_from_references():
 # MeiliJsonService.generate
 # ---------------------------------------------------------------------------
 
+
 def test_generate_requires_session(tmp_path):
     service = MeiliJsonService()
 
@@ -710,11 +762,20 @@ def test_generate_with_data_writes_payload_and_returns_count(tmp_path):
     service = MeiliJsonService(MagicMock())
     output = tmp_path / "ops.json"
 
-    payload = [{"ID": 1, "expression": "x > 0"}, {"ID": 2, "expression": "y < 5"}]
+    payload = [
+        {"ID": 1, "expression": "x > 0"},
+        {"ID": 2, "expression": "y < 5"},
+    ]
 
-    with patch.object(service, "_get_operation_versions", return_value=[MagicMock()]), \
-         patch.object(service, "_bulk_load_related_data", return_value=BulkDataContext()), \
-         patch.object(service, "_build_payload", return_value=payload):
+    with (
+        patch.object(
+            service, "_get_operation_versions", return_value=[MagicMock()]
+        ),
+        patch.object(
+            service, "_bulk_load_related_data", return_value=BulkDataContext()
+        ),
+        patch.object(service, "_build_payload", return_value=payload),
+    ):
         result = service.generate(str(output))
 
     assert result.operations_written == 2
@@ -724,6 +785,7 @@ def test_generate_with_data_writes_payload_and_returns_count(tmp_path):
 # ---------------------------------------------------------------------------
 # MeiliJsonService.merge_by_owner
 # ---------------------------------------------------------------------------
+
 
 def test_merge_by_owner_replaces_matching_owner(tmp_path):
     new_file = tmp_path / "new.json"
@@ -770,7 +832,12 @@ def test_merge_by_owner_empty_new_file_keeps_all_existing(tmp_path):
 
     new_file.write_text("[]", encoding="utf-8")
     existing_file.write_text(
-        json.dumps([{"ID": 1, "ownerAcronym": "ECB"}, {"ID": 2, "ownerAcronym": "EBA"}]),
+        json.dumps(
+            [
+                {"ID": 1, "ownerAcronym": "ECB"},
+                {"ID": 2, "ownerAcronym": "EBA"},
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -817,9 +884,16 @@ def test_merge_by_owner_output_sorted_by_id(tmp_path):
     existing_file = tmp_path / "existing.json"
     output_file = tmp_path / "merged.json"
 
-    new_file.write_text(json.dumps([{"ID": 5, "ownerAcronym": "EBA"}]), encoding="utf-8")
+    new_file.write_text(
+        json.dumps([{"ID": 5, "ownerAcronym": "EBA"}]), encoding="utf-8"
+    )
     existing_file.write_text(
-        json.dumps([{"ID": 10, "ownerAcronym": "ECB"}, {"ID": 1, "ownerAcronym": "ECB"}]),
+        json.dumps(
+            [
+                {"ID": 10, "ownerAcronym": "ECB"},
+                {"ID": 1, "ownerAcronym": "ECB"},
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -1216,8 +1290,12 @@ def test_build_payload_previous_version_includes_release_parent_scopes_and_refer
     ctx.all_versions_by_opid[10] = [current, previous]
     ctx.parent_first_versions[5] = parent
 
-    previous_scope_1 = _scope(scope_id=100, operation_vid=41, severity="fatal", is_active=-1)
-    previous_scope_2 = _scope(scope_id=101, operation_vid=41, severity="warning", is_active=0)
+    previous_scope_1 = _scope(
+        scope_id=100, operation_vid=41, severity="fatal", is_active=-1
+    )
+    previous_scope_2 = _scope(
+        scope_id=101, operation_vid=41, severity="warning", is_active=0
+    )
 
     ctx.scopes_by_opvid[41] = [previous_scope_2, previous_scope_1]
 
@@ -1286,7 +1364,10 @@ def test_build_payload_previous_version_includes_release_parent_scopes_and_refer
 
     assert len(previous_payload["operationScopes"]) == 1
     assert previous_payload["operationScopes"][0]["modules"][0]["code"] == "M1"
-    assert previous_payload["operationScopes"][0]["modules"][0]["frameworkCode"] == "FW"
+    assert (
+        previous_payload["operationScopes"][0]["modules"][0]["frameworkCode"]
+        == "FW"
+    )
 
     assert previous_payload["operandReferences"] == [
         {
@@ -1360,4 +1441,3 @@ def test_build_payload_payload_is_sorted_by_id():
     result = service._build_payload([op_high, op_low], BulkDataContext())
 
     assert [item["ID"] for item in result] == [1, 99]
-

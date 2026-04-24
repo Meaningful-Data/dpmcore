@@ -41,7 +41,9 @@ class MeiliBuildService:
         ecb_validations_file: Optional[str] = None,
     ) -> MeiliBuildResult:
         if access_file and source_dir:
-            raise MeiliBuildError("Use either '--access-file' or '--source-dir', not both.")
+            raise MeiliBuildError(
+                "Use either '--access-file' or '--source-dir', not both."
+            )
 
         resolved_source_dir = Path(source_dir or "data/DPM")
 
@@ -62,11 +64,15 @@ class MeiliBuildService:
             try:
                 migration_service.migrate_from_csv_dir(str(csv_dir))
                 if ecb_validations_file:
-                    EcbValidationsImportService(engine).import_csv(ecb_validations_file)
+                    EcbValidationsImportService(engine).import_csv(
+                        ecb_validations_file
+                    )
 
                 session = sessionmaker(bind=engine)()
                 try:
-                    json_result: MeiliJsonResult = MeiliJsonService(session).generate(output_file)
+                    json_result: MeiliJsonResult = MeiliJsonService(
+                        session
+                    ).generate(output_file)
                 finally:
                     session.close()
             except Exception as exc:

@@ -56,9 +56,9 @@ class BulkDataContext:
         default_factory=lambda: defaultdict(list)
     )
     operand_ref_map: Dict[int, Optional[int]] = field(default_factory=dict)
-    locations_by_refid: DefaultDict[
-        int, List[OperandReferenceLocation]
-    ] = field(default_factory=lambda: defaultdict(list))
+    locations_by_refid: DefaultDict[int, List[OperandReferenceLocation]] = (
+        field(default_factory=lambda: defaultdict(list))
+    )
 
 
 def create_substrings(text: Optional[str]) -> str:
@@ -76,7 +76,9 @@ def create_substrings(text: Optional[str]) -> str:
     return " ".join(sorted(substrings))
 
 
-def get_scope_module_key(modules: List[Dict[str, Any]]) -> Tuple[Tuple[str, str], ...]:
+def get_scope_module_key(
+    modules: List[Dict[str, Any]],
+) -> Tuple[Tuple[str, str], ...]:
     """Generate a stable key from scope modules for deduplication."""
     return tuple(
         sorted(
@@ -279,10 +281,12 @@ class MeiliJsonService:
                     selectinload(OperationScopeComposition.module_version)
                     .selectinload(ModuleVersion.module)
                     .selectinload(Module.framework),
-                    selectinload(OperationScopeComposition.module_version)
-                    .selectinload(ModuleVersion.start_release),
-                    selectinload(OperationScopeComposition.module_version)
-                    .selectinload(ModuleVersion.end_release),
+                    selectinload(
+                        OperationScopeComposition.module_version
+                    ).selectinload(ModuleVersion.start_release),
+                    selectinload(
+                        OperationScopeComposition.module_version
+                    ).selectinload(ModuleVersion.end_release),
                 ),
                 OperationScopeComposition.operation_scope_id,
                 scope_ids,
@@ -321,9 +325,9 @@ class MeiliJsonService:
                     and parent_version.operation_id
                     not in ctx.parent_first_versions
                 ):
-                    ctx.parent_first_versions[
-                        parent_version.operation_id
-                    ] = parent_version
+                    ctx.parent_first_versions[parent_version.operation_id] = (
+                        parent_version
+                    )
 
         all_versions = _chunked_query(
             self._session.query(OperationVersion)
@@ -347,14 +351,15 @@ class MeiliJsonService:
                 ctx.all_versions_by_opid[version.operation_id].append(version)
 
         all_opvids_for_info = {
-            version.operation_vid
-            for version in operation_versions
+            version.operation_vid for version in operation_versions
         }
         for versions in ctx.all_versions_by_opid.values():
             for version in versions:
                 all_opvids_for_info.add(version.operation_vid)
 
-        previous_version_opvids = set(all_opvids_for_info) - set(operation_vids)
+        previous_version_opvids = set(all_opvids_for_info) - set(
+            operation_vids
+        )
         if previous_version_opvids:
             previous_scopes = _chunked_query(
                 self._session.query(OperationScope),
@@ -371,9 +376,7 @@ class MeiliJsonService:
             if extra_scope_ids:
                 extra_compositions = _chunked_query(
                     self._session.query(OperationScopeComposition).options(
-                        selectinload(
-                            OperationScopeComposition.module_version
-                        )
+                        selectinload(OperationScopeComposition.module_version)
                         .selectinload(ModuleVersion.module)
                         .selectinload(Module.framework),
                         selectinload(
@@ -410,9 +413,9 @@ class MeiliJsonService:
             )
             ref_ids: List[int] = []
             for reference in refs:
-                ctx.operand_ref_map[
-                    reference.operand_reference_id
-                ] = reference.variable_id
+                ctx.operand_ref_map[reference.operand_reference_id] = (
+                    reference.variable_id
+                )
                 if reference.node_id is not None:
                     ctx.refs_by_nodeid[reference.node_id].append(reference)
                 ref_ids.append(reference.operand_reference_id)
@@ -448,7 +451,9 @@ class MeiliJsonService:
 
         for composition in compositions:
             module_version = composition.module_version
-            module = module_version.module if module_version is not None else None
+            module = (
+                module_version.module if module_version is not None else None
+            )
             framework = module.framework if module is not None else None
 
             if module_version is None:
@@ -515,7 +520,9 @@ class MeiliJsonService:
 
         return modules
 
-    def _get_operation_info_optimized(self, *, operation_vid: int, ctx: BulkDataContext) -> List[Dict[str, Any]]:
+    def _get_operation_info_optimized(
+        self, *, operation_vid: int, ctx: BulkDataContext
+    ) -> List[Dict[str, Any]]:
         result: List[Dict[str, Any]] = []
         nodes = sorted(
             ctx.nodes_by_opvid.get(operation_vid, []),
@@ -532,7 +539,9 @@ class MeiliJsonService:
             )
             for reference in refs:
                 locations = sorted(
-                    ctx.locations_by_refid.get(reference.operand_reference_id, []),
+                    ctx.locations_by_refid.get(
+                        reference.operand_reference_id, []
+                    ),
                     key=lambda loc: (
                         loc.table or "",
                         loc.row or "",
@@ -556,7 +565,11 @@ class MeiliJsonService:
                     )
         return result
 
-    def _build_payload(self, operation_versions: Iterable[OperationVersion], ctx: BulkDataContext) -> List[Dict[str, Any]]:
+    def _build_payload(
+        self,
+        operation_versions: Iterable[OperationVersion],
+        ctx: BulkDataContext,
+    ) -> List[Dict[str, Any]]:
         payload: List[Dict[str, Any]] = []
 
         for operation_version in operation_versions:
@@ -565,7 +578,10 @@ class MeiliJsonService:
                 continue
             if operation.type == "precondition":
                 continue
-            if not operation_version.expression or not operation_version.expression.strip():
+            if (
+                not operation_version.expression
+                or not operation_version.expression.strip()
+            ):
                 continue
 
             operation_references = self._get_operation_info_optimized(
@@ -637,9 +653,8 @@ class MeiliJsonService:
                     for module in operations_scopes_list[0]["modules"]
                     if module.get("code") is not None
                 }
-                multiscope = (
-                    len(unique_modules_across_scopes)
-                    > len(first_scope_modules)
+                multiscope = len(unique_modules_across_scopes) > len(
+                    first_scope_modules
                 )
 
                 operations_scopes_list.sort(
@@ -676,18 +691,22 @@ class MeiliJsonService:
             previous_versions = sorted(
                 [
                     version
-                    for version in ctx.all_versions_by_opid.get(operation_version.operation_id, [])
+                    for version in ctx.all_versions_by_opid.get(
+                        operation_version.operation_id, []
+                    )
                     if version.operation_vid != operation_version.operation_vid
                 ],
                 key=lambda version: version.operation_vid,
             )
             for previous_version in previous_versions:
                 previous_scope_list: List[Dict[str, Any]] = []
-                seen_previous_scope_keys: Set[
-                    Tuple[Tuple[str, str], ...]
-                ] = set()
+                seen_previous_scope_keys: Set[Tuple[Tuple[str, str], ...]] = (
+                    set()
+                )
                 previous_scopes = sorted(
-                    ctx.scopes_by_opvid.get(previous_version.operation_vid, []),
+                    ctx.scopes_by_opvid.get(
+                        previous_version.operation_vid, []
+                    ),
                     key=lambda scope: scope.operation_scope_id,
                 )
                 for previous_scope in previous_scopes:
@@ -730,7 +749,8 @@ class MeiliJsonService:
                 previous_parent = None
                 if (
                     previous_version.operation is not None
-                    and previous_version.operation.group_operation_id is not None
+                    and previous_version.operation.group_operation_id
+                    is not None
                 ):
                     previous_parent = ctx.parent_first_versions.get(
                         previous_version.operation.group_operation_id

@@ -68,11 +68,11 @@ class ExportCsvService:
             future_to_table = {}
             for table in table_names:
                 future = executor.submit(
-                        self._export_table,
-                        access_path,
-                        table,
-                        output_dir / f"{table}.csv",
-                    )
+                    self._export_table,
+                    access_path,
+                    table,
+                    output_dir / f"{table}.csv",
+                )
 
                 future_to_table[future] = table
 
@@ -114,8 +114,12 @@ class ExportCsvService:
             table_name
             for token in raw.split()
             if (table_name := token.strip())
-               and not any(table_name.startswith(prefix) for prefix in _SYSTEM_TABLE_PREFIXES)
+            and not any(
+                table_name.startswith(prefix)
+                for prefix in _SYSTEM_TABLE_PREFIXES
+            )
         ]
+
     def _export_table(
         self, access_path: str, table: str, target_path: Path
     ) -> None:

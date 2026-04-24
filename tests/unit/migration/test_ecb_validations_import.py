@@ -10,6 +10,7 @@ from dpmcore.services.ecb_validations_import import (
 
 from unittest.mock import MagicMock, patch
 
+
 @pytest.fixture()
 def sqlite_engine():
     return create_engine("sqlite:///:memory:")
@@ -19,6 +20,7 @@ def sqlite_engine():
 def sqlite_engine_with_schema():
     engine = create_engine("sqlite:///:memory:")
     from dpmcore.orm.base import Base
+
     Base.metadata.create_all(engine)
     return engine
 
@@ -45,8 +47,12 @@ class TestEcbValidationsImport:
             service.import_csv(str(csv_file))
 
     def test_parse_submission_date_accepts_iso_and_ddmmyyyy(self, service):
-        assert str(service._parse_submission_date("17/03/2026")) == "2026-03-17"
-        assert str(service._parse_submission_date("2026-03-17")) == "2026-03-17"
+        assert (
+            str(service._parse_submission_date("17/03/2026")) == "2026-03-17"
+        )
+        assert (
+            str(service._parse_submission_date("2026-03-17")) == "2026-03-17"
+        )
         assert service._parse_submission_date("-") is None
 
     def test_normalize_text_handles_empty_and_nan(self, service):
@@ -96,7 +102,9 @@ class TestEcbValidationsImport:
     def test_parse_submission_date_none_returns_none(self, service):
         assert service._parse_submission_date(None) is None
 
-    def test_import_csv_missing_columns_raises_via_file(self, service, tmp_path):
+    def test_import_csv_missing_columns_raises_via_file(
+        self, service, tmp_path
+    ):
         csv_file = tmp_path / "ecb_validations_file.csv"
         csv_file.write_text("code,start\nA,4.0\n", encoding="utf-8")
 
@@ -116,17 +124,25 @@ class TestEcbValidationsImport:
 
     def test_resolve_release_returns_release_from_cache(self, service):
         from unittest.mock import MagicMock
+
         mock_release = MagicMock()
-        assert service._resolve_release({"4.0": mock_release}, "4.0") is mock_release
+        assert (
+            service._resolve_release({"4.0": mock_release}, "4.0")
+            is mock_release
+        )
 
     def test_resolve_release_returns_none_for_unknown_code(self, service):
         assert service._resolve_release({"4.0": object()}, "5.0") is None
 
     def test_resolve_release_applies_code_remap(self, service):
         from unittest.mock import MagicMock
+
         mock_release = MagicMock()
         # _RELEASE_CODE_MAP maps "3.2" → "3.4"
-        assert service._resolve_release({"3.4": mock_release}, "3.2") is mock_release
+        assert (
+            service._resolve_release({"3.4": mock_release}, "3.2")
+            is mock_release
+        )
 
     # ------------------------------------------------------------------
     # _collect_table_codes_from_ast (pure logic, no DB)
@@ -200,8 +216,14 @@ class TestEcbValidationsImport:
     ):
         session = sessionmaker(bind=sqlite_engine_with_schema)()
         try:
-            session.add(Organisation(org_id=5, name="Org5", acronym="O5", id_prefix=1))
-            session.add(Organisation(org_id=10, name="Org10", acronym="O10", id_prefix=2))
+            session.add(
+                Organisation(org_id=5, name="Org5", acronym="O5", id_prefix=1)
+            )
+            session.add(
+                Organisation(
+                    org_id=10, name="Org10", acronym="O10", id_prefix=2
+                )
+            )
             session.flush()
             result = EcbValidationsImportService._next_int_id(
                 session, Organisation, "org_id"
@@ -298,7 +320,9 @@ class TestEcbValidationsImport:
 
         session = sessionmaker(bind=sqlite_engine_with_schema)()
         try:
-            org = Organisation(org_id=1, name="Test", acronym="TST", id_prefix=1)
+            org = Organisation(
+                org_id=1, name="Test", acronym="TST", id_prefix=1
+            )
             cls = DpmClass(class_id=1, name="Operation")
             session.add(org)
             session.add(cls)
@@ -320,7 +344,9 @@ class TestEcbValidationsImport:
         self, service_with_schema, tmp_path
     ):
         csv_file = tmp_path / "valid.csv"
-        csv_file.write_text("vr_code,start_release\nV1,4.0\n", encoding="utf-8")
+        csv_file.write_text(
+            "vr_code,start_release\nV1,4.0\n", encoding="utf-8"
+        )
 
         result = service_with_schema.import_csv(str(csv_file))
 
@@ -335,7 +361,9 @@ class TestEcbValidationsImport:
         self, service_with_schema, tmp_path
     ):
         csv_file = tmp_path / "valid.csv"
-        csv_file.write_text("vr_code,start_release\nV1_1,4.0\n", encoding="utf-8")
+        csv_file.write_text(
+            "vr_code,start_release\nV1_1,4.0\n", encoding="utf-8"
+        )
 
         result = service_with_schema.import_csv(str(csv_file))
 
@@ -353,7 +381,9 @@ class TestEcbValidationsImport:
         session.close()
 
         csv_file = tmp_path / "valid.csv"
-        csv_file.write_text("vr_code,start_release\nV1,4.0\n", encoding="utf-8")
+        csv_file.write_text(
+            "vr_code,start_release\nV1,4.0\n", encoding="utf-8"
+        )
 
         result = service_with_schema.import_csv(str(csv_file))
 
@@ -386,19 +416,25 @@ class TestEcbValidationsImport:
     ):
         session = sessionmaker(bind=sqlite_engine_with_schema)()
         try:
-            assert service_with_schema._extract_table_codes_for_expression(
-                session,
-                expression=None,
-                start_release_id=1,
-                latest_release_id=2,
-            ) == set()
+            assert (
+                service_with_schema._extract_table_codes_for_expression(
+                    session,
+                    expression=None,
+                    start_release_id=1,
+                    latest_release_id=2,
+                )
+                == set()
+            )
 
-            assert service_with_schema._extract_table_codes_for_expression(
-                session,
-                expression="   ",
-                start_release_id=1,
-                latest_release_id=2,
-            ) == set()
+            assert (
+                service_with_schema._extract_table_codes_for_expression(
+                    session,
+                    expression="   ",
+                    start_release_id=1,
+                    latest_release_id=2,
+                )
+                == set()
+            )
         finally:
             session.close()
 
@@ -414,8 +450,12 @@ class TestEcbValidationsImport:
         checker_latest.tables = {"T_01": object(), "T_02": object()}
 
         with (
-            patch("dpmcore.services.ecb_validations_import.SyntaxService") as syntax_cls,
-            patch("dpmcore.services.ecb_validations_import.OperandsChecking") as checker_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import.SyntaxService"
+            ) as syntax_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import.OperandsChecking"
+            ) as checker_cls,
         ):
             syntax_cls.return_value.parse.return_value = object()
             checker_cls.side_effect = [checker_start, checker_latest]
@@ -437,8 +477,12 @@ class TestEcbValidationsImport:
         session = sessionmaker(bind=sqlite_engine_with_schema)()
 
         with (
-            patch("dpmcore.services.ecb_validations_import.SyntaxService") as syntax_cls,
-            patch("dpmcore.services.ecb_validations_import.OperandsChecking") as checker_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import.SyntaxService"
+            ) as syntax_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import.OperandsChecking"
+            ) as checker_cls,
         ):
             syntax_cls.return_value.parse.return_value = object()
             checker_cls.side_effect = RuntimeError("cannot inspect tables")
@@ -618,7 +662,7 @@ class TestEcbValidationsImport:
             session.close()
 
     def test_get_or_create_precondition_version_creates_when_existing_code_does_not_match(
-            self, service_with_schema, sqlite_engine_with_schema
+        self, service_with_schema, sqlite_engine_with_schema
     ):
         from dpmcore.orm.infrastructure import Release
         from dpmcore.orm.operations import Operation, OperationVersion
@@ -665,7 +709,9 @@ class TestEcbValidationsImport:
         self, service_with_schema, tmp_path
     ):
         csv_file = tmp_path / "valid.csv"
-        csv_file.write_text("vr_code,start_release\nV1,4.0\n", encoding="utf-8")
+        csv_file.write_text(
+            "vr_code,start_release\nV1,4.0\n", encoding="utf-8"
+        )
 
         with patch.object(
             service_with_schema,

@@ -31,7 +31,7 @@ class TestMigrateMdbtoolsSuccess:
         with patch("subprocess.check_output") as mock_sub:
             mock_sub.side_effect = [
                 "Users\n",  # mdb-tables
-                csv_data,   # mdb-export
+                csv_data,  # mdb-export
             ]
             result = service.migrate_from_access("/fake.accdb")
 
@@ -125,9 +125,7 @@ class TestLoadData:
 
         # Create a table manually.
         with sqlite_engine.connect() as conn:
-            conn.execute(
-                text("CREATE TABLE items (id INTEGER, name TEXT)")
-            )
+            conn.execute(text("CREATE TABLE items (id INTEGER, name TEXT)"))
             conn.commit()
 
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})
@@ -214,7 +212,9 @@ class TestMigrateCsvDir:
         assert df["OperandReferenceID"].iloc[0] == 1
         assert df["CellID"].iloc[0] == 10
 
-    def test_coerce_numeric_columns_for_csv_preserves_coordinates_and_numeric_ids(self, service):
+    def test_coerce_numeric_columns_for_csv_preserves_coordinates_and_numeric_ids(
+        self, service
+    ):
         import pandas as pd
 
         df = pd.DataFrame(
@@ -237,7 +237,9 @@ class TestMigrateCsvDir:
         assert result["CellID"].iloc[0] == 10
         assert result["Label"].iloc[0] == "ABC"
 
-    def test_coerce_temporal_columns_for_schema_parses_dd_mm_yyyy(self, service):
+    def test_coerce_temporal_columns_for_schema_parses_dd_mm_yyyy(
+        self, service
+    ):
         import pandas as pd
         from dpmcore.orm.base import Base
 
@@ -271,4 +273,3 @@ class TestMigrateCsvDir:
 
         assert result["FromSubmissionDate"].iloc[0] is None
         assert result["FromSubmissionDate"].iloc[1] is None
-

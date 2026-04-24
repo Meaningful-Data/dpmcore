@@ -87,9 +87,7 @@ class MigrationService:
         self._create_schema()
         warnings = self._load_data(data)
 
-        table_details = {
-            name: len(df) for name, df in data.items()
-        }
+        table_details = {name: len(df) for name, df in data.items()}
         total_rows = sum(table_details.values())
 
         return MigrationResult(
@@ -119,17 +117,13 @@ class MigrationService:
     # Extraction
     # -------------------------------------------------------------- #
 
-    def _extract_tables(
-        self, access_path: str
-    ) -> tuple[Dict[str, Any], str]:
+    def _extract_tables(self, access_path: str) -> tuple[Dict[str, Any], str]:
         """Try mdb-tools first, fall back to pyodbc."""
         try:
             data = self._extract_with_mdbtools(access_path)
             return data, "mdbtools"
         except (FileNotFoundError, OSError, subprocess.CalledProcessError):
-            logger.debug(
-                "mdb-tools not available, falling back to pyodbc"
-            )
+            logger.debug("mdb-tools not available, falling back to pyodbc")
 
         try:
             data = self._extract_with_pyodbc(access_path)
@@ -141,9 +135,7 @@ class MigrationService:
                 "(Windows/macOS), then try again."
             ) from exc
 
-    def _extract_with_mdbtools(
-        self, access_path: str
-    ) -> Dict[str, Any]:
+    def _extract_with_mdbtools(self, access_path: str) -> Dict[str, Any]:
         """Use ``mdb-tables`` / ``mdb-export`` (subprocess)."""
         import pandas as pd  # lazy
 
@@ -172,9 +164,7 @@ class MigrationService:
 
         return data
 
-    def _extract_with_pyodbc(
-        self, access_path: str
-    ) -> Dict[str, Any]:
+    def _extract_with_pyodbc(self, access_path: str) -> Dict[str, Any]:
         """Use pyodbc with the Access ODBC driver."""
         import decimal
 
@@ -193,8 +183,7 @@ class MigrationService:
             row.table_name
             for row in cursor.tables(tableType="TABLE")
             if not any(
-                row.table_name.startswith(p)
-                for p in _SYSTEM_TABLE_PREFIXES
+                row.table_name.startswith(p) for p in _SYSTEM_TABLE_PREFIXES
             )
         ]
 
@@ -210,19 +199,13 @@ class MigrationService:
 
             rows = cursor.fetchall()
 
-            df = pd.DataFrame.from_records(
-                rows, columns=col_names
-            )
+            df = pd.DataFrame.from_records(rows, columns=col_names)
 
             # Apply schema-based type enforcement: keep text columns
             # as text even when values look numeric.
-            for name, col_type in zip(
-                col_names, col_types, strict=True
-            ):
+            for name, col_type in zip(col_names, col_types, strict=True):
                 if col_type in numeric_types:
-                    df[name] = pd.to_numeric(
-                        df[name], errors="coerce"
-                    )
+                    df[name] = pd.to_numeric(df[name], errors="coerce")
                 else:
                     df[name] = df[name].astype(object)
 
@@ -263,7 +246,12 @@ class MigrationService:
 
         return ordered
 
-    def _migrate_data(self, data: Dict[str, Any], *, backend: str,) -> MigrationResult:
+    def _migrate_data(
+        self,
+        data: Dict[str, Any],
+        *,
+        backend: str,
+    ) -> MigrationResult:
         """Create schema, load *data*, and build a standard result."""
 
         self._create_schema()
@@ -325,14 +313,18 @@ class MigrationService:
         # these fallbacks handle non-ISO formats from mdb-export and similar.
         _DATE_FMTS = ("%d/%m/%Y", "%m/%d/%Y", "%m/%d/%y")
         _DATETIME_FMTS = (
-            "%d/%m/%Y %H:%M:%S", "%d/%m/%y %H:%M:%S",
-            "%m/%d/%Y %H:%M:%S", "%m/%d/%y %H:%M:%S",
+            "%d/%m/%Y %H:%M:%S",
+            "%d/%m/%y %H:%M:%S",
+            "%m/%d/%Y %H:%M:%S",
+            "%m/%d/%y %H:%M:%S",
         )
 
         def is_missing(value: Any) -> bool:
             try:
-                return value is None or bool(pd.isna(value)) or (
-                    isinstance(value, str) and not value.strip()
+                return (
+                    value is None
+                    or bool(pd.isna(value))
+                    or (isinstance(value, str) and not value.strip())
                 )
             except (TypeError, ValueError):
                 return False
@@ -368,7 +360,8 @@ class MigrationService:
             for fmt in _DATE_FMTS:
                 try:
                     return datetime.combine(
-                        datetime.strptime(text, fmt).date(), datetime.min.time()
+                        datetime.strptime(text, fmt).date(),
+                        datetime.min.time(),
                     )
                 except ValueError:
                     continue
@@ -388,14 +381,19 @@ class MigrationService:
                     if isinstance(column.type, Date):
                         converted_values.append(parse_date_value(raw_value))
                     else:
-                        converted_values.append(parse_datetime_value(raw_value))
+                        converted_values.append(
+                            parse_datetime_value(raw_value)
+                        )
                 except MigrationError:
                     bad_values.append(raw_value)
 
             if bad_values:
-                unique_bad = list(dict.fromkeys(
-                    "<missing>" if is_missing(v) else repr(v) for v in bad_values
-                ))
+                unique_bad = list(
+                    dict.fromkeys(
+                        "<missing>" if is_missing(v) else repr(v)
+                        for v in bad_values
+                    )
+                )
                 raise MigrationError(
                     f"Table '{orm_table.name}', column '{column_name}' "
                     f"contains unsupported date values: {unique_bad[:5]}"
@@ -404,6 +402,7 @@ class MigrationService:
             df[column_name] = pd.Series(converted_values, index=df.index)
 
         return df
+
     # -------------------------------------------------------------- #
     # Schema creation & data loading
     # -------------------------------------------------------------- #

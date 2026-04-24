@@ -13,11 +13,14 @@ class TestMeiliBuildService:
         fake_result.operations_written = 12
         fake_result.output_file = output_file
 
-        with patch(
-            "dpmcore.services.meili_build.MigrationService.migrate_from_csv_dir"
-        ) as migrate_csv, patch(
-            "dpmcore.services.meili_build.MeiliJsonService.generate",
-            return_value=fake_result,
+        with (
+            patch(
+                "dpmcore.services.meili_build.MigrationService.migrate_from_csv_dir"
+            ) as migrate_csv,
+            patch(
+                "dpmcore.services.meili_build.MeiliJsonService.generate",
+                return_value=fake_result,
+            ),
         ):
             result = MeiliBuildService().build(output_file=str(output_file))
 
@@ -34,13 +37,17 @@ class TestMeiliBuildService:
         fake_result.operations_written = 4
         fake_result.output_file = output_file
 
-        with patch(
-            "dpmcore.services.meili_build.ExportCsvService.export"
-        ) as export_csv, patch(
-            "dpmcore.services.meili_build.MigrationService.migrate_from_csv_dir"
-        ) as migrate_csv, patch(
-            "dpmcore.services.meili_build.MeiliJsonService.generate",
-            return_value=fake_result,
+        with (
+            patch(
+                "dpmcore.services.meili_build.ExportCsvService.export"
+            ) as export_csv,
+            patch(
+                "dpmcore.services.meili_build.MigrationService.migrate_from_csv_dir"
+            ) as migrate_csv,
+            patch(
+                "dpmcore.services.meili_build.MeiliJsonService.generate",
+                return_value=fake_result,
+            ),
         ):
             result = MeiliBuildService().build(
                 output_file=str(output_file),
@@ -55,19 +62,25 @@ class TestMeiliBuildService:
 
     def test_import_ecb_validations_file_when_provided(self, tmp_path):
         validation_csv = tmp_path / "ecb_validations_file.csv"
-        validation_csv.write_text("vr_code,start_release\nV1,4.0\n", encoding="utf-8")
+        validation_csv.write_text(
+            "vr_code,start_release\nV1,4.0\n", encoding="utf-8"
+        )
         output_file = tmp_path / "operations.json"
         fake_result = MagicMock()
         fake_result.operations_written = 2
         fake_result.output_file = output_file
 
-        with patch(
+        with (
+            patch(
                 "dpmcore.services.meili_build.MigrationService.migrate_from_csv_dir"
-        ), patch(
-            "dpmcore.services.meili_build.EcbValidationsImportService.import_csv"
-        ) as import_validations, patch(
-            "dpmcore.services.meili_build.MeiliJsonService.generate",
-            return_value=fake_result,
+            ),
+            patch(
+                "dpmcore.services.meili_build.EcbValidationsImportService.import_csv"
+            ) as import_validations,
+            patch(
+                "dpmcore.services.meili_build.MeiliJsonService.generate",
+                return_value=fake_result,
+            ),
         ):
             result = MeiliBuildService().build(
                 output_file=str(output_file),
@@ -82,7 +95,9 @@ class TestMeiliBuildService:
         access_file = tmp_path / "source.accdb"
         access_file.touch()
 
-        with pytest.raises(MeiliBuildError, match="either '--access-file' or '--source-dir'"):
+        with pytest.raises(
+            MeiliBuildError, match="either '--access-file' or '--source-dir'"
+        ):
             MeiliBuildService().build(
                 output_file=str(tmp_path / "operations.json"),
                 source_dir="data/DPM",
@@ -95,13 +110,17 @@ class TestMeiliBuildService:
         fake_result.operations_written = 12
         fake_result.output_file = output_file
 
-        with patch(
+        with (
+            patch(
                 "dpmcore.services.meili_build.MigrationService.migrate_from_csv_dir"
-        ), patch(
-            "dpmcore.services.meili_build.EcbValidationsImportService.import_csv"
-        ) as import_validations, patch(
-            "dpmcore.services.meili_build.MeiliJsonService.generate",
-            return_value=fake_result,
+            ),
+            patch(
+                "dpmcore.services.meili_build.EcbValidationsImportService.import_csv"
+            ) as import_validations,
+            patch(
+                "dpmcore.services.meili_build.MeiliJsonService.generate",
+                return_value=fake_result,
+            ),
         ):
             result = MeiliBuildService().build(output_file=str(output_file))
 
@@ -126,11 +145,14 @@ class TestMeiliBuildService:
         fake_result.operations_written = 1
         fake_result.output_file = output_file
 
-        with patch(
-            "dpmcore.services.meili_build.MigrationService.migrate_from_csv_dir"
-        ) as migrate_csv, patch(
-            "dpmcore.services.meili_build.MeiliJsonService.generate",
-            return_value=fake_result,
+        with (
+            patch(
+                "dpmcore.services.meili_build.MigrationService.migrate_from_csv_dir"
+            ) as migrate_csv,
+            patch(
+                "dpmcore.services.meili_build.MeiliJsonService.generate",
+                return_value=fake_result,
+            ),
         ):
             result = MeiliBuildService().build(
                 output_file=str(output_file),
@@ -147,11 +169,14 @@ class TestMeiliBuildService:
         fake_result.operations_written = 0
         fake_result.output_file = output_file
 
-        with patch(
-            "dpmcore.services.meili_build.MigrationService.migrate_from_csv_dir"
-        ), patch(
-            "dpmcore.services.meili_build.MeiliJsonService.generate",
-            return_value=fake_result,
+        with (
+            patch(
+                "dpmcore.services.meili_build.MigrationService.migrate_from_csv_dir"
+            ),
+            patch(
+                "dpmcore.services.meili_build.MeiliJsonService.generate",
+                return_value=fake_result,
+            ),
         ):
             result = MeiliBuildService().build(output_file=str(output_file))
 

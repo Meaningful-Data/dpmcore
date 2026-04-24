@@ -13,7 +13,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
 from dpmcore.orm.infrastructure import Concept, DpmClass, Organisation, Release
-from dpmcore.orm.operations import OperandReference, OperandReferenceLocation, Operation, OperationNode, OperationVersion
+from dpmcore.orm.operations import (
+    OperandReference,
+    OperandReferenceLocation,
+    Operation,
+    OperationNode,
+    OperationVersion,
+)
 from dpmcore.orm.rendering import Cell, TableVersion
 from dpmcore.services.scope_calculator import ScopeCalculatorService
 from dpmcore.services.syntax import SyntaxService
@@ -44,13 +50,19 @@ class EcbValidationsImportService:
     def import_csv(self, csv_path: str) -> EcbValidationsImportResult:
         path = Path(csv_path)
         if not path.exists():
-            raise EcbValidationsImportError(f"ECB validations file '{csv_path}' does not exist.")
+            raise EcbValidationsImportError(
+                f"ECB validations file '{csv_path}' does not exist."
+            )
         if not path.is_file():
-            raise EcbValidationsImportError(f"ECB validations file path '{csv_path}' is not a file.")
+            raise EcbValidationsImportError(
+                f"ECB validations file path '{csv_path}' is not a file."
+            )
 
         import pandas as pd  # lazy
 
-        df = pd.read_csv(path, dtype=str, keep_default_na=False, na_values=[""])
+        df = pd.read_csv(
+            path, dtype=str, keep_default_na=False, na_values=[""]
+        )
 
         df.columns = df.columns.str.strip().str.lower()
 
@@ -132,7 +144,9 @@ class EcbValidationsImportService:
         )
         return concept_guid
 
-    def _get_or_create_ecb_organisation(self, session: Session) -> Organisation:
+    def _get_or_create_ecb_organisation(
+        self, session: Session
+    ) -> Organisation:
         org = (
             session.query(Organisation)
             .filter(Organisation.acronym == "ECB")
@@ -155,14 +169,21 @@ class EcbValidationsImportService:
         return org
 
     @staticmethod
-    def _resolve_release(release_cache: Dict[str, Release], raw_value: Any) -> Optional[Release]:
+    def _resolve_release(
+        release_cache: Dict[str, Release], raw_value: Any
+    ) -> Optional[Release]:
         text = EcbValidationsImportService._normalize_text(raw_value)
         if text is None:
             return None
         return release_cache.get(_RELEASE_CODE_MAP.get(text, text))
 
     @staticmethod
-    def _get_valid_release_ids(session: Session, *, start_release_id: int, end_release_id: Optional[int]) -> List[int]:
+    def _get_valid_release_ids(
+        session: Session,
+        *,
+        start_release_id: int,
+        end_release_id: Optional[int],
+    ) -> List[int]:
         query = (
             session.query(Release.release_id)
             .filter(Release.release_id >= start_release_id)
@@ -215,7 +236,12 @@ class EcbValidationsImportService:
             if release_id is None:
                 return set()
 
-            checker = OperandsChecking(session=session, expression=str(expression), ast=ast, release_id=release_id)
+            checker = OperandsChecking(
+                session=session,
+                expression=str(expression),
+                ast=ast,
+                release_id=release_id,
+            )
             return set(checker.tables.keys())
 
         try:
@@ -223,7 +249,10 @@ class EcbValidationsImportService:
         except Exception:
             table_codes = set()
 
-        if not table_codes and latest_release_id not in {None, start_release_id}:
+        if not table_codes and latest_release_id not in {
+            None,
+            start_release_id,
+        }:
             try:
                 table_codes = try_with_release(latest_release_id)
             except Exception:
@@ -238,7 +267,9 @@ class EcbValidationsImportService:
             func.coalesce(TableVersion.end_release_id, 999999999) > release_id,
         )
 
-    def _find_table_version(self, session: Session, *, table_code: str) -> Optional[TableVersion]:
+    def _find_table_version(
+        self, session: Session, *, table_code: str
+    ) -> Optional[TableVersion]:
         return (
             session.query(TableVersion)
             .filter(TableVersion.code == table_code)
@@ -246,12 +277,16 @@ class EcbValidationsImportService:
             .first()
         )
 
-    def _create_table_references(self, session: Session, *, operation_vid: int, table_codes: Set[str]) -> int:
+    def _create_table_references(
+        self, session: Session, *, operation_vid: int, table_codes: Set[str]
+    ) -> int:
         if not table_codes:
             return 0
 
         next_node_id = self._next_int_id(session, OperationNode, "node_id")
-        next_ref_id = self._next_int_id(session, OperandReference,"operand_reference_id")
+        next_ref_id = self._next_int_id(
+            session, OperandReference, "operand_reference_id"
+        )
 
         node = OperationNode(
             node_id=next_node_id,
@@ -263,7 +298,9 @@ class EcbValidationsImportService:
 
         created = 0
         for table_code in sorted(table_codes):
-            table_version = self._find_table_version(session, table_code=table_code)
+            table_version = self._find_table_version(
+                session, table_code=table_code
+            )
             if table_version is None or table_version.table_id is None:
                 continue
 
@@ -312,7 +349,9 @@ class EcbValidationsImportService:
         if cache_key in cache:
             return cache[cache_key], 0
 
-        precondition_code = f"precond_EGDQ_{md5(text.encode()).hexdigest()[:8]}"
+        precondition_code = (
+            f"precond_EGDQ_{md5(text.encode()).hexdigest()[:8]}"
+        )
         operation = (
             session.query(Operation)
             .filter(
@@ -367,7 +406,9 @@ class EcbValidationsImportService:
 
         return op_version.operation_vid, created_count
 
-    def _import_ecb_validations_df(self, session: Session, df: Any) -> EcbValidationsImportResult:
+    def _import_ecb_validations_df(
+        self, session: Session, df: Any
+    ) -> EcbValidationsImportResult:
         required_columns = {"vr_code", "start_release"}
         missing = required_columns - set(df.columns)
         if missing:
@@ -395,7 +436,9 @@ class EcbValidationsImportService:
 
         warnings: List[str] = []
         counters = {
-            "operation_id": self._next_int_id(session, Operation, "operation_id"),
+            "operation_id": self._next_int_id(
+                session, Operation, "operation_id"
+            ),
             "operation_vid": self._next_int_id(
                 session,
                 OperationVersion,
@@ -455,9 +498,9 @@ class EcbValidationsImportService:
                 continue
             parent_code = self._get_parent_operation_code(code)
             if parent_code and parent_code in operations_by_code:
-                operation.group_operation_id = (
-                    operations_by_code[parent_code].operation_id
-                )
+                operation.group_operation_id = operations_by_code[
+                    parent_code
+                ].operation_id
 
         session.flush()
 
@@ -469,7 +512,9 @@ class EcbValidationsImportService:
             if code is None:
                 continue
 
-            release = self._resolve_release(release_cache, row.get("start_release"))
+            release = self._resolve_release(
+                release_cache, row.get("start_release")
+            )
             if release is None:
                 warnings.append(
                     f"Skipping validation '{code}': release "
@@ -553,7 +598,9 @@ class EcbValidationsImportService:
                     session,
                     start_release_id=release.release_id,
                     end_release_id=(
-                        end_release.release_id if end_release is not None else None
+                        end_release.release_id
+                        if end_release is not None
+                        else None
                     ),
                 )
                 active_value = self._is_active_value(row.get("is_active"))
@@ -565,7 +612,9 @@ class EcbValidationsImportService:
                 )
 
                 for release_id in valid_release_ids:
-                    scope_result = ScopeCalculatorService(session).calculate_from_expression(
+                    scope_result = ScopeCalculatorService(
+                        session
+                    ).calculate_from_expression(
                         expression=expression,
                         operation_version_id=operation_version.operation_vid,
                         release_id=release_id,
