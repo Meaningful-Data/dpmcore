@@ -147,7 +147,9 @@ class ASTGeneratorService:
                 items = expressions
 
             results = []
-            scope_pairs: List[tuple] = []
+            scope_pairs: List[
+                tuple[Tuple[str, ...], ScopeResult, Dict[str, str]]
+            ] = []
 
             for item in items:
                 expr = item[0]
@@ -219,7 +221,7 @@ class ASTGeneratorService:
 
     def _build_dependency_info(
         self,
-        scope_pairs: List[tuple],
+        scope_pairs: List[tuple[Tuple[str, ...], ScopeResult, Dict[str, str]]],
         primary_module_vid: Optional[int],
         release_id: Optional[int],
     ) -> Optional[Dict[str, Any]]:
@@ -273,7 +275,7 @@ class ASTGeneratorService:
             release_id=release_id,
         )
 
-        seen: set = set()
+        seen: set[str] = set()
         deduped_intra = [
             x for x in all_intra if not (x in seen or seen.add(x))
         ]
@@ -299,7 +301,7 @@ class ASTGeneratorService:
         merged instead.
         """
 
-        def _uri_key(dep: Dict[str, Any]) -> tuple:
+        def _uri_key(dep: Dict[str, Any]) -> tuple[str, ...]:
             modules = dep.get("modules", [])
             return tuple(
                 sorted(

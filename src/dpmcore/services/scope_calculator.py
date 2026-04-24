@@ -80,7 +80,7 @@ class ScopeCalculatorService:
             raise SemanticError("1-21", release_id=release_id)
 
     @staticmethod
-    def _compute_cross_module(all_scopes: list) -> bool:
+    def _compute_cross_module(all_scopes: list[Any]) -> bool:
         """Return True if any scope spans more than one module."""
         return any(
             len(
@@ -405,10 +405,10 @@ class ScopeCalculatorService:
     def _collect_external_vid_sets(
         scope_results: List[ScopeResult],
         primary_module_vid: int,
-    ) -> tuple:
+    ) -> tuple[Set[int], List[frozenset[int]]]:
         """Extract external VID sets from scopes."""
         single_ext_vids: Set[int] = set()
-        all_ext_vid_sets: List[frozenset] = []
+        all_ext_vid_sets: List[frozenset[int]] = []
 
         for sr in scope_results:
             all_scopes = (sr.existing_scopes or []) + (sr.new_scopes or [])
@@ -433,10 +433,10 @@ class ScopeCalculatorService:
     @staticmethod
     def _find_alternative_pairs(
         single_ext_vids: Set[int],
-        all_ext_vid_sets: List[frozenset],
-    ) -> List[tuple]:
+        all_ext_vid_sets: List[frozenset[int]],
+    ) -> List[tuple[int, int]]:
         """Find VID pairs that are sole-external and never co-occur."""
-        co_occurring: Set[tuple] = set()
+        co_occurring: Set[tuple[int, int]] = set()
         for ext_set in all_ext_vid_sets:
             if len(ext_set) > 1:
                 sorted_vids = sorted(ext_set)
@@ -455,7 +455,7 @@ class ScopeCalculatorService:
 
     def _map_pairs_to_uris(
         self,
-        pairs: List[tuple],
+        pairs: List[tuple[int, int]],
         release_id: Optional[int],
     ) -> List[List[str]]:
         """Resolve VID pairs to sorted URI pairs."""

@@ -4,7 +4,7 @@ import csv
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 
 def _parse_date(date_str: str) -> Optional[datetime]:
@@ -20,7 +20,7 @@ def _parse_date(date_str: str) -> Optional[datetime]:
 
 
 @lru_cache(maxsize=1)
-def _load_module_schema_mapping() -> list:
+def _load_module_schema_mapping() -> List[Dict[str, Any]]:
     """Load the module schema mapping CSV file."""
     csv_path = Path(__file__).parent / "module_schema_mapping.csv"
     with open(csv_path, newline="", encoding="utf-8") as f:
