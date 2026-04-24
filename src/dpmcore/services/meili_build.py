@@ -55,7 +55,7 @@ class MeiliBuildService:
             csv_dir = resolved_source_dir
             used_access_file = access_file is not None
 
-            if used_access_file:
+            if access_file is not None:
                 csv_dir = temp_root_path / "csv"
                 ExportCsvService().export(access_file, csv_dir)
 

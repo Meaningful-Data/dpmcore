@@ -65,7 +65,7 @@ class EcbValidationsImportService:
                 f"ECB validations file path '{csv_path}' is not a file."
             )
 
-        import pandas as pd  # lazy
+        import pandas as pd  # type: ignore[import-untyped]  # lazy
 
         df = pd.read_csv(
             path, dtype=str, keep_default_na=False, na_values=[""]
@@ -105,7 +105,7 @@ class EcbValidationsImportService:
     @staticmethod
     def _parse_submission_date(value: Any) -> Optional[date]:
         text = EcbValidationsImportService._normalize_text(value)
-        if text in {None, "-"}:
+        if text is None or text == "-":
             return None
         for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
             try:
@@ -535,9 +535,9 @@ class EcbValidationsImportService:
             if version_key in created_versions:
                 continue
 
-            operation = operations_by_code.get(code)
-            if operation is None:
+            if code not in operations_by_code:
                 continue
+            operation = operations_by_code[code]
 
             end_release = self._resolve_release(
                 release_cache,

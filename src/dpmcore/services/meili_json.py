@@ -244,6 +244,8 @@ class MeiliJsonService:
         )
 
     def _get_operation_versions(self) -> List[OperationVersion]:
+        if self._session is None:
+            raise MeiliJsonError("No database session available.")
         query = (
             self._session.query(OperationVersion)
             .join(OperationVersion.operation)
@@ -266,6 +268,8 @@ class MeiliJsonService:
         operation_versions: List[OperationVersion],
         operation_vids: List[int],
     ) -> BulkDataContext:
+        if self._session is None:
+            raise MeiliJsonError("No database session available.")
         ctx = BulkDataContext()
         if not operation_vids:
             return ctx
@@ -449,16 +453,14 @@ class MeiliJsonService:
         compositions = sorted(
             ctx.compositions_by_scopeid.get(scope.operation_scope_id, []),
             key=lambda comp: (
-                comp.module_vid if comp.module_vid is not None else -1,
+                comp.module_vid,
                 comp.operation_scope_id,
             ),
         )
 
         for composition in compositions:
             module_version = composition.module_version
-            module = (
-                module_version.module if module_version is not None else None
-            )
+            module = module_version.module
             framework = module.framework if module is not None else None
 
             if module_version is None:
@@ -693,11 +695,14 @@ class MeiliJsonService:
                 )
 
             previous_versions_data: List[Dict[str, Any]] = []
+            op_id = operation_version.operation_id
             previous_versions = sorted(
                 [
                     version
-                    for version in ctx.all_versions_by_opid.get(
-                        operation_version.operation_id, []
+                    for version in (
+                        ctx.all_versions_by_opid.get(op_id, [])
+                        if op_id is not None
+                        else []
                     )
                     if version.operation_vid != operation_version.operation_vid
                 ],
