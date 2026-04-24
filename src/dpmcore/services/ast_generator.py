@@ -151,9 +151,7 @@ class ASTGeneratorService:
 
             for item in items:
                 expr = item[0]
-                result = self._semantic.validate(
-                    expr, release_id=release_id
-                )
+                result = self._semantic.validate(expr, release_id=release_id)
                 if not result.is_valid:
                     return {
                         "success": False,
@@ -189,9 +187,7 @@ class ASTGeneratorService:
                     )
                     if not sr.has_error:
                         ts = self._extract_time_shifts(ast)
-                        scope_pairs.append(
-                            (item, sr, ts)
-                        )
+                        scope_pairs.append((item, sr, ts))
 
             dependency_info = self._build_dependency_info(
                 scope_pairs=scope_pairs,
@@ -205,12 +201,12 @@ class ASTGeneratorService:
                 "error": None,
             }
             if dependency_info is not None:
-                response["dependency_information"] = (
-                    dependency_info["dependency_information"]
-                )
-                response["dependency_modules"] = (
-                    dependency_info["dependency_modules"]
-                )
+                response["dependency_information"] = dependency_info[
+                    "dependency_information"
+                ]
+                response["dependency_modules"] = dependency_info[
+                    "dependency_modules"
+                ]
 
             return response
 
@@ -243,11 +239,7 @@ class ASTGeneratorService:
         appending new ``affected_operations`` to existing
         entries.
         """
-        if (
-            not self._scope_calc
-            or not primary_module_vid
-            or not scope_pairs
-        ):
+        if not self._scope_calc or not primary_module_vid or not scope_pairs:
             return None
 
         all_intra: List[str] = []
@@ -257,48 +249,33 @@ class ASTGeneratorService:
 
         for item, sr, ts in scope_pairs:
             all_scope_results.append(sr)
-            op_code = (
-                item[1] if len(item) > 1 else None
+            op_code = item[1] if len(item) > 1 else None
+            current = self._scope_calc.detect_cross_module_dependencies(
+                scope_result=sr,
+                primary_module_vid=primary_module_vid,
+                operation_code=op_code,
+                release_id=release_id,
+                time_shifts=ts,
             )
-            current = (
-                self._scope_calc
-                .detect_cross_module_dependencies(
-                    scope_result=sr,
-                    primary_module_vid=primary_module_vid,
-                    operation_code=op_code,
-                    release_id=release_id,
-                    time_shifts=ts,
-                )
-            )
-            all_intra.extend(
-                current.get(
-                    "intra_instance_validations", []
-                )
-            )
+            all_intra.extend(current.get("intra_instance_validations", []))
             self._merge_cross_deps(
                 all_cross,
-                current.get(
-                    "cross_instance_dependencies", []
-                ),
+                current.get("cross_instance_dependencies", []),
             )
             self._merge_dep_modules(
                 all_dep_modules,
                 current.get("dependency_modules", {}),
             )
 
-        alt_deps = (
-            self._scope_calc
-            .detect_alternative_dependencies(
-                scope_results=all_scope_results,
-                primary_module_vid=primary_module_vid,
-                release_id=release_id,
-            )
+        alt_deps = self._scope_calc.detect_alternative_dependencies(
+            scope_results=all_scope_results,
+            primary_module_vid=primary_module_vid,
+            release_id=release_id,
         )
 
         seen: set = set()
         deduped_intra = [
-            x for x in all_intra
-            if not (x in seen or seen.add(x))
+            x for x in all_intra if not (x in seen or seen.add(x))
         ]
 
         return {
@@ -321,12 +298,12 @@ class ASTGeneratorService:
         duplicate is found, its ``affected_operations`` are
         merged instead.
         """
+
         def _uri_key(dep: Dict[str, Any]) -> tuple:
             modules = dep.get("modules", [])
             return tuple(
                 sorted(
-                    m.get("URI", "") if isinstance(m, dict)
-                    else str(m)
+                    m.get("URI", "") if isinstance(m, dict) else str(m)
                     for m in modules
                 )
             )
@@ -342,12 +319,8 @@ class ASTGeneratorService:
                 # Merge affected_operations
                 for ex in existing:
                     if _uri_key(ex) == key:
-                        ops = ex.setdefault(
-                            "affected_operations", []
-                        )
-                        for op in dep.get(
-                            "affected_operations", []
-                        ):
+                        ops = ex.setdefault("affected_operations", [])
+                        for op in dep.get("affected_operations", []):
                             if op not in ops:
                                 ops.append(op)
                         break
@@ -365,15 +338,13 @@ class ASTGeneratorService:
             if uri not in existing:
                 existing[uri] = data
             else:
-                for tbl, tbl_data in data.get(
-                    "tables", {}
-                ).items():
-                    existing[uri].setdefault(
-                        "tables", {}
-                    ).setdefault(tbl, tbl_data)
-                existing[uri].setdefault(
-                    "variables", {}
-                ).update(data.get("variables", {}))
+                for tbl, tbl_data in data.get("tables", {}).items():
+                    existing[uri].setdefault("tables", {}).setdefault(
+                        tbl, tbl_data
+                    )
+                existing[uri].setdefault("variables", {}).update(
+                    data.get("variables", {})
+                )
 
     @staticmethod
     def _extract_time_shifts(ast: Any) -> Dict[str, str]:
@@ -401,9 +372,7 @@ class ASTGeneratorService:
 
             def visit_VarID(self, node: Any) -> None:
                 if node.table and current_period[0] != "t":
-                    time_shifts[node.table] = (
-                        current_period[0]
-                    )
+                    time_shifts[node.table] = current_period[0]
 
         def _to_ref_period(internal: str) -> str:
             if internal.startswith("t+"):
@@ -420,9 +389,6 @@ class ASTGeneratorService:
 
         try:
             _Extractor().visit(ast)
-            return {
-                t: _to_ref_period(p)
-                for t, p in time_shifts.items()
-            }
+            return {t: _to_ref_period(p) for t, p in time_shifts.items()}
         except Exception:
             return {}

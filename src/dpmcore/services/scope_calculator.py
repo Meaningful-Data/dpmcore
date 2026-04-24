@@ -86,9 +86,7 @@ class ScopeCalculatorService:
             len(
                 {
                     c.module_vid
-                    for c in getattr(
-                        s, "operation_scope_compositions", []
-                    )
+                    for c in getattr(s, "operation_scope_compositions", [])
                 }
             )
             > 1
@@ -142,9 +140,7 @@ class ScopeCalculatorService:
             all_scopes = existing + new
             mvids: List[int] = []
             for scope in all_scopes:
-                for comp in getattr(
-                    scope, "operation_scope_compositions", []
-                ):
+                for comp in getattr(scope, "operation_scope_compositions", []):
                     vid = comp.module_vid
                     if vid not in mvids:
                         mvids.append(vid)
@@ -153,9 +149,7 @@ class ScopeCalculatorService:
                 existing_scopes=existing,
                 new_scopes=new,
                 total_scopes=len(all_scopes),
-                is_cross_module=self._compute_cross_module(
-                    all_scopes
-                ),
+                is_cross_module=self._compute_cross_module(all_scopes),
                 module_versions=mvids,
             )
 
@@ -190,9 +184,7 @@ class ScopeCalculatorService:
             all_scopes = existing + new
             mvids: List[int] = []
             for scope in all_scopes:
-                for comp in getattr(
-                    scope, "operation_scope_compositions", []
-                ):
+                for comp in getattr(scope, "operation_scope_compositions", []):
                     vid = comp.module_vid
                     if vid not in mvids:
                         mvids.append(vid)
@@ -201,9 +193,7 @@ class ScopeCalculatorService:
                 existing_scopes=existing,
                 new_scopes=new,
                 total_scopes=len(all_scopes),
-                is_cross_module=self._compute_cross_module(
-                    all_scopes
-                ),
+                is_cross_module=self._compute_cross_module(all_scopes),
                 module_versions=mvids,
             )
 
@@ -236,14 +226,9 @@ class ScopeCalculatorService:
         for scope in all_scopes:
             scope_vids = {
                 c.module_vid
-                for c in getattr(
-                    scope, "operation_scope_compositions", []
-                )
+                for c in getattr(scope, "operation_scope_compositions", [])
             }
-            if (
-                primary_module_vid in scope_vids
-                and len(scope_vids) > 1
-            ):
+            if primary_module_vid in scope_vids and len(scope_vids) > 1:
                 valid.update(scope_vids - {primary_module_vid})
         return valid
 
@@ -284,19 +269,15 @@ class ScopeCalculatorService:
         if not is_cross or scope_result.has_error:
             alternative_deps: List[List[str]] = []
             if not scope_result.has_error:
-                alternative_deps = (
-                    self.detect_alternative_dependencies(
-                        scope_results=[scope_result],
-                        primary_module_vid=primary_module_vid,
-                        release_id=release_id,
-                    )
+                alternative_deps = self.detect_alternative_dependencies(
+                    scope_results=[scope_result],
+                    primary_module_vid=primary_module_vid,
+                    release_id=release_id,
                 )
             return {
                 **empty_result,
                 "intra_instance_validations": (
-                    []
-                    if is_cross or not operation_code
-                    else [operation_code]
+                    [] if is_cross or not operation_code else [operation_code]
                 ),
                 "alternative_dependencies": alternative_deps,
             }
@@ -308,9 +289,7 @@ class ScopeCalculatorService:
             return {
                 **empty_result,
                 "intra_instance_validations": (
-                    [operation_code]
-                    if operation_code
-                    else []
+                    [operation_code] if operation_code else []
                 ),
             }
 
@@ -350,9 +329,7 @@ class ScopeCalculatorService:
                 "ref_period": ref_period,
             }
             if mv.version_number:
-                module_entry["module_version"] = (
-                    mv.version_number
-                )
+                module_entry["module_version"] = mv.version_number
 
             from_date = mv.from_reference_date
             to_date = mv.to_reference_date
@@ -360,16 +337,12 @@ class ScopeCalculatorService:
                 {
                     "modules": [module_entry],
                     "affected_operations": (
-                        [operation_code]
-                        if operation_code
-                        else []
+                        [operation_code] if operation_code else []
                     ),
                     "from_reference_date": (
                         str(from_date) if from_date else ""
                     ),
-                    "to_reference_date": (
-                        str(to_date) if to_date else ""
-                    ),
+                    "to_reference_date": (str(to_date) if to_date else ""),
                 }
             )
 
@@ -379,9 +352,7 @@ class ScopeCalculatorService:
                 "variables": {
                     k: v
                     for tbl in tables_dict.values()
-                    for k, v in tbl.get(
-                        "variables", {}
-                    ).items()
+                    for k, v in tbl.get("variables", {}).items()
                 },
             }
 
@@ -416,10 +387,8 @@ class ScopeCalculatorService:
 
         Returns a list of ``[uri_a, uri_b]`` pairs (sorted).
         """
-        single_ext_vids, all_ext_vid_sets = (
-            self._collect_external_vid_sets(
-                scope_results, primary_module_vid
-            )
+        single_ext_vids, all_ext_vid_sets = self._collect_external_vid_sets(
+            scope_results, primary_module_vid
         )
         if len(single_ext_vids) < 2:
             return []
@@ -442,9 +411,7 @@ class ScopeCalculatorService:
         all_ext_vid_sets: List[frozenset] = []
 
         for sr in scope_results:
-            all_scopes = (sr.existing_scopes or []) + (
-                sr.new_scopes or []
-            )
+            all_scopes = (sr.existing_scopes or []) + (sr.new_scopes or [])
             for scope in all_scopes:
                 scope_vids = {
                     c.module_vid
@@ -454,14 +421,9 @@ class ScopeCalculatorService:
                         [],
                     )
                 }
-                if (
-                    primary_module_vid not in scope_vids
-                    or len(scope_vids) < 2
-                ):
+                if primary_module_vid not in scope_vids or len(scope_vids) < 2:
                     continue
-                ext_vids = frozenset(
-                    scope_vids - {primary_module_vid}
-                )
+                ext_vids = frozenset(scope_vids - {primary_module_vid})
                 all_ext_vid_sets.append(ext_vids)
                 if len(ext_vids) == 1:
                     single_ext_vids.update(ext_vids)
@@ -506,9 +468,7 @@ class ScopeCalculatorService:
         if needed:
             mv_rows = (
                 self.session.query(ModuleVersion)
-                .filter(
-                    ModuleVersion.module_vid.in_(needed)
-                )
+                .filter(ModuleVersion.module_vid.in_(needed))
                 .all()
             )
             mv_by_vid = {mv.module_vid: mv for mv in mv_rows}
@@ -555,24 +515,14 @@ class ScopeCalculatorService:
             )
             .join(
                 ModuleVersionComposition,
-                TableVersion.table_vid
-                == ModuleVersionComposition.table_vid,
+                TableVersion.table_vid == ModuleVersionComposition.table_vid,
             )
-            .filter(
-                ModuleVersionComposition.module_vid
-                == module_vid
-            )
+            .filter(ModuleVersionComposition.module_vid == module_vid)
             .all()
         )
 
-        table_vids = [
-            r.table_vid for r in tv_rows if r.table_vid
-        ]
-        vid_to_code = {
-            r.table_vid: r.code
-            for r in tv_rows
-            if r.code
-        }
+        table_vids = [r.table_vid for r in tv_rows if r.table_vid]
+        vid_to_code = {r.table_vid: r.code for r in tv_rows if r.code}
 
         # Batch-fetch variables for all tables at once
         variables_by_tvid: Dict[int, Dict[str, str]] = {
@@ -593,24 +543,17 @@ class ScopeCalculatorService:
                 )
                 .join(
                     Variable,
-                    VariableVersion.variable_id
-                    == Variable.variable_id,
+                    VariableVersion.variable_id == Variable.variable_id,
                 )
                 .join(
                     Property,
-                    VariableVersion.property_id
-                    == Property.property_id,
+                    VariableVersion.property_id == Property.property_id,
                 )
                 .join(
                     DataType,
-                    Property.data_type_id
-                    == DataType.data_type_id,
+                    Property.data_type_id == DataType.data_type_id,
                 )
-                .filter(
-                    TableVersionCell.table_vid.in_(
-                        table_vids
-                    )
-                )
+                .filter(TableVersionCell.table_vid.in_(table_vids))
                 .distinct()
                 .all()
             )
@@ -619,16 +562,12 @@ class ScopeCalculatorService:
                 var_id = str(row[1])
                 type_code = row[2] or ""
                 if tvid in variables_by_tvid:
-                    variables_by_tvid[tvid][var_id] = (
-                        type_code
-                    )
+                    variables_by_tvid[tvid][var_id] = type_code
 
         tables: Dict[str, Any] = {}
         for tvid, code in vid_to_code.items():
             tables[code] = {
-                "variables": variables_by_tvid.get(
-                    tvid, {}
-                ),
+                "variables": variables_by_tvid.get(tvid, {}),
                 "open_keys": {},
             }
         return tables
@@ -657,10 +596,7 @@ class ScopeCalculatorService:
             if mv is None:
                 mv = (
                     self.session.query(ModuleVersion)
-                    .filter(
-                        ModuleVersion.module_vid
-                        == module_vid
-                    )
+                    .filter(ModuleVersion.module_vid == module_vid)
                     .first()
                 )
             if not mv or not mv.module:
@@ -683,15 +619,10 @@ class ScopeCalculatorService:
             if not framework or not framework.code:
                 return None
 
-            effective_release_id = (
-                release_id or mv.start_release_id
-            )
+            effective_release_id = release_id or mv.start_release_id
             release_row = (
                 self.session.query(Release.code)
-                .filter(
-                    Release.release_id
-                    == effective_release_id
-                )
+                .filter(Release.release_id == effective_release_id)
                 .first()
             )
             if not release_row or not release_row.code:
@@ -707,8 +638,7 @@ class ScopeCalculatorService:
 
         except Exception as exc:
             logger.warning(
-                "Failed to resolve URI for module VID"
-                " %s: %s",
+                "Failed to resolve URI for module VID %s: %s",
                 module_vid,
                 exc,
             )
