@@ -9,7 +9,7 @@ import importlib.util
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, PropertyMock
 
 import pytest
 
@@ -474,6 +474,85 @@ class TestDetectCrossModuleDependencies:
         assert info["dependency_modules"] == {}
 
 
+class TestGetModuleTables:
+    """Exercise the real ``_get_module_tables`` (not the stub)."""
+
+    def _chained_session(self):
+        svc_session = MagicMock()
+        q = svc_session.query.return_value
+        q.join.return_value = q
+        q.filter.return_value = q
+        q.select_from.return_value = q
+        q.distinct.return_value = q
+        return svc_session, q
+
+    def test_empty_when_no_tables(self):
+        """When the first query returns no rows, returns ``{}``."""
+        Svc, _ = _load_module()
+        session, q = self._chained_session()
+        q.all.return_value = []
+
+        svc = Svc(session)
+        assert svc._get_module_tables(10) == {}
+
+    def test_populated_with_variables(self):
+        """Table rows with variables are collected into the result."""
+        Svc, _ = _load_module()
+        session, q = self._chained_session()
+
+        tv_row = SimpleNamespace(code="T_01", table_vid=100)
+        var_row = (100, 42, "X")
+        q.all.side_effect = [[tv_row], [var_row]]
+
+        svc = Svc(session)
+        tables = svc._get_module_tables(10)
+        assert tables == {
+            "T_01": {"variables": {"42": "X"}, "open_keys": {}},
+        }
+
+    def test_rows_without_code_are_filtered(self):
+        """Rows without a code are dropped from the output mapping."""
+        Svc, _ = _load_module()
+        session, q = self._chained_session()
+
+        rows = [
+            SimpleNamespace(code="T_OK", table_vid=100),
+            SimpleNamespace(code=None, table_vid=101),
+        ]
+        q.all.side_effect = [rows, []]
+
+        svc = Svc(session)
+        tables = svc._get_module_tables(10)
+        assert list(tables) == ["T_OK"]
+        assert tables["T_OK"]["variables"] == {}
+
+    def test_var_row_with_unknown_tvid_is_skipped(self):
+        """Variable rows whose tvid isn't in the module are ignored."""
+        Svc, _ = _load_module()
+        session, q = self._chained_session()
+
+        tv_row = SimpleNamespace(code="T_01", table_vid=100)
+        stray = (999, 42, "X")  # tvid not in variables_by_tvid
+        q.all.side_effect = [[tv_row], [stray]]
+
+        svc = Svc(session)
+        tables = svc._get_module_tables(10)
+        assert tables["T_01"]["variables"] == {}
+
+    def test_null_data_type_code_becomes_empty_string(self):
+        """A null type code on the var row is normalised to ``""``."""
+        Svc, _ = _load_module()
+        session, q = self._chained_session()
+
+        tv_row = SimpleNamespace(code="T_01", table_vid=100)
+        var_row = (100, 42, None)
+        q.all.side_effect = [[tv_row], [var_row]]
+
+        svc = Svc(session)
+        tables = svc._get_module_tables(10)
+        assert tables["T_01"]["variables"] == {"42": ""}
+
+
 class TestGetModuleUri:
     """Test URI resolution helper."""
 
@@ -539,6 +618,92 @@ class TestGetModuleUri:
         mv = MagicMock()
         mv.module = MagicMock()
         mv.module.framework = None
+
+        assert svc._get_module_uri(10, mv=mv) is None
+
+    def test_static_csv_hit_strips_json_suffix(self, monkeypatch):
+        """Static-mapping hit wins and has its ``.json`` suffix removed."""
+        Svc, _ = _load_module()
+        svc = Svc(MagicMock())
+
+        mv = MagicMock()
+        mv.code = "COREP_Con"
+        mv.version_number = "2.0.1"
+        mv.module = MagicMock()
+
+        data_stub = sys.modules["dpmcore.data"]
+        data_stub.get_module_schema_ref_by_version = MagicMock(
+            return_value="http://example.org/corep_con.json",
+        )
+
+        uri = svc._get_module_uri(10, mv=mv)
+        assert uri == "http://example.org/corep_con"
+        data_stub.get_module_schema_ref_by_version.assert_called_once_with(
+            "COREP_Con", "2.0.1"
+        )
+
+    def test_static_csv_miss_falls_through_to_dynamic(self):
+        """When the static lookup returns ``None`` the dynamic path runs."""
+        Svc, _ = _load_module()
+        svc = Svc(MagicMock())
+
+        mv = MagicMock()
+        mv.code = "COREP"
+        mv.version_number = "2.0.1"
+        mv.start_release_id = 5
+        mv.module = MagicMock()
+        mv.module.framework = MagicMock()
+        mv.module.framework.code = "CRR"
+
+        data_stub = sys.modules["dpmcore.data"]
+        data_stub.get_module_schema_ref_by_version = MagicMock(
+            return_value=None,
+        )
+
+        release = MagicMock()
+        release.code = "3.4"
+        q = svc.session.query.return_value
+        q.filter.return_value.first.return_value = release
+
+        uri = svc._get_module_uri(10, release_id=5, mv=mv)
+        assert uri is not None
+        assert uri.endswith("/corep")
+
+    def test_missing_module_code_returns_none(self):
+        Svc, _ = _load_module()
+        svc = Svc(MagicMock())
+
+        mv = MagicMock()
+        mv.code = None
+        mv.module = MagicMock()
+
+        assert svc._get_module_uri(10, mv=mv) is None
+
+    def test_missing_release_row_returns_none(self):
+        """Dynamic path returns None when Release row can't be found."""
+        Svc, _ = _load_module()
+        svc = Svc(MagicMock())
+
+        mv = MagicMock()
+        mv.code = "COREP"
+        mv.version_number = None
+        mv.start_release_id = 5
+        mv.module = MagicMock()
+        mv.module.framework = MagicMock()
+        mv.module.framework.code = "CRR"
+
+        q = svc.session.query.return_value
+        q.filter.return_value.first.return_value = None
+
+        assert svc._get_module_uri(10, release_id=5, mv=mv) is None
+
+    def test_exception_is_logged_and_returns_none(self):
+        """Unexpected errors are caught and produce ``None``."""
+        Svc, _ = _load_module()
+        svc = Svc(MagicMock())
+
+        mv = MagicMock()
+        type(mv).code = PropertyMock(side_effect=RuntimeError("boom"))
 
         assert svc._get_module_uri(10, mv=mv) is None
 

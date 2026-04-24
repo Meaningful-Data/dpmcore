@@ -11,10 +11,7 @@ from dpmcore.services.syntax import SyntaxService
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
-    from dpmcore.services.scope_calculator import (
-        ScopeCalculatorService,
-        ScopeResult,
-    )
+    from dpmcore.services.scope_calculator import ScopeResult
 
 
 class ASTGeneratorService:
@@ -179,8 +176,8 @@ class ASTGeneratorService:
                 # Collect scope results for dependency detection
                 if (
                     self._scope_calc
-                    and primary_module_vid
-                    and operation_version_id
+                    and primary_module_vid is not None
+                    and operation_version_id is not None
                 ):
                     sr = self._scope_calc.calculate_from_expression(
                         expression=expr,
@@ -241,7 +238,11 @@ class ASTGeneratorService:
         appending new ``affected_operations`` to existing
         entries.
         """
-        if not self._scope_calc or not primary_module_vid or not scope_pairs:
+        if (
+            not self._scope_calc
+            or primary_module_vid is None
+            or not scope_pairs
+        ):
             return None
 
         all_intra: List[str] = []

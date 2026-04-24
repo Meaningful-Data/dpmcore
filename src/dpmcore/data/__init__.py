@@ -4,7 +4,7 @@ import csv
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 
 def _parse_date(date_str: str) -> Optional[datetime]:
@@ -57,7 +57,7 @@ def get_module_schema_ref_by_version(
             candidate["module_code"].upper() == upper
             and candidate["version"] == version
         ):
-            return candidate["xbrl_schema_ref"]
+            return cast(str, candidate["xbrl_schema_ref"])
     return None
 
 
@@ -83,8 +83,8 @@ def get_module_schema_ref(
     if date is None:
         for c in reversed(candidates):
             if c["to_date"] is None:
-                return c["xbrl_schema_ref"]
-        return candidates[-1]["xbrl_schema_ref"]
+                return cast(str, c["xbrl_schema_ref"])
+        return cast(str, candidates[-1]["xbrl_schema_ref"])
 
     try:
         ref = datetime.strptime(  # noqa: DTZ007
@@ -97,6 +97,6 @@ def get_module_schema_ref(
         from_d = c["from_date"]
         to_d = c["to_date"]
         if from_d and from_d <= ref and (to_d is None or ref <= to_d):
-            return c["xbrl_schema_ref"]
+            return cast(str, c["xbrl_schema_ref"])
 
     return None
