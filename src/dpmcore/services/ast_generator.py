@@ -28,7 +28,8 @@ class ASTGeneratorService:
         session: An open SQLAlchemy session (only needed for levels 2-3).
     """
 
-    def __init__(self, session: Optional["Session"] = None) -> None:  # noqa: D107
+    def __init__(self, session: Optional["Session"] = None) -> None:
+        """Build the service, optionally bound to a SQLAlchemy ``session``."""
         self.session = session
         self._syntax = SyntaxService()
         self._semantic: Optional[SemanticService] = None
@@ -83,8 +84,7 @@ class ASTGeneratorService:
                 "success": False,
                 "ast": None,
                 "error": (
-                    "No database session"
-                    " — cannot perform semantic analysis."
+                    "No database session — cannot perform semantic analysis."
                 ),
             }
 
@@ -128,7 +128,8 @@ class ASTGeneratorService:
         supplied, scope-based ``dependency_info`` is computed and
         included in the response.
         """
-        if self._semantic is None:
+        session = self.session
+        if self._semantic is None or session is None:
             return {
                 "success": False,
                 "enriched_ast": None,
@@ -161,11 +162,11 @@ class ASTGeneratorService:
                     }
 
                 ast = self._semantic.ast
-                module_analyzer = ModuleAnalyzer(self.session)
+                module_analyzer = ModuleAnalyzer(session)
                 mode, modules = module_analyzer.visit(ast)
 
                 ml = MLGeneration(
-                    session=self.session,
+                    session=session,
                     ast=ast,
                     release_id=release_id,
                     module_code=module_code,

@@ -41,8 +41,7 @@ def migrate(source: str, database: str) -> None:
         from rich.table import Table
     except ImportError:
         click.echo(
-            "Install 'rich' for pretty output: "
-            "pip install dpmcore[cli]",
+            "Install 'rich' for pretty output: pip install dpmcore[cli]",
             err=True,
         )
         sys.exit(1)
@@ -84,6 +83,51 @@ def migrate(source: str, database: str) -> None:
         console.print(f"[yellow]Warning:[/yellow] {warning}")
 
 
+@main.command("export-csv")
+@click.argument(
+    "source",
+    type=click.Path(exists=True, dir_okay=False, path_type=str),
+)
+@click.option(
+    "--output-dir",
+    default="data/DPM",
+    show_default=True,
+    type=click.Path(file_okay=False, dir_okay=True, path_type=str),
+    help="Directory to write CSV files.",
+)
+def export_csv(source: str, output_dir: str) -> None:
+    """Export all tables from an Access database to CSV files."""
+    from pathlib import Path
+
+    try:
+        from rich.console import Console
+    except ImportError:
+        click.echo(
+            "Install 'rich' for pretty output: pip install dpmcore[cli]",
+            err=True,
+        )
+        sys.exit(1)
+    from dpmcore.services.export_csv import ExportCsvError, ExportCsvService
+
+    console = Console()
+    service = ExportCsvService()
+
+    try:
+        result = service.export(source, Path(output_dir))
+    except ExportCsvError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        sys.exit(1)
+
+    for name in result.table_names:
+        console.print(f"  exported [cyan]{name}[/cyan]")
+
+    console.print(
+        f"\n[bold]{result.tables_exported} tables[/bold] exported to "
+        f"[green]{result.output_dir}[/green]"
+    )
+    console.print("Review results with manual inspection and/or git diff.")
+
+
 @main.command()
 @click.option(
     "--database",
@@ -95,7 +139,7 @@ def migrate(source: str, database: str) -> None:
 def serve(database: str, host: str, port: int) -> None:
     """Start the dpmcore REST API server."""
     try:
-        import uvicorn  # type: ignore[import-untyped]
+        import uvicorn
     except ImportError:
         click.echo(
             "Server dependencies not installed. Run:\n"
@@ -105,7 +149,7 @@ def serve(database: str, host: str, port: int) -> None:
         sys.exit(1)
 
     # Import here so the server module is only loaded when needed.
-    from dpmcore.server.app import create_app  # type: ignore[import-not-found]
+    from dpmcore.server.app import create_app
 
     app = create_app(database)
     uvicorn.run(app, host=host, port=port)

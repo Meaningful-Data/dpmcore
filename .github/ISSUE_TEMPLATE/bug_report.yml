@@ -1,0 +1,85 @@
+name: Bug report
+description: Report incorrect behavior in dpmcore
+type: Bug
+body:
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Initial Checks
+      options:
+        - label: I have searched [existing issues](https://github.com/Meaningful-Data/dpmcore/issues?q=is%3Aissue) for duplicates
+          required: true
+        - label: I have read the [documentation](https://docs.dpmcore.meaningfuldata.eu)
+          required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Clear, concise description of the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproducible-example
+    attributes:
+      label: Reproducible Example
+      description: >
+        Please provide a self-contained script that reproduces the issue.
+        Reports without reproducible examples may be closed.
+      placeholder: |
+        from dpmcore import connect
+
+        with connect("sqlite:///dpm.db") as db:
+            result = db.services.semantic.validate(
+                "{tC_01.00, r0100, c0010} + {tC_01.00, r0200, c0010}",
+                release_id=5,
+            )
+            print(result.is_valid)
+            print(result.warning)
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-vs-actual
+    attributes:
+      label: Expected vs Actual
+      description: What did you expect to happen, and what actually happened?
+      placeholder: |
+        Expected: ...
+        Actual: ...
+    validations:
+      required: true
+
+  - type: input
+    id: dpmcore-version
+    attributes:
+      label: dpmcore version
+      placeholder: e.g., 0.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      placeholder: e.g., 3.12.0
+
+  - type: input
+    id: database-backend
+    attributes:
+      label: Database backend
+      placeholder: e.g., SQLite, PostgreSQL 16, SQL Server 2022
+
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: e.g., Ubuntu 24.04, Windows 11, macOS 15
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Logs, stack traces, or sample data (redact secrets).

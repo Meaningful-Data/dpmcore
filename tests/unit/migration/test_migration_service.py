@@ -1,11 +1,10 @@
 """Tests for the MigrationService."""
 
-import subprocess
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
 from sqlalchemy import create_engine, text
-from unittest.mock import MagicMock, patch
 
 from dpmcore.services.migration import (
     MigrationError,
@@ -14,12 +13,12 @@ from dpmcore.services.migration import (
 )
 
 
-@pytest.fixture()
+@pytest.fixture
 def sqlite_engine():
     return create_engine("sqlite:///:memory:")
 
 
-@pytest.fixture()
+@pytest.fixture
 def service(sqlite_engine):
     return MigrationService(sqlite_engine)
 
@@ -31,7 +30,7 @@ class TestMigrateMdbtoolsSuccess:
         with patch("subprocess.check_output") as mock_sub:
             mock_sub.side_effect = [
                 "Users\n",  # mdb-tables
-                csv_data,   # mdb-export
+                csv_data,  # mdb-export
             ]
             result = service.migrate_from_access("/fake.accdb")
 
@@ -102,9 +101,9 @@ class TestMigrateBothFail:
                 "._extract_with_pyodbc",
                 side_effect=ImportError("no pyodbc"),
             ),
+            pytest.raises(MigrationError, match="Could not read"),
         ):
-            with pytest.raises(MigrationError, match="Could not read"):
-                service.migrate_from_access("/fake.accdb")
+            service.migrate_from_access("/fake.accdb")
 
 
 class TestCreateSchema:
@@ -125,9 +124,7 @@ class TestLoadData:
 
         # Create a table manually.
         with sqlite_engine.connect() as conn:
-            conn.execute(
-                text("CREATE TABLE items (id INTEGER, name TEXT)")
-            )
+            conn.execute(text("CREATE TABLE items (id INTEGER, name TEXT)"))
             conn.commit()
 
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})

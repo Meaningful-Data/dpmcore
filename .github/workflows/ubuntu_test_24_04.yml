@@ -1,0 +1,78 @@
+name: Ubuntu 24.04 Tests
+
+on:
+  push:
+    branches: ["master", "develop"]
+  pull_request:
+    branches: ["master", "develop"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install system dependencies (apt)
+        # Noble ships python3-antlr4 4.9.2-1, which matches the runtime
+        # the grammar in src/dpmcore/dpm_xl/grammar/generated/ was built
+        # against (ANTLR 4.9.2, see .agent/project_instructions.md).
+        #
+        # python3-fastapi is NOT installed via apt even though Noble has
+        # it: python3-fastapi 0.101 pulls python3-starlette 0.31, whose
+        # TestClient passes app= to httpx.Client — but Noble's python3-
+        # httpx 0.26 removed that kwarg, so the combo is broken out of
+        # the box. Installing fastapi via pip pulls a modern starlette
+        # (>=0.37) that uses httpx.ASGITransport instead.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-pip \
+            python3-antlr4 \
+            python3-click \
+            python3-django \
+            python3-httpx \
+            python3-mssql-django \
+            python3-pandas \
+            python3-psycopg2 \
+            python3-pyodbc \
+            python3-pytest \
+            python3-rich \
+            python3-uvicorn \
+            unixodbc-dev
+
+      - name: Install pip-only dependencies
+        # SQLAlchemy: Noble ships 1.4; dpmcore ORM requires 2.0 APIs.
+        # fastapi: see the apt step above — pip pulls a starlette that
+        # is compatible with apt httpx 0.26.
+        # pytest-django: Noble 4.5.2 is below the dpmcore floor (>=4.9).
+        run: |
+          pip install --break-system-packages \
+            "sqlalchemy>=2.0,<3.0" \
+            "fastapi>=0.101" \
+            "pytest-django>=4.9"
+
+      - name: Install poetry
+        run: |
+          pip install --break-system-packages poetry
+          poetry config virtualenvs.create false
+
+      - name: Build wheel
+        run: poetry build -f wheel -o .
+
+      - name: Install built package
+        run: |
+          pip install \
+            "./dpmcore-$(poetry version -s)-py3-none-any.whl" \
+            --no-dependencies --break-system-packages
+
+      - name: Run tests
+        run: >-
+          pytest
+          --verbose --tb=short
+          --strict-markers --strict-config
+          --durations=10 tests/

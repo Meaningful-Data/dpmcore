@@ -1,0 +1,6 @@
+outcomeid,outcomevid,ReportMsg,noofcells,mincell,maxcell
+"NEW","NEW","New Variable ID & New Variable VID: New Cell",3,"{F_18.00.a.dp, r0070, c0030}","{F_19.00.a.dp, r0070, c0020}"
+"OLD","OLD","NEW ModuleVersion & OLD TableVersion ",14245,"{F_00.01, r0010, c0010}","{F_47.00, r0040, c0070}"
+"OLD","OLD","Old Cell with the Same Aspect: Old VariableID & Old VariableVID",283,"{F_02.00.dp, r0010, c0010}","{F_19.00.a.dp, r0335, c0010}"
+"OLD","OLD","OLD ModuleVersion: ",90373,"{A_00.01, r0010, c0010}","{Z_17.00, r*, c0140}"
+"OTHER OLD","OTHER OLD","A new cell has a another variable (already used in other cells)",83,"{F_02.00.dp, r0440, c0010}","{F_19.00.d.dp, r0340, c0010}"
