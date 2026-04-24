@@ -1,3 +1,7 @@
+from typing import Any, Mapping
+
+import pandas as pd
+
 from dpmcore.dpm_xl.types.scalar import (
     Boolean,
     Date,
@@ -16,7 +20,7 @@ from dpmcore.dpm_xl.types.scalar import (
 from dpmcore.dpm_xl.warning_collector import add_semantic_warning
 from dpmcore.errors import SemanticError
 
-implicit_type_promotion_dict = {
+implicit_type_promotion_dict: dict[type[ScalarType], set[type[ScalarType]]] = {
     String: {String},
     Number: {String, Number},
     Integer: {String, Number, Integer},
@@ -46,16 +50,19 @@ implicit_type_promotion_dict = {
 def binary_implicit_type_promotion(
     left: ScalarType,
     right: ScalarType,
-    op_type_to_check: ScalarType = None,
-    return_type: ScalarType = None,
+    op_type_to_check: ScalarType | None = None,
+    return_type: ScalarType | None = None,
     interval_allowed: bool = True,
-    error_info: dict = None,
-):
+    error_info: Mapping[str, Any] | None = None,
+) -> ScalarType:
     """ """
     left_implicities = implicit_type_promotion_dict[left.__class__]
     right_implicities = implicit_type_promotion_dict[right.__class__]
 
-    if left and right:
+    # Preserve original runtime truthiness check; ScalarType does not
+    # override __bool__ so the branch is effectively always true, but the
+    # original code relied on this pattern to guard against None inputs.
+    if left and right:  # type: ignore[truthy-bool]
         warning_raising = not (
             isinstance(left, type(right)) or isinstance(right, type(left))
         )
@@ -178,14 +185,14 @@ def binary_implicit_type_promotion(
 
 
 def binary_implicit_type_promotion_with_mixed_types(
-    result_dataframe,
-    left_type,
-    right_type,
-    op_type_to_check=None,
-    return_type=None,
+    result_dataframe: pd.DataFrame,
+    left_type: ScalarType,
+    right_type: ScalarType,
+    op_type_to_check: ScalarType | None = None,
+    return_type: ScalarType | None = None,
     interval_allowed: bool = False,
-    error_info=None,
-):
+    error_info: Mapping[str, Any] | None = None,
+) -> tuple[ScalarType, pd.DataFrame]:
     """ """
 
     if result_dataframe.empty:
@@ -193,7 +200,10 @@ def binary_implicit_type_promotion_with_mixed_types(
 
     # If there is not a data_type column, result_dataframe is the result of merging two recordsets
     if "data_type" not in result_dataframe.columns:
-        result_dataframe["data_type"] = result_dataframe.apply(
+        # pandas-stubs' `apply` overloads don't accept a callable
+        # returning an arbitrary object — ScalarType is our domain
+        # type, which pandas stores as an object-dtype column.
+        result_dataframe["data_type"] = result_dataframe.apply(  # type: ignore[call-overload]
             lambda x: binary_implicit_type_promotion(
                 x["data_type_left"],
                 x["data_type_right"],
@@ -210,8 +220,9 @@ def binary_implicit_type_promotion_with_mixed_types(
         )
 
     elif isinstance(left_type, Mixed):
+        # Series.apply stubs don't know ScalarType is a valid cell value
         result_dataframe["data_type"] = result_dataframe["data_type"].apply(
-            lambda x: binary_implicit_type_promotion(
+            lambda x: binary_implicit_type_promotion(  # type: ignore[arg-type,return-value]
                 x,
                 right_type,
                 op_type_to_check,
@@ -222,8 +233,9 @@ def binary_implicit_type_promotion_with_mixed_types(
         )
 
     elif isinstance(right_type, Mixed):
+        # Series.apply stubs don't know ScalarType is a valid cell value
         result_dataframe["data_type"] = result_dataframe["data_type"].apply(
-            lambda x: binary_implicit_type_promotion(
+            lambda x: binary_implicit_type_promotion(  # type: ignore[arg-type,return-value]
                 left_type,
                 x,
                 op_type_to_check,
@@ -240,11 +252,11 @@ def binary_implicit_type_promotion_with_mixed_types(
 
 def unary_implicit_type_promotion(
     operand: ScalarType,
-    op_type_to_check: ScalarType = None,
-    return_type: ScalarType = None,
+    op_type_to_check: ScalarType | None = None,
+    return_type: ScalarType | None = None,
     interval_allowed: bool = True,
-    error_info: dict = None,
-):
+    error_info: Mapping[str, Any] | None = None,
+) -> ScalarType:
     """ """
 
     operand_implicities = implicit_type_promotion_dict[operand.__class__]
@@ -278,23 +290,24 @@ def unary_implicit_type_promotion(
 
 
 def unary_implicit_type_promotion_with_mixed_types(
-    operand_dataframe,
-    op_type_to_check=None,
-    return_type=None,
-    interval_allowed=None,
-    error_info=None,
-):
+    operand_dataframe: pd.DataFrame,
+    op_type_to_check: ScalarType | None = None,
+    return_type: ScalarType | None = None,
+    interval_allowed: bool | None = None,
+    error_info: Mapping[str, Any] | None = None,
+) -> tuple[ScalarType, pd.DataFrame]:
     """ """
 
     if operand_dataframe.empty:
         return Mixed(), operand_dataframe
 
+    # Series.apply stubs don't know ScalarType is a valid cell value
     operand_dataframe["data_type"] = operand_dataframe["data_type"].apply(
-        lambda x: unary_implicit_type_promotion(
+        lambda x: unary_implicit_type_promotion(  # type: ignore[arg-type,return-value]
             x,
             op_type_to_check,
             return_type,
-            interval_allowed=interval_allowed,
+            interval_allowed=interval_allowed,  # type: ignore[arg-type]
             error_info=error_info,
         )
     )
@@ -305,8 +318,9 @@ def unary_implicit_type_promotion_with_mixed_types(
 
 
 def check_operator(
-    return_type: ScalarType = None, op_check_type: ScalarType = None
-):
+    return_type: ScalarType | None = None,
+    op_check_type: ScalarType | None = None,
+) -> bool:
     """ """
     if return_type is None or op_check_type is None:
         return True
@@ -320,18 +334,20 @@ def check_operator(
 
 def unary_check_interval(
     operand: ScalarType,
-    op_type_to_check: ScalarType = None,
-    return_type: ScalarType = None,
+    op_type_to_check: ScalarType | None = None,
+    return_type: ScalarType | None = None,
     interval_allowed: bool = False,
-    error_info: dict = None,
-):
+    error_info: Mapping[str, Any] | None = None,
+) -> None:
     if interval_allowed and getattr(operand, "interval", None):
-        if return_type and isinstance(return_type, Integer):
+        if return_type is not None and isinstance(return_type, Integer):
             return None
-        if return_type and isinstance(return_type, Number):
-            return_type.set_interval(operand.interval)
-        if op_type_to_check and isinstance(op_type_to_check, Number):
-            op_type_to_check.set_interval(operand.interval)
+        if return_type is not None and isinstance(return_type, Number):
+            return_type.set_interval(operand.interval)  # type: ignore[attr-defined]
+        if op_type_to_check is not None and isinstance(
+            op_type_to_check, Number
+        ):
+            op_type_to_check.set_interval(operand.interval)  # type: ignore[attr-defined]
     elif not interval_allowed and getattr(operand, "interval", None):
         origin = (
             None
@@ -344,18 +360,18 @@ def unary_check_interval(
 
 
 def binary_check_interval(
-    result_operand: ScalarType = None,
-    left_operand: ScalarType = None,
-    right_operand: ScalarType = None,
-    op_type_to_check: ScalarType = None,
-    return_type: ScalarType = None,
+    result_operand: ScalarType | None = None,
+    left_operand: ScalarType | None = None,
+    right_operand: ScalarType | None = None,
+    op_type_to_check: ScalarType | None = None,
+    return_type: ScalarType | None = None,
     interval_allowed: bool = False,
-    error_info: dict = None,
-):
+    error_info: Mapping[str, Any] | None = None,
+) -> None:
     """ """
     if op_type_to_check is None:
         return None
-    if return_type and isinstance(return_type, Integer):
+    if return_type is not None and isinstance(return_type, Integer):
         return None
     if isinstance(result_operand, Number):
         interval = getattr(left_operand, "interval", None) or getattr(
@@ -370,4 +386,6 @@ def binary_check_interval(
                 )
             )
             raise SemanticError("3-5", origin=origin)
-        result_operand.set_interval(interval)
+        # interval may be None at runtime; preserve original behavior of passing
+        # through without coercion.
+        result_operand.set_interval(interval)  # type: ignore[arg-type]

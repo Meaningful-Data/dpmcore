@@ -1,17 +1,17 @@
-from typing import Union
+from typing import ClassVar, Union
 
 from dpmcore import errors
 from dpmcore.dpm_xl.operators.base import Operator
 from dpmcore.dpm_xl.symbols import ConstantOperand, RecordSet, Scalar
 from dpmcore.dpm_xl.types.promotion import unary_implicit_type_promotion
-from dpmcore.dpm_xl.types.scalar import ScalarFactory, TimeInterval
+from dpmcore.dpm_xl.types.scalar import ScalarFactory, ScalarType, TimeInterval
 from dpmcore.dpm_xl.utils import tokens
 
 
 class TimeShift(Operator):
-    op = tokens.TIME_SHIFT
-    type_to_check = TimeInterval
-    propagate_attributes = True
+    op: ClassVar[str | None] = tokens.TIME_SHIFT
+    type_to_check: ClassVar[type[ScalarType] | None] = TimeInterval
+    propagate_attributes: ClassVar[bool] = True
 
     @classmethod
     def validate(
@@ -20,8 +20,10 @@ class TimeShift(Operator):
         component_name: str,
         period: str,
         shift_number: int,
-    ):
+    ) -> RecordSet | Scalar | ConstantOperand:
 
+        if cls.type_to_check is None:
+            raise Exception("TimeShift requires type_to_check to be set")
         type_to_check = ScalarFactory().scalar_factory(
             cls.type_to_check.__name__
         )

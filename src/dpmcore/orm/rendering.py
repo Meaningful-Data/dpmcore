@@ -6,6 +6,8 @@ TableVersionHeader, TableGroup, TableGroupComposition,
 TableAssociation, and KeyHeaderMapping.
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import (
@@ -26,6 +28,9 @@ if TYPE_CHECKING:
         Property,
         SubCategoryVersion,
     )
+    from dpmcore.orm.operations import OperandReferenceLocation
+    from dpmcore.orm.packaging import ModuleVersionComposition
+    from dpmcore.orm.variables import CompoundKey, VariableVersion
 
 
 # ------------------------------------------------------------------

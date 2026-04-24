@@ -1,22 +1,38 @@
 #!/usr/bin/env python3
 """AST to JSON serialization utilities for pyDPM."""
 
+from __future__ import annotations
+
+import json
+import re
+from typing import Any, TypeAlias, cast
+
+from dpmcore.dpm_xl.ast import nodes as ASTObjects
 from dpmcore.dpm_xl.ast.visitor import NodeVisitor
+
+# Recursive JSON alias used for serialized AST payloads.
+NodeValue: TypeAlias = (
+    "str | int | float | bool | None | NodeDict | list[NodeValue]"
+)
+NodeDict: TypeAlias = dict[str, "NodeValue"]
 
 
 class ASTToJSONVisitor(NodeVisitor):
     """Visitor that converts AST nodes to JSON using the existing visitor pattern infrastructure."""
 
-    def __init__(self, with_context=None):
+    def __init__(self, with_context: Any = None) -> None:
         self.with_context = with_context
 
-    def visit(self, node):
+    def visit(self, node: Any) -> NodeValue:
         """Override the base visit to handle None values."""
         if node is None:
             return None
-        return super().visit(node)
+        method_name = "visit_" + type(node).__name__
+        visitor = getattr(self, method_name, self.generic_visit)
+        result: NodeValue = visitor(node)
+        return result
 
-    def visit_BinOp(self, node):
+    def visit_BinOp(self, node: Any) -> NodeDict:
         """Visit BinOp nodes."""
         # Handle match operations as MatchCharactersOp
         if node.op == "match":
@@ -33,7 +49,7 @@ class ASTToJSONVisitor(NodeVisitor):
             "right": self.visit(node.right),
         }
 
-    def visit_UnaryOp(self, node):
+    def visit_UnaryOp(self, node: Any) -> NodeDict:
         """Visit UnaryOp nodes."""
         return {
             "class_name": "UnaryOp",
@@ -41,9 +57,9 @@ class ASTToJSONVisitor(NodeVisitor):
             "operand": self.visit(node.operand),
         }
 
-    def visit_VarID(self, node):
+    def visit_VarID(self, node: Any) -> NodeDict:
         """Visit VarID nodes with context handling."""
-        result = {"class_name": "VarID"}
+        result: NodeDict = {"class_name": "VarID"}
 
         # Apply context first, then override with node-specific values
         if self.with_context:
@@ -118,25 +134,6 @@ class ASTToJSONVisitor(NodeVisitor):
                         result[node_attr] = node_value
                     elif node_attr not in result:
                         # No context value and node value is None
-                        # Check data type to determine if interval should be False or None
-                        # Extract data_type from node.data if available
-                        data_type = None
-                        if hasattr(node, "data") and node.data is not None:
-                            if hasattr(node.data, "to_dict"):
-                                # DataFrame - get first entry's data_type
-                                data_records = node.data.to_dict("records")
-                                if data_records:
-                                    data_type = data_records[0].get(
-                                        "data_type"
-                                    )
-                            elif isinstance(node.data, list) and node.data:
-                                # List - get first entry's data_type
-                                data_type = (
-                                    node.data[0].get("data_type")
-                                    if isinstance(node.data[0], dict)
-                                    else None
-                                )
-
                         # Set interval to False for all data types
                         result[node_attr] = False
                     # If context already set this field, don't override
@@ -180,21 +177,21 @@ class ASTToJSONVisitor(NodeVisitor):
         if hasattr(node, "data") and node.data is not None:
             # Convert pandas DataFrame to list of dictionaries
             if hasattr(node.data, "to_dict"):
-                data_records = node.data.to_dict("records")
+                data_records: list[dict[str, Any]] = node.data.to_dict(
+                    "records"
+                )
 
                 # Determine if this is a multi-column or multi-row expression from context
-                context_cols = []
+                context_cols: list[str] = []
                 if (
                     self.with_context
                     and hasattr(self.with_context, "cols")
                     and self.with_context.cols
                 ):
-                    context_cols = self.with_context.cols
+                    context_cols = list(self.with_context.cols)
 
                 # Parse cell_code to extract row/column/sheet if needed
                 # Some databases store these in separate fields, others embed them in cell_code
-                import re
-
                 for record in data_records:
                     if (
                         not record.get("row_code")
@@ -214,7 +211,7 @@ class ASTToJSONVisitor(NodeVisitor):
                                 record["sheet_code"] = sheet_match.group(1)
 
                 # Group data entries by row_code
-                entries_by_row = {}
+                entries_by_row: dict[str, list[dict[str, Any]]] = {}
                 for record in data_records:
                     row_code = record.get("row_code", "")
                     if row_code not in entries_by_row:
@@ -225,13 +222,13 @@ class ASTToJSONVisitor(NodeVisitor):
                 rows = sorted(entries_by_row.keys())
 
                 # Helper function to detect range syntax (e.g., '0010-0080')
-                def _has_range_syntax(values):
+                def _has_range_syntax(values: Any) -> bool:
                     if not values or not isinstance(values, list):
                         return False
                     return any("-" in str(v) for v in values if v and v != "*")
 
                 # Helper function to detect wildcard syntax (e.g., ['*'])
-                def _has_wildcard_syntax(values):
+                def _has_wildcard_syntax(values: Any) -> bool:
                     if not values or not isinstance(values, list):
                         return False
                     return any(v == "*" for v in values)
@@ -248,7 +245,7 @@ class ASTToJSONVisitor(NodeVisitor):
                 ):
                     # Extract unique columns from data in order
                     context_cols = []
-                    seen_cols = set()
+                    seen_cols: set[str] = set()
                     for record in data_records:
                         col = record.get("column_code", "")
                         if col and col not in seen_cols:
@@ -259,8 +256,8 @@ class ASTToJSONVisitor(NodeVisitor):
 
                 # Build sheet order from data for z-coordinate calculation
                 # Extract unique sheets and sort them for consistent ordering
-                context_sheets = []
-                seen_sheets = set()
+                context_sheets: list[str] = []
+                seen_sheets: set[str] = set()
                 for record in data_records:
                     sheet = record.get("sheet_code", "")
                     if sheet and sheet not in seen_sheets:
@@ -269,11 +266,11 @@ class ASTToJSONVisitor(NodeVisitor):
                 context_sheets.sort()
 
                 # Transform the data to match expected JSON structure
-                transformed_data = []
+                transformed_data: list[dict[str, Any]] = []
                 for x_index, row_code in enumerate(rows, 1):
                     for record in entries_by_row[row_code]:
                         # Start with minimal required fields
-                        transformed_record = {}
+                        transformed_record: dict[str, Any] = {}
 
                         # Core fields (always present)
                         # Convert to int to avoid float values from database (e.g., 149633.0 -> 149633)
@@ -367,7 +364,11 @@ class ASTToJSONVisitor(NodeVisitor):
                 # Variable coordinates should include their dimension codes (row/column/sheet)
                 if transformed_data:
                     # Collect all coordinate values to detect which are common
-                    coord_values = {"x": set(), "y": set(), "z": set()}
+                    coord_values: dict[str, set[int]] = {
+                        "x": set(),
+                        "y": set(),
+                        "z": set(),
+                    }
 
                     for record in transformed_data:
                         for coord in ["x", "y", "z"]:
@@ -375,8 +376,8 @@ class ASTToJSONVisitor(NodeVisitor):
                                 coord_values[coord].add(record[coord])
 
                     # Identify common vs variable coordinates
-                    common_coords = []
-                    variable_coords = []
+                    common_coords: list[str] = []
+                    variable_coords: list[str] = []
                     for coord, values in coord_values.items():
                         if len(values) == 1:  # All entries have the same value
                             common_coords.append(coord)
@@ -425,36 +426,40 @@ class ASTToJSONVisitor(NodeVisitor):
                         for coord in common_coords:
                             record.pop(coord, None)
 
-                result["data"] = transformed_data
+                # Cast: transformed_data is list[dict[str, Any]] which is a
+                # valid NodeValue shape but mypy won't infer the invariant.
+                result["data"] = cast(NodeValue, transformed_data)
             else:
                 # Handle other data formats if needed
                 result["data"] = node.data
 
         # Filter out None values and internal fields
-        filtered_result = {k: v for k, v in result.items() if v is not None}
+        filtered_result: NodeDict = {
+            k: v for k, v in result.items() if v is not None
+        }
         return filtered_result
 
-    def visit_AggregationOp(self, node):
+    def visit_AggregationOp(self, node: Any) -> NodeDict:
         """Visit AggregationOp nodes."""
-        result = {
+        result: NodeDict = {
             "class_name": "AggregationOp",
             "op": node.op,
             "operand": self.visit(node.operand),
         }
         # Always include grouping_clause (null when not present or empty)
-        grouping_clause = None
+        grouping_clause: NodeValue = None
         if (
             hasattr(node, "grouping_clause")
             and node.grouping_clause is not None
         ):
             gc = self.visit(node.grouping_clause)
             # Only set to actual value if it has components
-            if gc and gc.get("components"):
+            if isinstance(gc, dict) and gc.get("components"):
                 grouping_clause = gc
         result["grouping_clause"] = grouping_clause
         return result
 
-    def visit_GroupingClause(self, node):
+    def visit_GroupingClause(self, node: Any) -> NodeDict | None:
         """Visit GroupingClause nodes."""
         components = getattr(node, "components", None)
         if components:
@@ -462,7 +467,7 @@ class ASTToJSONVisitor(NodeVisitor):
         # Return None for empty grouping clauses (will be filtered out)
         return None
 
-    def visit_ComplexNumericOp(self, node):
+    def visit_ComplexNumericOp(self, node: Any) -> NodeDict:
         """Visit ComplexNumericOp nodes (max, min)."""
         return {
             "class_name": "ComplexNumericOp",
@@ -472,7 +477,7 @@ class ASTToJSONVisitor(NodeVisitor):
             else [],
         }
 
-    def visit_Constant(self, node):
+    def visit_Constant(self, node: Any) -> NodeDict:
         """Visit Constant nodes."""
         return {
             "class_name": "Constant",
@@ -480,16 +485,16 @@ class ASTToJSONVisitor(NodeVisitor):
             "value": node.value,
         }
 
-    def visit_ParExpr(self, node):
+    def visit_ParExpr(self, node: Any) -> NodeDict:
         """Visit ParExpr nodes."""
         return {
             "class_name": "ParExpr",
             "expression": self.visit(node.expression),
         }
 
-    def visit_GetOp(self, node):
+    def visit_GetOp(self, node: Any) -> NodeDict:
         """Visit GetOp nodes and serialize as GetClauseOp."""
-        result = {
+        result: NodeDict = {
             "class_name": "GetClauseOp",
             "operand": self.visit(node.operand),
             "component": node.component,
@@ -497,16 +502,16 @@ class ASTToJSONVisitor(NodeVisitor):
 
         return result
 
-    def visit_SubOp(self, node):
+    def visit_SubOp(self, node: Any) -> NodeDict:
         """Visit SubOp nodes and serialize as SubClauseOp."""
         # Create a Dimension node for the property_code
-        dimension = {
+        dimension: NodeDict = {
             "class_name": "Dimension",
             "dimension_code": node.property_code,
         }
 
         # Create a BinOp with "=" operator
-        condition = {
+        condition: NodeDict = {
             "class_name": "BinOp",
             "op": "=",
             "left": dimension,
@@ -519,7 +524,7 @@ class ASTToJSONVisitor(NodeVisitor):
             "condition": condition,
         }
 
-    def visit_WhereClauseOp(self, node):
+    def visit_WhereClauseOp(self, node: Any) -> NodeDict:
         """Visit WhereClauseOp nodes."""
         return {
             "class_name": "WhereClauseOp",
@@ -527,7 +532,7 @@ class ASTToJSONVisitor(NodeVisitor):
             "condition": self.visit(node.condition),
         }
 
-    def visit_FilterOp(self, node):
+    def visit_FilterOp(self, node: Any) -> NodeDict:
         """Visit FilterOp nodes."""
         return {
             "class_name": "FilterOp",
@@ -535,14 +540,14 @@ class ASTToJSONVisitor(NodeVisitor):
             "condition": self.visit(node.condition),
         }
 
-    def visit_Dimension(self, node):
+    def visit_Dimension(self, node: Any) -> NodeDict:
         """Visit Dimension nodes (used in WHERE clauses)."""
         return {
             "class_name": "Dimension",
             "dimension_code": node.dimension_code,
         }
 
-    def visit_TimeShiftOp(self, node):
+    def visit_TimeShiftOp(self, node: Any) -> NodeDict:
         """Visit TimeShiftOp nodes."""
         return {
             "class_name": "TimeShiftOp",
@@ -552,7 +557,7 @@ class ASTToJSONVisitor(NodeVisitor):
             "shift_number": node.shift_number,
         }
 
-    def visit_RenameOp(self, node):
+    def visit_RenameOp(self, node: Any) -> NodeDict:
         """Visit RenameOp nodes and serialize as RenameClauseOp."""
         return {
             "class_name": "RenameClauseOp",
@@ -562,13 +567,13 @@ class ASTToJSONVisitor(NodeVisitor):
             ],
         }
 
-    def _serialize_rename_node(self, node):
+    def _serialize_rename_node(self, node: Any) -> NodeDict:
         """Serialize a RenameNode as a clause dictionary."""
         return {"from_component": node.old_name, "to_component": node.new_name}
 
-    def visit_PreconditionItem(self, node):
+    def visit_PreconditionItem(self, node: Any) -> NodeDict:
         """Visit PreconditionItem nodes."""
-        result = {
+        result: NodeDict = {
             "class_name": "PreconditionItem",
             "variable_id": node.variable_id,
         }
@@ -578,9 +583,9 @@ class ASTToJSONVisitor(NodeVisitor):
 
         return result
 
-    def visit_ConditionalOp(self, node):
+    def visit_ConditionalOp(self, node: Any) -> NodeDict:
         """Visit ConditionalOp nodes."""
-        result = {
+        result: NodeDict = {
             "class_name": "ConditionalOp",
             "condition": self.visit(node.condition),
             "then_expr": self.visit(node.then_expr),
@@ -591,18 +596,18 @@ class ASTToJSONVisitor(NodeVisitor):
 
         return result
 
-    def visit_Function(self, node):
+    def visit_Function(self, node: Any) -> NodeDict:
         """Visit Function nodes."""
-        result = {"class_name": "Function", "name": node.name}
+        result: NodeDict = {"class_name": "Function", "name": node.name}
 
         if hasattr(node, "args") and node.args:
             result["args"] = [self.visit(arg) for arg in node.args]
 
         return result
 
-    def visit_Scalar(self, node):
+    def visit_Scalar(self, node: Any) -> NodeDict:
         """Visit Scalar nodes with item name normalization."""
-        result = {"class_name": "Scalar"}
+        result: NodeDict = {"class_name": "Scalar"}
 
         # Apply item name normalization for version compatibility
         if hasattr(node, "item") and node.item:
@@ -624,9 +629,9 @@ class ASTToJSONVisitor(NodeVisitor):
 
         return result
 
-    def generic_visit(self, node):
+    def generic_visit(self, node: Any) -> NodeDict:
         """Generic visit method for nodes without specific visitors."""
-        result = {"class_name": node.__class__.__name__}
+        result: NodeDict = {"class_name": node.__class__.__name__}
 
         # Try to get common attributes
         for attr in ["op", "name", "value", "type_", "item", "member"]:
@@ -661,12 +666,9 @@ class ASTToJSONVisitor(NodeVisitor):
 
 
 # Original serialization functions (kept for backward compatibility)
-import json
-
-from dpmcore.dpm_xl.ast import nodes as ASTObjects
 
 
-def expand_with_expression(node):
+def expand_with_expression(node: Any) -> Any:
     """Recursively expand WithExpression nodes by merging partial selections into cell references.
 
     Args:
@@ -696,7 +698,7 @@ def expand_with_expression(node):
 
     # Handle Start node - check if it contains WithExpression
     if isinstance(node, ASTObjects.Start):
-        expanded_children = []
+        expanded_children: list[Any] = []
         for child in node.children:
             if isinstance(child, ASTObjects.WithExpression):
                 # Expand the WithExpression and return just the expanded expression
@@ -714,7 +716,7 @@ def expand_with_expression(node):
 
     # For other node types, recursively expand children
     if hasattr(node, "__dict__"):
-        expanded_node = type(node).__new__(type(node))
+        expanded_node = type(node).__new__(type(node))  # type: ignore[call-overload]
         for attr_name, attr_value in node.__dict__.items():
             setattr(
                 expanded_node, attr_name, expand_with_expression(attr_value)
@@ -724,7 +726,7 @@ def expand_with_expression(node):
     return node
 
 
-def apply_partial_selection(expression, partial_selection):
+def apply_partial_selection(expression: Any, partial_selection: Any) -> Any:
     """Apply partial selection to VarID nodes in the expression.
 
     Args:
@@ -751,7 +753,7 @@ def apply_partial_selection(expression, partial_selection):
 
     # Apply partial selection to VarID nodes
     if isinstance(expression, ASTObjects.VarID):
-        # Create a new VarID with merged properties
+        # Create a new VarID with merged properties.
         new_varid = ASTObjects.VarID(
             table=partial_selection.table
             if expression.table is None
@@ -779,7 +781,7 @@ def apply_partial_selection(expression, partial_selection):
 
     # For other node types, recursively apply to children
     if hasattr(expression, "__dict__"):
-        modified_expr = type(expression).__new__(type(expression))
+        modified_expr = type(expression).__new__(type(expression))  # type: ignore[call-overload]
         for attr_name, attr_value in expression.__dict__.items():
             setattr(
                 modified_expr,
@@ -791,7 +793,7 @@ def apply_partial_selection(expression, partial_selection):
     return expression
 
 
-def serialize_ast(ast_obj):
+def serialize_ast(ast_obj: Any) -> NodeValue:
     """Serialize an AST object to a JSON-serializable dictionary.
     Expands WithExpression nodes before serialization.
 
@@ -830,7 +832,7 @@ def serialize_ast(ast_obj):
         return visitor.visit(expanded_obj)
 
     if hasattr(expanded_obj, "toJSON"):
-        serialized = expanded_obj.toJSON()
+        serialized: dict[str, Any] = expanded_obj.toJSON()
         # Recursively serialize nested AST objects
         for key, value in serialized.items():
             if key != "class_name":
@@ -842,10 +844,11 @@ def serialize_ast(ast_obj):
         return expanded_obj
 
     # Fallback: serialize as dict for objects without toJSON
-    return expanded_obj.__dict__
+    fallback: dict[str, Any] = expanded_obj.__dict__
+    return fallback
 
 
-def deserialize_ast(data):
+def deserialize_ast(data: Any) -> Any:
     """Deserialize a JSON dictionary back to an AST object.
 
     Args:
@@ -892,7 +895,7 @@ def deserialize_ast(data):
     return data
 
 
-def ast_to_json_string(ast_obj, indent=None):
+def ast_to_json_string(ast_obj: Any, indent: int | None = None) -> str:
     """Convert AST object to JSON string.
 
     Args:
@@ -905,7 +908,7 @@ def ast_to_json_string(ast_obj, indent=None):
     return json.dumps(serialize_ast(ast_obj), indent=indent)
 
 
-def ast_from_json_string(json_str):
+def ast_from_json_string(json_str: str) -> Any:
     """Create AST object from JSON string.
 
     Args:

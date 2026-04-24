@@ -1,6 +1,6 @@
 """Exception classes for dpmcore."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 
 class DpmCoreError(Exception):
@@ -365,7 +365,9 @@ def _gather_expression(operand: str) -> str:
     expression = operand
     for key in operands_labels.__reversed__():
         if key in expression:
-            expression = expression.replace(key, operands_labels[key])
+            expression = expression.replace(
+                key, cast(str, operands_labels[key])
+            )
     return expression
 
 

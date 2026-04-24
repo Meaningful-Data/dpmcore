@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, TypedDict
 
 from dpmcore.services.ast_generator import ASTGeneratorService
 from dpmcore.services.scope_calculator import ScopeCalculatorService
@@ -11,6 +11,24 @@ from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+
+
+class SyntaxValidationResult(TypedDict):
+    """Shape of ``DpmXlService.validate_syntax`` return value."""
+
+    is_valid: bool
+    error_message: str | None
+    expression: str
+
+
+class SemanticValidationResult(TypedDict):
+    """Shape of ``DpmXlService.validate_semantic`` return value."""
+
+    is_valid: bool
+    error_message: str | None
+    error_code: str | None
+    expression: str
+    warning: str | None
 
 
 class DpmXlService:
@@ -38,7 +56,7 @@ class DpmXlService:
             self.ast_generator = ASTGeneratorService()
             self.scope_calculator = None  # type: ignore[assignment]
 
-    def validate_syntax(self, expression: str) -> dict:
+    def validate_syntax(self, expression: str) -> SyntaxValidationResult:
         """Validate syntax only (no DB required)."""
         result = self.syntax.validate(expression)
         return {
@@ -51,7 +69,7 @@ class DpmXlService:
         self,
         expression: str,
         release_id: Optional[int] = None,
-    ) -> dict:
+    ) -> SemanticValidationResult:
         """Full semantic validation (requires DB)."""
         if self.semantic is None:
             raise RuntimeError("No database session provided.")

@@ -12,11 +12,9 @@ from __future__ import annotations
 import warnings
 from typing import (
     TYPE_CHECKING,
-    Dict,
+    Any,
     Hashable,
-    List,
-    Optional,
-    Tuple,
+    Sequence,
 )
 
 import pandas as pd
@@ -59,7 +57,7 @@ from dpmcore.orm.variables import (
 )
 
 if TYPE_CHECKING:
-    from sqlalchemy.orm import Session
+    from sqlalchemy.orm import Query, Session
 
 # ------------------------------------------------------------------ #
 # Helper utilities
@@ -101,11 +99,14 @@ def read_sql_with_connection(
             message=".*pandas only supports SQLAlchemy.*",
             category=UserWarning,
         )
-        return pd.read_sql(sql, session.connection().connection)
+        # pandas accepts DBAPI2 connections at runtime; its type stubs
+        # only advertise SQLAlchemy Connection so we sidestep the mismatch.
+        raw_conn: Any = session.connection().connection
+        return pd.read_sql(sql, raw_conn)
 
 
 def compile_query_for_pandas(
-    query_statement,
+    query_statement: Any,
     session: "Session",
 ) -> str:
     """Compile a query statement to a SQL string.
@@ -133,7 +134,13 @@ def compile_query_for_pandas(
 # ------------------------------------------------------------------ #
 
 
-def _filter_elements(query, column, values):
+def _filter_elements(
+    query: "Query[Any]",
+    # column is either a SQLAlchemy ColumnElement or an InstrumentedAttribute
+    # on an ORM model; they do not share a typed base, so we accept Any here.
+    column: Any,
+    values: Sequence[str],
+) -> "Query[Any]":
     """Apply flexible element filtering (single, range, list).
 
     Args:
@@ -155,7 +162,7 @@ def _filter_elements(query, column, values):
     range_control = any("-" in x for x in values)
     if not range_control:
         return query.filter(column.in_(values))
-    dynamic_filter = []
+    dynamic_filter: list[Any] = []
     for x in values:
         if "-" in x:
             limits = x.split("-")
@@ -168,7 +175,7 @@ def _filter_elements(query, column, values):
 def _check_ranges_values_are_present(
     data: pd.DataFrame,
     data_column: str,
-    values: Optional[List[str]],
+    values: Sequence[str] | None,
 ) -> pd.DataFrame:
     """Validate range boundaries exist in returned data.
 
@@ -194,7 +201,13 @@ def _check_ranges_values_are_present(
     return data
 
 
-def _old_filter_by_release(query, start_release, end_release, release_id):
+def _old_filter_by_release(
+    query: "Query[Any]",
+    # start/end_release are ORM InstrumentedAttributes; see _filter_elements.
+    start_release: Any,
+    end_release: Any,
+    release_id: int | None,
+) -> "Query[Any]":
     """Legacy release filter (inlined from old models).
 
     Args:
@@ -230,8 +243,8 @@ class ItemCategoryQuery:
     @staticmethod
     def get_items(
         session: "Session",
-        items: List[str],
-        release_id: Optional[int] = None,
+        items: Sequence[str],
+        release_id: int | None = None,
     ) -> pd.DataFrame:
         """Get ItemCategory records for item signatures.
 
@@ -280,7 +293,7 @@ class ItemCategoryQuery:
     def get_property_from_code(
         code: str,
         session: "Session",
-    ):
+    ) -> ItemCategory | None:
         """Look up an ItemCategory by its code.
 
         Args:
@@ -300,7 +313,7 @@ class ItemCategoryQuery:
     def get_property_id_from_code(
         code: str,
         session: "Session",
-    ) -> List[int]:
+    ) -> list[int]:
         """Return item IDs matching a category code.
 
         Args:
@@ -321,7 +334,7 @@ class ItemCategoryQuery:
     def get_item_category_id_from_signature(
         signature: str,
         session: "Session",
-    ) -> List[int]:
+    ) -> list[int]:
         """Return item IDs matching a signature.
 
         Args:
@@ -351,7 +364,7 @@ class VariableVersionQuery:
     def check_variable_exists(
         session: "Session",
         variable_code: str,
-        release_id: Optional[int] = None,
+        release_id: int | None = None,
     ) -> bool:
         """Check whether a variable code exists.
 
@@ -384,8 +397,8 @@ class VariableVersionQuery:
     def check_precondition(
         session: "Session",
         variable_code: str,
-        release_id: Optional[int],
-    ):
+        release_id: int | None,
+    ) -> Any | None:
         """Find a filing-indicator variable by code.
 
         Looks for a VariableVersion whose code matches
@@ -431,8 +444,8 @@ class VariableVersionQuery:
     def get_variable_id(
         session: "Session",
         value: str,
-        release_id: Optional[int],
-    ) -> Optional[List[int]]:
+        release_id: int | None,
+    ) -> list[int] | None:
         """Get variable IDs by code within a release.
 
         Args:
@@ -464,8 +477,8 @@ class VariableVersionQuery:
     @staticmethod
     def get_all_preconditions(
         session: "Session",
-        release_id: Optional[int],
-    ) -> list:
+        release_id: int | None,
+    ) -> list[Any]:
         """Return all filing-indicator variables.
 
         Args:
@@ -510,8 +523,8 @@ class OperationQuery:
     @staticmethod
     def get_operations_from_codes(
         session: "Session",
-        operation_codes: List[str],
-        release_id: Optional[int],
+        operation_codes: Sequence[str],
+        release_id: int | None,
     ) -> pd.DataFrame:
         """Retrieve operations matching a list of codes.
 
@@ -571,7 +584,7 @@ class TableVersionQuery:
     def check_table_exists(
         session: "Session",
         table_code: str,
-        release_id: Optional[int],
+        release_id: int | None,
     ) -> bool:
         """Check whether a table code exists.
 
@@ -681,7 +694,7 @@ class ModuleVersionQuery:
     @staticmethod
     def get_last_release(
         session: "Session",
-    ) -> Optional[int]:
+    ) -> int | None:
         """Return the highest release ID.
 
         Args:
@@ -690,13 +703,16 @@ class ModuleVersionQuery:
         Returns:
             Integer release ID, or None.
         """
-        return session.query(func.max(Release.release_id)).scalar()
+        result = session.query(func.max(Release.release_id)).scalar()
+        if result is None:
+            return None
+        return int(result)
 
     @staticmethod
     def get_from_tables_vids(
         session: "Session",
-        tables_vids: List[int],
-        release_id: Optional[int] = None,
+        tables_vids: Sequence[int],
+        release_id: int | None = None,
     ) -> pd.DataFrame:
         """Query modules containing given table VIDs.
 
@@ -756,8 +772,8 @@ class ModuleVersionQuery:
     @staticmethod
     def get_from_table_codes(
         session: "Session",
-        table_codes: List[str],
-        release_id: Optional[int] = None,
+        table_codes: Sequence[str],
+        release_id: int | None = None,
     ) -> pd.DataFrame:
         """Query modules by table codes.
 
@@ -823,8 +839,8 @@ class ModuleVersionQuery:
     @staticmethod
     def get_precondition_module_versions(
         session: "Session",
-        precondition_items: List[str],
-        release_id: Optional[int] = None,
+        precondition_items: Sequence[str],
+        release_id: int | None = None,
     ) -> pd.DataFrame:
         """Query modules for precondition items.
 
@@ -982,14 +998,21 @@ def _apply_fallback_for_equal_dates(
         .all()
     )
 
-    by_mid: Dict[int, list] = {}
+    by_mid: dict[int, list[ModuleVersion]] = {}
     for mv in prev_versions:
+        if mv.module_id is None:
+            continue
         by_mid.setdefault(mv.module_id, []).append(mv)
 
-    replacement: Dict[int, ModuleVersion] = {}
+    replacement: dict[int, ModuleVersion] = {}
     for cur_vid, (mid, cur_srid) in current_info.items():
+        if mid is None or cur_srid is None:
+            continue
         for mv in by_mid.get(mid, []):
-            if mv.start_release_id < cur_srid:
+            if (
+                mv.start_release_id is not None
+                and mv.start_release_id < cur_srid
+            ):
                 if mv.from_reference_date != mv.to_reference_date:
                     replacement[cur_vid] = mv
                     break
@@ -1072,14 +1095,14 @@ class ViewDatapointsQuery:
     multi-table joins against the normalised schema.
     """
 
-    _TABLE_DATA_CACHE: Dict[
-        Tuple[
+    _TABLE_DATA_CACHE: dict[
+        tuple[
             Hashable,
             str,
-            Optional[Tuple[str, ...]],
-            Optional[Tuple[str, ...]],
-            Optional[Tuple[str, ...]],
-            Optional[int],
+            tuple[str, ...] | None,
+            tuple[str, ...] | None,
+            tuple[str, ...] | None,
+            int | None,
         ],
         pd.DataFrame,
     ] = {}
@@ -1089,7 +1112,7 @@ class ViewDatapointsQuery:
     @staticmethod
     def _create_base_query_with_aliases(
         session: "Session",
-    ):
+    ) -> tuple["Query[Any]", dict[str, Any]]:
         """Build the base multi-join query.
 
         Args:
@@ -1192,10 +1215,10 @@ class ViewDatapointsQuery:
         cls,
         session: "Session",
         table: str,
-        rows: Optional[List[str]] = None,
-        cols: Optional[List[str]] = None,
-        sheets: Optional[List[str]] = None,
-        release_id: Optional[int] = None,
+        rows: Sequence[str] | None = None,
+        cols: Sequence[str] | None = None,
+        sheets: Sequence[str] | None = None,
+        release_id: int | None = None,
     ) -> pd.DataFrame:
         """Retrieve cell-level data for a table.
 
@@ -1290,8 +1313,8 @@ class ViewDatapointsQuery:
         cls,
         session: "Session",
         table: str,
-        table_info: dict,
-        release_id: Optional[int] = None,
+        table_info: dict[str, Any],
+        release_id: int | None = None,
     ) -> pd.DataFrame:
         """Retrieve datapoints with dimension filters.
 
@@ -1355,7 +1378,13 @@ class ViewDatapointsQuery:
         )
 
 
-def _apply_dimension_filter(query, column, values):
+def _apply_dimension_filter(
+    query: "Query[Any]",
+    # column is either a SQLAlchemy ColumnElement or an InstrumentedAttribute
+    # from ORM; see _filter_elements for rationale.
+    column: Any,
+    values: Sequence[str],
+) -> "Query[Any]":
     """Apply row/col/sheet dimension filter.
 
     Args:
@@ -1372,7 +1401,7 @@ def _apply_dimension_filter(query, column, values):
 
     has_range = any("-" in x for x in values)
     if has_range:
-        filters = []
+        filters: list[Any] = []
         for v in values:
             if "-" in v:
                 lo, hi = v.split("-")
@@ -1392,7 +1421,7 @@ class ViewKeyComponentsQuery:
     """Builds and executes the key_components query."""
 
     @staticmethod
-    def _create_view_query(session: "Session"):
+    def _create_view_query(session: "Session") -> "Query[Any]":
         """Build the base key-components query.
 
         Args:
@@ -1444,7 +1473,7 @@ class ViewKeyComponentsQuery:
         cls,
         session: "Session",
         table: str,
-        release_id: Optional[int],
+        release_id: int | None,
     ) -> pd.DataFrame:
         """Get key components for a single table.
 
@@ -1492,7 +1521,7 @@ class ViewOpenKeysQuery:
     """Builds and executes the open_keys query."""
 
     @staticmethod
-    def _create_view_query(session: "Session"):
+    def _create_view_query(session: "Session") -> "Query[Any]":
         """Build the base open-keys query.
 
         Args:
@@ -1530,8 +1559,8 @@ class ViewOpenKeysQuery:
     def get_keys(
         cls,
         session: "Session",
-        dimension_codes: List[str],
-        release_id: Optional[int],
+        dimension_codes: Sequence[str],
+        release_id: int | None,
     ) -> pd.DataFrame:
         """Get open keys for given dimension codes.
 
@@ -1580,9 +1609,9 @@ class ViewModulesQuery:
     @staticmethod
     def get_modules(
         session: "Session",
-        tables: List[str],
-        release_id: Optional[int] = None,
-    ) -> list:
+        tables: Sequence[str],
+        release_id: int | None = None,
+    ) -> list[str]:
         """Return distinct module codes for tables.
 
         Args:

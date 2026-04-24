@@ -73,12 +73,16 @@ def fixture_db_url():
     """Provide a connection URL to the local SQLite fixture database.
 
     The fixture DB contains real DPM data and is used by tests that
-    require a populated database (semantic validation, release filters, etc.).
+    require a populated database (semantic validation, release filters,
+    etc.). When the file is missing, dependent tests are *skipped*
+    (not errored) so local runs and CI succeed without it. Drop the
+    ``.db`` into ``tests/fixtures/`` to enable the full suite.
     """
-    assert os.path.exists(FIXTURE_DB_PATH), (
-        f"Fixture DB not found at {FIXTURE_DB_PATH}. "
-        f"Copy it from pydpm/tests/fixtures/test_data.db."
-    )
+    if not os.path.exists(FIXTURE_DB_PATH):
+        pytest.skip(
+            f"Fixture DB not found at {FIXTURE_DB_PATH}. "
+            f"See tests/fixtures/README for how to provide it."
+        )
     return f"sqlite:///{os.path.abspath(FIXTURE_DB_PATH)}"
 
 

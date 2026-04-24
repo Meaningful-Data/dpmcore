@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import warnings
 from abc import ABC
-from typing import Dict, Hashable, Tuple
+from typing import Any, Dict, Hashable, Tuple
 
 import pandas as pd
+from sqlalchemy.orm import Session
 
 # Suppress pandas UserWarning about SQLAlchemy connection types
 warnings.filterwarnings(
@@ -11,6 +14,7 @@ warnings.filterwarnings(
 
 from dpmcore import errors
 from dpmcore.dpm_xl.ast.nodes import (
+    AST,
     Dimension,
     GetOp,
     OperationRef,
@@ -60,15 +64,21 @@ IMPLICIT_OPEN_KEYS = {
 }
 
 
-_HEADERS_CACHE: Dict[Tuple[Hashable, int, Tuple[str, ...]], pd.DataFrame] = {}
+_HEADERS_CACHE: Dict[
+    Tuple[Hashable, int | None, Tuple[str, ...]], pd.DataFrame
+] = {}
 
 
-def _create_operand_label(node):
+def _create_operand_label(node: VarID | PreconditionItem) -> None:
     label = generate_new_label()
     node.label = label
 
 
-def _modify_element_info(new_data, element, table_info):
+def _modify_element_info(
+    new_data: list[str] | None,
+    element: str,
+    table_info: dict[str, list[str] | None],
+) -> None:
     if (
         new_data is None
         and table_info[element] is None
@@ -84,18 +94,21 @@ def _modify_element_info(new_data, element, table_info):
 
     else:
         # We get only the elements that are not already in the info and sort them
-        new_list = [x for x in new_data if x not in table_info[element]]
-        new_list += table_info[element]
+        existing = table_info[element] or []
+        new_list = [x for x in (new_data or []) if x not in existing]
+        new_list += existing
         new_list = sorted(new_list)
         table_info[element] = new_list
 
 
-def _modify_table(node, table_info):
+def _modify_table(
+    node: VarID, table_info: dict[str, list[str] | None]
+) -> None:
     for element in table_info:
         _modify_element_info(getattr(node, element), element, table_info)
 
 
-def format_missing_data(node):
+def format_missing_data(node: VarID) -> None:
     rows = ", ".join([f"r{x}" for x in node.rows]) if node.rows else None
     cols = ", ".join([f"c{x}" for x in node.cols]) if node.cols else None
     sheets = ", ".join([f"s{x}" for x in node.sheets]) if node.sheets else None
@@ -104,14 +117,14 @@ def format_missing_data(node):
     raise errors.SemanticError("1-2", cell_expression=cell_exp)
 
 
-def _has_range_syntax(values):
+def _has_range_syntax(values: Any) -> bool:
     """Check if a list of values contains range syntax (e.g., '0010-0080')."""
     if not values or not isinstance(values, list):
         return False
     return any("-" in str(v) for v in values if v and v != "*")
 
 
-def _expand_ranges_from_data(node, node_data):
+def _expand_ranges_from_data(node: VarID, node_data: pd.DataFrame) -> None:
     """Expand range-type values in VarID node's rows/cols/sheets to actual codes from the database.
 
     When a VarID has range syntax like ['0010-0080'], this function replaces it with
@@ -124,54 +137,61 @@ def _expand_ranges_from_data(node, node_data):
         node: VarID AST node with rows, cols, sheets attributes
         node_data: DataFrame containing the actual cell data with row_code, column_code, sheet_code
     """
-    if node_data is None or node_data.empty:
+    if node_data.empty:
         return
 
     # Expand rows if they contain range syntax
     if _has_range_syntax(node.rows):
-        actual_rows = node_data["row_code"].dropna().unique().tolist()
+        actual_rows = list(node_data["row_code"].dropna().unique().tolist())
         if actual_rows:
             # Sort to maintain consistent ordering
-            actual_rows = sorted(actual_rows)
-            node.rows = actual_rows
+            node.rows = sorted(actual_rows)
 
     # Expand cols if they contain range syntax
     if _has_range_syntax(node.cols):
-        actual_cols = node_data["column_code"].dropna().unique().tolist()
+        actual_cols = list(node_data["column_code"].dropna().unique().tolist())
         if actual_cols:
-            actual_cols = sorted(actual_cols)
-            node.cols = actual_cols
+            node.cols = sorted(actual_cols)
 
     # Expand sheets if they contain range syntax
     if _has_range_syntax(node.sheets):
-        actual_sheets = node_data["sheet_code"].dropna().unique().tolist()
+        actual_sheets = list(
+            node_data["sheet_code"].dropna().unique().tolist()
+        )
         if actual_sheets:
-            actual_sheets = sorted(actual_sheets)
-            node.sheets = actual_sheets
+            node.sheets = sorted(actual_sheets)
 
 
 class OperandsChecking(ASTTemplate, ABC):
     def __init__(
-        self, session, expression, ast, release_id, is_scripting=False
-    ):
+        self,
+        session: Session,
+        expression: str,
+        ast: AST,
+        release_id: int | None,
+        is_scripting: bool = False,
+    ) -> None:
         self.expression = expression
         self.release_id = release_id
         self.AST = ast
-        self.tables = {}
-        self.operands = {}
-        self.key_components = {}
-        self.partial_selection = None
-        self.data = None
-        self.items = []
+        self.tables: dict[str, dict[str, list[str] | None]] = {}
+        self.operands: dict[str, list[VarID]] = {}
+        self.key_components: dict[str, pd.DataFrame] = {}
+        self.partial_selection: VarID | None = None
+        self.data: pd.DataFrame | None = None
+        self.items: list[str] = []
         self.preconditions = False
-        self.dimension_codes = []
-        self.dimension_nodes = []  # Store references to Dimension nodes for property_id enrichment
-        self.open_keys = None
-        self.getop_components = []  # Store GetOp component codes for property_id lookup
-        self.getop_nodes = []  # Store references to GetOp nodes for property_id enrichment
+        self.dimension_codes: list[str] = []
+        # Store references to Dimension nodes for property_id enrichment
+        self.dimension_nodes: list[Dimension] = []
+        self.open_keys: pd.DataFrame | None = None
+        # Store GetOp component codes for property_id lookup
+        self.getop_components: list[str] = []
+        # Store references to GetOp nodes for property_id enrichment
+        self.getop_nodes: list[GetOp] = []
 
-        self.operations = []
-        self.operations_data = None
+        self.operations: list[str] = []
+        self.operations_data: pd.DataFrame | None = None
         self.is_scripting = is_scripting
 
         self.session = session
@@ -186,7 +206,7 @@ class OperandsChecking(ASTTemplate, ABC):
 
         self.check_operations()
 
-    def _check_header_present(self, table, header):
+    def _check_header_present(self, table: str, header: str) -> None:
         if (
             self.partial_selection is not None
             and self.partial_selection.table == table
@@ -199,7 +219,7 @@ class OperandsChecking(ASTTemplate, ABC):
                     header = "columns"
                 raise errors.SemanticError("1-20", header=header, table=table)
 
-    def check_headers(self):
+    def check_headers(self) -> None:
         table_codes = list(self.tables.keys())
         if len(table_codes) == 0:
             return
@@ -262,7 +282,7 @@ class OperandsChecking(ASTTemplate, ABC):
             if "Z" in table_headers["Direction"].values and not open_sheets:
                 self._check_header_present(table, "sheets")
 
-    def check_items(self):
+    def check_items(self) -> None:
         if len(self.items) == 0:
             return
         df_items = ItemCategoryQuery.get_items(
@@ -274,7 +294,7 @@ class OperandsChecking(ASTTemplate, ABC):
             )
             raise errors.SemanticError("1-1", items=not_found_items)
 
-    def check_dimensions(self):
+    def check_dimensions(self) -> None:
         if len(self.dimension_codes) == 0:
             return
 
@@ -290,13 +310,14 @@ class OperandsChecking(ASTTemplate, ABC):
 
         # Query database only for non-implicit keys
         if database_codes:
-            self.open_keys = ViewOpenKeysQuery.get_keys(
+            open_keys_df = ViewOpenKeysQuery.get_keys(
                 self.session, database_codes, self.release_id
             )
-            if len(self.open_keys) < len(database_codes):
+            self.open_keys = open_keys_df
+            if len(open_keys_df) < len(database_codes):
                 not_found_dimensions = list(
                     set(database_codes).difference(
-                        self.open_keys["property_code"]
+                        open_keys_df["property_code"]
                     )
                 )
                 raise errors.SemanticError(
@@ -325,7 +346,9 @@ class OperandsChecking(ASTTemplate, ABC):
 
         # Enrich Dimension nodes with property_id from open_keys
         # This is required by adam-engine for WHERE clause resolution
-        if self.open_keys is not None and not self.open_keys.empty:
+        # (both branches above leave ``self.open_keys`` as a DataFrame,
+        # hence no ``is not None`` guard is required here).
+        if not self.open_keys.empty:
             # Create a mapping from dimension_code to property_id
             property_id_map = dict(
                 zip(
@@ -340,7 +363,7 @@ class OperandsChecking(ASTTemplate, ABC):
                         property_id_map[node.dimension_code]
                     )
 
-    def check_getop_components(self):
+    def check_getop_components(self) -> None:
         """Check and enrich GetOp nodes with property_id for their component codes.
 
         GetOp components (like qEGS, qLGS, refPeriod, entityID) are property codes
@@ -399,7 +422,7 @@ class OperandsChecking(ASTTemplate, ABC):
 
         # Enrich GetOp nodes with property_id
         # This is required by adam-engine for [get ...] operations
-        if getop_keys is not None and not getop_keys.empty:
+        if not getop_keys.empty:
             # Create a mapping from component code to property_id
             property_id_map = dict(
                 zip(
@@ -412,7 +435,7 @@ class OperandsChecking(ASTTemplate, ABC):
                 if node.component in property_id_map:
                     node.property_id = int(property_id_map[node.component])
 
-    def check_tables(self):
+    def check_tables(self) -> None:
         for table, value in self.tables.items():
             # Extract all data and filter to get only necessary data
             table_info = value
@@ -427,7 +450,11 @@ class OperandsChecking(ASTTemplate, ABC):
             # Insert data type on each node by selecting only data required by node
             for node in self.operands[table]:
                 node_data = filter_all_data(
-                    df_table, table, node.rows, node.cols, node.sheets
+                    df_table,
+                    table,
+                    node.rows or [],
+                    node.cols or [],
+                    node.sheets or [],
                 )
                 # Checking grey cells (no variable ID in data for that cell)
                 grey_cells_data = node_data[node_data["variable_id"].isnull()]
@@ -493,7 +520,7 @@ class OperandsChecking(ASTTemplate, ABC):
             if self.data is None:
                 self.data = df_table
             else:
-                self.data: pd.DataFrame = pd.concat(
+                self.data = pd.concat(
                     [self.data, df_table], axis=0
                 ).reset_index(drop=True)
 
@@ -502,15 +529,15 @@ class OperandsChecking(ASTTemplate, ABC):
             )
 
     # Start of visiting nodes
-    def visit_WithExpression(self, node: WithExpression):
+    def visit_WithExpression(self, node: WithExpression) -> None:
         if node.partial_selection.is_table_group:
             raise errors.SemanticError(
                 "1-10", table=node.partial_selection.table
             )
-        self.partial_selection: VarID = node.partial_selection
+        self.partial_selection = node.partial_selection
         self.visit(node.expression)
 
-    def visit_VarID(self, node: VarID):
+    def visit_VarID(self, node: VarID) -> None:
 
         if node.is_table_group:
             raise errors.SemanticError("1-10", table=node.table)
@@ -532,9 +559,12 @@ class OperandsChecking(ASTTemplate, ABC):
             raise errors.SemanticError("1-4", table=node.table)
 
         _create_operand_label(node)
-        set_operand_label(node.label, node)
+        label = node.label
+        if label is None:
+            raise RuntimeError("VarID label not created")
+        set_operand_label(label, node)
 
-        table_info = {
+        table_info: dict[str, list[str] | None] = {
             "rows": node.rows,
             "cols": node.cols,
             "sheets": node.sheets,
@@ -547,13 +577,13 @@ class OperandsChecking(ASTTemplate, ABC):
             self.operands[node.table].append(node)
             _modify_table(node, self.tables[node.table])
 
-    def visit_Dimension(self, node: Dimension):
+    def visit_Dimension(self, node: Dimension) -> None:
         if node.dimension_code not in self.dimension_codes:
             self.dimension_codes.append(node.dimension_code)
         # Store reference to node for property_id enrichment
         self.dimension_nodes.append(node)
 
-    def visit_GetOp(self, node: GetOp):
+    def visit_GetOp(self, node: GetOp) -> None:
         """Visit GetOp nodes to collect component codes for property_id lookup."""
         # Visit the operand first to ensure it's properly validated
         self.visit(node.operand)
@@ -564,54 +594,61 @@ class OperandsChecking(ASTTemplate, ABC):
         # Visit the operand to ensure it gets processed (e.g., VarID nodes inside GetOp)
         self.visit(node.operand)
 
-    def visit_VarRef(self, node: VarRef):
+    def visit_VarRef(self, node: VarRef) -> None:
         if not VariableVersionQuery.check_variable_exists(
             self.session, node.variable, self.release_id
         ):
             raise errors.SemanticError("1-3", variable=node.variable)
 
-    def visit_PreconditionItem(self, node: PreconditionItem):
+    def visit_PreconditionItem(self, node: PreconditionItem) -> None:
 
         if self.is_scripting:
             raise errors.SemanticError("6-3", precondition=node.variable_code)
 
+        variable_code = node.variable_code
+        if variable_code is None:
+            raise errors.SemanticError("1-3", variable=variable_code)
+
         if not VariableVersionQuery.check_variable_exists(
-            self.session, node.variable_code, self.release_id
+            self.session, variable_code, self.release_id
         ):
-            raise errors.SemanticError("1-3", variable=node.variable_code)
+            raise errors.SemanticError("1-3", variable=variable_code)
 
         self.preconditions = True
         _create_operand_label(node)
-        set_operand_label(node.label, node)
+        label = node.label
+        if label is None:
+            raise RuntimeError("PreconditionItem label not created")
+        set_operand_label(label, node)
 
-    def visit_Scalar(self, node: Scalar):
+    def visit_Scalar(self, node: Scalar) -> None:
         if node.item and node.scalar_type == "Item":
             if node.item not in self.items:
                 self.items.append(node.item)
 
-    def visit_WhereClauseOp(self, node: WhereClauseOp):
+    def visit_WhereClauseOp(self, node: WhereClauseOp) -> None:
         self.visit(node.operand)
         checker = WhereClauseChecker()
         checker.visit(node.condition)
         node.key_components = checker.key_components
         self.visit(node.condition)
 
-    def visit_OperationRef(self, node: OperationRef):
+    def visit_OperationRef(self, node: OperationRef) -> None:
         if not self.is_scripting:
             raise errors.SemanticError(
                 "6-2", operation_code=node.operation_code
             )
 
-    def visit_PersistentAssignment(self, node: PersistentAssignment):
+    def visit_PersistentAssignment(self, node: PersistentAssignment) -> None:
         # TODO: visit node.left when there are calculations variables in database
         self.visit(node.right)
 
-    def visit_TemporaryAssignment(self, node: TemporaryAssignment):
+    def visit_TemporaryAssignment(self, node: TemporaryAssignment) -> None:
         temporary_identifier = node.left
         self.operations.append(temporary_identifier.value)
         self.visit(node.right)
 
-    def check_operations(self):
+    def check_operations(self) -> None:
         if len(self.operations):
             df_operations = OperationQuery.get_operations_from_codes(
                 session=self.session,
@@ -628,7 +665,7 @@ class OperandsChecking(ASTTemplate, ABC):
             self.operations_data = df_operations
 
 
-def extract_data_types(node: VarID, database_types: pd.Series) -> None:
+def extract_data_types(node: VarID, database_types: "pd.Series[Any]") -> None:
     """Extract data type of var ids from database information
     :param node: Var id
     :param database_types: Series that contains the data types of node elements
@@ -639,7 +676,8 @@ def extract_data_types(node: VarID, database_types: pd.Series) -> None:
     if len(unique_types) == 1:
         data_type = scalar_factory.database_types_mapping(unique_types[0])
         if node.interval and isinstance(data_type(), Number):
-            node.type = data_type(node.interval)
+            # Only Number supports the interval-accepting constructor.
+            node.type = data_type(node.interval)  # type: ignore[call-arg]
         else:
             node.type = data_type()
     else:

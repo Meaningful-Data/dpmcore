@@ -2,7 +2,7 @@
 
 import threading
 
-from py_dpm.dpm_xl.warning_collector import (
+from dpmcore.dpm_xl.warning_collector import (
     WarningCollector,
     add_semantic_warning,
     collect_warnings,

@@ -1,101 +1,113 @@
 import math
 import operator
+from typing import ClassVar
 
-from dpmcore.dpm_xl.operators.base import Binary, Complex, Unary
-from dpmcore.dpm_xl.types.scalar import Number
+from dpmcore.dpm_xl.operators.base import (
+    Binary as _BaseBinary,
+)
+from dpmcore.dpm_xl.operators.base import (
+    Complex as _BaseComplex,
+)
+from dpmcore.dpm_xl.operators.base import (
+    PyOp,
+)
+from dpmcore.dpm_xl.operators.base import (
+    Unary as _BaseUnary,
+)
+from dpmcore.dpm_xl.types.scalar import Number, ScalarType
 from dpmcore.dpm_xl.utils import tokens
 
 
-class Unary(Unary):
-    op = None
-    type_to_check = Number
-    return_type = None
-    interval_allowed: bool = True
+class Unary(_BaseUnary):
+    op: ClassVar[str | None] = None
+    type_to_check: ClassVar[type[ScalarType] | None] = Number
+    return_type: ClassVar[type[ScalarType] | None] = None
+    interval_allowed: ClassVar[bool] = True
 
 
 class UnPlus(Unary):
-    op = tokens.PLUS
-    py_op = operator.pos
+    op: ClassVar[str | None] = tokens.PLUS
+    py_op: ClassVar[PyOp | None] = operator.pos
 
 
 class UnMinus(Unary):
-    op = tokens.MINUS
-    py_op = operator.neg
+    op: ClassVar[str | None] = tokens.MINUS
+    py_op: ClassVar[PyOp | None] = operator.neg
 
 
 class AbsoluteValue(Unary):
-    op = tokens.ABS
-    py_op = operator.abs
+    op: ClassVar[str | None] = tokens.ABS
+    py_op: ClassVar[PyOp | None] = operator.abs
 
 
 class Exponential(Unary):
-    op = tokens.EXP
-    py_op = math.exp
-    return_type = Number
-    interval_allowed: bool = False
+    op: ClassVar[str | None] = tokens.EXP
+    py_op: ClassVar[PyOp | None] = math.exp
+    return_type: ClassVar[type[ScalarType] | None] = Number
+    interval_allowed: ClassVar[bool] = False
 
 
 class NaturalLogarithm(Unary):
-    op = tokens.LN
-    py_op = math.log
-    return_type = Number
-    interval_allowed: bool = False
+    op: ClassVar[str | None] = tokens.LN
+    py_op: ClassVar[PyOp | None] = math.log
+    return_type: ClassVar[type[ScalarType] | None] = Number
+    interval_allowed: ClassVar[bool] = False
 
 
 class SquareRoot(Unary):
-    op = tokens.SQRT
-    py_op = math.sqrt
-    return_type = Number
-    interval_allowed: bool = False
+    op: ClassVar[str | None] = tokens.SQRT
+    py_op: ClassVar[PyOp | None] = math.sqrt
+    return_type: ClassVar[type[ScalarType] | None] = Number
+    interval_allowed: ClassVar[bool] = False
 
 
-class NumericBinary(Binary):
-    type_to_check = Number
-    interval_allowed: bool = True
+class NumericBinary(_BaseBinary):
+    type_to_check: ClassVar[type[ScalarType] | None] = Number
+    interval_allowed: ClassVar[bool] = True
 
 
 class BinPlus(NumericBinary):
-    op = tokens.PLUS
-    py_op = operator.add
+    op: ClassVar[str | None] = tokens.PLUS
+    py_op: ClassVar[PyOp | None] = operator.add
 
 
 class BinMinus(NumericBinary):
-    op = tokens.MINUS
-    py_op = operator.sub
+    op: ClassVar[str | None] = tokens.MINUS
+    py_op: ClassVar[PyOp | None] = operator.sub
 
 
 class Mult(NumericBinary):
-    op = tokens.MULT
-    py_op = operator.mul
+    op: ClassVar[str | None] = tokens.MULT
+    py_op: ClassVar[PyOp | None] = operator.mul
 
 
 class Div(NumericBinary):
-    op = tokens.DIV
-    py_op = operator.truediv
-    return_type = Number
+    op: ClassVar[str | None] = tokens.DIV
+    py_op: ClassVar[PyOp | None] = operator.truediv
+    return_type: ClassVar[type[ScalarType] | None] = Number
 
 
 class Power(NumericBinary):
-    op = tokens.POW
-    py_op = operator.pow
-    interval_allowed: bool = False
+    op: ClassVar[str | None] = tokens.POW
+    py_op: ClassVar[PyOp | None] = operator.pow
+    interval_allowed: ClassVar[bool] = False
 
 
 class Logarithm(NumericBinary):
-    op = tokens.LOG
-    py_op = math.log
-    return_type = Number
-    interval_allowed: bool = False
+    op: ClassVar[str | None] = tokens.LOG
+    py_op: ClassVar[PyOp | None] = math.log
+    return_type: ClassVar[type[ScalarType] | None] = Number
+    interval_allowed: ClassVar[bool] = False
 
 
-class NumericComplex(Complex):
-    type_to_check = Number
-    interval_allowed: bool = True
+class NumericComplex(_BaseComplex):
+    type_to_check: ClassVar[type[ScalarType] | None] = Number
+    interval_allowed: ClassVar[bool] = True
 
 
 class Max(NumericComplex):
-    op = tokens.MAX
+    op: ClassVar[str | None] = tokens.MAX
 
 
 class Min(NumericComplex):
-    op = tokens.MIN
+    op: ClassVar[str | None] = tokens.MIN

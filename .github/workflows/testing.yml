@@ -18,21 +18,20 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        # 3.10 deferred: SQLAlchemy 2.0 `Mapped[Optional[...]]` annotations
-        # raise "typing.Optional requires a single type. Got MappedColumn"
-        # at import under 3.10. Works on 3.11+. Fix tracked separately.
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Install ODBC system headers (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y unixodbc-dev
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
+          cache: "pip"
+          cache-dependency-path: poetry.lock
       - name: Install poetry
         run: pipx install --python ${{ matrix.python-version }} poetry
       - name: Install dependencies
@@ -41,9 +40,8 @@ jobs:
         run: poetry run ruff format --no-cache --check
       - name: Run lint checks
         run: poetry run ruff check --output-format=github
-      # Disabled pending codebase type-debt cleanup (tracked separately).
-      # - name: Run type checks
-      #   run: poetry run mypy --show-error-codes --pretty
+      - name: Run type checks
+        run: poetry run mypy --show-error-codes --pretty
       - name: Run tests
         # --cov-fail-under=0 overrides the 100% gate declared in
         # [tool.coverage.report]; the gate is re-enforced by the

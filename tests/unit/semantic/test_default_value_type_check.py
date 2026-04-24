@@ -5,16 +5,17 @@ are compatible with the operand's expected data type.
 """
 
 import pytest
-from py_dpm.dpm_xl.ast.nodes import Constant
-from py_dpm.dpm_xl.semantic_analyzer import InputAnalyzer
-from py_dpm.dpm_xl.types.scalar import (
+
+from dpmcore.dpm_xl.ast.nodes import Constant
+from dpmcore.dpm_xl.semantic_analyzer import InputAnalyzer
+from dpmcore.dpm_xl.types.scalar import (
     Boolean,
     Integer,
     Item,
     Number,
     String,
 )
-from py_dpm.exceptions.exceptions import SemanticError
+from dpmcore.errors import SemanticError
 
 
 class TestCheckDefaultValue:

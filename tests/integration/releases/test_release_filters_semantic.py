@@ -1,33 +1,40 @@
+"""Tests for release-aware query filters used by semantic analysis.
+
+Ported from py_dpm. Exercises:
+1. ``filter_by_release`` uses SQLAlchemy ``IS NULL`` for the end column
+   (critical for PostgreSQL's strict NULL comparison semantics).
+2. ``OperandsChecking.check_headers`` wires ``filter_by_release`` with
+   the correct start/end columns and propagates the instance's
+   ``release_id``.
+"""
+
 import pandas as pd
-from py_dpm.dpm.models import Base, TableVersion
-from py_dpm.dpm.queries.filters import filter_by_release
-from py_dpm.dpm_xl.ast import operands as operands_module
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from dpmcore.dpm_xl.ast import operands as operands_module
+from dpmcore.dpm_xl.utils.filters import filter_by_release
+from dpmcore.orm import Base
+from dpmcore.orm.rendering import TableVersion
+
 
 def _make_session():
-    """Create a lightweight in-memory SQLAlchemy session for query compilation."""
+    """Create a lightweight in-memory SQLAlchemy session."""
     engine = create_engine("sqlite:///:memory:")
-    Base.metadata.bind = engine
+    Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     return Session()
 
 
 def test_filter_by_release_uses_is_null_for_end_release():
-    """Ensure filter_by_release uses SQLAlchemy .is_(None) semantics for end_col,
-    resulting in an 'IS NULL' predicate rather than '= NULL' in the SQL.
-
-    This is important for PostgreSQL, which is strict about boolean expressions
-    and NULL comparison semantics.
-    """
+    """End-column NULL handling must compile to ``IS NULL``."""
     session = _make_session()
 
     query = session.query(TableVersion)
     filtered = filter_by_release(
         query,
-        start_col=TableVersion.startreleaseid,
-        end_col=TableVersion.endreleaseid,
+        start_col=TableVersion.start_release_id,
+        end_col=TableVersion.end_release_id,
         release_id=5,
     )
 
@@ -38,7 +45,6 @@ def test_filter_by_release_uses_is_null_for_end_release():
         )
     ).upper()
 
-    # Ensure NULL handling uses IS NULL rather than = NULL
     assert "IS NULL" in sql
     assert "= NULL" not in sql
 
@@ -46,15 +52,15 @@ def test_filter_by_release_uses_is_null_for_end_release():
 def test_operands_check_headers_calls_filter_by_release_with_correct_args(
     monkeypatch,
 ):
-    """Verify that OperandsChecking.check_headers wires filter_by_release correctly:
-    - start_col is TableVersion.startreleaseid
-    - end_col is TableVersion.endreleaseid
-    - release_id matches the instance's release_id.
-    """
+    """check_headers passes the correct columns/release_id to filter_by_release."""
     called = {}
 
     def fake_filter_by_release(
-        query, start_col, end_col, release_id=None, release_code=None
+        query,
+        start_col,
+        end_col,
+        release_id=None,
+        release_code=None,
     ):
         called["query"] = query
         called["start_col"] = start_col
@@ -67,19 +73,17 @@ def test_operands_check_headers_calls_filter_by_release_with_correct_args(
         operands_module, "filter_by_release", fake_filter_by_release
     )
 
-    # Stub out the pandas helpers used inside check_headers so that no real DB
-    # access is attempted.
-    import py_dpm.dpm.models as models
+    # Stub out the pandas/SQLAlchemy helpers so the test doesn't touch
+    # a real DB.
+    import dpmcore.dpm_xl.model_queries as model_queries
 
     monkeypatch.setattr(
-        models,
-        "_compile_query_for_pandas",
+        model_queries,
+        "compile_query_for_pandas",
         lambda stmt, session: stmt,
     )
 
     def fake_read_sql(sql, session):
-        # Return an empty DataFrame with the expected columns so that
-        # check_headers completes without touching self.operands.
         return pd.DataFrame(
             columns=[
                 "Code",
@@ -92,20 +96,22 @@ def test_operands_check_headers_calls_filter_by_release_with_correct_args(
             ]
         )
 
-    monkeypatch.setattr(models, "_read_sql_with_connection", fake_read_sql)
+    monkeypatch.setattr(
+        model_queries, "read_sql_with_connection", fake_read_sql
+    )
 
     session = _make_session()
 
-    # Create a minimal OperandsChecking instance without running its __init__,
-    # since that would require a fully-populated AST and database.
+    # Build a minimal OperandsChecking instance without running __init__
+    # (which would require a fully-populated AST and database).
     oc = object.__new__(operands_module.OperandsChecking)
     oc.session = session
     oc.release_id = 7
-    oc.tables = {"DummyTable": {}}  # Only keys are needed by check_headers
+    oc.tables = {"DummyTable": {}}
 
     operands_module.OperandsChecking.check_headers(oc)
 
-    assert called["start_col"] is TableVersion.startreleaseid
-    assert called["end_col"] is TableVersion.endreleaseid
+    assert called["start_col"] is TableVersion.start_release_id
+    assert called["end_col"] is TableVersion.end_release_id
     assert called["release_id"] == 7
     assert called["release_code"] is None

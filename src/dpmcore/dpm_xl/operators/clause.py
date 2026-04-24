@@ -1,9 +1,16 @@
-from typing import List
+from typing import ClassVar, List
 
 from dpmcore import errors
 from dpmcore.dpm_xl.operators.base import Binary, Operator
 from dpmcore.dpm_xl.operators.conditional import ConditionalOperator
-from dpmcore.dpm_xl.symbols import FactComponent, RecordSet
+from dpmcore.dpm_xl.symbols import (
+    ConstantOperand,
+    FactComponent,
+    Operand,
+    RecordSet,
+    Scalar,
+    Structure,
+)
 from dpmcore.dpm_xl.types.promotion import unary_implicit_type_promotion
 from dpmcore.dpm_xl.types.scalar import ScalarFactory
 from dpmcore.dpm_xl.utils import tokens
@@ -14,13 +21,19 @@ from dpmcore.dpm_xl.utils.operands_mapping import (
 
 
 class ClauseOperator(Operator):
-    op = None
-    check_new_names = False
-    precondition = False
-    propagate_attributes = True
+    op: ClassVar[str | None] = None
+    check_new_names: ClassVar[bool] = False
+    precondition: ClassVar[bool] = False
+    propagate_attributes: ClassVar[bool] = True
 
     @classmethod
-    def validate(cls, operand, key_names, new_names=None, condition=None):
+    def validate(
+        cls,
+        operand: Operand,
+        key_names: list[str],
+        new_names: list[str] | None = None,
+        condition: RecordSet | Scalar | None = None,
+    ) -> RecordSet:
         if not isinstance(operand, RecordSet):
             raise errors.SemanticError("4-5-0-2", operator=cls.op)
 
@@ -45,10 +58,12 @@ class ClauseOperator(Operator):
             )
 
         if cls.op == tokens.RENAME:
+            if new_names is None:
+                raise errors.SemanticError("4-5-1-2", duplicated=[])
             if len(new_names) > len(set(new_names)):
-                seen = set()
+                seen: set[str] = set()
                 duplicated = list(
-                    {x for x in new_names if x in seen or seen.add(x)}
+                    {x for x in new_names if x in seen or seen.add(x)}  # type: ignore[func-returns-value]
                 )
                 raise errors.SemanticError("4-5-1-2", duplicated=duplicated)
             existing_components = [
@@ -98,7 +113,11 @@ class ClauseOperator(Operator):
         )
 
     @classmethod
-    def _validate_condition(cls, operand: RecordSet, condition):
+    def _validate_condition(
+        cls,
+        operand: RecordSet,
+        condition: RecordSet | Scalar,
+    ) -> None:
         boolean_type = ScalarFactory().scalar_factory("Boolean")
         if isinstance(condition, RecordSet):
             fact_component = condition.get_fact_component()
@@ -108,7 +127,9 @@ class ClauseOperator(Operator):
             unary_implicit_type_promotion(condition.type, boolean_type)
 
     @classmethod
-    def _check_structures(cls, operand: RecordSet, condition: RecordSet):
+    def _check_structures(
+        cls, operand: RecordSet, condition: RecordSet
+    ) -> None:
         operand_structure = operand.structure
         condition_structure = condition.structure
         if len(operand_structure.get_key_components()) == len(
@@ -117,7 +138,9 @@ class ClauseOperator(Operator):
             origin = f"{operand.origin}[where {condition.origin}]"
             # For better error management
             class_check = Binary()
-            class_check.op = cls.op
+            # Binary.op is ClassVar; override on the instance preserves the
+            # original behavior of piping cls.op into downstream errors.
+            class_check.op = cls.op  # type: ignore[misc]
             class_check.check_same_components(
                 operand_structure, condition_structure, origin
             )
@@ -131,7 +154,9 @@ class ClauseOperator(Operator):
                 )
 
     @classmethod
-    def rename_component(cls, operand: RecordSet, name: str, new_name: str):
+    def rename_component(
+        cls, operand: RecordSet, name: str, new_name: str
+    ) -> None:
         component = operand.structure.components[name]
         del operand.structure.components[name]
         component.name = new_name
@@ -139,8 +164,12 @@ class ClauseOperator(Operator):
 
     @classmethod
     def generate_result_structure(
-        cls, operand: RecordSet, key_names: List[str], condition, origin
-    ):
+        cls,
+        operand: RecordSet,
+        key_names: List[str],
+        condition: RecordSet | Scalar | None,
+        origin: str,
+    ) -> RecordSet:
 
         new_label = generate_new_label()
         operand.structure.replace_components_parent(new_label)
@@ -167,19 +196,19 @@ class ClauseOperator(Operator):
             result.records = result_dataframe
         else:
             result.records = operand.records
-        set_operand_label(result.name, result.origin)
+        set_operand_label(new_label, result.origin)
         return result
 
     @classmethod
-    def generate_origin_expression(cls, *args) -> str:
-        pass
+    def generate_origin_expression(cls, *args: object) -> str:
+        raise NotImplementedError
 
 
 class Where(ClauseOperator):
-    op = tokens.WHERE
+    op: ClassVar[str | None] = tokens.WHERE
 
     @classmethod
-    def validate_condition_type(cls, condition):
+    def validate_condition_type(cls, condition: Scalar) -> None:
         boolean_type = ScalarFactory().scalar_factory("Boolean")
         error_info = {"operand_name": condition.name, "op": cls.op}
         unary_implicit_type_promotion(
@@ -187,7 +216,9 @@ class Where(ClauseOperator):
         )
 
     @classmethod
-    def generate_origin_expression(cls, operand, condition):
+    def generate_origin_expression(  # type: ignore[override]
+        cls, operand: Operand, condition: Operand
+    ) -> str:
         operand_name = getattr(operand, "name", None) or getattr(
             operand, "origin", None
         )
@@ -198,10 +229,15 @@ class Where(ClauseOperator):
 
 
 class Rename(ClauseOperator):
-    op = tokens.RENAME
+    op: ClassVar[str | None] = tokens.RENAME
 
     @classmethod
-    def generate_origin_expression(cls, operand, old_names, new_names):
+    def generate_origin_expression(  # type: ignore[override]
+        cls,
+        operand: Operand,
+        old_names: list[str],
+        new_names: list[str],
+    ) -> str:
         origin_nodes = [
             f"{old_names[i]} to {new_names[i]}" for i in range(len(old_names))
         ]
@@ -209,20 +245,31 @@ class Rename(ClauseOperator):
 
 
 class Get(ClauseOperator):
-    op = tokens.GET
-    propagate_attributes = False
+    op: ClassVar[str | None] = tokens.GET
+    propagate_attributes: ClassVar[bool] = False
 
     @classmethod
-    def generate_origin_expression(cls, operand, component) -> str:
+    def generate_origin_expression(  # type: ignore[override]
+        cls, operand: Operand, component: str
+    ) -> str:
         return f"{operand.name} [ get {component} ]"
 
 
 class Sub(ClauseOperator):
-    op = tokens.SUB
-    propagate_attributes = True
+    op: ClassVar[str | None] = tokens.SUB
+    propagate_attributes: ClassVar[bool] = True
 
+    # ``Sub.validate`` has its own dedicated signature (property_code /
+    # value instead of key_names / new_names / condition). The override is
+    # intentional; call-sites use keyword arguments and never share callers
+    # with the superclass.
     @classmethod
-    def validate(cls, operand, property_code, value):
+    def validate(  # type: ignore[override]
+        cls,
+        operand: Operand,
+        property_code: str,
+        value: Operand | ConstantOperand,
+    ) -> RecordSet:
         if not isinstance(operand, RecordSet):
             raise errors.SemanticError("4-5-0-2", operator=cls.op)
 
@@ -255,11 +302,16 @@ class Sub(ClauseOperator):
             structure=operand.structure, name=new_label, origin=origin
         )
         result.records = operand.records
-        set_operand_label(result.name, result.origin)
+        set_operand_label(new_label, result.origin)
         return result
 
     @classmethod
-    def generate_origin_expression(cls, operand, property_code, value) -> str:
+    def generate_origin_expression(  # type: ignore[override]
+        cls,
+        operand: Operand,
+        property_code: str,
+        value: Operand | ConstantOperand,
+    ) -> str:
         operand_name = getattr(operand, "name", None) or getattr(
             operand, "origin", None
         )

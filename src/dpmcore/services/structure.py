@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 from sqlalchemy import or_
 
@@ -191,9 +191,14 @@ class StructureService:
 
     def get_release_organisations(
         self,
-        owner_ids: List[int],
+        owner_ids: Sequence[int | None],
     ) -> List[Dict[str, Any]]:
-        """Return deduplicated organisations for a set of owner IDs."""
+        """Return deduplicated organisations for a set of owner IDs.
+
+        Callers often collect ids via ``dict.get("ownerId")`` or row
+        attribute access, so ``None`` values may appear in the input and
+        are silently dropped here.
+        """
         unique = [oid for oid in set(owner_ids) if oid is not None]
         if not unique:
             return []
@@ -270,8 +275,10 @@ class StructureService:
         ics_by_cat: Dict[int, List[ItemCategory]] = defaultdict(
             list,
         )
-        item_ids = set()
+        item_ids: set[int] = set()
         for ic in ics:
+            if ic.category_id is None:
+                continue
             ics_by_cat[ic.category_id].append(ic)
             item_ids.add(ic.item_id)
 
@@ -403,7 +410,7 @@ class StructureService:
 
             if params.wants_all_releases:
                 all_entries.extend(v_dict for _, v_dict in versions)
-            elif versions:
+            elif versions and target_release is not None:
                 v = self._version_at_release(
                     versions,
                     target_release,

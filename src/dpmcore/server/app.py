@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Dict, Optional
+from typing import AsyncIterator, Dict, Generator, Optional
 
 from fastapi import Depends, FastAPI
 from fastapi.routing import APIRouter
@@ -106,10 +106,10 @@ def create_app(
 
     # -- dependency ---------------------------------------------------
 
-    def get_session() -> Session:  # type: ignore[misc]
+    def get_session() -> Generator[Session, None, None]:
         session = session_factory()
         try:
-            yield session  # type: ignore[misc]
+            yield session
         finally:
             session.close()
 

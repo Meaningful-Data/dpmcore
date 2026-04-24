@@ -1,7 +1,26 @@
+from __future__ import annotations
+
 from abc import ABC
+from typing import Any
+
+import pandas as pd
+from sqlalchemy.orm import Session
 
 from dpmcore import errors
-from dpmcore.dpm_xl.ast.nodes import *
+from dpmcore.dpm_xl.ast.nodes import (
+    AST,
+    Dimension,
+    OperationRef,
+    PersistentAssignment,
+    PreconditionItem,
+    Scalar,
+    TemporaryAssignment,
+    TimeShiftOp,
+    VarID,
+    VarRef,
+    WhereClauseOp,
+    WithExpression,
+)
 from dpmcore.dpm_xl.ast.template import ASTTemplate
 from dpmcore.dpm_xl.ast.where_clause import WhereClauseChecker
 from dpmcore.dpm_xl.model_queries import (
@@ -15,7 +34,12 @@ from dpmcore.dpm_xl.model_queries import (
 operand_elements = ["table", "rows", "cols", "sheets", "default", "interval"]
 
 
-def filter_datapoints_df(df, table, table_info: dict, release_id: int = None):
+def filter_datapoints_df(
+    df: pd.DataFrame,
+    table: str,
+    table_info: dict[str, list[str] | None],
+    release_id: int | None = None,
+) -> pd.DataFrame:
     """ """
     mapping_dictionary = {
         "rows": "row_code",
@@ -40,53 +64,61 @@ def filter_datapoints_df(df, table, table_info: dict, release_id: int = None):
     return df
 
 
-def filter_module_by_table_df(df, table):
+def filter_module_by_table_df(df: pd.DataFrame, table: str) -> list[str]:
     """Returns a list of modules that contain the table."""
-    module_list = df[df["table_code"] == table]["module_code"].tolist()
+    module_list: list[str] = df[df["table_code"] == table][
+        "module_code"
+    ].tolist()
     return module_list
 
 
 class ModuleDependencies(ASTTemplate, ABC):
     def __init__(
-        self, session, ast, release_id, date, module_ref, is_scripting=False
-    ):
+        self,
+        session: Session,
+        ast: AST,
+        release_id: int,
+        date: Any,
+        module_ref: str | None,
+        is_scripting: bool = False,
+    ) -> None:
         self.release_id = release_id
         self.AST = ast
-        self.tables = {}
-        self.operands = {}
-        self.full_operands = {}
+        self.tables: dict[str, dict[str, list[str] | None]] = {}
+        self.operands: dict[str, list[str]] = {}
+        self.full_operands: dict[str, list[int]] = {}
         self.module_ref = module_ref
         # self.key_components = {}
-        self.partial_selection = None
-        self.data = None
-        self.items = []
+        self.partial_selection: VarID | None = None
+        self.data: pd.DataFrame | None = None
+        self.items: list[str] = []
         self.preconditions = False
-        self.dimension_codes = []
+        self.dimension_codes: list[str] = []
         # self.open_keys = None
 
-        self.operations = []
-        self.operations_data = None
+        self.operations: list[str] = []
+        self.operations_data: pd.DataFrame | None = None
         self.is_scripting = is_scripting
 
         self.session = session
         self.time_period = "t"  # TODO
         self.date = date
-        self.modules = {}
+        self.modules: dict[str, Any] = {}
         self.from_time_shift = False
 
         super().__init__()
         self.visit(self.AST)
 
     # Start of visiting nodes
-    def visit_WithExpression(self, node: WithExpression):
+    def visit_WithExpression(self, node: WithExpression) -> None:
         if node.partial_selection.is_table_group:
             raise errors.SemanticError(
                 "1-10", table=node.partial_selection.table
             )
-        self.partial_selection: VarID = node.partial_selection
+        self.partial_selection = node.partial_selection
         self.visit(node.expression)
 
-    def visit_VarID(self, node: VarID):
+    def visit_VarID(self, node: VarID) -> None:
 
         if node.is_table_group:
             raise errors.SemanticError("1-10", table=node.table)
@@ -107,7 +139,7 @@ class ModuleDependencies(ASTTemplate, ABC):
         if not node.table:
             raise errors.SemanticError("1-4", table=node.table)
 
-        table_info = {
+        table_info: dict[str, list[str] | None] = {
             "rows": node.rows,
             "cols": node.cols,
             "sheets": node.sheets,
@@ -132,10 +164,10 @@ class ModuleDependencies(ASTTemplate, ABC):
         if variables_full.empty:
             raise errors.SemanticError("1-5", open_keys=table_info)
 
-        final_list = variables_full["variable_id"].to_list()
+        final_list: list[int] = variables_full["variable_id"].to_list()
         # Here change table for module or modules
-        modules = ViewModulesQuery.get_all_modules(self.session)  # TODO
-        modules = filter_module_by_table_df(modules, node.table)
+        modules_df = ViewModulesQuery.get_all_modules(self.session)  # TODO
+        modules = filter_module_by_table_df(modules_df, node.table)
         # modules = ViewModules().get_modules(self.session, [node.table], None)
         if self.module_ref:
             if self.module_ref in modules:
@@ -159,7 +191,7 @@ class ModuleDependencies(ASTTemplate, ABC):
             full_name = f"{node.table}:{self.time_period}"
             self.full_operands[full_name] = final_list
 
-    def visit_Dimension(self, node: Dimension):
+    def visit_Dimension(self, node: Dimension) -> None:
         if node.dimension_code not in self.dimension_codes:
             self.dimension_codes.append(node.dimension_code)
             if not ItemCategoryQuery.get_property_from_code(
@@ -169,13 +201,13 @@ class ModuleDependencies(ASTTemplate, ABC):
                     "1-5", open_keys=node.dimension_code
                 )
 
-    def visit_VarRef(self, node: VarRef):
+    def visit_VarRef(self, node: VarRef) -> None:
         if not VariableVersionQuery.check_variable_exists(
             self.session, node.variable, self.release_id
         ):
             raise errors.SemanticError("1-3", variable=node.variable)
 
-    def visit_PreconditionItem(self, node: PreconditionItem):
+    def visit_PreconditionItem(self, node: PreconditionItem) -> None:
 
         if self.is_scripting:
             raise errors.SemanticError("6-3", precondition=node.variable_id)
@@ -187,7 +219,7 @@ class ModuleDependencies(ASTTemplate, ABC):
 
         self.preconditions = True
 
-    def visit_Scalar(self, node: Scalar):
+    def visit_Scalar(self, node: Scalar) -> None:
         if node.item and node.scalar_type == "Item":
             if node.item not in self.items:
                 self.items.append(node.item)
@@ -196,14 +228,14 @@ class ModuleDependencies(ASTTemplate, ABC):
                 ):
                     raise errors.SemanticError("1-1", items=node.item)
 
-    def visit_WhereClauseOp(self, node: WhereClauseOp):
+    def visit_WhereClauseOp(self, node: WhereClauseOp) -> None:
         self.visit(node.operand)
         checker = WhereClauseChecker()
         checker.visit(node.condition)
         node.key_components = checker.key_components
         self.visit(node.condition)
 
-    def visit_TimeShiftOp(self, node: TimeShiftOp):
+    def visit_TimeShiftOp(self, node: TimeShiftOp) -> None:
         self.from_time_shift = True
         period_indicator = node.period_indicator
         shift_number = node.shift_number
@@ -219,17 +251,17 @@ class ModuleDependencies(ASTTemplate, ABC):
         self.visit(node.operand)
         self.from_time_shift = False
 
-    def visit_OperationRef(self, node: OperationRef):
+    def visit_OperationRef(self, node: OperationRef) -> None:
         if not self.is_scripting:
             raise errors.SemanticError(
                 "6-2", operation_code=node.operation_code
             )
 
-    def visit_PersistentAssignment(self, node: PersistentAssignment):
+    def visit_PersistentAssignment(self, node: PersistentAssignment) -> None:
         # TODO: visit node.left when there are calculations variables in database
         self.visit(node.right)
 
-    def visit_TemporaryAssignment(self, node: TemporaryAssignment):
+    def visit_TemporaryAssignment(self, node: TemporaryAssignment) -> None:
         temporary_identifier = node.left
         self.operations.append(temporary_identifier.value)
         self.visit(node.right)

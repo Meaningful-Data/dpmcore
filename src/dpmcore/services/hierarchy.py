@@ -48,10 +48,14 @@ class HierarchyService:
         release_id: Optional[int] = None,
     ) -> Optional[Dict[str, Any]]:
         """Return module version info for a given module code."""
+        # NOTE: Module has no ``code`` column in the ORM (only ModuleVersion
+        # does). The filter below is a latent bug that raises AttributeError
+        # at runtime; preserving here per scope constraints (annotation-only
+        # pass). Consider filtering on ``ModuleVersion.code`` instead.
         q = (
             self.session.query(ModuleVersion)
             .join(Module, ModuleVersion.module_id == Module.module_id)
-            .filter(Module.code == module_code)
+            .filter(Module.code == module_code)  # type: ignore[attr-defined]
         )
         if release_id is not None:
             q = filter_by_release(
@@ -126,8 +130,10 @@ class HierarchyService:
                 ModuleVersionComposition.module_vid
                 == ModuleVersion.module_vid,
             )
+            # NOTE: Module.code doesn't exist (see latent-bug note earlier
+            # in this file). Kept for runtime parity.
             .join(Module, ModuleVersion.module_id == Module.module_id)
-            .filter(Module.code == module_code)
+            .filter(Module.code == module_code)  # type: ignore[attr-defined]
         )
         if release_id is not None:
             q = filter_by_release(

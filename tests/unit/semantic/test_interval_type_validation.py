@@ -5,7 +5,8 @@ be used with Number and Integer types, not with String, Boolean, Item, etc.
 """
 
 import pytest
-from py_dpm.dpm_xl.types.scalar import (
+
+from dpmcore.dpm_xl.types.scalar import (
     Boolean,
     Integer,
     Item,
@@ -14,7 +15,7 @@ from py_dpm.dpm_xl.types.scalar import (
     String,
     TimeInterval,
 )
-from py_dpm.exceptions.exceptions import SemanticError
+from dpmcore.errors import SemanticError
 
 
 class TestIntervalTypeValidation:

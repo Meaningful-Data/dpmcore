@@ -4,6 +4,8 @@ This module defines Variable, VariableVersion, VariableCalculation,
 CompoundKey, and KeyComposition models.
 """
 
+from __future__ import annotations
+
 from datetime import date
 from typing import TYPE_CHECKING, List, Optional
 
@@ -26,7 +28,13 @@ if TYPE_CHECKING:
         Property,
         SubCategoryVersion,
     )
-    from dpmcore.orm.operations import OperationVersion
+    from dpmcore.orm.operations import OperandReference, OperationVersion
+    from dpmcore.orm.packaging import Module, ModuleParameters, ModuleVersion
+    from dpmcore.orm.rendering import (
+        HeaderVersion,
+        TableVersion,
+        TableVersionCell,
+    )
 
 
 # ------------------------------------------------------------------
