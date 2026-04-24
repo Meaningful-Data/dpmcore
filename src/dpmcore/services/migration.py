@@ -136,7 +136,7 @@ class MigrationService:
 
     def _extract_with_mdbtools(self, access_path: str) -> Dict[str, Any]:
         """Use ``mdb-tables`` / ``mdb-export`` (subprocess)."""
-        import pandas as pd  # type: ignore[import-untyped]  # lazy
+        import pandas as pd  # lazy
 
         raw = subprocess.check_output(  # noqa: S603
             ["mdb-tables", "-1", access_path],  # noqa: S607

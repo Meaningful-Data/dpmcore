@@ -65,7 +65,7 @@ class EcbValidationsImportService:
                 f"ECB validations file path '{csv_path}' is not a file."
             )
 
-        import pandas as pd  # type: ignore[import-untyped]  # lazy
+        import pandas as pd  # lazy
 
         df = pd.read_csv(
             path, dtype=str, keep_default_na=False, na_values=[""]
