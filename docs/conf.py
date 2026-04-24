@@ -22,15 +22,27 @@ extensions = [
     "sphinx_autodoc_typehints",
     "sphinx.ext.intersphinx",
     "sphinx.ext.viewcode",
+    "sphinx_multiversion",
 ]
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
+# -- Sphinx-multiversion ---------------------------------------------
+
+smv_tag_whitelist = r"^v\d+\.\d+\.\d+$"
+smv_branch_whitelist = r"^master$"
+smv_remote_whitelist = r"^.*$"
+smv_outputdir_format = "{ref.name}"
+smv_prefer_remote_refs = False
+
 # -- HTML output -----------------------------------------------------
 
 html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
+
+# Copy CNAME to the build output so GitHub Pages serves the custom domain.
+html_extra_path = ["CNAME"]
 
 # -- Napoleon (Google-style docstrings) ------------------------------
 

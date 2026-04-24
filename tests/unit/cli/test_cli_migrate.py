@@ -8,7 +8,7 @@ from click.testing import CliRunner
 from dpmcore.cli.main import main
 
 
-@pytest.fixture()
+@pytest.fixture
 def runner():
     return CliRunner()
 

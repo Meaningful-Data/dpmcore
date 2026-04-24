@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: dpmcore Documentation
+    url: https://docs.dpmcore.meaningfuldata.eu
+    about: Check the documentation for guides, API reference, and architecture.
+  - name: DPM 2.0 Refit Specification
+    url: https://www.eba.europa.eu/risk-and-data-analysis/reporting-frameworks/dpm-data-dictionary
+    about: Official DPM (Data Point Model) 2.0 Refit specification from the EBA.
+  - name: Report a Security Vulnerability
+    url: https://github.com/Meaningful-Data/dpmcore/security/advisories/new
+    about: Please report security vulnerabilities privately — do not open a public issue.

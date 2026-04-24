@@ -33,7 +33,9 @@ def seeded_engine(engine):
 
     # Create an organisation + concept for owner filtering
     org = Organisation(
-        org_id=1, name="European Banking Authority", acronym="EBA",
+        org_id=1,
+        name="European Banking Authority",
+        acronym="EBA",
     )
     session.add(org)
     session.flush()
@@ -46,37 +48,39 @@ def seeded_engine(engine):
     session.add(concept3)
     session.flush()
 
-    session.add_all([
-        Release(
-            release_id=1,
-            code="3.3",
-            date=date(2024, 1, 1),
-            description="Release 3.3",
-            status="Final",
-            is_current=False,
-            row_guid="c-rel-1",
-            owner_id=1,
-        ),
-        Release(
-            release_id=2,
-            code="3.4",
-            date=date(2024, 6, 1),
-            description="Release 3.4",
-            status="Final",
-            is_current=True,
-            row_guid="c-rel-2",
-            owner_id=1,
-        ),
-        Release(
-            release_id=3,
-            code="3.5-draft",
-            date=date(2024, 12, 1),
-            description="Release 3.5 draft",
-            status="Draft",
-            is_current=False,
-            row_guid="c-rel-3",
-        ),
-    ])
+    session.add_all(
+        [
+            Release(
+                release_id=1,
+                code="3.3",
+                date=date(2024, 1, 1),
+                description="Release 3.3",
+                status="Final",
+                is_current=False,
+                row_guid="c-rel-1",
+                owner_id=1,
+            ),
+            Release(
+                release_id=2,
+                code="3.4",
+                date=date(2024, 6, 1),
+                description="Release 3.4",
+                status="Final",
+                is_current=True,
+                row_guid="c-rel-2",
+                owner_id=1,
+            ),
+            Release(
+                release_id=3,
+                code="3.5-draft",
+                date=date(2024, 12, 1),
+                description="Release 3.5 draft",
+                status="Draft",
+                is_current=False,
+                row_guid="c-rel-3",
+            ),
+        ]
+    )
     session.commit()
     session.close()
     return engine

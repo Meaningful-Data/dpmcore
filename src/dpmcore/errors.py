@@ -1,6 +1,6 @@
 """Exception classes for dpmcore."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 
 class DpmCoreError(Exception):
@@ -28,9 +28,7 @@ class DpmCoreError(Exception):
         self.title = title
         self.description = description
         self.csi = csi
-        msg = (
-            f"{title}: {description}" if description else title
-        )
+        msg = f"{title}: {description}" if description else title
         super().__init__(msg)
 
 
@@ -68,75 +66,42 @@ class MigrationError(DpmCoreError):
 
 centralised_messages: Dict[str, str] = {
     # Syntax errors
-    "0-1": (
-        "For match operator, provided regex has"
-        " syntax errors: {message}"
-    ),
+    "0-1": ("For match operator, provided regex has syntax errors: {message}"),
     "0-2": (
         "Cannot specify {argument} more than one"
         " time in the same cell reference."
     ),
-    "0-3": (
-        "Cannot use null literal, you must use"
-        " the isnull function"
-    ),
+    "0-3": ("Cannot use null literal, you must use the isnull function"),
     # Variable not found
     "1-1": "The following items were not found: {items}.",
-    "1-2": (
-        "Cell expression {cell_expression}"
-        " was not found."
-    ),
+    "1-2": ("Cell expression {cell_expression} was not found."),
     "1-3": "Variable {variable} was not found.",
     "1-4": "Table {table} was not found.",
-    "1-5": (
-        "The following open keys were not found:"
-        " {open_keys}."
-    ),
+    "1-5": ("The following open keys were not found: {open_keys}."),
     "1-6": "Table group {table_group} not found.",
     "1-7": (
         "Property signature {property_code} associated"
         " with the property constraint cannot be found."
     ),
-    "1-8": (
-        "The following operations {operations}"
-        " were not found."
-    ),
-    "1-9": (
-        "Previous operation: {operation_code}"
-        " was not found"
-    ),
+    "1-8": ("The following operations {operations} were not found."),
+    "1-9": ("Previous operation: {operation_code} was not found"),
     "1-10": (
         "Can't be analyzed an expression with table"
         " groups. Table reference {table} is defined"
         " as table group."
     ),
-    "1-11": (
-        "Category with code: {category_code}"
-        " was not found"
-    ),
-    "1-12": (
-        "Subcategory with code: {subcategory_code}"
-        " was not found"
-    ),
+    "1-11": ("Category with code: {category_code} was not found"),
+    "1-12": ("Subcategory with code: {subcategory_code} was not found"),
     "1-13": (
-        "No module versions found for table"
-        " versions: {table_version_ids}."
+        "No module versions found for table versions: {table_version_ids}."
     ),
     "1-14": (
         "No module versions found for preconditions"
         " items: {precondition_items}."
     ),
-    "1-15": (
-        "Subcategory with id: {subcategory_id}"
-        " was not found"
-    ),
-    "1-16": (
-        "Category with id: {category_id}"
-        " was not found"
-    ),
-    "1-17": (
-        "Grey cells {cell_expression} were found."
-    ),
+    "1-15": ("Subcategory with id: {subcategory_id} was not found"),
+    "1-16": ("Category with id: {category_id} was not found"),
+    "1-17": ("Grey cells {cell_expression} were found."),
     "1-18": (
         "Found explicit s* on the expression, but no"
         " sheets for the cells were found for the"
@@ -147,15 +112,11 @@ centralised_messages: Dict[str, str] = {
         " rows for the cells were found for the"
         " operand(s)."
     ),
-    "1-20": (
-        "Missing explicit {header} on the expression"
-        " for table {table}"
-    ),
+    "1-20": ("Missing explicit {header} on the expression for table {table}"),
     "1-21": "Release {release_id} was not found.",
     # Structures
     "2-1": (
-        "If preconditions are involved the result"
-        " has to be a boolean scalar."
+        "If preconditions are involved the result has to be a boolean scalar."
     ),
     "2-2": (
         "This operation is not allowed, because there"
@@ -182,10 +143,7 @@ centralised_messages: Dict[str, str] = {
         "In RecordSet: {name}, standard keys: {keys}"
         " with values {values} are duplicated."
     ),
-    "2-7": (
-        "Component creation for {component_name}"
-        " was not possible."
-    ),
+    "2-7": ("Component creation for {component_name} was not possible."),
     "2-8": (
         "At op {op}: Key components {dpm_keys}"
         " not found on recordset {recordset}."
@@ -210,14 +168,8 @@ centralised_messages: Dict[str, str] = {
         " operator works for {type_op}."
         "Please check {origin}."
     ),
-    "3-4": (
-        "Interval can't be used for this"
-        " operand_type={operand_type}"
-    ),
-    "3-5": (
-        "Interval can't be used for this operator."
-        "Please check {origin}."
-    ),
+    "3-4": ("Interval can't be used for this operand_type={operand_type}"),
+    "3-5": ("Interval can't be used for this operator.Please check {origin}."),
     "3-6": (
         "Invalid default type, default is a"
         " {default_type} but it has to be a"
@@ -226,16 +178,13 @@ centralised_messages: Dict[str, str] = {
     # Operators
     # - Aggregate Operators
     "4-4-0-1": (
-        "Only a Recordset is allowed in the"
-        " Aggregation operator {op}."
+        "Only a Recordset is allowed in the Aggregation operator {op}."
     ),
     "4-4-0-2": (
-        "Grouping components {not_present} are"
-        " not present in key components"
+        "Grouping components {not_present} are not present in key components"
     ),
     "4-4-0-3": (
-        "Mixed type can't be used in aggregation."
-        " Please check {origin}."
+        "Mixed type can't be used in aggregation. Please check {origin}."
     ),
     # - Clause Operators
     "4-5-0-1": (
@@ -244,18 +193,14 @@ centralised_messages: Dict[str, str] = {
         " or fact component."
     ),
     "4-5-0-2": (
-        "In {operator} operator only operands of"
-        " recordset type are supported."
+        "In {operator} operator only operands of recordset type are supported."
     ),
     # -- Rename
     "4-5-1-1": (
         "For rename operator component names: {names}"
         " already exists on recordset {recordset}."
     ),
-    "4-5-1-2": (
-        "Duplicated new names after rename"
-        " operator: {duplicated}."
-    ),
+    "4-5-1-2": ("Duplicated new names after rename operator: {duplicated}."),
     "4-5-1-3": (
         "For rename operator, new names can't be"
         " standard key names or indexes names(x,y,z)"
@@ -291,10 +236,7 @@ centralised_messages: Dict[str, str] = {
         " be a subset of the other"
     ),
     # -- if then else
-    "4-6-1-1": (
-        "Error for the condition in if then"
-        " else operator"
-    ),
+    "4-6-1-1": ("Error for the condition in if then else operator"),
     "4-6-1-3": (
         "For if then else operator, then and else"
         " have to be both recordset or both scalars,"
@@ -307,14 +249,10 @@ centralised_messages: Dict[str, str] = {
     ),
     # -- filter
     "4-6-3-1": (
-        "Filter operator only supports recordset"
-        " as selection and condition"
+        "Filter operator only supports recordset as selection and condition"
     ),
     # - Time Operators
-    "4-7-1": (
-        "Only a Recordset or a scalar is allowed"
-        " for {op} operator."
-    ),
+    "4-7-1": ("Only a Recordset or a scalar is allowed for {op} operator."),
     "4-7-2": (
         "For time_shift operator, only var component"
         " is allowed when operand is a recordset"
@@ -324,14 +262,8 @@ centralised_messages: Dict[str, str] = {
         " be specified when operand is a recordset"
     ),
     # Generation of validations
-    "5-0-1": (
-        "This expression doesn't generate any"
-        " correct validation."
-    ),
-    "5-0-2": (
-        "This expression can't be used for the"
-        " generation of children."
-    ),
+    "5-0-1": ("This expression doesn't generate any correct validation."),
+    "5-0-2": ("This expression can't be used for the generation of children."),
     # - Properties constraints
     "5-1-1": "No properties constraints were found.",
     "5-1-2": (
@@ -344,15 +276,9 @@ centralised_messages: Dict[str, str] = {
         " expression defined on properties"
         " constraints."
     ),
-    "5-1-4": (
-        "Property with signature {ref}"
-        " was not found."
-    ),
+    "5-1-4": ("Property with signature {ref} was not found."),
     # - Variants
-    "5-2-1": (
-        "The supplied expression does not contain"
-        " any table group."
-    ),
+    "5-2-1": ("The supplied expression does not contain any table group."),
     # - Sign validations
     "5-3-1": (
         "Table version id {table_version_id} does"
@@ -361,8 +287,7 @@ centralised_messages: Dict[str, str] = {
     ),
     # Scripting
     "6-1": (
-        "Overwriting a variable is not allowed,"
-        " trying it with {variable}."
+        "Overwriting a variable is not allowed, trying it with {variable}."
     ),
     "6-2": (
         "References to operations are not allowed in"
@@ -384,10 +309,7 @@ centralised_messages: Dict[str, str] = {
         " validation. Please check Operation Source"
         " to use Property Constraint."
     ),
-    "7-2": (
-        "Found a Variable Reference,"
-        " please check expression"
-    ),
+    "7-2": ("Found a Variable Reference, please check expression"),
 }
 
 
@@ -444,7 +366,7 @@ def _gather_expression(operand: str) -> str:
     for key in operands_labels.__reversed__():
         if key in expression:
             expression = expression.replace(
-                key, operands_labels[key]
+                key, cast(str, operands_labels[key])
             )
     return expression
 
@@ -463,9 +385,7 @@ class SyntaxError_(DrrException):
             code: Message code from centralised_messages.
             **kwargs: Formatting arguments for the message.
         """
-        message = centralised_messages[code].format(
-            **kwargs
-        )
+        message = centralised_messages[code].format(**kwargs)
         super().__init__(message, None, None, code)
 
 
@@ -489,34 +409,25 @@ class SemanticError(DrrException):
         )
 
         operands_labels = LabelHandler().operands_labels
-        message = centralised_messages[code].format(
-            **kwargs
-        )
+        message = centralised_messages[code].format(**kwargs)
         for operand in reversed(operands_labels):
             if operand in message:
                 generated = _gather_expression(operand)
-                not_single = (
-                    get_type_from_label(operand)
-                    == "not_single"
-                )
+                not_single = get_type_from_label(operand) == "not_single"
                 if not_single:
                     message = message.replace(
                         operand,
                         f"GENERATED:' {generated} '",
                     )
                 else:
-                    message = message.replace(
-                        operand, generated
-                    )
+                    message = message.replace(operand, generated)
         super().__init__(message, None, None, code)
 
 
 class DataTypeError(Exception):
     """Invalid scalar value for a DPM data type."""
 
-    def __init__(
-        self, value: Any, data_type: str
-    ) -> None:
+    def __init__(self, value: Any, data_type: str) -> None:
         """Initialise a DataTypeError.
 
         Args:
@@ -524,8 +435,7 @@ class DataTypeError(Exception):
             data_type: Expected data type name.
         """
         super().__init__(
-            f"Invalid Scalar value '{value}'"
-            f" for data type {data_type}."
+            f"Invalid Scalar value '{value}' for data type {data_type}."
         )
 
 
@@ -539,7 +449,5 @@ class ScriptingError(DrrException):
             code: Message code from centralised_messages.
             **kwargs: Formatting arguments for the message.
         """
-        message = centralised_messages[code].format(
-            **kwargs
-        )
+        message = centralised_messages[code].format(**kwargs)
         super().__init__(message, None, None, code)

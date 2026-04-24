@@ -465,9 +465,7 @@ class TableVersionHeader(models.Model):
         managed = False
         db_table = "TableVersionHeader"
         app_label = "dpmcore_django"
-        unique_together = (
-            ("table_vid", "header_id"),
-        )
+        unique_together = (("table_vid", "header_id"),)
 
 
 class TableGroup(models.Model):
@@ -591,9 +589,7 @@ class TableGroupComposition(models.Model):
         managed = False
         db_table = "TableGroupComposition"
         app_label = "dpmcore_django"
-        unique_together = (
-            ("table_group_id", "table_id"),
-        )
+        unique_together = (("table_group_id", "table_id"),)
 
 
 class TableAssociation(models.Model):
@@ -716,6 +712,4 @@ class KeyHeaderMapping(models.Model):
         managed = False
         db_table = "KeyHeaderMapping"
         app_label = "dpmcore_django"
-        unique_together = (
-            ("association_id", "foreign_key_header_id"),
-        )
+        unique_together = (("association_id", "foreign_key_header_id"),)

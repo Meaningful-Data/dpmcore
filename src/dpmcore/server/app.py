@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Dict, Optional
+from typing import AsyncIterator, Dict, Generator, Optional
 
 from fastapi import Depends, FastAPI
 from fastapi.routing import APIRouter
@@ -89,8 +89,7 @@ def create_app(
             {
                 "name": "Validation",
                 "description": (
-                    "DPM-XL expression validation "
-                    "(syntax and semantic)."
+                    "DPM-XL expression validation (syntax and semantic)."
                 ),
             },
             {
@@ -107,10 +106,10 @@ def create_app(
 
     # -- dependency ---------------------------------------------------
 
-    def get_session() -> Session:  # type: ignore[misc]
+    def get_session() -> Generator[Session, None, None]:
         session = session_factory()
         try:
-            yield session  # type: ignore[misc]
+            yield session
         finally:
             session.close()
 
@@ -149,7 +148,8 @@ def create_app(
         from dpmcore.services.dpm_xl import DpmXlService
 
         result = DpmXlService(session).validate_semantic(
-            body.expression, release_id=body.release_id,
+            body.expression,
+            release_id=body.release_id,
         )
         return SemanticResponse(
             is_valid=result["is_valid"],

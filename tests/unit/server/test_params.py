@@ -2,7 +2,6 @@
 
 from dpmcore.server.params import (
     ReleaseKeyword,
-    StructureParams,
     parse_structure_params,
 )
 
@@ -33,7 +32,9 @@ class TestParseDefaults:
 class TestWildcards:
     def test_explicit_wildcards(self):
         p = parse_structure_params(
-            owner="*", id="*", release="*",
+            owner="*",
+            id="*",
+            release="*",
         )
         assert p.is_owner_wildcard is True
         assert p.is_id_wildcard is True

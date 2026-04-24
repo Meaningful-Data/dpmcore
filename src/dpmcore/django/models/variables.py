@@ -165,9 +165,7 @@ class VariableCalculation(models.Model):
         managed = False
         db_table = "VariableCalculation"
         app_label = "dpmcore_django"
-        unique_together = (
-            ("module_id", "variable_id", "operation_vid"),
-        )
+        unique_together = (("module_id", "variable_id", "operation_vid"),)
 
 
 class CompoundKey(models.Model):

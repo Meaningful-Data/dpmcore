@@ -212,7 +212,7 @@ def build_meili_json(
 def serve(database: str, host: str, port: int) -> None:
     """Start the dpmcore REST API server."""
     try:
-        import uvicorn  # type: ignore[import-untyped]
+        import uvicorn
     except ImportError:
         click.echo(
             "Server dependencies not installed. Run:\n"
@@ -222,7 +222,7 @@ def serve(database: str, host: str, port: int) -> None:
         sys.exit(1)
 
     # Import here so the server module is only loaded when needed.
-    from dpmcore.server.app import create_app  # type: ignore[import-not-found]
+    from dpmcore.server.app import create_app
 
     app = create_app(database)
     uvicorn.run(app, host=host, port=port)

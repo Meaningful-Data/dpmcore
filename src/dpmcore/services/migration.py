@@ -169,7 +169,7 @@ class MigrationService:
         import decimal
 
         import pandas as pd  # lazy
-        import pyodbc  # lazy  # type: ignore[import-untyped]
+        import pyodbc  # lazy
 
         conn_str = (
             r"DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};"

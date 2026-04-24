@@ -1,22 +1,20 @@
-"""
-Warning collector for semantic validation.
+"""Warning collector for semantic validation.
 
 This module provides a thread-local warning collector that can be used to capture
 warnings during semantic analysis instead of emitting them via warnings.warn().
 """
 
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import List, Optional
-
 
 # Thread-local storage for the warning collector
 _local = threading.local()
 
 
 class WarningCollector:
-    """
-    Collects semantic validation warnings.
+    """Collects semantic validation warnings.
 
     This class provides a context manager interface to collect warnings during
     semantic analysis. When active, warnings can be added via add_warning() and
@@ -35,8 +33,7 @@ class WarningCollector:
         return self._warnings.copy()
 
     def get_combined_warning(self) -> Optional[str]:
-        """
-        Get all warnings combined into a single string.
+        """Get all warnings combined into a single string.
 
         Returns:
             None if no warnings, otherwise all warnings joined with newlines.
@@ -56,8 +53,7 @@ def get_active_collector() -> Optional[WarningCollector]:
 
 
 def add_semantic_warning(message: str) -> None:
-    """
-    Add a warning to the active collector.
+    """Add a warning to the active collector.
 
     If no collector is active, the warning is silently discarded.
     This allows the warning calls to work both within and outside of
@@ -72,9 +68,8 @@ def add_semantic_warning(message: str) -> None:
 
 
 @contextmanager
-def collect_warnings():
-    """
-    Context manager to collect warnings during semantic analysis.
+def collect_warnings() -> Iterator[WarningCollector]:
+    """Context manager to collect warnings during semantic analysis.
 
     Usage:
         with collect_warnings() as collector:

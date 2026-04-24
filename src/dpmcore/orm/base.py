@@ -118,9 +118,7 @@ class SessionFactory:
         """
         return self._maker()
 
-    def create(
-        self, *, expire_on_commit: Optional[bool] = None
-    ) -> Session:
+    def create(self, *, expire_on_commit: Optional[bool] = None) -> Session:
         """Create a session with optional overrides.
 
         Args:
