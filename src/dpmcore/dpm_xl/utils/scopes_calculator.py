@@ -197,6 +197,19 @@ class OperationScopeService:
                         starting_modules[code] = vids
                     for code, vids in ending_by_code.items():
                         ending_modules[code] = vids
+
+                    # Supplement each group with table codes that are NOT
+                    # undergoing a lifecycle transition.  Without this,
+                    # a group that only covers some table codes would
+                    # produce incomplete (single-module) scopes via the
+                    # Cartesian product.
+                    for code, vids in ending_by_code.items():
+                        if code not in starting_modules:
+                            starting_modules[code] = vids
+                    for code, vids in starting_by_code.items():
+                        if code not in ending_modules:
+                            ending_modules[code] = vids
+
                     if starting_modules:
                         cross_modules["_starting"] = starting_modules
                     if ending_modules:
