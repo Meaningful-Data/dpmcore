@@ -275,10 +275,7 @@ class ASTGeneratorService:
             release_id=release_id,
         )
 
-        seen: set[str] = set()
-        deduped_intra = [
-            x for x in all_intra if not (x in seen or seen.add(x))
-        ]
+        deduped_intra: List[str] = list(dict.fromkeys(all_intra))
 
         return {
             "dependency_information": {
