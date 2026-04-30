@@ -10,15 +10,8 @@ import numpy
 import pandas as pd
 
 from dpmcore import errors
-from dpmcore.dpm_xl.model_queries import (
-    ModuleVersionQuery,
-    OperationScopeCompositionQuery,
-)
-from dpmcore.dpm_xl.utils.tokens import (
-    VALID_SEVERITIES,
-    VARIABLE_VID,
-    WARNING_SEVERITY,
-)
+from dpmcore.dpm_xl.model_queries import ModuleVersionQuery
+from dpmcore.dpm_xl.utils.tokens import VARIABLE_VID
 from dpmcore.orm.operations import (
     OperationScope,
     OperationScopeComposition,
@@ -30,30 +23,20 @@ if TYPE_CHECKING:
 FROM_REFERENCE_DATE = "FromReferenceDate"
 TO_REFERENCE_DATE = "ToReferenceDate"
 MODULE_VID = "ModuleVID"
-TABLE_VID = "TableVID"
-
-
-def _check_if_existing(
-    composition_modules: Sequence[int], existing_scopes: pd.DataFrame
-) -> bool:
-    filtered_modules: list[int] = existing_scopes[
-        existing_scopes[MODULE_VID].isin(composition_modules)
-    ][MODULE_VID].tolist()
-    return bool(
-        len(filtered_modules)
-        and set(composition_modules) == set(filtered_modules)
-    )
 
 
 class OperationScopeService:
-    """Class to calculate OperationScope and OperationScopeComposition tables for an operation version."""
+    """Synthesize ``OperationScope`` instances in memory for a DPM-XL expression.
 
-    def __init__(
-        self,
-        operation_version_id: int,
-        session: Session | None = None,
-    ) -> None:
-        self.operation_version_id = operation_version_id
+    Computes which module versions are involved in an operation given
+    its table references and precondition items. The resulting
+    ``OperationScope`` / ``OperationScopeComposition`` objects are
+    in-memory carriers used downstream to classify cross-module
+    dependencies — they are never persisted and the service does not
+    mutate the SQLAlchemy session.
+    """
+
+    def __init__(self, session: Session | None = None) -> None:
         self.session = session
         self.module_vids: list[int] = []
         self.current_date = datetime.today().date()
@@ -160,7 +143,6 @@ class OperationScopeService:
                         if "StartReleaseID" in group_df.columns
                         else None
                     )
-                    group_df["EndReleaseID"].values[0]
 
                     # Determine if this is a "new" module starting in this release
                     is_starting = start_release == release_id
@@ -197,6 +179,19 @@ class OperationScopeService:
                         starting_modules[code] = vids
                     for code, vids in ending_by_code.items():
                         ending_modules[code] = vids
+
+                    # Supplement each group with table codes that are NOT
+                    # undergoing a lifecycle transition.  Without this,
+                    # a group that only covers some table codes would
+                    # produce incomplete (single-module) scopes via the
+                    # Cartesian product.
+                    for code, vids in ending_by_code.items():
+                        if code not in starting_modules:
+                            starting_modules[code] = vids
+                    for code, vids in starting_by_code.items():
+                        if code not in ending_modules:
+                            ending_modules[code] = vids
+
                     if starting_modules:
                         cross_modules["_starting"] = starting_modules
                     if ending_modules:
@@ -454,7 +449,9 @@ class OperationScopeService:
             operation_scope = self.create_operation_scope(from_submission_date)
             unique_combination = set(combination)
             for module in unique_combination:
-                module_row = module_lookup[module]
+                module_row = module_lookup.get(module)
+                if module_row is None:
+                    continue
                 self.create_operation_scope_composition(
                     operation_scope=operation_scope,
                     module_vid=module,
@@ -469,32 +466,14 @@ class OperationScopeService:
     def create_operation_scope(
         self,
         submission_date: Any,
-        severity: str | None = None,
     ) -> OperationScope:
-        """Method to populate OperationScope table.
+        """Synthesize an in-memory ``OperationScope`` instance.
 
-        Args:
-            submission_date: The submission date for the operation scope.
-            severity: Severity level for the operation. Must be one of: 'error', 'warning', 'info'.
-                     Defaults to 'warning' if not specified.
-
-        Returns:
-            OperationScope: The created operation scope object.
-
-        Raises:
-            ValueError: If severity is not a valid value.
+        The returned object is appended to ``self.operation_scopes``
+        and is **never** added to the SQLAlchemy session. It exists
+        solely as a carrier for downstream cross-module dependency
+        classification.
         """
-        # Default to WARNING_SEVERITY for backward compatibility
-        if severity is None:
-            severity = WARNING_SEVERITY
-
-        # Validate severity
-        severity_lower = severity.lower()
-        if severity_lower not in VALID_SEVERITIES:
-            raise ValueError(
-                f"Invalid severity '{severity}'. Must be one of: {', '.join(sorted(VALID_SEVERITIES))}"
-            )
-
         final_date: date | None
         if not pd.isnull(submission_date):
             if isinstance(submission_date, numpy.datetime64):
@@ -512,14 +491,11 @@ class OperationScopeService:
         else:
             final_date = None
         operation_scope = OperationScope(
-            operation_vid=self.operation_version_id,
             is_active=1,  # Use 1 instead of True for PostgreSQL bigint compatibility
-            severity=severity_lower,
             from_submission_date=final_date,
             row_guid=str(uuid.uuid4()),
         )
-        if self.session is not None:
-            self.session.add(operation_scope)
+        self.operation_scopes.append(operation_scope)
         return operation_scope
 
     def create_operation_scope_composition(
@@ -528,10 +504,12 @@ class OperationScopeService:
         module_vid: int,
         module_info: dict[str, Any] | None = None,
     ) -> None:
-        """Method to populate OperationScopeComposition table
-        :param operation_scope: Operation scope data
-        :param module_vid: Module version id
-        :param module_info: Optional dict with module info (code, from_reference_date, to_reference_date).
+        """Attach an ``OperationScopeComposition`` to ``operation_scope``.
+
+        Builds an in-memory composition link via the SQLAlchemy
+        relationship (which auto-populates
+        ``operation_scope.operation_scope_compositions``). Never calls
+        ``session.add``.
         """
         operation_scope_composition = OperationScopeComposition(
             operation_scope=operation_scope,
@@ -543,61 +521,16 @@ class OperationScopeService:
             # _module_info is a runtime-only transient attribute not part of
             # the SQLAlchemy mapped schema.
             operation_scope_composition._module_info = module_info  # type: ignore[attr-defined]
-        if self.session is not None:
-            self.session.add(operation_scope_composition)
 
     def get_scopes_with_status(
         self,
     ) -> tuple[list[OperationScope], list[OperationScope]]:
-        """Method that checks if operation scope exists in database and classifies it based on whether it exists or not
-        :return two list with existing and new scopes.
+        """Return the synthesized scopes.
+
+        First element of the tuple holds the synthesized scopes;
+        second element is always empty (kept for tuple-shape
+        compatibility with the pre-stripping API). The persisted
+        "existing vs new" classification is no longer relevant —
+        this service does not persist anything.
         """
-        existing_scopes: list[OperationScope] = []
-        new_scopes: list[OperationScope] = []
-        if self.session is None:
-            return existing_scopes, new_scopes
-        operation_scopes = [
-            o for o in self.session.new if isinstance(o, OperationScope)
-        ]
-        database_scopes = (
-            OperationScopeCompositionQuery.get_from_operation_version_id(
-                self.session, self.operation_version_id
-            )
-        )
-        if database_scopes.empty:
-            new_scopes = operation_scopes
-        else:
-            for scope in operation_scopes:
-                composition_modules = [
-                    scope_comp.module_vid
-                    for scope_comp in scope.operation_scope_compositions
-                ]
-                result = database_scopes.groupby("OperationScopeID").filter(
-                    lambda x: _check_if_existing(composition_modules, x)
-                )
-
-                if not result.empty:
-                    existing_scopes.append(scope)
-                else:
-                    # if the module is closed and the operation is new, we haven't to create a new scope wih the old module
-                    # because we have the new module
-                    existing_previous = False
-                    for vid in composition_modules:
-                        # NOTE: this references the builtin ``id`` rather than
-                        # ``vid`` (almost certainly a latent bug) — preserved
-                        # to avoid changing runtime behavior during a typing
-                        # pass. See cr-11 tracking issue.
-                        if id not in existing_scopes:  # type: ignore[comparison-overlap]
-                            aux = ModuleVersionQuery.get_module_version_by_vid(
-                                session=self._require_session(), vid=vid
-                            )
-                            if aux.empty:
-                                continue
-                            if aux["EndReleaseID"][0] is not None:
-                                existing_previous = True
-                                break
-
-                    if not existing_previous:
-                        new_scopes.append(scope)
-
-        return existing_scopes, new_scopes
+        return list(self.operation_scopes), []

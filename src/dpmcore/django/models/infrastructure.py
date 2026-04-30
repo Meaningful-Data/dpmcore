@@ -32,7 +32,7 @@ class Concept(models.Model):
         app_label = "dpmcore_django"
 
     def __str__(self) -> str:
-        return self.concept_guid
+        return str(self.concept_guid)
 
 
 class ConceptRelation(models.Model):

@@ -127,26 +127,13 @@ class MLGeneration(ASTTemplate):
         self.severity = severity
 
     def populate_operation_scope(self) -> None:
-        if self.op_version_id is None:
-            raise RuntimeError(
-                "populate_operation_scope requires op_version_id"
-            )
-        operation_scope_service = OperationScopeService(
-            operation_version_id=self.op_version_id, session=self.session
-        )
-        # NOTE: ``only_last_release`` is not part of the current
-        # ``calculate_operation_scope`` signature — this is a pre-existing
-        # runtime bug tracked as a latent issue.
-        self.existing_scopes, self.new_scopes = (
-            operation_scope_service.calculate_operation_scope(
-                tables_vids=list(self.table_vid_dict.values()),
-                precondition_items=[
-                    item
-                    for item in self.precondition_items
-                    if item is not None
-                ],
-                only_last_release=False,  # type: ignore[call-arg]
-            )
+        # Dead path under the dpmcore stateless ``script()`` API
+        # (``is_scripting`` is always True there). Kept as a guard so
+        # any future re-introduction of a persisting caller fails
+        # loudly instead of silently mis-classifying scopes.
+        raise RuntimeError(
+            "populate_operation_scope is no longer supported — dpmcore "
+            "does not persist OperationScope rows."
         )
 
     def extract_operand_data(

@@ -1,9 +1,12 @@
-"""CLI entry point for dpmcore.
+r"""CLI entry point for dpmcore.
 
 Usage::
 
     dpmcore migrate --source /path/to/file.accdb --database sqlite:///dpm.db
     dpmcore serve --database sqlite:///dpm.db
+    dpmcore generate-script --expressions ./rules.json \
+        --module-code COREP_Con --module-version 2.0.1 \
+        --database sqlite:///dpm.db --output ./script.json
     dpmcore --version
 """
 
@@ -48,7 +51,7 @@ def migrate(source: str, database: str) -> None:
 
     from sqlalchemy import create_engine
 
-    from dpmcore.services.migration import (
+    from dpmcore.loaders.migration import (
         MigrationError,
         MigrationService,
     )
@@ -232,3 +235,158 @@ def serve(database: str, host: str, port: int) -> None:
 
     app = create_app(database)
     uvicorn.run(app, host=host, port=port)
+
+
+@main.command("generate-script")
+@click.option(
+    "--expressions",
+    "expressions_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help=(
+        "Path to a JSON file with shape "
+        '{"expressions": [[expr, code], ...], '
+        '"preconditions": [[pre_expr, [code, ...]], ...], '
+        '"severities": {code: severity}}. '
+        "The 'preconditions' and 'severities' keys are optional."
+    ),
+)
+@click.option(
+    "--module-code",
+    required=True,
+    help="Primary module code (e.g. COREP_Con).",
+)
+@click.option(
+    "--module-version",
+    required=True,
+    help="Primary module version (e.g. 2.0.1).",
+)
+@click.option(
+    "--severity",
+    default=None,
+    help=(
+        "Global default severity (error/warning/info). Defaults to "
+        "'warning' when omitted. Per-validation overrides go in the "
+        "'severities' map of the input JSON."
+    ),
+)
+@click.option(
+    "--release",
+    default=None,
+    help=(
+        "Release code (e.g. '4.2'). When omitted, resolves to the "
+        "latest release whose window contains the requested module "
+        "version."
+    ),
+)
+@click.option(
+    "--database",
+    required=True,
+    help="SQLAlchemy database URL.",
+)
+@click.option(
+    "--output",
+    required=True,
+    type=click.Path(dir_okay=False),
+    help="Path to write the generated script JSON.",
+)
+def generate_script(
+    expressions_path: str,
+    module_code: str,
+    module_version: str,
+    severity: str | None,
+    release: str | None,
+    database: str,
+    output: str,
+) -> None:
+    """Generate an engine-ready DPM-XL validations script."""
+    import json
+    from pathlib import Path
+
+    try:
+        from rich.console import Console
+    except ImportError:
+        click.echo(
+            "Install 'rich' for pretty output: pip install dpmcore[cli]",
+            err=True,
+        )
+        sys.exit(1)
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from dpmcore.services.ast_generator import ASTGeneratorService
+
+    console = Console()
+
+    try:
+        raw_text = Path(expressions_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        click.echo(f"Could not read {expressions_path}: {exc}", err=True)
+        sys.exit(1)
+    try:
+        raw = json.loads(raw_text)
+    except json.JSONDecodeError as exc:
+        click.echo(
+            f"Invalid JSON in {expressions_path}: {exc}",
+            err=True,
+        )
+        sys.exit(1)
+    if not isinstance(raw, dict) or "expressions" not in raw:
+        click.echo(
+            "Invalid expressions file: expected a JSON object with an "
+            "'expressions' key (and optional 'preconditions', "
+            "'severities'). The flat-list form is no longer supported.",
+            err=True,
+        )
+        sys.exit(1)
+
+    items = [tuple(pair) for pair in raw["expressions"]]
+    preconditions_raw = raw.get("preconditions") or []
+    preconditions = [(pair[0], list(pair[1])) for pair in preconditions_raw]
+
+    severities_raw = raw.get("severities")
+    severities: dict[str, str] | None = None
+    if severities_raw is not None:
+        if not isinstance(severities_raw, dict):
+            click.echo(
+                "Invalid 'severities' field: expected an object keyed "
+                "by validation_code.",
+                err=True,
+            )
+            sys.exit(1)
+        severities = {str(k): str(v) for k, v in severities_raw.items()}
+
+    engine = create_engine(database)
+    with Session(engine) as session:
+        svc = ASTGeneratorService(session)
+        result = svc.script(
+            expressions=items,
+            module_code=module_code,
+            module_version=module_version,
+            preconditions=preconditions or None,
+            severity=severity,
+            severities=severities,
+            release=release,
+        )
+
+    if not result.get("success"):
+        console.print(
+            f"[red]Script generation failed:[/red] {result.get('error')}"
+        )
+        sys.exit(1)
+
+    Path(output).write_text(
+        json.dumps(result, indent=2, default=str), encoding="utf-8"
+    )
+
+    enriched = result.get("enriched_ast") or {}
+    n_dep = sum(
+        len((ns_block or {}).get("dependency_modules") or {})
+        for ns_block in enriched.values()
+        if isinstance(ns_block, dict)
+    )
+    console.print(
+        f"[green]Wrote script to[/green] {output} "
+        f"({len(items)} expressions, {n_dep} dependency modules)"
+    )
