@@ -13,12 +13,14 @@ from typing import (
     Set,
 )
 
+from sqlalchemy import or_
+
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
 from dpmcore.dpm_xl.utils.scopes_calculator import (
     OperationScopeService,
 )
 from dpmcore.errors import SemanticError
-from dpmcore.orm.glossary import Property
+from dpmcore.orm.glossary import ItemCategory, Property
 from dpmcore.orm.infrastructure import DataType, Release
 from dpmcore.orm.packaging import (
     ModuleVersion,
@@ -28,7 +30,7 @@ from dpmcore.orm.rendering import (
     TableVersion,
     TableVersionCell,
 )
-from dpmcore.orm.variables import Variable, VariableVersion
+from dpmcore.orm.variables import KeyComposition, Variable, VariableVersion
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -298,8 +300,19 @@ class ScopeCalculatorService:
             if not uri:
                 continue
 
-            # Collect tables for this external module
-            tables_dict = self._get_module_tables(vid)
+            # Collect tables for this external module. Drop tables
+            # that came back without any variables — the ADAM engine
+            # schema requires ``minProperties: 1`` on each table's
+            # variables map, and "structural-only" tables (no metric
+            # variables) can't satisfy that.
+            tables_dict_full = self._get_module_tables(
+                vid, release_id=release_id
+            )
+            tables_dict = {
+                tcode: tdata
+                for tcode, tdata in tables_dict_full.items()
+                if tdata.get("variables")
+            }
 
             # Determine ref_period: most specific (non-T) wins
             ref_period = "T"
@@ -486,13 +499,16 @@ class ScopeCalculatorService:
     def _get_module_tables(
         self,
         module_vid: int,
+        release_id: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Return tables for a module with their variables.
+        """Return tables for a module with their variables and open keys.
 
         Returns::
 
             {table_code: {"variables": {var_id: type_code},
-                          "open_keys": {}}}
+                          "open_keys": {property_code: data_type_code}}}
+
+        ``release_id`` filters the open-keys query by release window.
         """
         # Get table codes + VIDs for this module
         tv_rows = (
@@ -551,13 +567,82 @@ class ScopeCalculatorService:
                 if tvid in variables_by_tvid:
                     variables_by_tvid[tvid][var_id] = type_code
 
+        # Open keys per table_code
+        open_keys_by_code = self._get_open_keys_for_tables(
+            list(vid_to_code.values()), release_id=release_id
+        )
+
         tables: Dict[str, Any] = {}
         for tvid, code in vid_to_code.items():
             tables[code] = {
                 "variables": variables_by_tvid.get(tvid, {}),
-                "open_keys": {},
+                "open_keys": open_keys_by_code.get(code, {}),
             }
         return tables
+
+    def _get_open_keys_for_tables(
+        self,
+        table_codes: List[str],
+        release_id: Optional[int] = None,
+    ) -> Dict[str, Dict[str, str]]:
+        """Return ``{table_code: {property_code: data_type_code}}``.
+
+        Identifies the open-key (compound-key) variables of each table
+        by walking ``TableVersion`` → ``KeyComposition`` →
+        ``VariableVersion`` → ``Property`` → ``ItemCategory`` (for the
+        property code) → ``DataType`` (for the type code). When
+        ``release_id`` is given the query restricts to ``TableVersion``
+        rows whose release window contains it.
+        """
+        result: Dict[str, Dict[str, str]] = {code: {} for code in table_codes}
+        if not table_codes:
+            return result
+
+        query = (
+            self.session.query(
+                TableVersion.code.label("table_code"),
+                ItemCategory.code.label("property_code"),
+                DataType.code.label("data_type_code"),
+            )
+            .select_from(DataType)
+            .join(Property, DataType.data_type_id == Property.data_type_id)
+            .join(ItemCategory, Property.property_id == ItemCategory.item_id)
+            .join(
+                VariableVersion,
+                ItemCategory.item_id == VariableVersion.property_id,
+            )
+            .join(
+                KeyComposition,
+                VariableVersion.variable_vid == KeyComposition.variable_vid,
+            )
+            .join(
+                TableVersion,
+                KeyComposition.key_id == TableVersion.key_id,
+            )
+            .filter(TableVersion.code.in_(table_codes))
+        )
+
+        if release_id is not None:
+            query = query.filter(
+                or_(
+                    TableVersion.end_release_id.is_(None),
+                    TableVersion.end_release_id > release_id,
+                ),
+                TableVersion.start_release_id <= release_id,
+            )
+
+        rows = (
+            query.distinct()
+            .order_by(TableVersion.code, ItemCategory.code)
+            .all()
+        )
+        for row in rows:
+            tcode = row.table_code
+            pcode = row.property_code
+            dcode = row.data_type_code or ""
+            if tcode and pcode:
+                result.setdefault(tcode, {})[pcode] = dcode
+        return result
 
     def _get_module_uri(
         self,
@@ -569,16 +654,25 @@ class ScopeCalculatorService:
 
         Resolution order:
 
-        1. Static CSV mapping by module code + version.
-        2. Dynamic construction from DB metadata.
+        - When ``release_id`` is supplied (the script-generation path),
+          build the URI dynamically using *that* release's code as the
+          release segment, regardless of when the module version
+          itself was introduced. This matches what the EBA taxonomy
+          package writers do: every module shipped inside a given
+          taxonomy release is rooted at ``.../{release}/mod/...``,
+          even when the underlying module version's start release is
+          older. Sharing the release segment across all modules in a
+          script is what lets the engine resolve cross-instance
+          dependencies against the matching XBRL Report Packages.
 
-        When *mv* is supplied the initial DB lookup is
-        skipped.
+        - When ``release_id`` is not supplied (ad-hoc lookups outside
+          script generation), try the static CSV mapping by
+          ``(module_code, version_number)`` first; on a miss, fall
+          back to the dynamic builder using the module version's
+          start release.
+
+        When *mv* is supplied the initial DB lookup is skipped.
         """
-        from dpmcore.data import (
-            get_module_schema_ref_by_version,
-        )
-
         try:
             if mv is None:
                 mv = (
@@ -593,23 +687,21 @@ class ScopeCalculatorService:
             if not module_code:
                 return None
 
-            # 1. Try static CSV mapping by version
-            if mv.version_number:
-                static = get_module_schema_ref_by_version(
-                    module_code, mv.version_number
-                )
-                if static:
-                    return static.removesuffix(".json")
-
-            # 2. Dynamic construction
             framework = mv.module.framework
             if not framework or not framework.code:
                 return None
 
-            effective_release_id = release_id or mv.start_release_id
+            csv_or_release_id = self._resolve_uri_release_id(
+                mv, module_code, release_id
+            )
+            if isinstance(csv_or_release_id, str):
+                return csv_or_release_id  # CSV hit (already final URI).
+            if csv_or_release_id is None:
+                return None
+
             release_row = (
                 self.session.query(Release.code)
-                .filter(Release.release_id == effective_release_id)
+                .filter(Release.release_id == csv_or_release_id)
                 .first()
             )
             if not release_row or not release_row.code:
@@ -630,3 +722,39 @@ class ScopeCalculatorService:
                 exc,
             )
             return None
+
+    @staticmethod
+    def _resolve_uri_release_id(
+        mv: Any,
+        module_code: str,
+        release_id: Optional[int],
+    ) -> Optional[Any]:
+        """Pick the release_id that seeds the URL's release segment.
+
+        Returns one of:
+
+        - ``int`` — the release_id whose ``Release.code`` should fill
+          the ``/{release}/`` segment.
+        - ``str`` — a final URI (CSV hit, ``.json`` suffix already
+          stripped). The caller must short-circuit and return it.
+        - ``None`` — no release_id resolvable; caller returns ``None``.
+
+        The script-generation path passes ``release_id`` and skips the
+        CSV mapping entirely so every module in a script shares the
+        same target release in its URI. Ad-hoc callers (no
+        ``release_id``) get the legacy resolution: CSV first, then
+        ``mv.start_release_id``.
+        """
+        from dpmcore.data import (
+            get_module_schema_ref_by_version,
+        )
+
+        if release_id is not None:
+            return release_id
+        if mv.version_number:
+            static = get_module_schema_ref_by_version(
+                module_code, mv.version_number
+            )
+            if static:
+                return static.removesuffix(".json")
+        return mv.start_release_id
