@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 from dpmcore.services.layout_exporter import queries
-from tests.integration.services.layout_exporter._helpers import (
+from ._helpers import (
     add_context_composition,
     add_subcategory,
     add_table,

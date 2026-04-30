@@ -14,7 +14,7 @@ from dpmcore.services.layout_exporter.service import (
     LayoutExporterService,
     _fix_xlsx_timestamps,
 )
-from tests.integration.services.layout_exporter._helpers import (
+from ._helpers import (
     add_cell,
     add_header,
     add_subcategory,
