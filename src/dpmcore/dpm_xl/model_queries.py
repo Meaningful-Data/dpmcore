@@ -475,6 +475,53 @@ class VariableVersionQuery:
         return [r.variable_id for r in rows]
 
     @staticmethod
+    def get_variable_vids_by_codes(
+        session: "Session",
+        codes: list[str],
+        release_id: int | None = None,
+    ) -> dict[str, dict[str, int]]:
+        """Batch-resolve variable codes to ``(variable_id, variable_vid)``.
+
+        Args:
+            session: SQLAlchemy session.
+            codes: Variable codes to resolve.
+            release_id: Optional release window filter.
+
+        Returns:
+            ``{variable_code: {"variable_id": int, "variable_vid": int}}``
+            for codes that resolve. Codes that don't resolve are
+            silently omitted.
+        """
+        if not codes:
+            return {}
+        query = session.query(
+            VariableVersion.code,
+            VariableVersion.variable_id,
+            VariableVersion.variable_vid,
+        ).filter(VariableVersion.code.in_(codes))
+        if release_id is not None:
+            query = query.filter(
+                and_(
+                    VariableVersion.start_release_id <= release_id,
+                    or_(
+                        VariableVersion.end_release_id > release_id,
+                        VariableVersion.end_release_id.is_(None),
+                    ),
+                )
+            )
+        rows = query.all()
+        resolved: dict[str, dict[str, int]] = {}
+        for row in rows:
+            code = row.code
+            if not code or code in resolved:
+                continue
+            resolved[code] = {
+                "variable_id": int(row.variable_id),
+                "variable_vid": int(row.variable_vid),
+            }
+        return resolved
+
+    @staticmethod
     def get_all_preconditions(
         session: "Session",
         release_id: int | None,

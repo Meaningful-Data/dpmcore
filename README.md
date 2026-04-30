@@ -96,14 +96,28 @@ with connect("sqlite:///dpm.db") as db:
         ],
         module_code="COREP_Con",
         module_version="2.0.1",
+        severity="warning",                # global default (default: "warning")
+        severities={"v0002": "error"},     # per-validation override
+        release="4.2",                     # optional; latest available if omitted
     )
-    print(script["enriched_ast"])
-    print(script["dependency_information"])
-    print(script["dependency_modules"])
+    # script["enriched_ast"] is keyed by the resolved module URI:
+    #   {namespace_uri: {module_code, module_version, framework_code,
+    #                    dpm_release, dates, operations, variables, tables,
+    #                    preconditions, precondition_variables,
+    #                    dependency_information, dependency_modules}}
+    namespace, ns_block = next(iter(script["enriched_ast"].items()))
+    print(ns_block["dpm_release"])      # {"release": "...", "publication_date": "..."}
+    print(ns_block["operations"])       # {validation_code: {ast, severity, ...}}
+    print(ns_block["dependency_modules"])
 ```
 
-`preconditions` is optional — pass it when one or more validations
-share a guarding precondition expression.
+`preconditions`, `severities` and `release` are all optional. Severity
+resolution per validation is `severities.get(code, severity)`; values
+must be one of `error`, `warning`, `info` (case-insensitive). Codes in
+`severities` that are not present in `expressions` raise `ValueError`.
+When `release` is omitted, dpmcore resolves the latest release whose
+window contains the requested ``(module_code, module_version)`` and
+embeds it in the resulting `dpm_release` block.
 
 The same script generation is exposed via the CLI and the REST API.
 The CLI input file mirrors the Python shape:
@@ -115,7 +129,8 @@ The CLI input file mirrors the Python shape:
     ],
     "preconditions": [
         ["{is_reporting_entity}", ["v0001"]]
-    ]
+    ],
+    "severities": {"v0001": "error"}
 }
 ```
 
@@ -123,6 +138,7 @@ The CLI input file mirrors the Python shape:
 dpmcore generate-script \
     --expressions ./rules.json \
     --module-code COREP_Con --module-version 2.0.1 \
+    --severity warning --release 4.2 \
     --database sqlite:///dpm.db --output ./script.json
 ```
 
@@ -132,6 +148,8 @@ curl -X POST http://localhost:8000/api/v1/scripts \
     -d '{
           "expressions":[["{tC_01.00, r0100, c0010} = {tC_01.00, r0200, c0010}","v0001"]],
           "preconditions":[{"expression":"{is_reporting_entity}","validation_codes":["v0001"]}],
+          "severities":{"v0001":"error"},
+          "release":"4.2",
           "module_code":"COREP_Con",
           "module_version":"2.0.1"
         }'

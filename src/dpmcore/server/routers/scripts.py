@@ -25,15 +25,22 @@ class GenerateScriptRequest(BaseModel):
     module_version: str
     preconditions: Optional[List[PreconditionEntry]] = None
     severity: Optional[str] = None
+    severities: Optional[Dict[str, str]] = None
+    release: Optional[str] = None
 
 
 class GenerateScriptResponse(BaseModel):
-    """Response body for ``POST /scripts``."""
+    """Response body for ``POST /scripts``.
+
+    ``enriched_ast`` carries the namespaced engine-ready dict
+    (``{module_uri: {module_code, dpm_release, operations,
+    variables, tables, preconditions, dependency_information,
+    dependency_modules, ...}}``). Dependency blocks live inside that
+    namespace, not at the top level.
+    """
 
     success: bool
     enriched_ast: Optional[Any] = None
-    dependency_information: Optional[Dict[str, Any]] = None
-    dependency_modules: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
 
 
@@ -72,12 +79,12 @@ def create_scripts_router(
             module_version=body.module_version,
             preconditions=preconditions,
             severity=body.severity,
+            severities=body.severities,
+            release=body.release,
         )
         return GenerateScriptResponse(
             success=bool(result.get("success")),
             enriched_ast=result.get("enriched_ast"),
-            dependency_information=result.get("dependency_information"),
-            dependency_modules=result.get("dependency_modules"),
             error=result.get("error"),
         )
 

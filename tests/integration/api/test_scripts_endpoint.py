@@ -16,24 +16,61 @@ def client(memory_engine):
         yield c
 
 
+_NS_URI = "http://example.org/mod"
+
+
 def _success_payload():
     return {
         "success": True,
-        "enriched_ast": [{"ml": "stub"}],
-        "dependency_information": {
-            "intra_instance_validations": ["v0001"],
-            "cross_instance_dependencies": [],
-            "alternative_dependencies": [],
-        },
-        "dependency_modules": {
-            "http://example.org/m1": {"tables": {}, "variables": {}},
+        "enriched_ast": {
+            _NS_URI: {
+                "module_code": "FINREP_Con",
+                "module_version": "2.0.1",
+                "framework_code": "FINREP",
+                "dpm_release": {
+                    "release": "4.2",
+                    "publication_date": "2025-04-28",
+                },
+                "dates": {"from": "2026-03-31", "to": None},
+                "operations": {
+                    "v0001": {
+                        "version_id": 1234,
+                        "code": "v0001",
+                        "expression": "{tF_01.01, r0010, c0010} = 0",
+                        "root_operator_id": 24,
+                        "ast": {"class_name": "BinOp"},
+                        "from_submission_date": "2026-03-31",
+                        "severity": "error",
+                    }
+                },
+                "variables": {"100": "m"},
+                "tables": {
+                    "F_01.01": {
+                        "variables": {"100": "m"},
+                        "open_keys": {"BASE": "e"},
+                    }
+                },
+                "preconditions": {},
+                "precondition_variables": {},
+                "dependency_information": {
+                    "intra_instance_validations": ["v0001"],
+                    "cross_instance_dependencies": [],
+                    "alternative_dependencies": [],
+                },
+                "dependency_modules": {
+                    "http://example.org/m1": {
+                        "tables": {},
+                        "variables": {},
+                    },
+                },
+            }
         },
         "error": None,
     }
 
 
 class TestPostScripts:
-    def test_success_returns_dependency_payload(self, client):
+    def test_success_returns_namespaced_payload(self, client):
         with patch(
             "dpmcore.services.ast_generator.ASTGeneratorService"
         ) as Svc:
@@ -52,12 +89,13 @@ class TestPostScripts:
         assert response.status_code == 200, response.text
         body = response.json()
         assert body["success"] is True
-        assert body["dependency_information"][
-            "intra_instance_validations"
-        ] == [
-            "v0001",
+        ns = body["enriched_ast"][_NS_URI]
+        assert ns["module_code"] == "FINREP_Con"
+        assert ns["operations"]["v0001"]["severity"] == "error"
+        assert ns["dependency_information"]["intra_instance_validations"] == [
+            "v0001"
         ]
-        assert "http://example.org/m1" in body["dependency_modules"]
+        assert "http://example.org/m1" in ns["dependency_modules"]
 
     def test_passes_args_through_to_service(self, client):
         with patch(
@@ -71,6 +109,8 @@ class TestPostScripts:
                     "module_code": "FINREP_Con",
                     "module_version": "2.0.1",
                     "severity": "error",
+                    "severities": {"v0001": "warning"},
+                    "release": "4.2",
                 },
             )
 
@@ -78,6 +118,8 @@ class TestPostScripts:
         assert kwargs["module_code"] == "FINREP_Con"
         assert kwargs["module_version"] == "2.0.1"
         assert kwargs["severity"] == "error"
+        assert kwargs["severities"] == {"v0001": "warning"}
+        assert kwargs["release"] == "4.2"
         assert kwargs["expressions"] == [("expr1", "v0001")]
         assert kwargs["preconditions"] is None
 

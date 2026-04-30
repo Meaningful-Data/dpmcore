@@ -246,8 +246,9 @@ def serve(database: str, host: str, port: int) -> None:
     help=(
         "Path to a JSON file with shape "
         '{"expressions": [[expr, code], ...], '
-        '"preconditions": [[pre_expr, [code, ...]], ...]}. '
-        "The 'preconditions' key is optional."
+        '"preconditions": [[pre_expr, [code, ...]], ...], '
+        '"severities": {code: severity}}. '
+        "The 'preconditions' and 'severities' keys are optional."
     ),
 )
 @click.option(
@@ -263,7 +264,20 @@ def serve(database: str, host: str, port: int) -> None:
 @click.option(
     "--severity",
     default=None,
-    help="Severity tag attached to each generated validation.",
+    help=(
+        "Global default severity (error/warning/info). Defaults to "
+        "'warning' when omitted. Per-validation overrides go in the "
+        "'severities' map of the input JSON."
+    ),
+)
+@click.option(
+    "--release",
+    default=None,
+    help=(
+        "Release code (e.g. '4.2'). When omitted, resolves to the "
+        "latest release whose window contains the requested module "
+        "version."
+    ),
 )
 @click.option(
     "--database",
@@ -281,6 +295,7 @@ def generate_script(
     module_code: str,
     module_version: str,
     severity: str | None,
+    release: str | None,
     database: str,
     output: str,
 ) -> None:
@@ -308,8 +323,8 @@ def generate_script(
     if not isinstance(raw, dict) or "expressions" not in raw:
         click.echo(
             "Invalid expressions file: expected a JSON object with an "
-            "'expressions' key (and optional 'preconditions'). "
-            "The flat-list form is no longer supported.",
+            "'expressions' key (and optional 'preconditions', "
+            "'severities'). The flat-list form is no longer supported.",
             err=True,
         )
         sys.exit(1)
@@ -317,6 +332,18 @@ def generate_script(
     items = [tuple(pair) for pair in raw["expressions"]]
     preconditions_raw = raw.get("preconditions") or []
     preconditions = [(pair[0], list(pair[1])) for pair in preconditions_raw]
+
+    severities_raw = raw.get("severities")
+    severities: dict[str, str] | None = None
+    if severities_raw is not None:
+        if not isinstance(severities_raw, dict):
+            click.echo(
+                "Invalid 'severities' field: expected an object keyed "
+                "by validation_code.",
+                err=True,
+            )
+            sys.exit(1)
+        severities = {str(k): str(v) for k, v in severities_raw.items()}
 
     engine = create_engine(database)
     with Session(engine) as session:
@@ -327,6 +354,8 @@ def generate_script(
             module_version=module_version,
             preconditions=preconditions or None,
             severity=severity,
+            severities=severities,
+            release=release,
         )
 
     if not result.get("success"):
@@ -339,7 +368,12 @@ def generate_script(
         json.dumps(result, indent=2, default=str), encoding="utf-8"
     )
 
-    n_dep = len(result.get("dependency_modules") or {})
+    enriched = result.get("enriched_ast") or {}
+    n_dep = sum(
+        len((ns_block or {}).get("dependency_modules") or {})
+        for ns_block in enriched.values()
+        if isinstance(ns_block, dict)
+    )
     console.print(
         f"[green]Wrote script to[/green] {output} "
         f"({len(items)} expressions, {n_dep} dependency modules)"
