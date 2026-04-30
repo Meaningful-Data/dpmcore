@@ -13,7 +13,7 @@ from sqlalchemy.orm import sessionmaker
 from dpmcore.services.ecb_validations_import import EcbValidationsImportService
 from dpmcore.services.export_csv import ExportCsvService
 from dpmcore.services.meili_json import MeiliJsonResult, MeiliJsonService
-from dpmcore.services.migration import MigrationService
+from dpmcore.loaders.migration import MigrationService
 
 
 class MeiliBuildError(Exception):

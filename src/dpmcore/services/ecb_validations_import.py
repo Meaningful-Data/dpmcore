@@ -625,7 +625,6 @@ class EcbValidationsImportService:
                         session
                     ).calculate_from_expression(
                         expression=expression,
-                        operation_version_id=operation_version.operation_vid,
                         release_id=release_id,
                     )
                     if scope_result.has_error:
@@ -636,19 +635,17 @@ class EcbValidationsImportService:
                         )
                         continue
 
-                    scopes = list(scope_result.existing_scopes) + list(
-                        scope_result.new_scopes
-                    )
-                    for scope in scopes:
+                    for scope in scope_result.scopes:
+                        scope.operation_vid = operation_version.operation_vid
                         scope.is_active = active_value
                         scope.severity = severity_value
                         scope.from_submission_date = submission_date
+                        session.add(scope)
+                        for comp in scope.operation_scope_compositions:
+                            session.add(comp)
+                            compositions_created += 1
+                        scopes_created += 1
 
-                    scopes_created += len(scopes)
-                    compositions_created += sum(
-                        len(scope.operation_scope_compositions)
-                        for scope in scopes
-                    )
                     session.flush()
 
         return EcbValidationsImportResult(
