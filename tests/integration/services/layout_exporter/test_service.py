@@ -7,15 +7,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from openpyxl import load_workbook
-
-from dpmcore.services.layout_exporter.models import ExportConfig
-from dpmcore.services.layout_exporter.service import (
-    LayoutExporterService,
-    _fix_xlsx_timestamps,
-)
-
-from ._helpers import (
+from _helpers import (  # noqa: E402  (sys.path injected via conftest)
     add_cell,
     add_header,
     add_subcategory,
@@ -28,6 +20,13 @@ from ._helpers import (
     seed_domain_category,
     seed_property_category,
     seed_releases,
+)
+from openpyxl import load_workbook
+
+from dpmcore.services.layout_exporter.models import ExportConfig
+from dpmcore.services.layout_exporter.service import (
+    LayoutExporterService,
+    _fix_xlsx_timestamps,
 )
 
 

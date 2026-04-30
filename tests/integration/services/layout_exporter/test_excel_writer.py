@@ -2,6 +2,22 @@
 
 from __future__ import annotations
 
+from _helpers import (  # noqa: E402  (sys.path injected via conftest)
+    add_cell,
+    add_context_composition,
+    add_header,
+    add_subcategory,
+    add_table,
+    add_variable_version,
+    build_basic_module_with_table,
+    make_member,
+    make_module,
+    make_property,
+    seed_data_types,
+    seed_domain_category,
+    seed_property_category,
+    seed_releases,
+)
 from openpyxl import load_workbook
 
 from dpmcore.services.layout_exporter.excel_writer import (
@@ -25,23 +41,6 @@ from dpmcore.services.layout_exporter.models import (
     TableLayout,
 )
 from dpmcore.services.layout_exporter.service import LayoutExporterService
-
-from ._helpers import (
-    add_cell,
-    add_context_composition,
-    add_header,
-    add_subcategory,
-    add_table,
-    add_variable_version,
-    build_basic_module_with_table,
-    make_member,
-    make_module,
-    make_property,
-    seed_data_types,
-    seed_domain_category,
-    seed_property_category,
-    seed_releases,
-)
 
 # ---------------------------------------------------------------- #
 # Pure-function tests (no DB needed)

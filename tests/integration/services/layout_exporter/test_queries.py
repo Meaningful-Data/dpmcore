@@ -5,9 +5,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from dpmcore.services.layout_exporter import queries
-
-from ._helpers import (
+from _helpers import (  # noqa: E402  (sys.path injected via conftest)
     add_context_composition,
     add_subcategory,
     add_table,
@@ -21,6 +19,8 @@ from ._helpers import (
     seed_property_category,
     seed_releases,
 )
+
+from dpmcore.services.layout_exporter import queries
 
 # ---------------------------------------------------------------- #
 # load_module_table_versions
