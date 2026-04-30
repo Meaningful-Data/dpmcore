@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, Generator, List, Optional
 
 from fastapi import Depends
 from fastapi.routing import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 
@@ -27,6 +27,19 @@ class GenerateScriptRequest(BaseModel):
     severity: Optional[str] = None
     severities: Optional[Dict[str, str]] = None
     release: Optional[str] = None
+
+    @field_validator("expressions")
+    @classmethod
+    def _validate_expression_pairs(
+        cls, value: List[List[str]]
+    ) -> List[List[str]]:
+        for index, item in enumerate(value):
+            if len(item) != 2:
+                raise ValueError(
+                    f"expressions[{index}] must be a pair "
+                    f"[expression, code]; got {len(item)} item(s)."
+                )
+        return value
 
 
 class GenerateScriptResponse(BaseModel):

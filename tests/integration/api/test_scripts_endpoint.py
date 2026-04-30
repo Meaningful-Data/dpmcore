@@ -204,6 +204,21 @@ class TestPostScripts:
         )
         assert response.status_code == 422
 
+    def test_invalid_body_returns_422_malformed_expression_pair(self, client):
+        """Regression for B3: a single-element ``expressions`` item used
+        to raise ``IndexError`` and surface as a 500. The Pydantic
+        validator should now reject it with a clean 422.
+        """
+        response = client.post(
+            "/api/v1/scripts",
+            json={
+                "expressions": [["only_one_element"]],
+                "module_code": "FINREP_Con",
+                "module_version": "2.0.1",
+            },
+        )
+        assert response.status_code == 422
+
 
 class TestEndpointDocumentation:
     def test_endpoint_appears_in_openapi(self, client):
