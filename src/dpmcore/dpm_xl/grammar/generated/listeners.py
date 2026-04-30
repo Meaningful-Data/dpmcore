@@ -9,4 +9,6 @@ class DPMErrorListener(ErrorListener):
 
     def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e):
         # UTILS_UTILS.1
-        raise SyntaxError_('offendingSymbol: {} msg: {}'.format(offendingSymbol, msg))
+        raise SyntaxError_(
+            "offendingSymbol: {} msg: {}".format(offendingSymbol, msg)
+        )

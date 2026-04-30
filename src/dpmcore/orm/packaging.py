@@ -6,6 +6,8 @@ Framework, Module, ModuleVersion, ModuleVersionComposition,
 ModuleParameters, and OperationCodePrefix.
 """
 
+from __future__ import annotations
+
 from datetime import date
 from typing import TYPE_CHECKING, List, Optional
 
@@ -23,9 +25,11 @@ from dpmcore.orm.base import Base
 from dpmcore.orm.infrastructure import Concept, Release
 
 if TYPE_CHECKING:
+    from dpmcore.orm.operations import OperationScopeComposition
+    from dpmcore.orm.rendering import Table, TableVersion
     from dpmcore.orm.variables import (
-        Table,
-        TableVersion,
+        CompoundKey,
+        VariableCalculation,
         VariableVersion,
     )
 
@@ -51,12 +55,8 @@ class Framework(Base):
     framework_id: Mapped[int] = mapped_column(
         "FrameworkID", Integer, primary_key=True
     )
-    code: Mapped[Optional[str]] = mapped_column(
-        "Code", String(255)
-    )
-    name: Mapped[Optional[str]] = mapped_column(
-        "Name", String(255)
-    )
+    code: Mapped[Optional[str]] = mapped_column("Code", String(255))
+    name: Mapped[Optional[str]] = mapped_column("Name", String(255))
     description: Mapped[Optional[str]] = mapped_column(
         "Description", String(255)
     )
@@ -65,9 +65,7 @@ class Framework(Base):
         String(36),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column(
-        "OwnerID", Integer
-    )
+    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
@@ -75,10 +73,10 @@ class Framework(Base):
     modules: Mapped[List["Module"]] = relationship(
         back_populates="framework",
     )
-    operation_code_prefixes: Mapped[
-        List["OperationCodePrefix"]
-    ] = relationship(
-        back_populates="framework",
+    operation_code_prefixes: Mapped[List["OperationCodePrefix"]] = (
+        relationship(
+            back_populates="framework",
+        )
     )
 
 
@@ -114,9 +112,7 @@ class Module(Base):
     is_document_module: Mapped[Optional[bool]] = mapped_column(
         "isDocumentModule", Boolean
     )
-    owner_id: Mapped[Optional[int]] = mapped_column(
-        "OwnerID", Integer
-    )
+    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
 
     framework: Mapped[Optional["Framework"]] = relationship(
         back_populates="modules"
@@ -124,15 +120,11 @@ class Module(Base):
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
     )
-    module_versions: Mapped[
-        List["ModuleVersion"]
-    ] = relationship(
+    module_versions: Mapped[List["ModuleVersion"]] = relationship(
         back_populates="module",
     )
-    variable_calculations: Mapped[List["VariableCalculation"]] = (
-        relationship(
-            back_populates="module",
-        )
+    variable_calculations: Mapped[List["VariableCalculation"]] = relationship(
+        back_populates="module",
     )
 
 
@@ -160,9 +152,7 @@ class ModuleVersion(Base):
     """
 
     __tablename__ = "ModuleVersion"
-    __table_args__ = (
-        UniqueConstraint("ModuleID", "StartReleaseID"),
-    )
+    __table_args__ = (UniqueConstraint("ModuleID", "StartReleaseID"),)
 
     module_vid: Mapped[int] = mapped_column(
         "ModuleVID", Integer, primary_key=True
@@ -187,12 +177,8 @@ class ModuleVersion(Base):
         Integer,
         ForeignKey("Release.ReleaseID"),
     )
-    code: Mapped[Optional[str]] = mapped_column(
-        "Code", String(30)
-    )
-    name: Mapped[Optional[str]] = mapped_column(
-        "Name", String(100)
-    )
+    code: Mapped[Optional[str]] = mapped_column("Code", String(30))
+    name: Mapped[Optional[str]] = mapped_column("Name", String(100))
     description: Mapped[Optional[str]] = mapped_column(
         "Description", String(255)
     )
@@ -210,9 +196,7 @@ class ModuleVersion(Base):
         String(36),
         ForeignKey("Concept.ConceptGUID"),
     )
-    is_reported: Mapped[Optional[bool]] = mapped_column(
-        "IsReported", Boolean
-    )
+    is_reported: Mapped[Optional[bool]] = mapped_column("IsReported", Boolean)
     is_calculated: Mapped[Optional[bool]] = mapped_column(
         "IsCalculated", Boolean
     )
@@ -232,19 +216,17 @@ class ModuleVersion(Base):
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
     )
-    module_version_compositions: Mapped[
-        List["ModuleVersionComposition"]
-    ] = relationship(
-        back_populates="module_version",
+    module_version_compositions: Mapped[List["ModuleVersionComposition"]] = (
+        relationship(
+            back_populates="module_version",
+        )
     )
-    operation_scope_compositions: Mapped[
-        List["OperationScopeComposition"]
-    ] = relationship(
-        back_populates="module_version",
+    operation_scope_compositions: Mapped[List["OperationScopeComposition"]] = (
+        relationship(
+            back_populates="module_version",
+        )
     )
-    module_parameters: Mapped[
-        List["ModuleParameters"]
-    ] = relationship(
+    module_parameters: Mapped[List["ModuleParameters"]] = relationship(
         back_populates="module_version",
     )
 
@@ -284,21 +266,15 @@ class ModuleVersionComposition(Base):
         Integer,
         ForeignKey("TableVersion.TableVID"),
     )
-    order: Mapped[Optional[int]] = mapped_column(
-        "Order", Integer
-    )
-    row_guid: Mapped[Optional[str]] = mapped_column(
-        "RowGUID", String(36)
-    )
+    order: Mapped[Optional[int]] = mapped_column("Order", Integer)
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
 
     module_version: Mapped["ModuleVersion"] = relationship(
         back_populates="module_version_compositions"
     )
-    table: Mapped["Table"] = relationship(
-        foreign_keys=[table_id]
-    )
-    table_version: Mapped[Optional["TableVersion"]] = (
-        relationship(foreign_keys=[table_vid])
+    table: Mapped["Table"] = relationship(foreign_keys=[table_id])
+    table_version: Mapped[Optional["TableVersion"]] = relationship(
+        foreign_keys=[table_vid]
     )
 
 
@@ -330,9 +306,7 @@ class ModuleParameters(Base):
         ForeignKey("VariableVersion.VariableVID"),
         primary_key=True,
     )
-    row_guid: Mapped[Optional[str]] = mapped_column(
-        "RowGUID", String(36)
-    )
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
 
     module_version: Mapped["ModuleVersion"] = relationship(
         back_populates="module_parameters"
@@ -365,9 +339,7 @@ class OperationCodePrefix(Base):
     code: Mapped[Optional[str]] = mapped_column(
         "Code", String(20), unique=True
     )
-    list_name: Mapped[Optional[str]] = mapped_column(
-        "ListName", String(20)
-    )
+    list_name: Mapped[Optional[str]] = mapped_column("ListName", String(20))
     framework_id: Mapped[Optional[int]] = mapped_column(
         "FrameworkID",
         Integer,

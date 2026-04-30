@@ -1,0 +1,43 @@
+ChildTableVID,ParentTableVID,Name,Description,IsIdentifying,IsSubtype,SubtypeDiscriminator,ParentCardinalityAndOptionality,ChildCardinalityAndOptionality,RowGUID,OwnerID,AssociationID
+5989,5992,"R2 - LEI of the entity must match",,0,0,,"1","0_n","{09F04B53-B070-CF47-A8C94F6E878C0698}",1012,1
+5987,5992,"R1 - LEI of the entity must match",,0,0,,"1","0_n","{D984499B-3B61-C744-9CC3B8E1561B76D4}",1012,2
+5991,5992,"R3","LEI of the entity must match",0,0,,"1","0_n","{688DBB18-C07A-A44A-AC8D98A2879C25FF}",1012,3
+6074,5992,"R4 - LEI of the entity must match",,0,0,,"1","0_n","{5A4E05FC-D16A-3043-AFEDFBAD709BDA5A}",1012,4
+6066,5992,"R5","LEI of the entity must match",0,0,,"1","0_n","{99BCF418-7B6A-B447-AA3C420896DA26ED}",1012,5
+5989,6062,"R10 Contractual arr. reference number must match",,0,0,,"1","0_n","{9159644D-8D42-9647-93C75A418BF8AE88}",1012,7
+5987,6062,"R8 Contractual arr. reference number must match",,0,0,,"1","0_n","{51B41695-480A-524E-B1D1FDA6C3C40FB1}",1012,8
+6074,6062,"R16 Contractual arr. reference number must match",,0,0,,"1","0_n","{730A28C6-AFBD-ED48-9905CF2B46072994}",1012,9
+6065,6062,"R15 Contractual arr. reference number must match",,0,0,,"1","0_n","{8202E0FF-0351-1D4E-A1395722553751BC}",1012,11
+6064,6062,"R14 Contractual arr. reference number must match",,0,0,,"1","0_n","{FC1BFD91-DC01-BB40-AFD4315BFAF3B01A}",1012,12
+5988,6062,"R9 Contractual arr. reference number must match",,0,0,,"1","0_n","{688F0B27-27DC-D64A-A72F3E3F2358156D}",1012,13
+5990,6062,"R11 Contractual arr. reference number must match",,0,0,,"1","0_n","{CF4A0E1E-D0E4-F846-82FADC02AB2C36D0}",1012,14
+5988,5986,"R19 Identification code of the branch must match",,0,0,,"1","0_n","{5E5DCF72-F149-DF4E-8F8700E3899F7101}",1012,16
+6064,5986,"R20 - Identification code of the branch must match",,0,0,,"1","0_n","{924AF9DA-0D5F-0D40-8A4D03BCCEED4D0F}",1012,17
+6065,5986,"R22 - Identification code of the branch must match",,0,0,,"1","0_n","{07BEA10C-881F-6D40-8DF71432F7D2AA2E}",1012,18
+5990,6062,"R12 Contractual arr. reference number must match",,0,0,,"1","0_n","{D5C6A270-A8E6-5844-9C5DB8AAE82E5B9C}",1012,22
+6062,6062,"R13 Contractual arr. reference number must match",,0,0,,"1","0_n","{73482D35-0E8C-A140-A561F66ECEC9BA22}",1012,23
+5986,5986,"R18  -  Identification code must match",,0,0,,"1","0_n","{9E829F2E-670F-6F44-9EA1578377A192D7}",1012,24
+5992,5992,"R6 -  LEI of the parent should be also a record",,0,0,,"1","0_n","{C7BF6E71-E81D-A243-A294C158498A8142}",1012,25
+6064,5986,"R21 - Identification code of the branch must match",,0,0,,"1","0_n","{9B53C800-55E0-D64B-8D311C620A7D5F41}",1012,26
+6063,6066,"R7 - LEI of the entity and function id. must match",,0,0,,"1","0_n","{6F360875-B146-4049-83E8DD3722CBA62A}",1012,27
+6063,5988,"R17 Contractual arr and Id. code must match",,0,0,,"1","0_n","{98F10047-F95D-714D-B0464B0C29E8409B}",1012,28
+5989,6590,"R2 - LEI of the entity must match",,0,0,,"1","0_n","{23627504-F8AC-274D-981CB96D2BC677A7}",1012,29
+5987,6590,"R1 - LEI of the entity must match",,0,0,,"1","0_n","{ED136E04-DBE7-E64C-9E8A882C37A84869}",1012,30
+5991,6590,"R3",,0,0,,"1","0_n","{7FB73883-0083-3E44-9416F9BAFF534A6C}",1012,31
+6074,6590,"R4 - LEI of the entity must match",,0,0,,"1","0_n","{C5561285-D179-1C47-9BF798642BED8FAE}",1012,32
+6066,6590,"R5",,0,0,,"1","0_n","{0FA6BB8C-9308-8443-BBA4618EC60B8F3D}",1012,33
+6590,6590,"R6 -  LEI of the parent should be also a record",,0,0,,"1","0_n","{15E762F7-DA74-C046-86E0607098B573CC}",1012,34
+5988,6628,"R19 Identification code of the branch must match",,0,0,,"1","0_n","{9E355E9B-E639-594A-8237CECFFB4FE3C0}",1012,35
+6064,6628,"R20 - Identification code of the branch must match",,0,0,,"1","0_n","{89E42BE2-B4FD-184C-A8BC2A1D366B6030}",1012,36
+7220,6628,"R22 - Identification code of the branch must match",,0,0,,"1","0_n","{3E162F5E-8BAD-D843-9EB5FFB7AAFCFA19}",1012,37
+6628,6628,"R18  -   Identification code must match",,0,0,,"1","0_n","{22E1A523-E186-534D-8FBB606FF4507C4D}",1012,38
+6064,6628,"R21 - Identification code of the branch must match",,0,0,,"1","0_n","{1A769D69-2DC7-7840-BAC9099603C8341F}",1012,39
+5989,7221,"R10 Contractual arr. reference number must match",,0,0,,"1","0_n","{820C6EC1-AC14-F94C-8F65D597265A2C02}",1012,40
+5987,7221,"R8 Contractual arr. reference number must match",,0,0,,"1","0_n","{B4ED182F-2B3B-8C4F-9E9A77867AA5990E}",1012,41
+6074,7221,"R16 Contractual arr. reference number must match",,0,0,,"1","0_n","{EFF6E1B6-DD42-F846-8503044BDE1F18AA}",1012,42
+7220,7221,"R15 Contractual arr. reference number must match",,0,0,,"1","0_n","{75D56181-DCFE-FD41-A1CE17B36BF10762}",1012,43
+6064,7221,"R14 Contractual arr. reference number must match",,0,0,,"1","0_n","{9F6AFB8C-AEA0-4A49-AFC2C71F2D3501D6}",1012,44
+5988,7221,"R9 Contractual arr. reference number must match",,0,0,,"1","0_n","{F7B1F273-224A-AC48-87AE3AE84A570B21}",1012,45
+5990,7221,"R11 Contractual arr. reference number must match",,0,0,,"1","0_n","{B7F1B637-5196-9B4E-AC691A96C4D0FEA7}",1012,46
+5990,7221,"R12 Contractual arr. reference number must match",,0,0,,"1","0_n","{AAD7C3F9-0570-F843-B1926F1EE52AC039}",1012,47
+7221,7221,"R13 Contractual arr. reference number must match",,0,0,,"1","0_n","{847118D1-D82B-D240-AEF18BF81E06F91A}",1012,48

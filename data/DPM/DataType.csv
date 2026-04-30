@@ -1,0 +1,14 @@
+Code,Name,ParentDataTypeID,IsActive,DataTypeID
+"i","integer",,-1,1
+"r","decimal",,-1,2
+"s","string (non empty)",,-1,3
+"b","boolean",,-1,4
+"t","true",4,-1,5
+"dt","date time",,-1,6
+"d","date",6,-1,7
+"e","enumeration",3,-1,8
+"m","monetary",,-1,9
+"p","percentage",,-1,10
+"u","URI",,-1,11
+"o","ordinals",,-1,12
+"es","string (including empty string)",,-1,13

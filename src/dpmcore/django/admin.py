@@ -122,7 +122,7 @@ def _composite_pk(
     values: list[str] = []
     for name in fields:
         field = instance._meta.get_field(name)
-        if field.is_relation:
+        if isinstance(field, models.Field) and field.is_relation:
             values.append(str(getattr(instance, field.attname)))
         else:
             values.append(str(getattr(instance, name)))
@@ -151,7 +151,7 @@ class CompositeChangeList(ChangeList):
 # ── Read-only base class ────────────────────────────────────────
 
 
-class DpmModelAdmin(admin.ModelAdmin):
+class DpmModelAdmin(admin.ModelAdmin[models.Model]):
     """Base admin class for all DPM models."""
 
     list_per_page = 50
@@ -177,11 +177,9 @@ class DpmModelAdmin(admin.ModelAdmin):
             parts = str(object_id).split(COMPOSITE_SEP)
             if len(parts) == len(fields):
                 lookup: dict[str, str] = {}
-                for name, value in zip(
-                    fields, parts, strict=True
-                ):
+                for name, value in zip(fields, parts, strict=True):
                     field = self.model._meta.get_field(name)
-                    if field.is_relation:
+                    if isinstance(field, models.Field) and field.is_relation:
                         lookup[field.attname] = value
                     else:
                         lookup[name] = value
@@ -194,9 +192,7 @@ class DpmModelAdmin(admin.ModelAdmin):
                     ValueError,
                 ):
                     return None
-        return super().get_object(
-            request, object_id, from_field
-        )
+        return super().get_object(request, object_id, from_field)
 
 
 # ── Infrastructure (21 models) ──────────────────────────────────

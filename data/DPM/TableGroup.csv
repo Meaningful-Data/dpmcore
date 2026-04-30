@@ -1,0 +1,136 @@
+Code,Name,Description,Type,RowGUID,StartReleaseID,EndReleaseID,ParentTableGroupID,OwnerID,TableGroupID
+"Additional_Liquidity_Monitoring","Additional Liquidity Monitoring",,"templateGroup","{7B53D04B-EFD8-4AB0-B70DA42634AFACD7}",1,,,1012,820
+"Backstop","Backstop",,"templateGroup","{6207CF93-D6BC-403E-925A3369373E3814}",1,,,1012,821
+"Capital_Adequacy","Capital Adequacy",,"templateGroup","{A3985D81-5F6D-48E4-8D51E208EE2EB0FC}",1,,,1012,822
+"CoRep__General_Information","CoRep - General Information",,"templateGroup","{8F5649EF-93F0-46C7-92A5D95DBCC90417}",1,,,1012,823
+"Counterparty_Credit_Risk","Counterparty Credit Risk",,"templateGroup","{01F7C4A6-B437-4D15-959D2E6482A84798}",1,,,1012,824
+"Credit_Risk","Credit Risk",,"templateGroup","{47CAC4C1-28F3-4AE7-A4FCEDC062182C50}",1,,,1012,825
+"FRTB","FRTB",,"templateGroup","{7612DDC5-1CF2-448B-B80A31E6E9EFB93C}",1,2,,1012,826
+"Group_Solvency","Group Solvency",,"templateGroup","{F52D7DD7-BA10-4553-8353ADBC4A4E2AC4}",1,,,1012,827
+"Large_Exposures","Large Exposures",,"templateGroup","{4D9978A7-2FD6-4566-A6529577F35F8963}",1,,,1012,828
+"Leverage_Ratio","Leverage Ratio",,"templateGroup","{CE7332E3-0A09-4C02-9D59C1AADDC3B02C}",1,,,1012,829
+"Liquidity_Coverage__Delegated_Act","Liquidity Coverage - Delegated Act",,"templateGroup","{64E58C14-EE64-4DE1-B6CA76168B325FBF}",1,,,1012,830
+"Market_Risk","Market Risk",,"templateGroup","{B43E9A8C-33EE-4C6E-B69BF0D18EFB9A61}",1,,,1012,831
+"NSFR__Net_stable_funding_ratio","NSFR – Net stable funding ratio",,"templateGroup","{1FB45D20-0E8D-4818-828F77F5BACA3A14}",1,,,1012,832
+"Operational_Risk","Operational Risk",,"templateGroup","{75E2566D-7FB8-49A0-9059497603648F42}",1,,,1012,833
+"Prudent_Valuation","Prudent Valuation",,"templateGroup","{075557D9-43F8-4116-89C3AA895DFAEE8F}",1,,,1012,834
+"Sovereign_exposures","Sovereign exposures",,"templateGroup","{2F94E57B-0B7A-4DFD-B37CD8C3EBC14508}",1,,,1012,835
+"IF_Class2_Concentration_Risk","IF Class2 Concentration Risk",,"templateGroup","{FD573164-2734-4710-A6FC3092F332C1CE}",1,,,1012,837
+"IF_Class2_KFactor_Requirements__Additional_Details","IF Class2 K-Factor Requirements - Additional Details",,"templateGroup","{772CDACF-4295-432E-9574778B9DA7AD93}",1,,,1012,838
+"IF_Class2_Liquidity_Requirements","IF Class2 Liquidity Requirements",,"templateGroup","{46CF7221-922F-4780-8127DAF5EFF55234}",1,,,1012,839
+"IF_Class2_Own_Funds","IF Class2 Own Funds",,"templateGroup","{0CE47020-025B-4D56-8A890704A5D74F08}",1,,,1012,840
+"IF_Class3_Liquidity_Requirements","IF Class3 Liquidity Requirements",,"templateGroup","{00982610-3367-4865-AC8BDBDF3EDC14EE}",1,,,1012,841
+"IF_Class3_Own_Funds","IF Class3 Own Funds",,"templateGroup","{8BFA3DF1-49F3-49A7-ACCC33CED48F2EB7}",1,,,1012,842
+"IF_Small_and_Noninterconnected_Investment_Firms","IF Small and Non-interconnected Investment Firms",,"templateGroup","{9761567A-4918-4666-9F9F31BC187F5218}",1,,,1012,843
+"AE__General_Information","AE - General Information",,"templateGroup","{246B6F9A-9B66-44A2-8649898BF25706CE}",1,,,1012,844
+"Asset_Encumbrance","Asset Encumbrance",,"templateGroup","{04DCB395-2DA3-4560-BAE065DE2C675FE6}",1,,,1012,845
+"GSII","GSII",,"templateGroup","{611A3816-6566-49AA-8D71365D07F5B8F1}",1,,,1012,846
+"IF_Credit_Institution_Threshold_Monitoring","IF Credit Institution Threshold Monitoring",,"templateGroup","{FE71A7C6-DD65-4482-88E3EC8328437166}",1,,,1012,848
+"IF_Group_Capital_Test","IF Group Capital Test",,"templateGroup","{2D806B9E-7C62-4B13-B0BE9B131E9AC051}",1,,,1012,849
+"FinRep__General_Information","FinRep - General Information",,"templateGroup","{6AC1E137-C3A9-4F50-9C86987086343FFD}",1,,,1012,850
+"FinRep__Part_1","FinRep - Part 1",,"templateGroup","{D0EBD98B-8DBB-4A3D-8425559940CCFD9D}",1,,,1012,851
+"FinRep__Part_1_GAAP_only","FinRep - Part 1 (GAAP only)",,"templateGroup","{4211194F-3C4B-4E34-B0F59EAB31F4D36B}",1,,,1012,852
+"FinRep__Part_2","FinRep - Part 2",,"templateGroup","{CA2BBF70-168F-4034-BD6F97DC62F46F7C}",1,,,1012,853
+"FinRep__Part_3","FinRep - Part 3",,"templateGroup","{B66908D6-9830-44AE-A1C401579F918BDE}",1,,,1012,854
+"FinRep__Part_4","FinRep - Part 4",,"templateGroup","{50D19C9B-8AAA-4994-80438F553305654D}",1,,,1012,855
+"Resolution_EBA__Core_business_lines,_critical_functions_and_related_information_systems_and_financial_market_infrastructures","Resolution EBA - Core business lines, critical functions and related information systems and financial market infrastructures",,"templateGroup","{C0ED8A89-F1D8-4A2F-8FFC8F6B4B77DFF8}",1,5,,1012,861
+"Resolution_EBA__Entity_information,_group_structure_and_dependencies","Resolution EBA - Entity information, group structure and dependencies",,"templateGroup","{E9D4492C-BCC0-49CE-98BFCA9C0094A595}",1,5,,1012,862
+"Resolution_EBA__Information_on_on_and_offbalance_sheet_items","Resolution EBA - Information on on- and off-balance sheet items",,"templateGroup","{8C1C610A-6C54-4264-AB177E76F4FBEFEC}",1,5,,1012,863
+"Resolution_SRB__Critical_functions","Resolution SRB - Critical functions",,"templateGroup","{C035AAD1-E425-479A-8709AB1A0BF8B2CF}",1,5,,1012,864
+"Resolution_SRB__Financial_market_infrastructures","Resolution SRB - Financial market infrastructures",,"templateGroup","{A2265E48-BEEA-46F6-804A150996F6971A}",1,5,,1012,865
+"Resolution_SRB__Liabilities_and_other_financial_information","Resolution SRB - Liabilities and other financial information",,"templateGroup","{1FED658A-F788-497D-B3653F0E56B8723F}",1,5,,1012,866
+"Funding_Plans__General_Information","Funding Plans - General Information",,"templateGroup","{BB034EFE-4D86-4AAA-B52A9B63532F3BCF}",1,,,1012,867
+"Funding_Plans__Section_1","Funding Plans - Section 1",,"templateGroup","{7BF973D9-15EC-405F-A88821EB306747BD}",1,,,1012,868
+"Funding_Plans__Section_2","Funding Plans - Section 2",,"templateGroup","{A2F1AEE9-242D-4073-BD1D84753FB845F6}",1,,,1012,869
+"Funding_Plans__Section_4","Funding Plans - Section 4",,"templateGroup","{74DAD709-4761-41F1-957D4A16F89E82BC}",1,,,1012,870
+"Funding_Plans__Section_5","Funding Plans - Section 5",,"templateGroup","{B210708C-84D8-45FB-89F1F486611A65E8}",1,,,1012,871
+"COVID19__General_Information","COVID19 - General Information",,"templateGroup","{688A7B2F-0072-4F7C-BF3A2851BBB0489B}",1,5,,1012,872
+"COVID19__Moratoria","COVID19 - Moratoria",,"templateGroup","{5F1A71A9-2910-41A2-80E9BC65D015809A}",1,5,,1012,873
+"MREL_decisions","MREL decisions",,"templateGroup","{00C6A579-B049-41B6-A4D420B5DBBD93BF}",1,,,1012,877
+"Notifications_on_impracticability","Notifications on impracticability",,"templateGroup","{3606AAB6-5838-42A0-B0F20622A1ED269B}",1,,,1012,878
+"PSD_Fraudulent_Payment","PSD Fraudulent Payment",,"templateGroup","{124E650E-3824-498F-B520B5FF5BBB8843}",1,,,1012,880
+"Remuneration_Benchmarking","Remuneration Benchmarking",,"templateGroup","{1DD19381-0D00-49B6-8EDCE6D7D647C268}",1,,,1012,881
+"Remuneration_High_earners","Remuneration High earners",,"templateGroup","{C33729AC-F2E0-43AA-B99944FF605911EC}",1,,,1012,883
+"Remuneration_Pament_Gap","Remuneration Pament Gap",,"templateGroup","{6B51825D-65A0-40F6-A7E8047AC71E3814}",1,,,1012,884
+"Remuneration_High_Ratios__Country_Level","Remuneration High Ratios - Country Level",,"templateGroup","{4DD6518A-6EFD-4E2C-BA0504F97DF342ED}",1,,,1012,885
+"Remuneration_High_Ratios__Institution_Level","Remuneration High Ratios - Institution Level",,"templateGroup","{0C9D2981-79A0-4323-94FE2BE9BB133D7E}",1,,,1012,886
+"Ad_hoc_ESG","Ad hoc ESG",,"templateGroup","{3B618F4A-AECF-470C-AC2010AA902ACEAC}",1,,,1012,887
+"Intermediate_Parent_Undertaking","Intermediate Parent Undertaking",,"templateGroup","{1E80DD3C-C067-4056-87AD5DDC53D076DD}",1,,,1012,888
+"Disclosures_AE","Disclosures AE",,"templateGroup","{E2B16146-FAFB-4F7B-9BF0117CA47F7ED7}",1,,,1012,889
+"Disclosures_CCR","Disclosures CCR",,"templateGroup","{60E68FCD-F5A7-4B7E-8654D94E0F9677C4}",1,,,1012,890
+"Disclosures_CR_IRB","Disclosures CR IRB",,"templateGroup","{A5137856-784D-4AF2-B26EC7CF29BDE7ED}",1,,,1012,891
+"Disclosures_ESG","Disclosures ESG",,"templateGroup","{F9BF2766-E3A5-40CF-BC3A1DCCB7534E6B}",1,,,1012,892
+"Disclosures_OF","Disclosures OF",,"templateGroup","{23E147BC-D525-450B-83FDFD8BFE13556E}",1,,,1012,893
+"Disclosures_REM","Disclosures REM",,"templateGroup","{C191DE0C-8242-4C6E-85FA0F4BE16FA257}",1,,,1012,894
+"Benchmarking__Credit_Risk","Benchmarking - Credit Risk",,"templateGroup","{C809384B-02F5-4A44-BB00E17352EA536A}",1,,,1012,895
+"Benchmarking__General_Information","Benchmarking - General Information",,"templateGroup","{731E72F3-0D07-4EBB-BB41466BDDB09E99}",1,,,1012,896
+"Benchmarking__IFRS_9","Benchmarking - IFRS 9",,"templateGroup","{0EDFD279-884D-4055-BAE08631059051C4}",1,,,1012,897
+"Benchmarking__Initial_Market_Valuation","Benchmarking - Initial Market Valuation",,"templateGroup","{AE26A40C-3DE1-46AE-831B24754AED670D}",1,,,1012,898
+"Benchmarking__Market_risk","Benchmarking - Market risk",,"templateGroup","{9AFD7079-BCD3-445D-82825B35063E314B}",1,,,1012,899
+"MREL__Creditor_ranking","MREL - Creditor ranking",,"templateGroup","{C2CE79D9-1FDF-4985-8A952D85744314C1}",1,,,1012,905
+"MREL__Instrumentbyinstrument_data","MREL - Instrument-by-instrument data",,"templateGroup","{8FC115DC-346F-4132-805228B07F050770}",1,,,1012,906
+"MREL__capacity_and_composition","MREL - capacity and composition",,"templateGroup","{2DF6CEC0-F6C3-449F-9A98566CEF0412EB}",1,,,1012,907
+"Breakdown_of_sensitivity_estimates","Breakdown of sensitivity estimates",,"templateGroup","{8C96F624-D260-49C1-A92C44466D244AFB}",1,,,1012,908
+"Evaluation_of_the_IRRBB","Evaluation of the IRRBB",,"templateGroup","{7B6F37F0-4EE7-4940-80090BB751CF2A9D}",1,,,1012,909
+"Qualitative_information","Qualitative information",,"templateGroup","{5CE5800C-5F73-459B-A5B820FC65880B79}",1,,,1012,910
+"Relevant_parameters","Relevant parameters",,"templateGroup","{4D6BE32F-5970-457F-A45EA50E936F579C}",1,,,1012,911
+"Repricing_cash_flows","Repricing cash flows",,"templateGroup","{902F8E34-79B2-4068-B013D2B1FFB56D9D}",1,,,1012,912
+"FRTB_ASA","Alternative standardised approach",,"templateGroup","{A5E33BD0-B2CC-4828-B4DFF283F8DC9FBC}",2,,,1012,913
+"FRTB_AIMA","Alternative internal models approach",,"templateGroup","{B06FECDE-7B52-4B60-9118BD07C311392F}",2,,,1012,914
+"THR_BOU_MOV","Threshold, boundary and reclassifications",,"templateGroup","{9F66275E-0BD8-4EEB-BFA1171D473C33B6}",2,,,1012,915
+"FRTB_ePnL","Economic profit and losses",,"templateGroup","{5C3E51DB-6147-4AEB-AED0E6E9E9C0194C}",2,,,1012,916
+"FICO_IGT","FICO intra-group transactions",,"templateGroup","{E0CA4DFA-14B2-4607-B236B0CEC35D3CAC}",2,,,1012,917
+"FICO_RC","FICO risk concentration",,"templateGroup","{36B83796-85A6-4DC1-B3BDF35FB86C2CFC}",2,,,1012,918
+"REM_DB","Remuneration Diversity Benchmarking",,"templateGroup","{39B6F24B-2BFB-4CB5-BC0E78A7C7B26CFF}",2,,,1012,919
+"DORA","Digital Operational Resilience",,"templateGroup","{EDDA42AB-AB1B-49D7-90FAB80748312964}",2,,,1012,920
+"Masterdata","Masterdata","Masterdata related with entities and ICT service providers","templateGroup","{D2E3D139-8255-4499-87737AE51847747A}",2,,920,1012,921
+"Contractual_arrangements","Contractual arrangements",,"templateGroup","{7FF3B72E-0D71-4E7B-A4C0B804B5705DC1}",2,,920,1012,922
+"Connecting","Connecting tables","Tables that are used more to connect information from other tables","templateGroup","{F3A8252B-5A0F-46DA-99F11111698450E5}",2,,920,1012,923
+"Other","Other","Other templates containing relevant information on: 
+ICT service supply chains
+Functions identification
+Assessment of the ICT services","templateGroup","{3C37B473-8357-468F-A004A4C4F4A4242A}",2,,920,1012,924
+"Internal_definitions","Internal_definitions",,"templateGroup","{9D3B8392-D5D8-4D52-AD3829F334CA8715}",2,,920,1012,925
+"Crypto_assets_Risk","Crypto assets Risk",,"templateGroup","{41C02DA4-B320-AB43-9C1859A8EA01E53F}",3,,,1012,932
+"MICA","Markets in crypto - assets ",,"templateGroup","{DC132D73-53A0-7D44-B2A552CA351B9DC0}",3,,,1012,933
+"GI","General information",,"templateGroup","{3C656002-6DE8-7148-9D5DF3A108E0DB38}",3,,933,1012,934
+"Holders","Holders",,"templateGroup","{B4A03727-38D9-1944-ABF1BEEC9E7AC40E}",3,,933,1012,935
+"Tokens_and_reserve","Tokens issued and size of reserve of assets",,"templateGroup","{708FD201-70C6-A445-8F46004D4F15B301}",3,,933,1012,936
+"Reserve_of_assets","Composition of the reserve of assets",,"templateGroup","{A27D26FC-7740-5D45-892EB74A1A7D7A52}",3,,933,1012,937
+"Transactions","Transactions",,"templateGroup","{168E068D-2B38-2F45-88DAFAF7E9F25378}",3,,933,1012,938
+"MICA_OF","MICA - Own funds","Templates related to own funds requirements under MiCAR.","templateGroup","{37C41593-96E9-754B-8C26A80CD3DBC3B2}",4,,,1012,939
+"MICA_SA","MICA - Significance assessment","Additional templates needed for the significance assessment under MiCAR.","templateGroup","{3DF059B1-FE17-FE41-A6A534D2AD4F724B}",4,,,1012,940
+"D_RM_PM","Disclosures Overview of RM and prudential metrics","Disclosures Overview of RM and prudential metrics","templateGroup","{18C82B6B-2238-284E-99FF9688EE68FC21}",4,,,1012,941
+"D_SCOPE","Disclosures of the scope of application",,"templateGroup","{EA1E66E9-DFB6-B54A-AF35CECD6D33F52E}",4,,,1012,943
+"D_SEC","SEC disclosures",,"templateGroup","{82DC1964-AEC3-5E4A-BE02DB31EE0176B1}",4,,,1012,944
+"IPR","Instant Payments Regulation",,"templateGroup","{6DB575FA-91FE-CD4A-B15CE34BAF6A7B9E}",4,,,1012,945
+"D_MREL_TLAC","MREL_TLAC Disclosures",,"templateGroup","{D17D9AFE-4E60-9E41-8C698929D7B4B0A9}",4,,,1012,946
+"D_IRRBB","IRRBB disclosures",,"templateGroup","{0390C8BF-990F-854E-8F2417799A18D4A0}",4,,,1012,947
+"D_LIQ","Disclosures LIQ",,"templateGroup","{03D4ECD8-4AC0-2E49-B2FEF713D87A1A38}",4,,,1012,948
+"NSFR","Net stable funding ratio disclosures",,"templateGroup","{A9B80270-8CC4-C345-8695A959AA8A3D6E}",4,,948,1012,951
+"LCR","Liquidity coverage ratio disclosures",,"templateGroup","{AE2107EF-067B-8A42-92D2A492714D7337}",4,,948,1012,952
+"D_OR","Operational risk disclosures",,"templateGroup","{25C1FAFA-91D0-294B-B3D45FF8096ACF2C}",4,,,1012,954
+"D_LR","Leverage Ratio disclosures",,"templateGroup","{04147EF0-3EB3-1641-AF687E11AD77D09A}",4,,,1012,955
+"D_CVA","CVA disclosures",,"templateGroup","{41AD1A5A-0AFA-834E-8C5A3E4FBC3449F6}",4,,,1012,956
+"D_GSII","GSIIs disclosures",,"templateGroup","{9C682E49-98FE-B64B-B027FE2722487F7A}",4,,,1012,957
+"D_CR_Q","CR quality disclosures",,"templateGroup","{F7667243-2AB2-9149-BE06D841006E7A0D}",4,,,1012,958
+"D_CRM","CRM disclosures",,"templateGroup","{3A3A331F-BCA3-C04F-A76ED16A946B6B69}",4,5,,1012,959
+"D_CR_SA","CR SA disclosures",,"templateGroup","{0950913E-E7FC-2E41-A6252917F80510AA}",4,,,1012,960
+"D_SL_E","Specialised lending and equity disclosures",,"templateGroup","{171C00C9-EB7A-DC4B-9092CD695C94DE4A}",4,,,1012,961
+"D_CCyB","CCyB disclosures",,"templateGroup","{8FF34B25-CCDB-284D-8DC7A8236A4264FB}",4,,,1012,962
+"D_MR","Disclosures MR - template group",,"templateGroup","{C61BA537-EB00-A249-A8ED5427C346E507}",4,,,1012,963
+"D_Crypto","Disclosures crypto assets - template group",,"templateGroup","{ACC8E0E6-67F0-2F4E-B5E0A5B9E95C8AC2}",4,,,1012,964
+"P3DH_process","Contact person",,"templateGroup","{F49D729B-BF6F-BA4D-873349FE345C4DCA}",4,,,1012,965
+"RESOL","Resolution reporting framework",,"templateGroup","{54503612-D097-6440-8F749F2FCB265192}",5,,,1012,966
+"RESOL_ORG","Organisational structure",,"templateGroup","{3E3A2A57-5BBD-594D-B661DB1472EBF6D3}",5,,966,1012,967
+"OWN_FUNDS","Operational risk own fund requirements calculation",,"templateGroup","{3B2C5E6A-1839-654F-B002CCB33208E3B4}",5,,833,1012,968
+"OP_LOSS","Operational losses",,"templateGroup","{9955C0F6-42FE-3542-8B09D66BB7E8EAA9}",5,,833,1012,969
+"RESOL_LIAB","Aggregate Liability Data",,"templateGroup","{01185B03-8CAB-A146-9B96C702DF88CFCA}",5,,966,1012,970
+"RESOL_FUNC","Critical functions",,"templateGroup","{B669E313-4898-0C4E-AA5366F28772DBF5}",5,,966,1012,971
+"RESOL_SERV","Relevant Services",,"templateGroup","{74A85DFD-D7C5-A54E-BFCBDDA99564FB78}",5,,966,1012,972
+"RESOL_FMI","Financial Market Infrastructures",,"templateGroup","{54F40E94-A4EE-0E4A-B0A4DC56C9EC2CEF}",5,,966,1012,973
+"RESOL_LIAB_G","Granular Liability Data",,"templateGroup","{9054013B-E157-1A4F-A25428245C87954E}",5,,966,1012,974
+"FinRep__DataPoints","FinRep - DataPoints",,"templateGroup","{C43C4132-1145-EB4A-84E013EDE2D125B1}",5,,,1012,975
+"Remuneration_High_earners_IF","Remuneration High earners_IF",,"templateGroup","{90D088B9-E49F-B84A-9CCEC74FE5F382BB}",5,,,1012,976
+"Remuneration_Benchmarking__IF","Remuneration Benchmarking_IF",,"templateGroup","{89B72DE3-0179-1142-BF19D13A68A1B368}",5,,,1012,977
+"Remuneration_Payment_GAP__IF","Remuneration Payment GAP - IF",,"templateGroup","{C3E333B3-642F-FD4D-B217A7C1C1D47F01}",5,,,1012,978

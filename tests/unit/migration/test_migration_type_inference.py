@@ -7,25 +7,25 @@ which fixes the Windows vs Linux inconsistency issue.
 
 import decimal
 import sys
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
-from unittest.mock import MagicMock, patch
 
 from dpmcore.services.migration import MigrationService
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_engine():
     return MagicMock()
 
 
-@pytest.fixture()
+@pytest.fixture
 def service(mock_engine):
     return MigrationService(mock_engine)
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_pyodbc():
     mock_module = MagicMock()
     mock_module.Error = Exception
@@ -126,9 +126,7 @@ class TestPyodbcTypeInference:
         assert pd.api.types.is_numeric_dtype(df["price"])
         assert pd.api.types.is_numeric_dtype(df["amount"])
 
-    def test_mixed_columns_respect_schema_types(
-        self, service, mock_pyodbc
-    ):
+    def test_mixed_columns_respect_schema_types(self, service, mock_pyodbc):
         """Mixed table should respect schema types."""
         mock_cursor = MagicMock()
         mock_cursor.description = [

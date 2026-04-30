@@ -234,9 +234,7 @@ class SubCategoryItem(models.Model):
         managed = False
         db_table = "SubCategoryItem"
         app_label = "dpmcore_django"
-        unique_together = (
-            ("item_id", "subcategory_vid"),
-        )
+        unique_together = (("item_id", "subcategory_vid"),)
 
 
 class Item(models.Model):
@@ -348,9 +346,7 @@ class ItemCategory(models.Model):
         db_table = "ItemCategory"
         app_label = "dpmcore_django"
         verbose_name_plural = "item categories"
-        unique_together = (
-            ("item_id", "start_release_id"),
-        )
+        unique_together = (("item_id", "start_release_id"),)
 
 
 class Property(models.Model):
@@ -454,9 +450,7 @@ class PropertyCategory(models.Model):
         db_table = "PropertyCategory"
         app_label = "dpmcore_django"
         verbose_name_plural = "property categories"
-        unique_together = (
-            ("property_id", "start_release_id"),
-        )
+        unique_together = (("property_id", "start_release_id"),)
 
 
 class Context(models.Model):
@@ -525,9 +519,7 @@ class ContextComposition(models.Model):
         managed = False
         db_table = "ContextComposition"
         app_label = "dpmcore_django"
-        unique_together = (
-            ("context_id", "property_id"),
-        )
+        unique_together = (("context_id", "property_id"),)
 
 
 class CompoundItemContext(models.Model):
@@ -571,9 +563,7 @@ class CompoundItemContext(models.Model):
         managed = False
         db_table = "CompoundItemContext"
         app_label = "dpmcore_django"
-        unique_together = (
-            ("item_id", "start_release_id"),
-        )
+        unique_together = (("item_id", "start_release_id"),)
 
 
 class SupercategoryComposition(models.Model):
@@ -619,6 +609,4 @@ class SupercategoryComposition(models.Model):
         managed = False
         db_table = "SuperCategoryComposition"
         app_label = "dpmcore_django"
-        unique_together = (
-            ("supercategory_id", "category_id"),
-        )
+        unique_together = (("supercategory_id", "category_id"),)
