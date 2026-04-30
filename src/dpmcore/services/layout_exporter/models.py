@@ -8,7 +8,7 @@ from typing import Optional
 
 @dataclass
 class DimensionMember:
-    """One dimensional assignment: a dimension (property) mapped to a member (item)."""
+    """One dimensional assignment: a dimension (property) to a member."""
 
     property_id: int
     dimension_label: str
@@ -53,7 +53,7 @@ class LayoutHeader:
 class CellData:
     """One cell in the table grid."""
 
-    row_header_id: int
+    row_header_id: Optional[int]
     col_header_id: int
     sheet_header_id: Optional[int]
     variable_vid: Optional[int]
@@ -88,7 +88,7 @@ class TableLayout:
     rows: list[LayoutHeader] = field(default_factory=list)
     columns: list[LayoutHeader] = field(default_factory=list)
     sheets: list[LayoutHeader] = field(default_factory=list)
-    cells: dict[tuple[int, int, Optional[int]], CellData] = field(
+    cells: dict[tuple[Optional[int], int, Optional[int]], CellData] = field(
         default_factory=dict,
     )
     max_col_depth: int = 0

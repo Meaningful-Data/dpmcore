@@ -293,12 +293,18 @@ def export_layout(
         svc = db.services.layout_exporter
         if module_code:
             path = svc.export_module(
-                module_code, release_code, output_path, config,
+                module_code,
+                release_code,
+                output_path,
+                config,
             )
         else:
             codes = [c.strip() for c in table_codes.split(",")]  # type: ignore[union-attr]
             path = svc.export_tables(
-                codes, release_code, output_path, config,
+                codes,
+                release_code,
+                output_path,
+                config,
             )
 
     click.echo(f"Exported to {path}")

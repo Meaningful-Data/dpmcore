@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from dpmcore.services.layout_exporter.models import DimensionMember
 
 if TYPE_CHECKING:
-    from dpmcore.orm.rendering import TableVersion
+    pass
 
 
 def load_module_table_versions(
@@ -70,13 +70,10 @@ def load_table_version(
     if release_code:
         from dpmcore.orm.infrastructure import Release
 
-        q = (
-            q.join(
-                Release,
-                Release.release_id == TableVersion.start_release_id,
-            )
-            .filter(Release.code == release_code)
-        )
+        q = q.join(
+            Release,
+            Release.release_id == TableVersion.start_release_id,
+        ).filter(Release.code == release_code)
     else:
         q = q.filter(TableVersion.end_release_id.is_(None))
 
@@ -108,7 +105,7 @@ def load_headers(
         .filter(TableVersionHeader.table_vid == table_vid)
         .all()
     )
-    return rows
+    return [tuple(r) for r in rows]
 
 
 def load_cells(
@@ -127,7 +124,7 @@ def load_cells(
         .filter(TableVersionCell.table_vid == table_vid)
         .all()
     )
-    return rows
+    return [tuple(r) for r in rows]
 
 
 # ------------------------------------------------------------------ #
@@ -182,7 +179,9 @@ def _load_member_codes(
 
     rows = (
         session.query(
-            ItemCategory.item_id, ItemCategory.code, ItemCategory.category_id,
+            ItemCategory.item_id,
+            ItemCategory.code,
+            ItemCategory.category_id,
         )
         .filter(
             ItemCategory.item_id.in_(item_ids),
@@ -228,19 +227,21 @@ def load_categorisations(
         session.query(
             ContextComposition.context_id,
             ContextComposition.property_id,
-            DimItem.name,                   # dimension label
-            ContextComposition.item_id,     # member item id
-            MemberItem.name,                # member label
-            Category.code,                  # domain code
-            DataType.code,                  # data type code
-            PropertyCategory.category_id,   # domain category id
+            DimItem.name,  # dimension label
+            ContextComposition.item_id,  # member item id
+            MemberItem.name,  # member label
+            Category.code,  # domain code
+            DataType.code,  # data type code
+            PropertyCategory.category_id,  # domain category id
         )
         .join(DimItem, DimItem.item_id == ContextComposition.property_id)
         .outerjoin(
-            MemberItem, MemberItem.item_id == ContextComposition.item_id,
+            MemberItem,
+            MemberItem.item_id == ContextComposition.item_id,
         )
         .outerjoin(
-            Property, Property.property_id == ContextComposition.property_id,
+            Property,
+            Property.property_id == ContextComposition.property_id,
         )
         .outerjoin(
             PropertyCategory,
@@ -250,7 +251,8 @@ def load_categorisations(
             ),
         )
         .outerjoin(
-            Category, Category.category_id == PropertyCategory.category_id,
+            Category,
+            Category.category_id == PropertyCategory.category_id,
         )
         .outerjoin(DataType, DataType.data_type_id == Property.data_type_id)
         .filter(ContextComposition.context_id.in_(context_ids))
@@ -306,9 +308,9 @@ def load_property_as_categorisation(
     rows = (
         session.query(
             Item.item_id,
-            Item.name,          # member label (e.g., "Carrying amount")
-            Category.code,      # domain code
-            DataType.code,      # data type code
+            Item.name,  # member label (e.g., "Carrying amount")
+            Category.code,  # domain code
+            DataType.code,  # data type code
         )
         .join(Property, Property.property_id == Item.item_id)
         .outerjoin(
@@ -319,15 +321,17 @@ def load_property_as_categorisation(
             ),
         )
         .outerjoin(
-            Category, Category.category_id == PropertyCategory.category_id,
+            Category,
+            Category.category_id == PropertyCategory.category_id,
         )
         .outerjoin(DataType, DataType.data_type_id == Property.data_type_id)
         .filter(Item.item_id.in_(property_ids))
         .all()
     )
 
-    # Load member codes: for "Main Property", the property itself IS the member,
-    # so its code in category '_PR' is the member_code (e.g., qCCB)
+    # Load member codes: for "Main Property", the property itself
+    # IS the member, so its code in category '_PR' is the
+    # member_code (e.g., qCCB)
     dim_codes = _load_dimension_codes(session, property_ids)
 
     result: dict[int, DimensionMember] = {}
@@ -375,12 +379,12 @@ def load_dp_categorisations(
         session.query(
             VariableVersion.variable_vid,
             ContextComposition.property_id,
-            DimItem.name,                   # dimension label
-            ContextComposition.item_id,     # member item id
-            MemberItem.name,                # member label
-            Category.code,                  # domain code
-            DataType.code,                  # data type code
-            PropertyCategory.category_id,   # domain category id
+            DimItem.name,  # dimension label
+            ContextComposition.item_id,  # member item id
+            MemberItem.name,  # member label
+            Category.code,  # domain code
+            DataType.code,  # data type code
+            PropertyCategory.category_id,  # domain category id
         )
         .join(
             ContextComposition,
@@ -388,10 +392,12 @@ def load_dp_categorisations(
         )
         .join(DimItem, DimItem.item_id == ContextComposition.property_id)
         .outerjoin(
-            MemberItem, MemberItem.item_id == ContextComposition.item_id,
+            MemberItem,
+            MemberItem.item_id == ContextComposition.item_id,
         )
         .outerjoin(
-            Property, Property.property_id == ContextComposition.property_id,
+            Property,
+            Property.property_id == ContextComposition.property_id,
         )
         .outerjoin(
             PropertyCategory,
@@ -401,7 +407,8 @@ def load_dp_categorisations(
             ),
         )
         .outerjoin(
-            Category, Category.category_id == PropertyCategory.category_id,
+            Category,
+            Category.category_id == PropertyCategory.category_id,
         )
         .outerjoin(DataType, DataType.data_type_id == Property.data_type_id)
         .filter(VariableVersion.variable_vid.in_(variable_vids))
@@ -460,7 +467,10 @@ def load_subcategory_info(
             Category.code,
             SubCategory.name,
         )
-        .join(SubCategory, SubCategory.subcategory_id == SubCategoryVersion.subcategory_id)
+        .join(
+            SubCategory,
+            SubCategory.subcategory_id == SubCategoryVersion.subcategory_id,
+        )
         .join(Category, Category.category_id == SubCategory.category_id)
         .filter(SubCategoryVersion.subcategory_vid.in_(subcategory_vids))
         .all()
@@ -483,7 +493,9 @@ def load_key_variable_property_ids(
     from dpmcore.orm.variables import VariableVersion
 
     rows = (
-        session.query(VariableVersion.variable_vid, VariableVersion.property_id)
+        session.query(
+            VariableVersion.variable_vid, VariableVersion.property_id
+        )
         .filter(VariableVersion.variable_vid.in_(variable_vids))
         .all()
     )
@@ -494,7 +506,7 @@ def load_variable_info(
     session: Session,
     variable_vids: set[int],
 ) -> dict[int, tuple[int, str, str]]:
-    """Load VariableID, data type code, and property name for data cell display.
+    """Load VariableID, data type code, and property name.
 
     Returns {variable_vid: (variable_id, data_type_code, property_name)}.
     property_name is used for enumeration ('e') type cells to show [domain].
@@ -514,7 +526,8 @@ def load_variable_info(
             Item.name,
         )
         .outerjoin(
-            Property, Property.property_id == VariableVersion.property_id,
+            Property,
+            Property.property_id == VariableVersion.property_id,
         )
         .outerjoin(DataType, DataType.data_type_id == Property.data_type_id)
         .outerjoin(Item, Item.item_id == VariableVersion.property_id)

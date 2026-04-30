@@ -22,10 +22,10 @@ def build_layout_headers(
     property_cats: dict[int, DimensionMember],
     subcategory_info: Optional[dict[int, tuple[str, str, str]]] = None,
 ) -> tuple[list[LayoutHeader], list[LayoutHeader], list[LayoutHeader]]:
-    """Convert raw (TableVersionHeader, Header, HeaderVersion) tuples
-    into sorted LayoutHeader lists for each axis.
+    """Convert raw header tuples into sorted LayoutHeader lists.
 
-    Returns (columns, rows, sheets).
+    Each tuple is ``(TableVersionHeader, Header, HeaderVersion)``.
+    Returns ``(columns, rows, sheets)``.
     """
     by_direction: dict[str, list[LayoutHeader]] = {"x": [], "y": [], "z": []}
     subcat = subcategory_info or {}
@@ -59,7 +59,9 @@ def build_layout_headers(
             is_abstract=bool(tvh.is_abstract),
             is_key=bool(header.is_key),
             parent_header_id=tvh.parent_header_id,
-            parent_first=bool(tvh.parent_first) if tvh.parent_first is not None else True,
+            parent_first=bool(tvh.parent_first)
+            if tvh.parent_first is not None
+            else True,
             categorisations=cats,
             subcategory_code=sc_code,
             subcategory_description=sc_desc,
@@ -94,9 +96,10 @@ def sort_headers(headers: list[LayoutHeader]) -> list[LayoutHeader]:
     # The VBA algorithm appends a trailing separator:
     #   "." if the header appears before its children (parent_first=True)
     #   ":" if the header appears after its children (parent_first=False)
-    # ":" > "." in ASCII, so a parent-after-children sorts after its descendants.
-    # When building a child's key, parent's ":" markers are replaced with "."
-    # so they don't affect the child's position.
+    # ":" > "." in ASCII, so a parent-after-children sorts after
+    # its descendants. When building a child's key, parent's ":"
+    # markers are replaced with "." so they don't affect the
+    # child's position.
     cache: dict[int, str] = {}
 
     def compute_sort_key(h: LayoutHeader) -> str:
@@ -149,14 +152,14 @@ def build_cells(
     col_ids: set[int],
     sheet_ids: set[int],
     dp_cats: dict[int, list[DimensionMember]],
-    variable_info: Optional[dict[int, tuple[int, str]]] = None,
-) -> dict[tuple[int, int, Optional[int]], CellData]:
+    variable_info: Optional[dict[int, tuple[int, str, str]]] = None,
+) -> dict[tuple[Optional[int], int, Optional[int]], CellData]:
     """Build the cell dictionary from raw (TableVersionCell, Cell) tuples.
 
     Keys are (row_header_id, col_header_id, sheet_header_id).
     Only includes cells whose headers are in the provided sets.
     """
-    cells: dict[tuple[int, int, Optional[int]], CellData] = {}
+    cells: dict[tuple[Optional[int], int, Optional[int]], CellData] = {}
     var_info = variable_info or {}
 
     for tvc, cell in raw_cells:
@@ -176,7 +179,9 @@ def build_cells(
         cats = dp_cats.get(vvid, []) if vvid else []
 
         # Get variable ID, data type, and property name from variable info
-        v_id, data_type, prop_name = var_info.get(vvid, (None, "", "")) if vvid else (None, "", "")
+        v_id, data_type, prop_name = (
+            var_info.get(vvid, (None, "", "")) if vvid else (None, "", "")
+        )
 
         cd = CellData(
             row_header_id=row_id,
@@ -201,7 +206,7 @@ def build_table_layout(
     columns: list[LayoutHeader],
     rows: list[LayoutHeader],
     sheets: list[LayoutHeader],
-    cells: dict[tuple[int, int, Optional[int]], CellData],
+    cells: dict[tuple[Optional[int], int, Optional[int]], CellData],
 ) -> TableLayout:
     """Assemble the final TableLayout."""
     max_col_depth = max((h.depth for h in columns), default=0)

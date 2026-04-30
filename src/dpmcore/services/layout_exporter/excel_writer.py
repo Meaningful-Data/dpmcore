@@ -25,8 +25,12 @@ from dpmcore.services.layout_exporter.models import (
 
 _THIN = Side(style="thin")
 _BORDER_ALL = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_THIN)
-_GREY_FILL = PatternFill(start_color="D8D8D8", end_color="D8D8D8", fill_type="solid")
-_EXCLUDED_FILL = PatternFill(start_color="999999", end_color="999999", fill_type="solid")
+_GREY_FILL = PatternFill(
+    start_color="D8D8D8", end_color="D8D8D8", fill_type="solid"
+)
+_EXCLUDED_FILL = PatternFill(
+    start_color="999999", end_color="999999", fill_type="solid"
+)
 _TITLE_FONT = Font(bold=True, size=11)
 _HEADER_FONT = Font(bold=True, size=10)
 _DATA_FONT = Font(size=9)
@@ -36,7 +40,7 @@ _DATA_TYPE_SYMBOLS: dict[str, str] = {
     "b": "TRUE/FALSE",
     "t": "TRUE",
     "d": "yyyy-mm-dd",
-    "m": "\u20ac\u00a3$",       # €£$
+    "m": "\u20ac\u00a3$",  # €£$
     "p": "%",
     "i": "#",
     "r": "#.###",
@@ -45,9 +49,21 @@ _DATA_TYPE_SYMBOLS: dict[str, str] = {
 
 # Dimension annotation colors (cycling palette)
 _DIM_COLORS = [
-    "0000CC", "CC0000", "006600", "990099", "CC6600",
-    "006666", "660066", "336699", "993333", "339933",
-    "666699", "996633", "339966", "993366", "669933",
+    "0000CC",
+    "CC0000",
+    "006600",
+    "990099",
+    "CC6600",
+    "006666",
+    "660066",
+    "336699",
+    "993333",
+    "339933",
+    "666699",
+    "996633",
+    "339966",
+    "993366",
+    "669933",
 ]
 
 
@@ -59,17 +75,18 @@ class ExcelLayoutWriter:
         layouts: list[TableLayout],
         config: Optional[ExportConfig] = None,
     ) -> None:
+        """Initialise with the layouts to render and optional config."""
         self.layouts = layouts
         self.config = config or ExportConfig()
         self.wb = Workbook()
-        # Remove default sheet
-        if self.wb.sheetnames:
+        # Remove default sheet (Workbook() always creates one).
+        if self.wb.sheetnames:  # pragma: no branch
             del self.wb[self.wb.sheetnames[0]]
 
     def write(self) -> Workbook:
         """Write all table layouts and return the workbook."""
         # Sort layouts alphabetically by table code
-        sorted_layouts = sorted(self.layouts, key=lambda l: l.table_code)
+        sorted_layouts = sorted(self.layouts, key=lambda lo: lo.table_code)
 
         for layout in sorted_layouts:
             self._write_table(layout)
@@ -85,12 +102,14 @@ class ExcelLayoutWriter:
 
         # Title
         ws.cell(row=1, column=1, value="Table Index").font = Font(
-            bold=True, size=14,
+            bold=True,
+            size=14,
         )
 
         # Column headers
         for col, header in enumerate(
-            ["#", "Table Code", "Table Name"], start=1,
+            ["#", "Table Code", "Table Name"],
+            start=1,
         ):
             cell = ws.cell(row=3, column=col, value=header)
             cell.font = _HEADER_FONT
@@ -116,7 +135,7 @@ class ExcelLayoutWriter:
         ws.column_dimensions["B"].width = 18
         ws.column_dimensions["C"].width = 80
 
-    def _write_table(self, layout: TableLayout) -> None:
+    def _write_table(self, layout: TableLayout) -> None:  # noqa: C901
         """Write a single table layout to a worksheet."""
         # Truncate sheet name to 31 chars (Excel limit)
         sheet_name = layout.table_code[:31]
@@ -130,16 +149,22 @@ class ExcelLayoutWriter:
         # Row 1: title
         # Row 2: empty (gap)
         # Row 3: sheet header (if sheets) or empty
-        # Row 4: "Columns" label + row annotation dimension headers  [col_header_start_row]
-        # Row 5+: column header depth levels (col_header_start_row + 1 + depth)
+        # Row 4: "Columns" label + row annotation dimension headers
+        # Row 5+: column header depth levels (start + 1 + depth)
         # Then: column code row (if enabled)
         # Then: data rows
 
-        # "Columns" row: row 4 for tables without sheets, row 5 when sheets exist
+        # "Columns" row: row 4 without sheets, row 5 when sheets exist
         col_header_start_row = 5 if layout.sheets else 4
         col_label_rows = layout.max_col_depth + 1
-        col_code_row = col_header_start_row + 1 + col_label_rows if cfg.show_code_row else 0
-        data_start_row = col_header_start_row + 1 + col_label_rows + code_row_offset
+        col_code_row = (
+            col_header_start_row + 1 + col_label_rows
+            if cfg.show_code_row
+            else 0
+        )
+        data_start_row = (
+            col_header_start_row + 1 + col_label_rows + code_row_offset
+        )
 
         # Column geometry
         # Col A: "Rows" label (merged)
@@ -148,7 +173,9 @@ class ExcelLayoutWriter:
         # Cols after: data columns
         row_label_col = 2  # B
         row_code_col = 3 if cfg.show_code_column else 0
-        data_start_col = 2 + code_col_offset + 1  # after labels + optional codes
+        data_start_col = (
+            2 + code_col_offset + 1
+        )  # after labels + optional codes
 
         # --- Build column position map ---
         # VBA logic: if the previous header was abstract, the current one
@@ -173,12 +200,16 @@ class ExcelLayoutWriter:
         title_cell.font = _TITLE_FONT
         title_cell.fill = _GREY_FILL
         title_cell.border = _BORDER_ALL
-        # Merge title across all columns
+        # Merge title across all columns. data_start_col is always
+        # >= 3 (label cols + optional code col), so end_col is always
+        # > 1 when there's any content; the guard is defensive.
         end_col = data_start_col + num_visible_cols - 1
-        if end_col > 1:
+        if end_col > 1:  # pragma: no branch
             ws.merge_cells(
-                start_row=1, start_column=1,
-                end_row=1, end_column=max(end_col, 1),
+                start_row=1,
+                start_column=1,
+                end_row=1,
+                end_column=max(end_col, 1),
             )
 
         # --- Sheet header (Z-axis) ---
@@ -189,10 +220,15 @@ class ExcelLayoutWriter:
         if layout.sheets:
             for sh in layout.sheets:
                 # Row 2: annotation label in data_start_col
-                # Use "(member_code:domain_code) member_label" format for ATY dim
+                # Use "(member_code:domain_code) label" format for ATY dim
                 for dm in sh.categorisations:
-                    label_text = f"({dm.member_code}:{dm.domain_code}) {dm.member_label}"
-                    ann_label_cell = ws.cell(row=2, column=data_start_col, value=label_text)
+                    label_text = (
+                        f"({dm.member_code}:{dm.domain_code}) "
+                        f"{dm.member_label}"
+                    )
+                    ann_label_cell = ws.cell(
+                        row=2, column=data_start_col, value=label_text
+                    )
                     ann_label_cell.font = Font(bold=True, size=9)
                     ann_label_cell.alignment = Alignment(horizontal="left")
                     break  # only write for first (ATY) categorisation
@@ -203,7 +239,9 @@ class ExcelLayoutWriter:
                 sc.font = _HEADER_FONT
                 sc.fill = _GREY_FILL
                 sc.border = _BORDER_ALL
-                sc.alignment = Alignment(horizontal="center", vertical="center")
+                sc.alignment = Alignment(
+                    horizontal="center", vertical="center"
+                )
 
                 # Row 3 annotation value: SubCategory info
                 if sh.subcategory_code and sh.subcategory_cat_code:
@@ -213,31 +251,43 @@ class ExcelLayoutWriter:
                     ann_val = f"({cat}:{sc_code}({cat}))  ({sc_desc})"
                     if sh.is_key:
                         ann_val += " <Key value> "
-                    ann_val_cell = ws.cell(row=3, column=data_start_col, value=ann_val)
+                    ann_val_cell = ws.cell(
+                        row=3, column=data_start_col, value=ann_val
+                    )
                     ann_val_cell.font = Font(size=9)
                     ann_val_cell.alignment = Alignment(horizontal="left")
 
                 if cfg.add_header_comments and sh.categorisations:
                     tooltip = _format_categorisations(sh.categorisations)
-                    sc.comment = Comment(tooltip, "dpmcore", width=400, height=150)
+                    sc.comment = Comment(
+                        tooltip, "dpmcore", width=400, height=150
+                    )
 
         # --- "Columns" label ---
-        col_cell = ws.cell(row=col_header_start_row, column=data_start_col, value="Columns")
+        col_cell = ws.cell(
+            row=col_header_start_row, column=data_start_col, value="Columns"
+        )
         col_cell.font = _HEADER_FONT
         col_cell.fill = _GREY_FILL
-        col_cell.border = Border(left=_THIN, right=_THIN, top=_THIN, bottom=Side(style=None))
+        col_cell.border = Border(
+            left=_THIN, right=_THIN, top=_THIN, bottom=Side(style=None)
+        )
         col_cell.alignment = Alignment(horizontal="center")
         if num_visible_cols > 1:
             ws.merge_cells(
-                start_row=col_header_start_row, start_column=data_start_col,
-                end_row=col_header_start_row, end_column=data_start_col + num_visible_cols - 1,
+                start_row=col_header_start_row,
+                start_column=data_start_col,
+                end_row=col_header_start_row,
+                end_column=data_start_col + num_visible_cols - 1,
             )
 
         # --- Column headers ---
         for ch in layout.columns:
             col_offset = col_positions[ch.header_id]
-            if col_offset == 0:
-                continue  # abstract at position 0 before any real column
+            if col_offset == 0:  # pragma: no cover
+                # Defensive: pos starts at 0 and is always incremented
+                # before assignment, so col_positions values are >= 1.
+                continue
 
             excel_col = data_start_col - 1 + col_offset
 
@@ -253,7 +303,9 @@ class ExcelLayoutWriter:
             cell.fill = _GREY_FILL
             cell.border = _BORDER_ALL
             cell.alignment = Alignment(
-                horizontal="center", vertical="top", wrap_text=True,
+                horizontal="center",
+                vertical="top",
+                wrap_text=True,
             )
             cell.font = _HEADER_FONT
 
@@ -269,7 +321,9 @@ class ExcelLayoutWriter:
             # Header tooltip
             if cfg.add_header_comments and ch.categorisations:
                 tooltip = _format_categorisations(ch.categorisations)
-                cell.comment = Comment(tooltip, "dpmcore", width=400, height=150)
+                cell.comment = Comment(
+                    tooltip, "dpmcore", width=400, height=150
+                )
 
         # Grey-fill the entire column header grid (including empty cells)
         if num_visible_cols > 0 and layout.max_col_depth >= 0:
@@ -284,29 +338,40 @@ class ExcelLayoutWriter:
                     if cell.fill == PatternFill():  # unfilled
                         cell.fill = _GREY_FILL
 
-        # Merge column headers (vertical border pattern for leaves, horizontal for parents)
+        # Merge column headers: vertical borders for leaves,
+        # horizontal merges for parents.
         _merge_column_headers(
-            ws, layout.columns, col_positions, col_header_start_row + 1,
-            data_start_col, layout.max_col_depth,
+            ws,
+            layout.columns,
+            col_positions,
+            col_header_start_row + 1,
+            data_start_col,
+            layout.max_col_depth,
         )
 
         # --- Row headers ---
         # "Rows" label
         rows_label_cell = ws.cell(
-            row=data_start_row, column=1, value="Rows",
+            row=data_start_row,
+            column=1,
+            value="Rows",
         )
         rows_label_cell.font = _HEADER_FONT
         rows_label_cell.fill = _GREY_FILL
         rows_label_cell.border = _BORDER_ALL
         rows_label_cell.alignment = Alignment(
-            horizontal="center", vertical="center", text_rotation=90,
+            horizontal="center",
+            vertical="center",
+            text_rotation=90,
         )
 
         # Merge "Rows" label vertically
         if len(layout.rows) > 1:
             ws.merge_cells(
-                start_row=data_start_row, start_column=1,
-                end_row=data_start_row + len(layout.rows) - 1, end_column=1,
+                start_row=data_start_row,
+                start_column=1,
+                end_row=data_start_row + len(layout.rows) - 1,
+                end_column=1,
             )
 
         # Row header entries
@@ -316,22 +381,24 @@ class ExcelLayoutWriter:
             row_positions[rh.header_id] = excel_row
 
             # Row label with indentation
-            if rh.is_abstract:
-                label_text = f"{rh.code} {rh.label}"
-            elif not cfg.show_code_column:
+            if rh.is_abstract or not cfg.show_code_column:
                 label_text = f"{rh.code} {rh.label}"
             else:
                 label_text = rh.label
 
             indent = max(0, rh.depth) * 2
             label_cell = ws.cell(
-                row=excel_row, column=row_label_col, value=label_text,
+                row=excel_row,
+                column=row_label_col,
+                value=label_text,
             )
             label_cell.fill = _GREY_FILL
             label_cell.border = _BORDER_ALL
             label_cell.alignment = Alignment(
-                horizontal="left", vertical="center",
-                indent=indent, wrap_text=True,
+                horizontal="left",
+                vertical="center",
+                indent=indent,
+                wrap_text=True,
             )
 
             if rh.is_abstract:
@@ -340,8 +407,10 @@ class ExcelLayoutWriter:
                 if num_visible_cols > 0:
                     merge_end = data_start_col + num_visible_cols - 1
                     ws.merge_cells(
-                        start_row=excel_row, start_column=row_label_col,
-                        end_row=excel_row, end_column=merge_end,
+                        start_row=excel_row,
+                        start_column=row_label_col,
+                        end_row=excel_row,
+                        end_column=merge_end,
                     )
             else:
                 label_cell.font = Font(size=10)
@@ -357,7 +426,10 @@ class ExcelLayoutWriter:
             if cfg.add_header_comments and rh.categorisations:
                 tooltip = _format_categorisations(rh.categorisations)
                 label_cell.comment = Comment(
-                    tooltip, "dpmcore", width=400, height=150,
+                    tooltip,
+                    "dpmcore",
+                    width=400,
+                    height=150,
                 )
 
         # Per-column flag: does this column have any explicitly signed cell?
@@ -373,20 +445,26 @@ class ExcelLayoutWriter:
             if not _ch.is_abstract
         }
 
-        # Per-row explicit sign (any cell in this row; used to check parent sign).
+        # Per-row explicit sign (used to check parent sign).
         row_explicit_sign: dict[int, str] = {}
         for _cd in layout.cells.values():
-            if _cd.sign and _cd.row_header_id not in row_explicit_sign:
+            if (
+                _cd.sign
+                and _cd.row_header_id is not None
+                and _cd.row_header_id not in row_explicit_sign
+            ):
                 row_explicit_sign[_cd.row_header_id] = _cd.sign
-
-        # Row header lookup (for parent-sign check)
-        row_by_id: dict[int, LayoutHeader] = {rh.header_id: rh for rh in layout.rows}
 
         # --- Open-row tables ---
         if layout.is_open_row:
             self._write_open_row_data(
-                ws, layout, data_start_row, data_start_col,
-                col_positions, row_label_col, cfg,
+                ws,
+                layout,
+                data_start_row,
+                data_start_col,
+                col_positions,
+                row_label_col,
+                cfg,
             )
 
         # --- Data cells ---
@@ -418,27 +496,38 @@ class ExcelLayoutWriter:
                 cell.font = _DATA_FONT
                 cell.border = _BORDER_ALL
 
-                if cell_data is None:
-                    cell.fill = _EXCLUDED_FILL
-                elif cell_data.is_excluded:
+                if cell_data is None or cell_data.is_excluded:
                     cell.fill = _EXCLUDED_FILL
                 elif cell_data.variable_vid:
                     # Build cell content: VariableID + data type + sign
-                    display_id = cell_data.variable_id or cell_data.variable_vid
+                    display_id = (
+                        cell_data.variable_id or cell_data.variable_vid
+                    )
                     cell_lines = [str(display_id)]
                     if cell_data.data_type_code:
-                        if cell_data.data_type_code == "e" and cell_data.domain_label:
+                        if (
+                            cell_data.data_type_code == "e"
+                            and cell_data.domain_label
+                        ):
                             cell_lines.append(f"[{cell_data.domain_label}]")
                         elif cell_data.data_type_code in _DATA_TYPE_SYMBOLS:
-                            cell_lines.append(_DATA_TYPE_SYMBOLS[cell_data.data_type_code])
+                            cell_lines.append(
+                                _DATA_TYPE_SYMBOLS[cell_data.data_type_code]
+                            )
                     # Determine sign to display
                     _sign = cell_data.sign
                     if not _sign and cell_data.data_type_code == "m":
                         _label = rh.label or ""
-                        # Suppress NULL→positive default when the parent row has an
-                        # explicit sign: these are rollforward-table movements whose
-                        # sign is genuinely undetermined (positive or negative).
-                        _suppress = bool(row_explicit_sign.get(rh.parent_header_id, ""))
+                        # Suppress NULL→positive default when the
+                        # parent row has an explicit sign: these are
+                        # rollforward-table movements whose sign is
+                        # genuinely undetermined (positive or negative).
+                        _parent_id = rh.parent_header_id
+                        _suppress = bool(
+                            row_explicit_sign.get(_parent_id, "")
+                            if _parent_id is not None
+                            else ""
+                        )
                         if not _suppress and (
                             col_positive_only.get(ch.header_id, False)
                             or _label.startswith("Closing balance")
@@ -448,7 +537,8 @@ class ExcelLayoutWriter:
                         cell_lines.append(_sign)
                     cell.value = "\n".join(cell_lines)
                     cell.alignment = Alignment(
-                        horizontal="center", vertical="center",
+                        horizontal="center",
+                        vertical="center",
                         wrap_text=True,
                     )
 
@@ -461,21 +551,33 @@ class ExcelLayoutWriter:
                             )
                         )
                         cell.comment = Comment(
-                            tooltip, "dpmcore", width=400, height=180,
+                            tooltip,
+                            "dpmcore",
+                            width=400,
+                            height=180,
                         )
 
         # --- Annotations ---
         if cfg.annotate:
             self._write_annotations(
-                ws, layout, data_start_row, data_start_col,
-                row_positions, col_positions, num_visible_cols,
-                row_label_col, col_header_start_row,
+                ws,
+                layout,
+                data_start_row,
+                data_start_col,
+                row_positions,
+                col_positions,
+                num_visible_cols,
+                row_label_col,
+                col_header_start_row,
             )
 
         # --- Outline groups ---
         _apply_row_groups(ws, layout.rows, row_positions)
         _apply_col_groups(
-            ws, layout.columns, col_positions, data_start_col,
+            ws,
+            layout.columns,
+            col_positions,
+            data_start_col,
         )
 
         # --- Freeze panes ---
@@ -491,7 +593,7 @@ class ExcelLayoutWriter:
             col_letter = get_column_letter(data_start_col - 1 + col_offset)
             ws.column_dimensions[col_letter].width = 18
 
-    def _write_open_row_data(
+    def _write_open_row_data(  # noqa: C901
         self,
         ws: Any,
         layout: TableLayout,
@@ -503,11 +605,15 @@ class ExcelLayoutWriter:
     ) -> None:
         """Write the single 'Open Rows' data row for open-row tables."""
         open_rows_cell = ws.cell(
-            row=data_start_row, column=row_label_col, value="Open Rows",
+            row=data_start_row,
+            column=row_label_col,
+            value="Open Rows",
         )
         open_rows_cell.fill = _GREY_FILL
         open_rows_cell.border = _BORDER_ALL
-        open_rows_cell.alignment = Alignment(horizontal="left", vertical="center")
+        open_rows_cell.alignment = Alignment(
+            horizontal="left", vertical="center"
+        )
         open_rows_cell.font = _HEADER_FONT
 
         default_sheet_id = None
@@ -531,35 +637,53 @@ class ExcelLayoutWriter:
                     type_symbol = f"[{ch.key_property_name}]"
                 else:
                     type_symbol = _DATA_TYPE_SYMBOLS.get(
-                        ch.key_data_type_code, ch.key_data_type_code,
+                        ch.key_data_type_code,
+                        ch.key_data_type_code,
                     )
                 lines = [str(ch.key_variable_id), type_symbol]
                 if ch.key_property_name:
                     lines.append(f"<{ch.key_property_name}>")
                 cell.value = "\n".join(lines)
                 cell.alignment = Alignment(
-                    horizontal="center", vertical="center", wrap_text=True,
+                    horizontal="center",
+                    vertical="center",
+                    wrap_text=True,
                 )
             else:
-                cell_data = layout.cells.get((None, ch.header_id, default_sheet_id))
-                if cell_data is not None and not cell_data.is_excluded and cell_data.variable_vid:
-                    display_id = cell_data.variable_id or cell_data.variable_vid
+                cell_data = layout.cells.get(
+                    (None, ch.header_id, default_sheet_id)
+                )
+                if (
+                    cell_data is not None
+                    and not cell_data.is_excluded
+                    and cell_data.variable_vid
+                ):
+                    display_id = (
+                        cell_data.variable_id or cell_data.variable_vid
+                    )
                     cell_lines = [str(display_id)]
                     if cell_data.data_type_code:
-                        if cell_data.data_type_code == "e" and cell_data.domain_label:
+                        if (
+                            cell_data.data_type_code == "e"
+                            and cell_data.domain_label
+                        ):
                             cell_lines.append(f"[{cell_data.domain_label}]")
                         elif cell_data.data_type_code in _DATA_TYPE_SYMBOLS:
-                            cell_lines.append(_DATA_TYPE_SYMBOLS[cell_data.data_type_code])
+                            cell_lines.append(
+                                _DATA_TYPE_SYMBOLS[cell_data.data_type_code]
+                            )
                     if cell_data.sign:
                         cell_lines.append(cell_data.sign)
                     cell.value = "\n".join(cell_lines)
                     cell.alignment = Alignment(
-                        horizontal="center", vertical="center", wrap_text=True,
+                        horizontal="center",
+                        vertical="center",
+                        wrap_text=True,
                     )
                 else:
                     cell.fill = _EXCLUDED_FILL
 
-    def _write_annotations(
+    def _write_annotations(  # noqa: C901
         self,
         ws: Any,
         layout: TableLayout,
@@ -571,26 +695,32 @@ class ExcelLayoutWriter:
         row_label_col: int,
         col_header_start_row: int,
     ) -> None:
-        """Write dimensional annotations below and to the right of the grid."""
+        """Write dimensional annotations around the data grid."""
         col_dims = _collect_axis_dimensions(layout.columns)
 
-        # Some dimensions only appear in cell dp_categorisations but not in any
-        # row header context. Add those as supplemental row annotation dimensions,
-        # but only if they are NOT already shown as column annotation dimensions
-        # (dimensions that vary by column are column-level, not row-level).
+        # Some dimensions only appear in cell dp_categorisations but
+        # not in any row header context. Add those as supplemental row
+        # annotation dimensions, but only if they are NOT already shown
+        # as column annotation dimensions (dimensions that vary by
+        # column are column-level, not row-level).
         col_dim_set = set(col_dims)
         row_dp_cats: dict[int, list[DimensionMember]] = {}
         for cell_key, cell_data in layout.cells.items():
             row_id, _col_id, _sheet_id = cell_key
+            if row_id is None:
+                continue
             if cell_data.dp_categorisations:
                 extra = [
-                    dm for dm in cell_data.dp_categorisations
+                    dm
+                    for dm in cell_data.dp_categorisations
                     if _dim_display_label(dm) not in col_dim_set
                 ]
                 if extra:
                     row_dp_cats.setdefault(row_id, []).extend(extra)
 
-        row_dims = _collect_axis_dimensions(layout.rows, supplemental_cats=row_dp_cats)
+        row_dims = _collect_axis_dimensions(
+            layout.rows, supplemental_cats=row_dp_cats
+        )
 
         # Assign colors consistently across both axes (keyed by display label)
         all_dim_labels = list(dict.fromkeys(col_dims + row_dims))
@@ -601,8 +731,11 @@ class ExcelLayoutWriter:
 
         # --- Column annotations (below the data grid, no gap row) ---
         if col_dims:
-            # For open-row tables there are no layout.rows but one "Open Rows" data row
-            ann_start_row = data_start_row + (1 if layout.is_open_row else len(layout.rows))
+            # Open-row tables have no layout.rows but one
+            # "Open Rows" data row.
+            ann_start_row = data_start_row + (
+                1 if layout.is_open_row else len(layout.rows)
+            )
 
             for dim_idx, dim_label in enumerate(col_dims):
                 ann_row = ann_start_row + dim_idx
@@ -610,7 +743,9 @@ class ExcelLayoutWriter:
 
                 # Dimension label in row_label_col (col B)
                 label_cell = ws.cell(
-                    row=ann_row, column=row_label_col, value=dim_label,
+                    row=ann_row,
+                    column=row_label_col,
+                    value=dim_label,
                 )
                 label_cell.font = Font(bold=True, size=9, color=color)
                 label_cell.alignment = Alignment(horizontal="right")
@@ -622,27 +757,38 @@ class ExcelLayoutWriter:
                     col_offset = col_positions[ch.header_id]
                     excel_col = data_start_col - 1 + col_offset
 
-                    member = _find_member_by_label(ch.categorisations, dim_label)
+                    member = _find_member_by_label(
+                        ch.categorisations, dim_label
+                    )
                     if member:
                         display = _member_display_label(member)
                         if ch.subcategory_code and ch.subcategory_cat_code:
-                            display += f"[{ch.subcategory_cat_code}:{ch.subcategory_code}]"
+                            display += (
+                                f"[{ch.subcategory_cat_code}:"
+                                f"{ch.subcategory_code}]"
+                            )
                     elif ch.is_key:
-                        key_dm = _find_member_by_label(ch.key_categorisations, dim_label)
+                        key_dm = _find_member_by_label(
+                            ch.key_categorisations, dim_label
+                        )
                         if key_dm:
                             display = _key_member_display(key_dm, ch)
-                            member = key_dm  # use key_dm as sentinel for the write below
+                            # Use key_dm as sentinel for the write below.
+                            member = key_dm
                     if member:
-                        mc = ws.cell(row=ann_row, column=excel_col, value=display)
+                        mc = ws.cell(
+                            row=ann_row, column=excel_col, value=display
+                        )
                         mc.font = Font(size=9, color=color)
                         mc.alignment = Alignment(
-                            horizontal="center", wrap_text=True,
+                            horizontal="center",
+                            wrap_text=True,
                         )
 
-        # --- Row annotations (to the right of the data grid, no gap column) ---
+        # --- Row annotations (right of the data grid, no gap column) ---
         if row_dims:
             ann_start_col = data_start_col + num_visible_cols
-            # Annotation headers span: col_header_start_row + max_col_depth to +1
+            # Span: col_header_start_row + max_col_depth to +1
             ann_header_row = col_header_start_row + layout.max_col_depth
 
             for dim_idx, dim_label in enumerate(row_dims):
@@ -651,15 +797,21 @@ class ExcelLayoutWriter:
 
                 # Dimension label at ann_header_row, merged with next row
                 label_cell = ws.cell(
-                    row=ann_header_row, column=ann_col, value=dim_label,
+                    row=ann_header_row,
+                    column=ann_col,
+                    value=dim_label,
                 )
                 label_cell.font = Font(bold=True, size=9, color=color)
                 label_cell.alignment = Alignment(
-                    horizontal="left", vertical="bottom", wrap_text=True,
+                    horizontal="left",
+                    vertical="bottom",
+                    wrap_text=True,
                 )
                 ws.merge_cells(
-                    start_row=ann_header_row, start_column=ann_col,
-                    end_row=ann_header_row + 1, end_column=ann_col,
+                    start_row=ann_header_row,
+                    start_column=ann_col,
+                    end_row=ann_header_row + 1,
+                    end_column=ann_col,
                 )
 
                 # Member values per row
@@ -668,14 +820,23 @@ class ExcelLayoutWriter:
                         continue
                     excel_row = row_positions[rh.header_id]
 
-                    member = _find_member_by_label(rh.categorisations, dim_label)
+                    member = _find_member_by_label(
+                        rh.categorisations, dim_label
+                    )
                     if member is None and rh.header_id in row_dp_cats:
-                        member = _find_member_by_label(row_dp_cats[rh.header_id], dim_label)
+                        member = _find_member_by_label(
+                            row_dp_cats[rh.header_id], dim_label
+                        )
                     if member:
                         display = _member_display_label(member)
                         if rh.subcategory_code and rh.subcategory_cat_code:
-                            display += f"[{rh.subcategory_cat_code}:{rh.subcategory_code}]"
-                        mc = ws.cell(row=excel_row, column=ann_col, value=display)
+                            display += (
+                                f"[{rh.subcategory_cat_code}:"
+                                f"{rh.subcategory_code}]"
+                            )
+                        mc = ws.cell(
+                            row=excel_row, column=ann_col, value=display
+                        )
                         mc.font = Font(size=9, color=color)
                         mc.alignment = Alignment(horizontal="left")
 
@@ -692,8 +853,9 @@ def _collect_axis_dimensions(
     Returns a sorted list of dimension display labels, deduplicated by label
     (so "Main Property" / ATY appears once). ATY dimensions sort first.
 
-    supplemental_cats: optional dict mapping header_id -> list[DimensionMember]
-    from dp_categorisations, to pick up dimensions not in header categorisations.
+    supplemental_cats: optional dict mapping header_id ->
+    list[DimensionMember] from dp_categorisations, to pick up
+    dimensions not in header categorisations.
     """
     # key=label -> (first_property_id, dimension_code) for sort ordering
     seen: dict[str, tuple[int, str]] = {}
@@ -740,8 +902,10 @@ def _key_member_display(dm: DimensionMember, ch: LayoutHeader) -> str:
     """Format the member value for a key column annotation as '<Key value>'."""
     if ch.subcategory_code and ch.subcategory_cat_code:
         return (
-            f"({dm.domain_code}:{ch.subcategory_code}({ch.subcategory_cat_code})) "
-            f"<Key value>[{ch.subcategory_cat_code}:{ch.subcategory_code}] "
+            f"({dm.domain_code}:"
+            f"{ch.subcategory_code}({ch.subcategory_cat_code})) "
+            f"<Key value>[{ch.subcategory_cat_code}:"
+            f"{ch.subcategory_code}] "
             f"{ch.subcategory_description}"
         )
     return f"({dm.domain_code}:) <Key value>"
@@ -771,23 +935,23 @@ def _find_member_by_label(
 
 def _format_categorisations(cats: list[DimensionMember]) -> str:
     """Format categorisations as tooltip text: Dimension = Member."""
-    lines = []
-    for dm in cats:
-        lines.append(f"{dm.dimension_label}  =  {dm.member_label}")
+    lines = [f"{dm.dimension_label}  =  {dm.member_label}" for dm in cats]
     return "\n".join(lines)
 
 
 def _build_header_tooltip(headers: list[LayoutHeader]) -> str:
     """Build a tooltip for sheet headers."""
-    parts = []
+    parts: list[str] = []
     for h in headers:
         parts.append(f"{h.code} {h.label}")
-        for dm in h.categorisations:
-            parts.append(f"  {dm.dimension_label} = {dm.member_label}")
+        parts.extend(
+            f"  {dm.dimension_label} = {dm.member_label}"
+            for dm in h.categorisations
+        )
     return "\n".join(parts)
 
 
-def _merge_column_headers(
+def _merge_column_headers(  # noqa: C901
     ws: Any,
     columns: list[LayoutHeader],
     col_positions: dict[int, int],
@@ -830,7 +994,10 @@ def _merge_column_headers(
             # their separator from the next-depth label's own top border.
             cell = ws.cell(row=label_row, column=excel_col)
             cell.border = Border(
-                left=_THIN, top=_THIN, right=_THIN, bottom=Side(style=None),
+                left=_THIN,
+                top=_THIN,
+                right=_THIN,
+                bottom=Side(style=None),
             )
 
             # Empty cells below: intermediate=L+R, last=L+R+B (no top)
@@ -841,10 +1008,13 @@ def _merge_column_headers(
                     empty_cell.border = Border(left=_THIN, right=_THIN)
                 else:
                     empty_cell.border = Border(
-                        left=_THIN, right=_THIN, bottom=_THIN,
+                        left=_THIN,
+                        right=_THIN,
+                        bottom=_THIN,
                     )
 
-    # Pass 2: horizontal merge for all parent headers (abstract and non-abstract)
+    # Pass 2: horizontal merge for all parent headers
+    # (abstract and non-abstract).
     for ch in columns:
         if ch.header_id not in parent_ids:
             continue
@@ -857,7 +1027,9 @@ def _merge_column_headers(
         for other in columns:
             if other.header_id == ch.header_id:
                 continue
-            if not other.is_abstract and _is_descendant(other, ch.header_id, by_id):
+            if not other.is_abstract and _is_descendant(
+                other, ch.header_id, by_id
+            ):
                 p = col_positions.get(other.header_id, 0)
                 if p > 0:
                     desc_positions.append(p)
@@ -871,8 +1043,10 @@ def _merge_column_headers(
 
             if end_col > start_col:
                 ws.merge_cells(
-                    start_row=label_row, start_column=start_col,
-                    end_row=label_row, end_column=end_col,
+                    start_row=label_row,
+                    start_column=start_col,
+                    end_row=label_row,
+                    end_column=end_col,
                 )
 
 
@@ -923,5 +1097,6 @@ def _apply_col_groups(
                 excel_col = data_start_col - 1 + col_offset
                 col_letter = get_column_letter(excel_col)
                 ws.column_dimensions[col_letter].outline_level = min(
-                    ch.depth, 7,
+                    ch.depth,
+                    7,
                 )

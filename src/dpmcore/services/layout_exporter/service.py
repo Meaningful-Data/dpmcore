@@ -12,7 +12,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from dpmcore.services.layout_exporter import models, processing, queries
+from dpmcore.services.layout_exporter import processing, queries
 from dpmcore.services.layout_exporter.excel_writer import ExcelLayoutWriter
 from dpmcore.services.layout_exporter.models import (
     DimensionMember,
@@ -29,6 +29,7 @@ class LayoutExporterService:
     """
 
     def __init__(self, session: Session) -> None:
+        """Bind the service to an open SQLAlchemy session."""
         self.session = session
 
     def export_module(
@@ -50,7 +51,9 @@ class LayoutExporterService:
             Path to the written file.
         """
         table_versions = queries.load_module_table_versions(
-            self.session, module_code, release_code,
+            self.session,
+            module_code,
+            release_code,
         )
         if not table_versions:
             msg = f"No tables found for module '{module_code}'"
@@ -89,7 +92,9 @@ class LayoutExporterService:
         layouts = []
         for code in table_codes:
             tv = queries.load_table_version(
-                self.session, code, release_code,
+                self.session,
+                code,
+                release_code,
             )
             if tv is None:
                 continue
@@ -114,22 +119,24 @@ class LayoutExporterService:
         Useful for programmatic access without Excel generation.
         """
         tv = queries.load_table_version(
-            self.session, table_code, release_code,
+            self.session,
+            table_code,
+            release_code,
         )
         if tv is None:
             raise ValueError(f"Table '{table_code}' not found")
         return self._build_layout(tv)
 
-    def _build_layout(self, tv: object) -> TableLayout:
+    def _build_layout(self, tv: object) -> TableLayout:  # noqa: C901
         """Core pipeline: query -> process -> TableLayout."""
         # Load all headers
         raw_headers = queries.load_headers(self.session, tv.table_vid)  # type: ignore[attr-defined]
 
-        # Collect context_ids, property_ids, and subcategory_vids for batch loading
+        # Collect context_ids, property_ids, and subcategory_vids
         context_ids: set[int] = set()
         property_ids: set[int] = set()
         subcategory_vids: set[int] = set()
-        for tvh, header, hv in raw_headers:
+        for _tvh, _header, hv in raw_headers:
             if hv.context_id:
                 context_ids.add(hv.context_id)
             if hv.property_id:
@@ -139,18 +146,24 @@ class LayoutExporterService:
 
         # Batch load categorisations
         context_cats = queries.load_categorisations(
-            self.session, context_ids,
+            self.session,
+            context_ids,
         )
         property_cats = queries.load_property_as_categorisation(
-            self.session, property_ids,
+            self.session,
+            property_ids,
         )
         subcategory_info = queries.load_subcategory_info(
-            self.session, subcategory_vids,
+            self.session,
+            subcategory_vids,
         )
 
         # Build sorted headers
         columns, rows, sheets = processing.build_layout_headers(
-            raw_headers, context_cats, property_cats, subcategory_info,
+            raw_headers,
+            context_cats,
+            property_cats,
+            subcategory_info,
         )
 
         # Load cells
@@ -158,7 +171,7 @@ class LayoutExporterService:
 
         # Collect variable_vids for data point categorisations
         variable_vids: set[int] = set()
-        for tvc, cell in raw_cells:
+        for tvc, _cell in raw_cells:
             if tvc.variable_vid:
                 variable_vids.add(tvc.variable_vid)
 
@@ -168,10 +181,12 @@ class LayoutExporterService:
                 variable_vids.add(col.key_variable_vid)
 
         dp_cats = queries.load_dp_categorisations(
-            self.session, variable_vids,
+            self.session,
+            variable_vids,
         )
         variable_info = queries.load_variable_info(
-            self.session, variable_vids,
+            self.session,
+            variable_vids,
         )
 
         # Populate key variable fields on open-row key columns
@@ -188,14 +203,19 @@ class LayoutExporterService:
         }
         if key_variable_vids:
             key_vid_prop_ids = queries.load_key_variable_property_ids(
-                self.session, key_variable_vids,
+                self.session,
+                key_variable_vids,
             )
             key_prop_ids = set(key_vid_prop_ids.values())
             key_prop_cats = queries.load_property_as_categorisation(
-                self.session, key_prop_ids,
+                self.session,
+                key_prop_ids,
             )
             for col in columns:
-                if col.key_variable_vid and col.key_variable_vid in key_vid_prop_ids:
+                if (
+                    col.key_variable_vid
+                    and col.key_variable_vid in key_vid_prop_ids
+                ):
                     prop_id = key_vid_prop_ids[col.key_variable_vid]
                     atm_dm = key_prop_cats.get(prop_id)
                     if atm_dm:
@@ -216,12 +236,16 @@ class LayoutExporterService:
         sheet_ids = {h.header_id for h in sheets}
         # Add default sheet ID if no explicit sheets
         if not sheet_ids:
-            for tvc, cell in raw_cells:
+            for _tvc, cell in raw_cells:
                 if cell.sheet_id:
                     sheet_ids.add(cell.sheet_id)
 
         cells = processing.build_cells(
-            raw_cells, row_ids, col_ids, sheet_ids, dp_cats,
+            raw_cells,
+            row_ids,
+            col_ids,
+            sheet_ids,
+            dp_cats,
             variable_info,
         )
 
@@ -261,6 +285,10 @@ def _fix_xlsx_timestamps(path: Path) -> None:
         out = BytesIO()
         with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
             for name in names:
-                data = fixed_xml.encode("utf-8") if name == "docProps/core.xml" else zin.read(name)
+                data = (
+                    fixed_xml.encode("utf-8")
+                    if name == "docProps/core.xml"
+                    else zin.read(name)
+                )
                 zout.writestr(name, data)
     path.write_bytes(out.getvalue())
