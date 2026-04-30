@@ -823,13 +823,15 @@ def _merge_column_headers(
         last_depth_row = col_header_start_row + max_depth
 
         if ch.depth < max_depth:
-            if ch.header_id not in parent_ids:
-                # Leaf at depth < max_depth: remove bottom border
-                cell = ws.cell(row=label_row, column=excel_col)
-                cell.border = Border(
-                    left=_THIN, top=_THIN, right=_THIN, bottom=Side(style=None),
-                )
-            # Non-leaf parent: keep all 4 borders (already set by header write)
+            # Remove bottom border so the empty cells below visually connect
+            # with the label. Non-abstract parents need this too: descendants
+            # sit at other column positions, so the parent's own column has
+            # only empty cells below the label. The descendant columns get
+            # their separator from the next-depth label's own top border.
+            cell = ws.cell(row=label_row, column=excel_col)
+            cell.border = Border(
+                left=_THIN, top=_THIN, right=_THIN, bottom=Side(style=None),
+            )
 
             # Empty cells below: intermediate=L+R, last=L+R+B (no top)
             for r in range(label_row + 1, last_depth_row + 1):
