@@ -319,7 +319,19 @@ def generate_script(
 
     console = Console()
 
-    raw = json.loads(Path(expressions_path).read_text(encoding="utf-8"))
+    try:
+        raw_text = Path(expressions_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        click.echo(f"Could not read {expressions_path}: {exc}", err=True)
+        sys.exit(1)
+    try:
+        raw = json.loads(raw_text)
+    except json.JSONDecodeError as exc:
+        click.echo(
+            f"Invalid JSON in {expressions_path}: {exc}",
+            err=True,
+        )
+        sys.exit(1)
     if not isinstance(raw, dict) or "expressions" not in raw:
         click.echo(
             "Invalid expressions file: expected a JSON object with an "
