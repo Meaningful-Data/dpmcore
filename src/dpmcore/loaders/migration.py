@@ -268,18 +268,20 @@ class MigrationService:
 
     @staticmethod
     def _coerce_numeric_columns(df: Any) -> Any:
-        """Try to convert string columns to numeric where possible."""
-        import contextlib
+        r"""Convert string columns to numeric where it is safe to do so.
 
-        import pandas as pd  # lazy
+        ``Code`` columns in the DPM dictionary store zero-padded
+        identifiers (``"0010"``, ``"010"``) that must not be coerced
+        to ints — doing so silently strips the padding and breaks
+        every downstream lookup.
 
-        for col in df.columns:
-            with contextlib.suppress(ValueError, TypeError):
-                df[col] = pd.to_numeric(df[col])
-        return df
-
-    @staticmethod
-    def _coerce_numeric_columns_for_csv(df: Any) -> Any:
+        A column is coerced only when:
+        - its name is not a known string-typed column
+          (``row``/``column``/``sheet``), and
+        - none of its non-null values start with a leading zero
+          followed by digits (``^0\d+``), and
+        - every non-null value can be parsed as numeric.
+        """
         import pandas as pd  # lazy
 
         string_columns = {"row", "column", "sheet"}
@@ -300,6 +302,9 @@ class MigrationService:
                 df[column] = pd.to_numeric(df[column], errors="coerce")
 
         return df
+
+    # Back-compat alias — older callers used the CSV-specific name.
+    _coerce_numeric_columns_for_csv = _coerce_numeric_columns
 
     @staticmethod
     def _coerce_temporal_columns_for_schema(df: Any, orm_table: Any) -> Any:  # noqa: C901
