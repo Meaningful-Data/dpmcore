@@ -25,6 +25,7 @@ from dpmcore.services.layout_exporter.models import (
     TableLayout,
 )
 from dpmcore.services.layout_exporter.service import LayoutExporterService
+
 from ._helpers import (
     add_cell,
     add_context_composition,
