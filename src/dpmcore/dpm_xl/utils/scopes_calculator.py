@@ -143,7 +143,6 @@ class OperationScopeService:
                         if "StartReleaseID" in group_df.columns
                         else None
                     )
-                    group_df["EndReleaseID"].values[0]
 
                     # Determine if this is a "new" module starting in this release
                     is_starting = start_release == release_id
@@ -450,7 +449,9 @@ class OperationScopeService:
             operation_scope = self.create_operation_scope(from_submission_date)
             unique_combination = set(combination)
             for module in unique_combination:
-                module_row = module_lookup[module]
+                module_row = module_lookup.get(module)
+                if module_row is None:
+                    continue
                 self.create_operation_scope_composition(
                     operation_scope=operation_scope,
                     module_vid=module,

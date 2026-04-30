@@ -365,6 +365,11 @@ class TestDetectCrossModuleDependencies:
 
     def test_cross_module_returns_empty_intra(self):
         svc, SR = self._make_svc()
+        # Provide at least one variable-bearing table — modules with
+        # only variable-less tables are now dropped.
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "T_01": {"variables": {"v1": "x"}, "open_keys": {}},
+        }
 
         mv = MagicMock()
         mv.module_vid = 20
@@ -374,7 +379,7 @@ class TestDetectCrossModuleDependencies:
         mv.to_reference_date = None
 
         q = svc.session.query.return_value
-        q.filter.return_value.first.return_value = mv
+        q.filter.return_value.all.return_value = [mv]
 
         sr = SR(
             scopes=[_scope([10, 20])],
@@ -422,10 +427,7 @@ class TestDetectCrossModuleDependencies:
         mv30.to_reference_date = None
 
         q = svc.session.query.return_value
-        q.filter.return_value.first.side_effect = [
-            mv20,
-            mv30,
-        ]
+        q.filter.return_value.all.return_value = [mv20, mv30]
 
         sr = SR(
             scopes=[
@@ -458,7 +460,7 @@ class TestDetectCrossModuleDependencies:
         mv.to_reference_date = None
 
         q = svc.session.query.return_value
-        q.filter.return_value.first.return_value = mv
+        q.filter.return_value.all.return_value = [mv]
 
         sr = SR(
             scopes=[_scope([10, 20])],
@@ -475,6 +477,9 @@ class TestDetectCrossModuleDependencies:
     def test_ref_period_defaults_to_t(self):
         """ref_period defaults to T when no time shifts."""
         svc, SR = self._make_svc()
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "T_01": {"variables": {"v1": "x"}, "open_keys": {}},
+        }
 
         mv = MagicMock()
         mv.module_vid = 20
@@ -483,7 +488,7 @@ class TestDetectCrossModuleDependencies:
         mv.to_reference_date = None
 
         q = svc.session.query.return_value
-        q.filter.return_value.first.return_value = mv
+        q.filter.return_value.all.return_value = [mv]
 
         sr = SR(
             scopes=[_scope([10, 20])],
@@ -513,7 +518,7 @@ class TestDetectCrossModuleDependencies:
         mv.to_reference_date = None
 
         q = svc.session.query.return_value
-        q.filter.return_value.first.return_value = mv
+        q.filter.return_value.all.return_value = [mv]
 
         sr = SR(
             scopes=[_scope([10, 20])],
@@ -527,6 +532,39 @@ class TestDetectCrossModuleDependencies:
         assert "http://uri/mod_20" in dm
         assert "T_01" in dm["http://uri/mod_20"]["tables"]
         assert dm["http://uri/mod_20"]["variables"] == {"v1": "x"}
+
+    def test_module_with_only_variable_less_tables_is_dropped(self):
+        """Modules whose tables all have empty ``variables`` are dropped.
+
+        Regression for B6/S5: previously such modules produced an
+        entry in ``dependency_modules`` with an empty ``tables`` map
+        which the engine schema (``minProperties: 1``) rejects.
+        """
+        svc, SR = self._make_svc()
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "T_STRUCT": {"variables": {}, "open_keys": {}},
+        }
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [mv]
+
+        sr = SR(
+            scopes=[_scope([10, 20])],
+            is_cross_module=True,
+        )
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+            operation_code="v1234",
+        )
+        assert info["cross_instance_dependencies"] == []
+        assert info["dependency_modules"] == {}
 
     def test_empty_dependency_modules_when_not_cross(self):
         """dependency_modules is empty for intra-module."""
