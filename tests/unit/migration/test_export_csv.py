@@ -8,7 +8,7 @@ from dpmcore.services.export_csv import ExportCsvError, ExportCsvService
 def test_list_tables_filters_system_tables():
     service = ExportCsvService()
 
-    raw_tables = "Release\nModule\nCell\n"
+    raw_tables = "Release\nModule\nMSysObjects\n~TmpTable\nCell\n"
 
     with patch("subprocess.check_output", return_value=raw_tables):
         tables = service._list_tables("/fake.accdb")
