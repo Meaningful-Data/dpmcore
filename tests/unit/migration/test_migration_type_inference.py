@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from dpmcore.services.migration import MigrationService
+from dpmcore.loaders.migration import MigrationService
 
 
 @pytest.fixture

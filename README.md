@@ -78,7 +78,7 @@ with connect("sqlite:///dpm.db") as db:
     print(result.warning)
 ```
 
-**AST generation** (three levels):
+**Engine-ready validations script:**
 
 ```python
 from dpmcore import connect
@@ -86,23 +86,55 @@ from dpmcore import connect
 with connect("sqlite:///dpm.db") as db:
     ast_svc = db.services.ast_generator
 
-    # Level 1 — Syntax AST (no database needed)
-    basic = ast_svc.parse("{tC_01.00, r0100, c0010}")
-    print(basic["success"])  # True
-    print(basic["ast"])      # AST dict
-
-    # Level 2 — Semantically enriched AST
-    complete = ast_svc.complete(
-        "{tC_01.00, r0100, c0010}",
-        release_id=5,
-    )
-
-    # Level 3 — Engine-ready validations script
     script = ast_svc.script(
-        "{tC_01.00, r0100, c0010} = {tC_01.00, r0200, c0010}",
-        release_id=5,
-        module_code="F_01.01",
+        expressions=[
+            ("{tC_01.00, r0100, c0010} = {tC_01.00, r0200, c0010}", "v0001"),
+            ("{tC_01.00, r0200, c0010} > 0",                        "v0002"),
+        ],
+        preconditions=[
+            ("{is_reporting_entity}", ["v0001", "v0002"]),
+        ],
+        module_code="COREP_Con",
+        module_version="2.0.1",
     )
+    print(script["enriched_ast"])
+    print(script["dependency_information"])
+    print(script["dependency_modules"])
+```
+
+`preconditions` is optional — pass it when one or more validations
+share a guarding precondition expression.
+
+The same script generation is exposed via the CLI and the REST API.
+The CLI input file mirrors the Python shape:
+
+```json
+{
+    "expressions": [
+        ["{tC_01.00, r0100, c0010} = {tC_01.00, r0200, c0010}", "v0001"]
+    ],
+    "preconditions": [
+        ["{is_reporting_entity}", ["v0001"]]
+    ]
+}
+```
+
+```bash
+dpmcore generate-script \
+    --expressions ./rules.json \
+    --module-code COREP_Con --module-version 2.0.1 \
+    --database sqlite:///dpm.db --output ./script.json
+```
+
+```bash
+curl -X POST http://localhost:8000/api/v1/scripts \
+    -H 'content-type: application/json' \
+    -d '{
+          "expressions":[["{tC_01.00, r0100, c0010} = {tC_01.00, r0200, c0010}","v0001"]],
+          "preconditions":[{"expression":"{is_reporting_entity}","validation_codes":["v0001"]}],
+          "module_code":"COREP_Con",
+          "module_version":"2.0.1"
+        }'
 ```
 
 **Data dictionary queries:**
@@ -126,7 +158,6 @@ from dpmcore import connect
 with connect("sqlite:///dpm.db") as db:
     result = db.services.scope_calculator.calculate_from_expression(
         expression="{tC_01.00, r0100, c0010} = {tC_01.00, r0200, c0010}",
-        operation_version_id=42,
         release_id=5,
     )
     print(result.total_scopes)
@@ -174,7 +205,7 @@ with connect("sqlite:///dpm.db") as db:
 ```python
 # Standalone usage with any SQLAlchemy engine
 from sqlalchemy import create_engine
-from dpmcore.services.migration import MigrationService
+from dpmcore.loaders.migration import MigrationService
 
 engine = create_engine("postgresql://user:pass@host/dpm_db")
 service = MigrationService(engine)
@@ -286,18 +317,19 @@ src/dpmcore/
 │   ├── variables.py       Variable, VariableVersion, CompoundKey, ...
 │   ├── operations.py      Operation, OperationVersion, Scope, ...
 │   └── packaging.py       Framework, Module, ModuleVersion, ...
-├── services/
+├── services/              read-only DPM dictionary services
 │   ├── syntax.py          SyntaxService     (no DB)
 │   ├── semantic.py        SemanticService
-│   ├── ast_generator.py   ASTGeneratorService (3 levels)
+│   ├── ast_generator.py   ASTGeneratorService (engine-ready)
 │   ├── scope_calculator.py ScopeCalculatorService
 │   ├── data_dictionary.py DataDictionaryService
 │   ├── explorer.py        ExplorerService
 │   ├── hierarchy.py       HierarchyService
-│   ├── dpm_xl.py          DpmXlService (facade)
+│   └── dpm_xl.py          DpmXlService (facade)
+├── loaders/               data-loading (mutates the DB)
 │   └── migration.py       MigrationService (Access import)
 ├── cli/
-│   └── main.py            Click CLI (migrate, serve)
+│   └── main.py            Click CLI (migrate, serve, generate-script)
 └── dpm_xl/                DPM-XL engine internals
     ├── grammar/           ANTLR4 grammar + generated parser
     ├── ast/               AST nodes, visitor, operands

@@ -26,27 +26,31 @@ def _patch_orm(monkeypatch):
         "dpmcore.orm.variables": MagicMock(),
         "dpmcore.orm.glossary": MagicMock(),
         "dpmcore.errors": MagicMock(),
+        "dpmcore.loaders": MagicMock(),
+        "dpmcore.loaders.migration": MagicMock(),
         "dpmcore.services.scope_calculator": MagicMock(),
         "dpmcore.services.semantic": MagicMock(),
         "dpmcore.services.syntax": MagicMock(),
-        "dpmcore.dpm_xl.utils.serialization": MagicMock(),
     }
     for name, stub in stubs.items():
-        if name not in sys.modules:
-            monkeypatch.setitem(sys.modules, name, stub)
+        monkeypatch.setitem(sys.modules, name, stub)
 
 
 def _load_ast_generator():
-    """Load ``ast_generator`` bypassing the ORM chain."""
-    mod_name = "dpmcore.services.ast_generator"
-    if mod_name in sys.modules:
-        del sys.modules[mod_name]
+    """Load ``ast_generator`` bypassing the ORM chain.
+
+    The module is loaded under a private shadow name so this test file
+    never overwrites ``sys.modules["dpmcore.services.ast_generator"]``
+    or the ``dpmcore.services.ast_generator`` package attribute — both
+    of which other test modules patch through ``unittest.mock.patch``.
+    """
+    shadow_name = "_test_shadow_ast_generator"
     spec = importlib.util.spec_from_file_location(
-        mod_name,
+        shadow_name,
         _REPO_ROOT / "src/dpmcore/services/ast_generator.py",
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules[mod_name] = mod
+    sys.modules[shadow_name] = mod
     spec.loader.exec_module(mod)
     return mod.ASTGeneratorService
 
@@ -131,17 +135,6 @@ class TestBuildDependencyInfo:
         )
         info = result["dependency_information"]
         assert info["intra_instance_validations"] == ["v1"]
-
-    def test_op_code_none_when_single_element_item(self):
-        svc = _svc_with_scope_calc()
-        scope_pairs = [(("only_expr",), MagicMock(), {})]
-        svc._build_dependency_info(
-            scope_pairs=scope_pairs,
-            primary_module_vid=1,
-            release_id=None,
-        )
-        call = svc._scope_calc.detect_cross_module_dependencies.call_args
-        assert call.kwargs["operation_code"] is None
 
     def test_passes_op_code_from_tuple(self):
         svc = _svc_with_scope_calc()
@@ -239,8 +232,13 @@ class TestExtractTimeShifts:
         )
         assert Cls._extract_time_shifts(node) == {"T_01": "T-1Q"}
 
-    def test_positive_shift_produces_T_plus(self):
-        """``shift_number`` containing '-' drives the ``t+`` internal form."""
+    def test_negative_shift_string_produces_T_minus(self):
+        """A negative ``shift_number`` is rendered as a ``T-...`` shift.
+
+        Implementation detail: a ``-`` in the shift drives the internal
+        ``t+`` form (``"t+Y-2"``), then ``num.startswith("-")`` strips
+        it back so the user-visible result is ``T-2Y``.
+        """
         Cls = _load_ast_generator()
         inner = _FakeVarID(table="T_02")
         node = _FakeTimeShiftOp(
@@ -248,7 +246,6 @@ class TestExtractTimeShifts:
             shift_number="-2",
             operand=inner,
         )
-        # internal "t+Y-2" -> "T-2Y" (num.startswith("-") branch).
         assert Cls._extract_time_shifts(node) == {"T_02": "T-2Y"}
 
     def test_var_without_table_is_ignored(self):
@@ -273,76 +270,26 @@ class TestExtractTimeShifts:
 
 
 # ------------------------------------------------------------------ #
-# parse() / complete() / script() entry points
+# script() entry point
 # ------------------------------------------------------------------ #
 
 
-def _build_svc(session=None):
-    """Construct an ASTGeneratorService with internal services pre-mocked."""
+def _build_svc(session=None, mv=None):
+    """Construct an ASTGeneratorService with internal services pre-mocked.
+
+    Setting ``mv`` to a SimpleNamespace short-circuits the
+    ``_resolve_module_version`` DB lookup so tests don't need a real
+    ``ModuleVersion`` row.
+    """
     Cls = _load_ast_generator()
     svc = Cls.__new__(Cls)
     svc.session = session
-    svc._syntax = MagicMock()
     svc._semantic = MagicMock() if session is not None else None
     svc._scope_calc = MagicMock() if session is not None else None
+    svc._syntax = MagicMock()
+    if mv is not None:
+        svc._resolve_module_version = lambda c, v: mv
     return svc, Cls
-
-
-class TestParse:
-    def test_parse_success(self, monkeypatch):
-        svc, _ = _build_svc()
-        svc._syntax.parse.return_value = "RAW_AST"
-        monkeypatch.setattr(
-            sys.modules["dpmcore.services.ast_generator"],
-            "serialize_ast",
-            lambda x: {"n": x},
-        )
-        out = svc.parse("1+1")
-        assert out == {"success": True, "ast": {"n": "RAW_AST"}, "error": None}
-
-    def test_parse_exception(self):
-        svc, _ = _build_svc()
-        svc._syntax.parse.side_effect = RuntimeError("bad syntax")
-        out = svc.parse("???")
-        assert out["success"] is False
-        assert out["error"] == "bad syntax"
-
-
-class TestComplete:
-    def test_no_session_returns_error(self):
-        svc, _ = _build_svc(session=None)
-        out = svc.complete("1+1")
-        assert out["success"] is False
-        assert "No database session" in out["error"]
-
-    def test_invalid_returns_error(self):
-        svc, _ = _build_svc(session=MagicMock())
-        svc._semantic.validate.return_value = SimpleNamespace(
-            is_valid=False,
-            error_message="bad",
-            warning=None,
-        )
-        out = svc.complete("x")
-        assert out["success"] is False
-        assert out["error"] == "bad"
-
-    def test_valid_returns_payload(self, monkeypatch):
-        svc, _ = _build_svc(session=MagicMock())
-        svc._semantic.validate.return_value = SimpleNamespace(
-            is_valid=True, error_message=None, warning="w"
-        )
-        svc._semantic.ast = "AST"
-        svc._semantic.oc_data = {"d": 1}
-        svc._semantic.oc_tables = {"t": 2}
-        monkeypatch.setattr(
-            sys.modules["dpmcore.services.ast_generator"],
-            "serialize_ast",
-            lambda x: {"ser": x},
-        )
-        out = svc.complete("x")
-        assert out["success"] is True
-        assert out["ast"] == {"ser": "AST"}
-        assert out["warning"] == "w"
 
 
 class TestScript:
@@ -359,60 +306,70 @@ class TestScript:
             sys.modules, "dpmcore.dpm_xl.ast.module_analyzer", ma_mod
         )
 
+    def _default_mv(self):
+        return SimpleNamespace(module_vid=99, start_release_id=5)
+
     def test_no_session_returns_error(self):
         svc, _ = _build_svc(session=None)
-        out = svc.script("x")
+        out = svc.script(
+            expressions=[("x", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+        )
         assert out["success"] is False
         assert "No database session" in out["error"]
 
+    def test_unresolved_module_returns_error(self, monkeypatch):
+        self._prime_ast_modules(monkeypatch)
+        svc, _ = _build_svc(session=MagicMock(), mv=None)
+        svc._resolve_module_version = lambda c, v: None
+        out = svc.script(
+            expressions=[("x", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+        assert out["success"] is False
+        assert "ModuleVersion not found" in out["error"]
+        assert "MOD" in out["error"]
+        assert "1.0" in out["error"]
+
     def test_validation_error_short_circuits(self, monkeypatch):
         self._prime_ast_modules(monkeypatch)
-        svc, _ = _build_svc(session=MagicMock())
+        svc, _ = _build_svc(session=MagicMock(), mv=self._default_mv())
         svc._semantic.validate.return_value = SimpleNamespace(
             is_valid=False, error_message="nope"
         )
-        out = svc.script("x")
+        out = svc.script(
+            expressions=[("x", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+        )
         assert out["success"] is False
         assert out["error"] == "nope"
 
     def test_runtime_error_caught(self, monkeypatch):
         self._prime_ast_modules(monkeypatch)
-        svc, _ = _build_svc(session=MagicMock())
+        svc, _ = _build_svc(session=MagicMock(), mv=self._default_mv())
         svc._semantic.validate.side_effect = RuntimeError("boom")
-        out = svc.script("x")
+        out = svc.script(
+            expressions=[("x", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+        )
         assert out["success"] is False
         assert "boom" in out["error"]
 
-    def test_happy_path_no_dependency_context(self, monkeypatch):
-        """Without primary_module_vid the scope branch is skipped."""
+    def test_happy_path_attaches_dependency_info(self, monkeypatch):
+        """Successful resolution → script always runs scope calc."""
         self._prime_ast_modules(monkeypatch)
-        svc, _ = _build_svc(session=MagicMock())
-        svc._semantic.validate.return_value = SimpleNamespace(
-            is_valid=True, error_message=None
-        )
-        svc._semantic.ast = "AST"
-        out = svc.script("x")
-        assert out["success"] is True
-        assert len(out["enriched_ast"]) == 1
-        # _scope_calc should not have been queried.
-        svc._scope_calc.calculate_from_expression.assert_not_called()
-        assert "dependency_information" not in out
-
-    def test_list_input_with_scope_and_time_shifts(self, monkeypatch):
-        """Supplying primary_module_vid + operation_version_id attaches info."""
-        self._prime_ast_modules(monkeypatch)
-        svc, _ = _build_svc(session=MagicMock())
+        svc, _ = _build_svc(session=MagicMock(), mv=self._default_mv())
         svc._semantic.validate.return_value = SimpleNamespace(
             is_valid=True, error_message=None
         )
         svc._semantic.ast = "AST"
 
         svc._scope_calc.calculate_from_expression.return_value = (
-            SimpleNamespace(
-                has_error=False,
-                existing_scopes=[],
-                new_scopes=[],
-            )
+            SimpleNamespace(has_error=False, scopes=[])
         )
         svc._scope_calc.detect_cross_module_dependencies.return_value = {
             "intra_instance_validations": ["v1"],
@@ -425,8 +382,8 @@ class TestScript:
 
         out = svc.script(
             expressions=[("e1", "v1"), ("e2", "v1")],
-            primary_module_vid=1,
-            operation_version_id=42,
+            module_code="MOD",
+            module_version="1.0",
         )
         assert out["success"] is True
         info = out["dependency_information"]
@@ -438,23 +395,112 @@ class TestScript:
     def test_scope_error_excluded_from_pairs(self, monkeypatch):
         """Scope results with ``has_error`` are skipped entirely."""
         self._prime_ast_modules(monkeypatch)
-        svc, _ = _build_svc(session=MagicMock())
+        svc, _ = _build_svc(session=MagicMock(), mv=self._default_mv())
         svc._semantic.validate.return_value = SimpleNamespace(
             is_valid=True, error_message=None
         )
         svc._semantic.ast = "AST"
         svc._scope_calc.calculate_from_expression.return_value = (
-            SimpleNamespace(
-                has_error=True,
-                existing_scopes=[],
-                new_scopes=[],
-            )
+            SimpleNamespace(has_error=True, scopes=[])
         )
         out = svc.script(
-            "x",
-            primary_module_vid=1,
-            operation_version_id=42,
+            expressions=[("x", "v1")],
+            module_code="MOD",
+            module_version="1.0",
         )
         assert out["success"] is True
         # No pairs means _build_dependency_info returns None.
         assert "dependency_information" not in out
+
+    def test_preconditions_routed_per_validation_code(self, monkeypatch):
+        """A precondition guarding two codes feeds both scope calls."""
+        self._prime_ast_modules(monkeypatch)
+        svc, _ = _build_svc(session=MagicMock(), mv=self._default_mv())
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None
+        )
+        svc._semantic.ast = "AST"
+        svc._scope_calc.calculate_from_expression.return_value = (
+            SimpleNamespace(has_error=False, scopes=[])
+        )
+        svc._scope_calc.detect_cross_module_dependencies.return_value = {
+            "intra_instance_validations": [],
+            "cross_instance_dependencies": [],
+            "dependency_modules": {},
+        }
+        svc._scope_calc.detect_alternative_dependencies.return_value = []
+
+        # Stub _build_precondition_index to keep this test focused.
+        svc._build_precondition_index = lambda preconds: {
+            "v1": ["P1"],
+            "v2": ["P1"],
+        }
+
+        out = svc.script(
+            expressions=[("e1", "v1"), ("e2", "v2"), ("e3", "v3")],
+            module_code="MOD",
+            module_version="1.0",
+            preconditions=[("p_expr", ["v1", "v2"])],
+        )
+        assert out["success"] is True
+
+        calls = svc._scope_calc.calculate_from_expression.call_args_list
+        # v1, v2 receive the precondition codes; v3 gets [].
+        assert calls[0].kwargs["precondition_items"] == ["P1"]
+        assert calls[1].kwargs["precondition_items"] == ["P1"]
+        assert calls[2].kwargs["precondition_items"] == []
+
+    def test_invalid_precondition_returns_error(self, monkeypatch):
+        self._prime_ast_modules(monkeypatch)
+        svc, _ = _build_svc(session=MagicMock(), mv=self._default_mv())
+
+        def _bad_index(_):
+            raise ValueError(
+                "Invalid precondition expression 'bad': syntax error"
+            )
+
+        svc._build_precondition_index = _bad_index
+
+        out = svc.script(
+            expressions=[("e", "v")],
+            module_code="MOD",
+            module_version="1.0",
+            preconditions=[("bad", ["v"])],
+        )
+        assert out["success"] is False
+        assert "Invalid precondition expression" in out["error"]
+
+
+class TestBuildPreconditionIndex:
+    def test_unions_codes_across_preconditions(self):
+        Cls = _load_ast_generator()
+        svc = Cls.__new__(Cls)
+        svc._syntax = MagicMock()
+        svc._syntax.parse.side_effect = lambda expr: f"AST_{expr}"
+        svc._extract_precondition_codes = staticmethod(  # type: ignore[assignment]
+            lambda ast: ["P1"] if ast == "AST_a" else ["P2"]
+        )
+        # Bind as instance method via partial: simpler — patch the
+        # static directly on svc for the test.
+        svc._extract_precondition_codes = lambda ast: (
+            ["P1"] if ast == "AST_a" else ["P2"]
+        )
+
+        idx = svc._build_precondition_index(
+            [
+                ("a", ["v1", "v2"]),
+                ("b", ["v2", "v3"]),
+            ]
+        )
+        assert idx["v1"] == ["P1"]
+        assert idx["v2"] == ["P1", "P2"]
+        assert idx["v3"] == ["P2"]
+
+    def test_parse_failure_raises_value_error(self):
+        Cls = _load_ast_generator()
+        svc = Cls.__new__(Cls)
+        svc._syntax = MagicMock()
+        svc._syntax.parse.side_effect = RuntimeError("syntax error")
+
+        with pytest.raises(ValueError, match="Invalid precondition"):
+            svc._build_precondition_index([("bad", ["v"])])

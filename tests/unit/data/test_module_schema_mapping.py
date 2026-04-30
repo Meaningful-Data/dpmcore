@@ -67,10 +67,18 @@ class TestParseDate:
         assert _parse_date("") is None
 
     def test_parses_valid_format(self):
-        assert _parse_date("01-Jan-14") == datetime(2014, 1, 1)
+        assert _parse_date("01-Jan-2014") == datetime(2014, 1, 1)
+
+    def test_parses_far_future_sentinel(self):
+        """The IF_TM v1.2.0 row uses 9999 as a 'no specific date' sentinel."""
+        assert _parse_date("31-Dec-9999") == datetime(9999, 12, 31)
 
     def test_returns_none_for_invalid(self):
         assert _parse_date("not-a-date") is None
+
+    def test_two_digit_year_is_rejected(self):
+        """Legacy DD-Mon-YY format is no longer accepted."""
+        assert _parse_date("01-Jan-14") is None
 
 
 @pytest.mark.usefixtures("fake_loader")

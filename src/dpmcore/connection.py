@@ -26,12 +26,12 @@ from sqlalchemy.orm import Session, sessionmaker
 import dpmcore.orm  # noqa: F401
 
 if TYPE_CHECKING:
+    from dpmcore.loaders.migration import MigrationService
     from dpmcore.services.ast_generator import ASTGeneratorService
     from dpmcore.services.data_dictionary import DataDictionaryService
     from dpmcore.services.dpm_xl import DpmXlService
     from dpmcore.services.explorer import ExplorerService
     from dpmcore.services.hierarchy import HierarchyService
-    from dpmcore.services.migration import MigrationService
     from dpmcore.services.scope_calculator import ScopeCalculatorService
     from dpmcore.services.semantic import SemanticService
     from dpmcore.services.structure import StructureService
@@ -144,12 +144,18 @@ class _ServiceAccessor:
         return service
 
     # ------------------------------------------------------------------ #
-    # Migration (requires Engine, not Session)
+    # Migration / loader (requires Engine, not Session)
     # ------------------------------------------------------------------ #
 
     @property
     def migration(self) -> MigrationService:
-        from dpmcore.services.migration import MigrationService
+        """Return the data-loading service.
+
+        The canonical home for :class:`MigrationService` is
+        :mod:`dpmcore.loaders.migration`; this accessor is retained
+        for back-compat.
+        """
+        from dpmcore.loaders.migration import MigrationService
 
         if "migration" not in self._cache:
             self._cache["migration"] = MigrationService(self._engine)

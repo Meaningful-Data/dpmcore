@@ -18,7 +18,13 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 @pytest.fixture(autouse=True)
 def _patch_orm(monkeypatch):
-    """Prevent ORM import chain on Python 3.10."""
+    """Force-stub the ORM chain.
+
+    Always overwrites — earlier tests in the same session (e.g. CLI tests
+    that import the real ``dpmcore`` package) populate ``sys.modules`` with
+    the real modules, so an ``if mod_name not in sys.modules`` guard would
+    leak real classes into ``_load_module``.
+    """
     # Stub dpmcore.data so static CSV lookup returns None
     data_stub = MagicMock()
     data_stub.get_module_schema_ref_by_version = MagicMock(return_value=None)
@@ -44,8 +50,43 @@ def _patch_orm(monkeypatch):
         "dpmcore.services",
         "dpmcore.services.syntax",
     ]:
-        if mod_name not in sys.modules:
-            monkeypatch.setitem(sys.modules, mod_name, MagicMock())
+        monkeypatch.setitem(sys.modules, mod_name, MagicMock())
+
+    # Snapshot the canonical sys.modules entries the helpers below pollute,
+    # so the teardown restores them. Both helpers register stub-deps copies
+    # under the real module names; without a restore, follow-up test files
+    # see those stub copies (or a missing entry) and patches no longer line
+    # up with the modules the production code re-imports at call time.
+    canonical_names = (
+        "dpmcore.services.scope_calculator",
+        "dpmcore.services.ast_generator",
+    )
+    snapshot = {n: sys.modules.get(n) for n in canonical_names}
+
+    yield
+
+    import contextlib
+    import importlib
+
+    services_pkg = sys.modules.get("dpmcore.services")
+    for name in canonical_names:
+        original = snapshot[name]
+        if original is not None:
+            sys.modules[name] = original
+        else:
+            sys.modules.pop(name, None)
+            try:
+                importlib.import_module(name)
+            except Exception:
+                # If the module can't be imported in the current state,
+                # at least make sure no stub-deps copy lingers in sys.modules
+                # or as a parent-package attribute.
+                sys.modules.pop(name, None)
+                if services_pkg is not None:
+                    attr = name.rsplit(".", 1)[1]
+                    if hasattr(services_pkg, attr):
+                        with contextlib.suppress(AttributeError):
+                            delattr(services_pkg, attr)
 
 
 def _load_module():
@@ -69,6 +110,52 @@ def _scope(module_vids):
     """Build a mock scope with the given module VIDs."""
     comps = [SimpleNamespace(module_vid=v) for v in module_vids]
     return SimpleNamespace(operation_scope_compositions=comps)
+
+
+# ------------------------------------------------------------------ #
+# calculate_from_expression — pins the table_codes routing (⑱)
+# ------------------------------------------------------------------ #
+
+
+class TestCalculateFromExpression:
+    """Lock the contract: table codes must be routed via table_codes=, not tables_vids=."""
+
+    def test_routes_oc_tables_keys_via_table_codes(self):
+        Svc, _ = _load_module()
+        mod = sys.modules["dpmcore.services.scope_calculator"]
+
+        # OperandsChecking is a MagicMock'd class (the real module is stubbed).
+        # Configure the instance returned by ``OperandsChecking(...)`` so
+        # ``oc.tables`` is a real dict and ``oc.preconditions`` is a real bool.
+        oc_instance = MagicMock()
+        oc_instance.tables = {
+            "T_CODE_A": MagicMock(),
+            "T_CODE_B": MagicMock(),
+        }
+        oc_instance.preconditions = False
+        mod.OperandsChecking.return_value = oc_instance
+
+        # Configure the OperationScopeService mock to record the call.
+        scope_svc_instance = MagicMock()
+        scope_svc_instance.calculate_operation_scope.return_value = ([], [])
+        mod.OperationScopeService.return_value = scope_svc_instance
+
+        # Skip _check_release_exists DB hit by passing release_id=None.
+        svc = Svc(MagicMock())
+        svc._syntax = MagicMock()
+        svc._syntax.parse.return_value = MagicMock()  # AST stand-in
+        svc._check_release_exists = MagicMock()
+
+        result = svc.calculate_from_expression(
+            expression="dummy",
+            release_id=None,
+        )
+
+        # The fix: table codes flow through ``table_codes=``, not ``tables_vids=``.
+        call = scope_svc_instance.calculate_operation_scope.call_args
+        assert call.kwargs["table_codes"] == ["T_CODE_A", "T_CODE_B"]
+        assert call.kwargs["tables_vids"] == []
+        assert not result.has_error
 
 
 # ------------------------------------------------------------------ #
@@ -105,8 +192,7 @@ class TestFilterValidDependencyModules:
         Svc, SR = _load_module()
         svc = Svc(MagicMock())
         sr = SR(
-            existing_scopes=[_scope([10, 20])],
-            new_scopes=[_scope([10, 30])],
+            scopes=[_scope([10, 20]), _scope([10, 30])],
         )
         valid = svc.filter_valid_dependency_modules(sr, primary_module_vid=10)
         assert valid == {20, 30}
@@ -115,8 +201,7 @@ class TestFilterValidDependencyModules:
         Svc, SR = _load_module()
         svc = Svc(MagicMock())
         sr = SR(
-            existing_scopes=[_scope([20, 30])],
-            new_scopes=[],
+            scopes=[_scope([20, 30])],
         )
         valid = svc.filter_valid_dependency_modules(sr, primary_module_vid=10)
         assert valid == set()
@@ -126,8 +211,7 @@ class TestFilterValidDependencyModules:
         Svc, SR = _load_module()
         svc = Svc(MagicMock())
         sr = SR(
-            existing_scopes=[_scope([10])],
-            new_scopes=[_scope([10, 20])],
+            scopes=[_scope([10]), _scope([10, 20])],
         )
         valid = svc.filter_valid_dependency_modules(sr, primary_module_vid=10)
         assert valid == {20}
@@ -156,11 +240,10 @@ class TestDetectAlternativeDependencies:
             {10: "http://uri/a", 20: "http://uri/b"},
         )
         sr = SR(
-            existing_scopes=[
+            scopes=[
                 _scope([1, 10]),
                 _scope([1, 20]),
             ],
-            new_scopes=[],
         )
         result = svc.detect_alternative_dependencies(
             scope_results=[sr], primary_module_vid=1
@@ -174,12 +257,11 @@ class TestDetectAlternativeDependencies:
             {10: "http://uri/a", 20: "http://uri/b"},
         )
         sr = SR(
-            existing_scopes=[
+            scopes=[
                 _scope([1, 10]),
                 _scope([1, 20]),
                 _scope([1, 10, 20]),
             ],
-            new_scopes=[],
         )
         result = svc.detect_alternative_dependencies(
             scope_results=[sr], primary_module_vid=1
@@ -189,8 +271,7 @@ class TestDetectAlternativeDependencies:
     def test_single_external_returns_empty(self):
         svc, SR = self._make_svc({10: "http://uri/a"})
         sr = SR(
-            existing_scopes=[_scope([1, 10])],
-            new_scopes=[],
+            scopes=[_scope([1, 10])],
         )
         result = svc.detect_alternative_dependencies(
             scope_results=[sr], primary_module_vid=1
@@ -200,8 +281,7 @@ class TestDetectAlternativeDependencies:
     def test_primary_not_in_scopes_returns_empty(self):
         svc, SR = self._make_svc({})
         sr = SR(
-            existing_scopes=[_scope([10, 20])],
-            new_scopes=[],
+            scopes=[_scope([10, 20])],
         )
         result = svc.detect_alternative_dependencies(
             scope_results=[sr], primary_module_vid=1
@@ -214,12 +294,10 @@ class TestDetectAlternativeDependencies:
             {10: "http://uri/a", 20: "http://uri/b"},
         )
         sr1 = SR(
-            existing_scopes=[_scope([1, 10])],
-            new_scopes=[],
+            scopes=[_scope([1, 10])],
         )
         sr2 = SR(
-            existing_scopes=[_scope([1, 20])],
-            new_scopes=[],
+            scopes=[_scope([1, 20])],
         )
         result = svc.detect_alternative_dependencies(
             scope_results=[sr1, sr2], primary_module_vid=1
@@ -230,11 +308,10 @@ class TestDetectAlternativeDependencies:
         """If URI resolution fails, skip pair."""
         svc, SR = self._make_svc({10: "http://uri/a"})
         sr = SR(
-            existing_scopes=[
+            scopes=[
                 _scope([1, 10]),
                 _scope([1, 20]),
             ],
-            new_scopes=[],
         )
         result = svc.detect_alternative_dependencies(
             scope_results=[sr], primary_module_vid=1
@@ -262,8 +339,7 @@ class TestDetectCrossModuleDependencies:
     def test_intra_module_returns_op_code(self):
         svc, SR = self._make_svc()
         sr = SR(
-            existing_scopes=[_scope([10])],
-            new_scopes=[],
+            scopes=[_scope([10])],
             is_cross_module=False,
         )
         info = svc.detect_cross_module_dependencies(
@@ -277,8 +353,7 @@ class TestDetectCrossModuleDependencies:
     def test_intra_empty_when_no_op_code(self):
         svc, SR = self._make_svc()
         sr = SR(
-            existing_scopes=[_scope([10])],
-            new_scopes=[],
+            scopes=[_scope([10])],
             is_cross_module=False,
         )
         info = svc.detect_cross_module_dependencies(
@@ -302,8 +377,7 @@ class TestDetectCrossModuleDependencies:
         q.filter.return_value.first.return_value = mv
 
         sr = SR(
-            existing_scopes=[_scope([10, 20])],
-            new_scopes=[],
+            scopes=[_scope([10, 20])],
             is_cross_module=True,
         )
         info = svc.detect_cross_module_dependencies(
@@ -320,8 +394,7 @@ class TestDetectCrossModuleDependencies:
     def test_no_valid_deps_returns_intra(self):
         svc, SR = self._make_svc()
         sr = SR(
-            existing_scopes=[_scope([20, 30])],
-            new_scopes=[],
+            scopes=[_scope([20, 30])],
             is_cross_module=True,
         )
         info = svc.detect_cross_module_dependencies(
@@ -355,11 +428,10 @@ class TestDetectCrossModuleDependencies:
         ]
 
         sr = SR(
-            existing_scopes=[
+            scopes=[
                 _scope([10, 20]),
                 _scope([10, 30]),
             ],
-            new_scopes=[],
             is_cross_module=True,
         )
         info = svc.detect_cross_module_dependencies(
@@ -389,8 +461,7 @@ class TestDetectCrossModuleDependencies:
         q.filter.return_value.first.return_value = mv
 
         sr = SR(
-            existing_scopes=[_scope([10, 20])],
-            new_scopes=[],
+            scopes=[_scope([10, 20])],
             is_cross_module=True,
         )
         info = svc.detect_cross_module_dependencies(
@@ -415,8 +486,7 @@ class TestDetectCrossModuleDependencies:
         q.filter.return_value.first.return_value = mv
 
         sr = SR(
-            existing_scopes=[_scope([10, 20])],
-            new_scopes=[],
+            scopes=[_scope([10, 20])],
             is_cross_module=True,
         )
         info = svc.detect_cross_module_dependencies(
@@ -446,8 +516,7 @@ class TestDetectCrossModuleDependencies:
         q.filter.return_value.first.return_value = mv
 
         sr = SR(
-            existing_scopes=[_scope([10, 20])],
-            new_scopes=[],
+            scopes=[_scope([10, 20])],
             is_cross_module=True,
         )
         info = svc.detect_cross_module_dependencies(
@@ -463,8 +532,7 @@ class TestDetectCrossModuleDependencies:
         """dependency_modules is empty for intra-module."""
         svc, SR = self._make_svc()
         sr = SR(
-            existing_scopes=[_scope([10])],
-            new_scopes=[],
+            scopes=[_scope([10])],
             is_cross_module=False,
         )
         info = svc.detect_cross_module_dependencies(

@@ -8,12 +8,12 @@ from typing import Any, Dict, List, Optional, cast
 
 
 def _parse_date(date_str: str) -> Optional[datetime]:
-    """Parse date string in DD-Mon-YY format."""
+    """Parse date string in ``DD-Mon-YYYY`` format."""
     if not date_str:
         return None
     try:
         return datetime.strptime(  # noqa: DTZ007
-            date_str, "%d-%b-%y"
+            date_str, "%d-%b-%Y"
         )
     except ValueError:
         return None

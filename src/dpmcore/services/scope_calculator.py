@@ -10,9 +10,7 @@ from typing import (
     Dict,
     List,
     Optional,
-    Sequence,
     Set,
-    cast,
 )
 
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
@@ -43,8 +41,7 @@ logger = logging.getLogger(__name__)
 class ScopeResult:
     """Outcome of a scope calculation."""
 
-    existing_scopes: list[Any] = field(default_factory=list)
-    new_scopes: list[Any] = field(default_factory=list)
+    scopes: list[Any] = field(default_factory=list)
     total_scopes: int = 0
     is_cross_module: bool = False
     module_versions: List[int] = field(default_factory=list)
@@ -80,7 +77,7 @@ class ScopeCalculatorService:
             raise SemanticError("1-21", release_id=release_id)
 
     @staticmethod
-    def _compute_cross_module(all_scopes: list[Any]) -> bool:
+    def _compute_cross_module(scopes: list[Any]) -> bool:
         """Return True if any scope spans more than one module."""
         return any(
             len(
@@ -90,21 +87,22 @@ class ScopeCalculatorService:
                 }
             )
             > 1
-            for s in all_scopes
+            for s in scopes
         )
 
     def calculate_from_expression(
         self,
         expression: str,
-        operation_version_id: int,
         release_id: Optional[int] = None,
-        severity: Optional[str] = None,
+        precondition_items: Optional[List[str]] = None,
     ) -> ScopeResult:
         """Calculate scopes for *expression*.
 
         Parses the expression, runs OperandsChecking to extract table
-        version IDs and precondition items, then delegates to
-        :class:`OperationScopeService`.
+        codes, then delegates to :class:`OperationScopeService`.
+        ``precondition_items`` is the list of precondition variable
+        codes that gate the validation; pass ``None`` or ``[]`` if
+        the validation has no preconditions.
         """
         try:
             self._check_release_exists(release_id)
@@ -116,40 +114,29 @@ class ScopeCalculatorService:
                 release_id=release_id,
             )
 
-            # NOTE: oc.tables is keyed by table code (str), not by table
-            # version id (int). Passing codes as ``tables_vids`` is a latent
-            # semantic mismatch — preserved to avoid behavior changes in
-            # this typing pass.
-            table_vids: list[str] = list(oc.tables.keys()) if oc.tables else []
-            # NOTE: oc.preconditions is a bool sentinel (True once a
-            # precondition has been visited), but callers historically
-            # treated it as a list. The `or []` pattern therefore yields
-            # Literal[True] on the populated branch. Preserved as-is.
-            precondition_items: list[str] = [] if not oc.preconditions else []
-
-            scope_svc = OperationScopeService(
-                operation_version_id=operation_version_id,
-                session=self.session,
+            table_codes: list[str] = (
+                list(oc.tables.keys()) if oc.tables else []
             )
-            existing, new = scope_svc.calculate_operation_scope(
-                tables_vids=cast(Sequence[int], table_vids),
-                precondition_items=precondition_items,
+
+            scope_svc = OperationScopeService(session=self.session)
+            scopes, _ = scope_svc.calculate_operation_scope(
+                tables_vids=[],
+                precondition_items=precondition_items or [],
                 release_id=release_id,
+                table_codes=table_codes,
             )
 
-            all_scopes = existing + new
             mvids: List[int] = []
-            for scope in all_scopes:
+            for scope in scopes:
                 for comp in getattr(scope, "operation_scope_compositions", []):
                     vid = comp.module_vid
                     if vid not in mvids:
                         mvids.append(vid)
 
             return ScopeResult(
-                existing_scopes=existing,
-                new_scopes=new,
-                total_scopes=len(all_scopes),
-                is_cross_module=self._compute_cross_module(all_scopes),
+                scopes=scopes,
+                total_scopes=len(scopes),
+                is_cross_module=self._compute_cross_module(scopes),
                 module_versions=mvids,
             )
 
@@ -161,7 +148,6 @@ class ScopeCalculatorService:
 
     def calculate_from_tables(
         self,
-        operation_version_id: int,
         table_vids: List[int],
         precondition_items: Optional[List[str]] = None,
         release_id: Optional[int] = None,
@@ -170,30 +156,25 @@ class ScopeCalculatorService:
         """Calculate scopes directly from table version IDs."""
         try:
             self._check_release_exists(release_id)
-            scope_svc = OperationScopeService(
-                operation_version_id=operation_version_id,
-                session=self.session,
-            )
-            existing, new = scope_svc.calculate_operation_scope(
+            scope_svc = OperationScopeService(session=self.session)
+            scopes, _ = scope_svc.calculate_operation_scope(
                 tables_vids=table_vids,
                 precondition_items=precondition_items or [],
                 release_id=release_id,
                 table_codes=table_codes,
             )
 
-            all_scopes = existing + new
             mvids: List[int] = []
-            for scope in all_scopes:
+            for scope in scopes:
                 for comp in getattr(scope, "operation_scope_compositions", []):
                     vid = comp.module_vid
                     if vid not in mvids:
                         mvids.append(vid)
 
             return ScopeResult(
-                existing_scopes=existing,
-                new_scopes=new,
-                total_scopes=len(all_scopes),
-                is_cross_module=self._compute_cross_module(all_scopes),
+                scopes=scopes,
+                total_scopes=len(scopes),
+                is_cross_module=self._compute_cross_module(scopes),
                 module_versions=mvids,
             )
 
@@ -220,10 +201,7 @@ class ScopeCalculatorService:
         not actual cross-module dependencies.
         """
         valid: Set[int] = set()
-        all_scopes = (scope_result.existing_scopes or []) + (
-            scope_result.new_scopes or []
-        )
-        for scope in all_scopes:
+        for scope in scope_result.scopes or []:
             scope_vids = {
                 c.module_vid
                 for c in getattr(scope, "operation_scope_compositions", [])
@@ -239,6 +217,7 @@ class ScopeCalculatorService:
         operation_code: Optional[str] = None,
         release_id: Optional[int] = None,
         time_shifts: Optional[Dict[str, str]] = None,
+        compute_alternative_deps: bool = True,
     ) -> Dict[str, Any]:
         """Build dependency information for a scope result.
 
@@ -250,6 +229,11 @@ class ScopeCalculatorService:
             time_shifts: Optional mapping of table codes to
                 ref-period strings (e.g. ``{"C_01.00": "T-1Q"}``).
                 Tables not present default to ``"T"``.
+            compute_alternative_deps: When True (default) the returned
+                ``alternative_dependencies`` is populated from this
+                single ``scope_result``. Aggregating callers that
+                compute alternatives across many scope results should
+                pass ``False`` to avoid the per-call work.
 
         Returns a dict with:
         - ``intra_instance_validations``
@@ -268,7 +252,7 @@ class ScopeCalculatorService:
 
         if not is_cross or scope_result.has_error:
             alternative_deps: List[List[str]] = []
-            if not scope_result.has_error:
+            if compute_alternative_deps and not scope_result.has_error:
                 alternative_deps = self.detect_alternative_dependencies(
                     scope_results=[scope_result],
                     primary_module_vid=primary_module_vid,
@@ -356,10 +340,14 @@ class ScopeCalculatorService:
                 },
             }
 
-        alternative_deps = self.detect_alternative_dependencies(
-            scope_results=[scope_result],
-            primary_module_vid=primary_module_vid,
-            release_id=release_id,
+        alternative_deps = (
+            self.detect_alternative_dependencies(
+                scope_results=[scope_result],
+                primary_module_vid=primary_module_vid,
+                release_id=release_id,
+            )
+            if compute_alternative_deps
+            else []
         )
 
         return {
@@ -411,8 +399,7 @@ class ScopeCalculatorService:
         all_ext_vid_sets: List[frozenset[int]] = []
 
         for sr in scope_results:
-            all_scopes = (sr.existing_scopes or []) + (sr.new_scopes or [])
-            for scope in all_scopes:
+            for scope in sr.scopes or []:
                 scope_vids = {
                     c.module_vid
                     for c in getattr(

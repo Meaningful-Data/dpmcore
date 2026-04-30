@@ -26,7 +26,7 @@ class TestMigrateSuccess:
         mock_result.backend_used = "mdbtools"
 
         with patch(
-            "dpmcore.services.migration.MigrationService"
+            "dpmcore.loaders.migration.MigrationService"
         ) as MockService:
             MockService.return_value.migrate_from_access.return_value = (
                 mock_result
@@ -75,10 +75,10 @@ class TestMigrateError:
         fake_accdb = tmp_path / "test.accdb"
         fake_accdb.touch()
 
-        from dpmcore.services.migration import MigrationError
+        from dpmcore.loaders.migration import MigrationError
 
         with patch(
-            "dpmcore.services.migration.MigrationService"
+            "dpmcore.loaders.migration.MigrationService"
         ) as MockService:
             MockService.return_value.migrate_from_access.side_effect = (
                 MigrationError("Access driver missing")

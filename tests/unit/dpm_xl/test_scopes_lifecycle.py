@@ -50,8 +50,7 @@ def _patch_orm(monkeypatch):
         "dpmcore.dpm_xl.utils.tokens": tokens_stub,
     }
     for mod_name, stub in stubs.items():
-        if mod_name not in sys.modules:
-            monkeypatch.setitem(sys.modules, mod_name, stub)
+        monkeypatch.setitem(sys.modules, mod_name, stub)
 
 
 def _make_module_df(rows):
@@ -108,7 +107,7 @@ class TestLifecycleSupplement:
         df = _make_module_df(rows)
 
         SvcClass = _get_svc_class()
-        svc = SvcClass(operation_version_id=1, session=MagicMock())
+        svc = SvcClass(session=MagicMock())
 
         captured_calls = []
 
@@ -152,7 +151,7 @@ class TestLifecycleSupplement:
         df = _make_module_df(rows)
 
         SvcClass = _get_svc_class()
-        svc = SvcClass(operation_version_id=1, session=MagicMock())
+        svc = SvcClass(session=MagicMock())
 
         captured_repeated = []
         svc.process_repeated = lambda mvids, minfo: captured_repeated.append(

@@ -1,36 +1,34 @@
-"""AST generation service — three levels of detail."""
+"""Engine-ready AST generation service."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from dpmcore.dpm_xl.utils.serialization import serialize_ast
 from dpmcore.services.semantic import SemanticService
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
-    from dpmcore.services.scope_calculator import ScopeResult
+    from dpmcore.services.scope_calculator import (
+        ScopeCalculatorService,
+        ScopeResult,
+    )
 
 
 class ASTGeneratorService:
-    """Generate AST representations at three levels of detail.
-
-    1. **parse** — syntax-only AST (no database).
-    2. **complete** — AST enriched with semantic metadata.
-    3. **script** — engine-ready validations script.
+    """Generate engine-ready validation scripts from DPM-XL expressions.
 
     Args:
-        session: An open SQLAlchemy session (only needed for levels 2-3).
+        session: An open SQLAlchemy session (required for ``script``).
     """
 
     def __init__(self, session: Optional["Session"] = None) -> None:
         """Build the service, optionally bound to a SQLAlchemy ``session``."""
         self.session = session
-        self._syntax = SyntaxService()
         self._semantic: Optional[SemanticService] = None
         self._scope_calc: Optional["ScopeCalculatorService"] = None
+        self._syntax = SyntaxService()
         if session is not None:
             from dpmcore.services.scope_calculator import (
                 ScopeCalculatorService,
@@ -39,94 +37,40 @@ class ASTGeneratorService:
             self._semantic = SemanticService(session)
             self._scope_calc = ScopeCalculatorService(session)
 
-    # ------------------------------------------------------------------ #
-    # Level 1 — Basic AST (no DB)
-    # ------------------------------------------------------------------ #
-
-    def parse(self, expression: str) -> Dict[str, Any]:
-        """Parse *expression* into a clean AST dict.
-
-        No database required.
-        """
-        try:
-            raw_ast = self._syntax.parse(expression)
-            ast_dict = serialize_ast(raw_ast)
-            return {
-                "success": True,
-                "ast": ast_dict,
-                "error": None,
-            }
-        except Exception as exc:
-            return {
-                "success": False,
-                "ast": None,
-                "error": str(exc),
-            }
-
-    # ------------------------------------------------------------------ #
-    # Level 2 — Complete AST (requires DB)
-    # ------------------------------------------------------------------ #
-
-    def complete(
-        self,
-        expression: str,
-        release_id: Optional[int] = None,
-    ) -> Dict[str, Any]:
-        """Generate a semantically enriched AST.
-
-        Requires a database session.
-        """
-        if self._semantic is None:
-            return {
-                "success": False,
-                "ast": None,
-                "error": (
-                    "No database session — cannot perform semantic analysis."
-                ),
-            }
-
-        result = self._semantic.validate(expression, release_id=release_id)
-        if not result.is_valid:
-            return {
-                "success": False,
-                "ast": None,
-                "error": result.error_message,
-            }
-
-        ast_dict = serialize_ast(self._semantic.ast)
-        return {
-            "success": True,
-            "ast": ast_dict,
-            "data": self._semantic.oc_data,
-            "tables": self._semantic.oc_tables,
-            "warning": result.warning,
-            "error": None,
-        }
-
-    # ------------------------------------------------------------------ #
-    # Level 3 — Validations Script (requires DB)
-    # ------------------------------------------------------------------ #
-
     def script(
         self,
-        expressions: Union[str, List[Tuple[str, ...]]],
-        release_id: Optional[int] = None,
-        module_code: Optional[str] = None,
+        expressions: List[Tuple[str, str]],
+        module_code: str,
+        module_version: str,
+        preconditions: Optional[List[Tuple[str, List[str]]]] = None,
         severity: Optional[str] = None,
-        primary_module_vid: Optional[int] = None,
-        operation_version_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Generate an engine-ready validations script.
 
-        This is the highest-level output, suitable for execution
-        engines and validation frameworks.
+        Args:
+            expressions: ``[(expression, validation_code), ...]``.
+            module_code: Code of the primary module the validations
+                belong to (e.g. ``"COREP_Con"``).
+            module_version: Version of the primary module
+                (e.g. ``"2.0.1"``).
+            preconditions: Optional list of
+                ``(precondition_expression, [validation_codes])``
+                tuples. A precondition can guard many validation
+                codes; a validation may have no precondition.
+            severity: Optional severity tag (``"error"``,
+                ``"warning"``, ``"info"``) attached to each
+                generated validation in the enriched AST.
 
-        When *primary_module_vid* and *operation_version_id* are
-        supplied, scope-based ``dependency_info`` is computed and
-        included in the response.
+        Returns a dict with ``success``, ``enriched_ast``,
+        ``dependency_information``, ``dependency_modules``, and
+        ``error`` keys.
         """
         session = self.session
-        if self._semantic is None or session is None:
+        if (
+            self._semantic is None
+            or self._scope_calc is None
+            or session is None
+        ):
             return {
                 "success": False,
                 "enriched_ast": None,
@@ -137,19 +81,39 @@ class ASTGeneratorService:
             from dpmcore.dpm_xl.ast.ml_generation import MLGeneration
             from dpmcore.dpm_xl.ast.module_analyzer import ModuleAnalyzer
 
-            # Normalise input to list of tuples
-            if isinstance(expressions, str):
-                items: List[Tuple[str, ...]] = [(expressions,)]
-            else:
-                items = expressions
+            mv = self._resolve_module_version(module_code, module_version)
+            if mv is None:
+                return {
+                    "success": False,
+                    "enriched_ast": None,
+                    "error": (
+                        f"ModuleVersion not found: "
+                        f"{module_code} {module_version}"
+                    ),
+                }
+
+            primary_module_vid: int = mv.module_vid
+            release_id: Optional[int] = mv.start_release_id
+
+            # Index preconditions by validation code.
+            try:
+                code_to_precondition_items = self._build_precondition_index(
+                    preconditions or []
+                )
+            except ValueError as exc:
+                return {
+                    "success": False,
+                    "enriched_ast": None,
+                    "error": str(exc),
+                }
 
             results = []
             scope_pairs: List[
-                tuple[Tuple[str, ...], ScopeResult, Dict[str, str]]
+                tuple[Tuple[str, str], "ScopeResult", Dict[str, str]]
             ] = []
 
-            for item in items:
-                expr = item[0]
+            for item in expressions:
+                expr, code = item[0], item[1]
                 result = self._semantic.validate(expr, release_id=release_id)
                 if not result.is_valid:
                     return {
@@ -174,19 +138,16 @@ class ASTGeneratorService:
                 results.append(ml)
 
                 # Collect scope results for dependency detection
-                if (
-                    self._scope_calc
-                    and primary_module_vid is not None
-                    and operation_version_id is not None
-                ):
-                    sr = self._scope_calc.calculate_from_expression(
-                        expression=expr,
-                        operation_version_id=operation_version_id,
-                        release_id=release_id,
-                    )
-                    if not sr.has_error:
-                        ts = self._extract_time_shifts(ast)
-                        scope_pairs.append((item, sr, ts))
+                sr = self._scope_calc.calculate_from_expression(
+                    expression=expr,
+                    release_id=release_id,
+                    precondition_items=code_to_precondition_items.get(
+                        code, []
+                    ),
+                )
+                if not sr.has_error:
+                    ts = self._extract_time_shifts(ast)
+                    scope_pairs.append((item, sr, ts))
 
             dependency_info = self._build_dependency_info(
                 scope_pairs=scope_pairs,
@@ -216,27 +177,99 @@ class ASTGeneratorService:
                 "error": str(exc),
             }
 
+    def _resolve_module_version(
+        self,
+        module_code: str,
+        module_version: str,
+    ) -> Optional[Any]:
+        """Look up a ``ModuleVersion`` by ``(code, version_number)``.
+
+        Returns the ORM row, or ``None`` if no match.
+        """
+        from dpmcore.orm.packaging import ModuleVersion
+
+        if self.session is None:
+            return None
+        return (
+            self.session.query(ModuleVersion)
+            .filter(ModuleVersion.code == module_code)
+            .filter(ModuleVersion.version_number == module_version)
+            .first()
+        )
+
+    def _build_precondition_index(
+        self,
+        preconditions: List[Tuple[str, List[str]]],
+    ) -> Dict[str, List[str]]:
+        """Map each validation code → unioned precondition variable codes.
+
+        Parses each precondition expression once and extracts variable
+        codes that act as precondition items. Raises ``ValueError`` if
+        a precondition expression cannot be parsed.
+        """
+        index: Dict[str, List[str]] = {}
+        for precondition_expr, validation_codes in preconditions:
+            try:
+                ast = self._syntax.parse(precondition_expr)
+            except Exception as exc:
+                raise ValueError(
+                    f"Invalid precondition expression "
+                    f"{precondition_expr!r}: {exc}"
+                ) from exc
+            codes = self._extract_precondition_codes(ast)
+            for vc in validation_codes:
+                merged = index.setdefault(vc, [])
+                for c in codes:
+                    if c not in merged:
+                        merged.append(c)
+        return index
+
+    @staticmethod
+    def _extract_precondition_codes(ast: Any) -> List[str]:
+        """Return the variable codes referenced by a precondition AST.
+
+        Walks the AST collecting:
+        - ``PreconditionItem.variable_code``
+        - ``VarRef.variable``
+
+        Either kind unambiguously identifies a precondition variable
+        for scope-calculation purposes.
+        """
+        from dpmcore.dpm_xl.ast.template import ASTTemplate
+
+        codes: List[str] = []
+
+        class _Extractor(ASTTemplate):
+            def visit_PreconditionItem(self, node: Any) -> None:
+                vc = getattr(node, "variable_code", None)
+                if vc and vc not in codes:
+                    codes.append(vc)
+
+            def visit_VarRef(self, node: Any) -> None:
+                v = getattr(node, "variable", None)
+                if v and v not in codes:
+                    codes.append(v)
+
+        try:
+            _Extractor().visit(ast)
+        except Exception:
+            return []
+        return codes
+
     def _build_dependency_info(
         self,
-        scope_pairs: List[tuple[Tuple[str, ...], ScopeResult, Dict[str, str]]],
+        scope_pairs: List[
+            tuple[Tuple[str, str], "ScopeResult", Dict[str, str]]
+        ],
         primary_module_vid: Optional[int],
         release_id: Optional[int],
     ) -> Optional[Dict[str, Any]]:
         """Build dependency_info from collected scope results.
 
-        Args:
-            scope_pairs: list of
-                ``(item_tuple, ScopeResult, time_shifts)``
-                triples so each scope result stays matched
-                to its originating expression/operation code.
-            primary_module_vid: the primary module VID.
-            release_id: optional release filter.
-
         Aggregates across all expressions: merges
         ``intra_instance_validations`` and deduplicates
         ``cross_instance_dependencies`` by module URI set,
-        appending new ``affected_operations`` to existing
-        entries.
+        appending new ``affected_operations`` to existing entries.
         """
         if (
             not self._scope_calc
@@ -248,17 +281,18 @@ class ASTGeneratorService:
         all_intra: List[str] = []
         all_cross: List[Dict[str, Any]] = []
         all_dep_modules: Dict[str, Any] = {}
-        all_scope_results: List[ScopeResult] = []
+        all_scope_results: List["ScopeResult"] = []
 
         for item, sr, ts in scope_pairs:
             all_scope_results.append(sr)
-            op_code = item[1] if len(item) > 1 else None
+            op_code = item[1]
             current = self._scope_calc.detect_cross_module_dependencies(
                 scope_result=sr,
                 primary_module_vid=primary_module_vid,
                 operation_code=op_code,
                 release_id=release_id,
                 time_shifts=ts,
+                compute_alternative_deps=False,
             )
             all_intra.extend(current.get("intra_instance_validations", []))
             self._merge_cross_deps(
@@ -294,9 +328,8 @@ class ASTGeneratorService:
     ) -> None:
         """Merge *new* cross-instance deps into *existing*.
 
-        Deduplicates by the set of module URIs.  When a
-        duplicate is found, its ``affected_operations`` are
-        merged instead.
+        Deduplicates by the set of module URIs.  When a duplicate is
+        found, its ``affected_operations`` are merged instead.
         """
 
         def _uri_key(dep: Dict[str, Any]) -> tuple[str, ...]:
@@ -350,8 +383,8 @@ class ASTGeneratorService:
     def _extract_time_shifts(ast: Any) -> Dict[str, str]:
         """Extract per-table time shifts from an AST.
 
-        Returns a mapping of table codes to ref-period
-        strings (e.g. ``{"C_01.00": "T-1Q"}``).
+        Returns a mapping of table codes to ref-period strings
+        (e.g. ``{"C_01.00": "T-1Q"}``).
         """
         from dpmcore.dpm_xl.ast.template import ASTTemplate
 

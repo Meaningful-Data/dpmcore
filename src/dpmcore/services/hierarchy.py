@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from dpmcore.dpm_xl.utils.filters import filter_by_release
 from dpmcore.orm.packaging import (
     Framework,
-    Module,
     ModuleVersion,
     ModuleVersionComposition,
 )
@@ -48,14 +47,8 @@ class HierarchyService:
         release_id: Optional[int] = None,
     ) -> Optional[Dict[str, Any]]:
         """Return module version info for a given module code."""
-        # NOTE: Module has no ``code`` column in the ORM (only ModuleVersion
-        # does). The filter below is a latent bug that raises AttributeError
-        # at runtime; preserving here per scope constraints (annotation-only
-        # pass). Consider filtering on ``ModuleVersion.code`` instead.
-        q = (
-            self.session.query(ModuleVersion)
-            .join(Module, ModuleVersion.module_id == Module.module_id)
-            .filter(Module.code == module_code)  # type: ignore[attr-defined]
+        q = self.session.query(ModuleVersion).filter(
+            ModuleVersion.code == module_code
         )
         if release_id is not None:
             q = filter_by_release(
@@ -130,10 +123,7 @@ class HierarchyService:
                 ModuleVersionComposition.module_vid
                 == ModuleVersion.module_vid,
             )
-            # NOTE: Module.code doesn't exist (see latent-bug note earlier
-            # in this file). Kept for runtime parity.
-            .join(Module, ModuleVersion.module_id == Module.module_id)
-            .filter(Module.code == module_code)  # type: ignore[attr-defined]
+            .filter(ModuleVersion.code == module_code)
         )
         if release_id is not None:
             q = filter_by_release(
