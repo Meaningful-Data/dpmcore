@@ -61,6 +61,21 @@ class TestLoadMapping:
             "version",
         }
 
+    def test_cache_returns_immutable_collection(self):
+        """The cached result must not be mutable through callers.
+
+        Regression for S8: a previous version returned a plain
+        ``list`` of plain ``dict`` objects, so any caller that
+        sorted/popped/reassigned the result poisoned the cache for
+        the rest of the process.
+        """
+        _load_module_schema_mapping.cache_clear()
+        mappings = _load_module_schema_mapping()
+        with pytest.raises((AttributeError, TypeError)):
+            mappings.append({})  # type: ignore[attr-defined]
+        with pytest.raises(TypeError):
+            mappings[0]["module_code"] = "tampered"  # type: ignore[index]
+
 
 class TestParseDate:
     def test_returns_none_for_empty_string(self):

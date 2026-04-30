@@ -4,7 +4,8 @@ import csv
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
+from types import MappingProxyType
+from typing import Any, Mapping, Optional, Tuple, cast
 
 
 def _parse_date(date_str: str) -> Optional[datetime]:
@@ -20,21 +21,27 @@ def _parse_date(date_str: str) -> Optional[datetime]:
 
 
 @lru_cache(maxsize=1)
-def _load_module_schema_mapping() -> List[Dict[str, Any]]:
-    """Load the module schema mapping CSV file."""
+def _load_module_schema_mapping() -> Tuple[Mapping[str, Any], ...]:
+    """Load the module schema mapping CSV file.
+
+    Returns an immutable tuple of read-only mappings so callers
+    cannot accidentally mutate the cached result.
+    """
     csv_path = Path(__file__).parent / "module_schema_mapping.csv"
     with open(csv_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        return [
-            {
-                "module_code": row["module_code"],
-                "xbrl_schema_ref": row["xbrl_schema_ref"],
-                "from_date": _parse_date(row["from_date"]),
-                "to_date": _parse_date(row["to_date"]),
-                "version": row["version"],
-            }
+        return tuple(
+            MappingProxyType(
+                {
+                    "module_code": row["module_code"],
+                    "xbrl_schema_ref": row["xbrl_schema_ref"],
+                    "from_date": _parse_date(row["from_date"]),
+                    "to_date": _parse_date(row["to_date"]),
+                    "version": row["version"],
+                }
+            )
             for row in reader
-        ]
+        )
 
 
 def get_module_schema_ref_by_version(

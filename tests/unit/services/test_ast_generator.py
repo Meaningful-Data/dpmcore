@@ -366,6 +366,41 @@ class TestBuildPreconditionsBlock:
         assert preconds == {}
         assert vars_ == {}
 
+    def test_collision_merges_affected_operations(self, monkeypatch):
+        """Same precondition shape across two entries merges ops.
+
+        Regression for B2: two preconditions producing the same key
+        used to silently overwrite each other, dropping the earlier
+        ``affected_operations``. The merged entry should now contain
+        both validation codes, deduplicated and order-preserving.
+        """
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+
+        fake_query = MagicMock()
+        fake_query.get_variable_vids_by_codes.return_value = {
+            "C_01.00": {"variable_id": 11, "variable_vid": 110},
+        }
+        monkeypatch.setitem(
+            sys.modules,
+            "dpmcore.dpm_xl.model_queries",
+            SimpleNamespace(VariableVersionQuery=fake_query),
+        )
+
+        preconds, _vars = svc._build_preconditions_block(
+            [
+                ("{v_C_01.00}", ["v1", "v2"]),
+                ("{v_C_01.00}", ["v2", "v3"]),
+            ],
+            release_id=None,
+        )
+        assert list(preconds) == ["p_110"]
+        assert preconds["p_110"]["affected_operations"] == [
+            "v1",
+            "v2",
+            "v3",
+        ]
+
 
 # ------------------------------------------------------------------ #
 # _resolve_root_operator_id
