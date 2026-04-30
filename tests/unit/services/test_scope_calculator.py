@@ -446,7 +446,7 @@ class TestDetectCrossModuleDependencies:
         svc, SR = self._make_svc()
         svc._get_module_tables = lambda vid, release_id=None: {
             "C_01.00": {
-                "variables": {},
+                "variables": {"100": "m"},  # non-empty so the table survives
                 "open_keys": {},
             }
         }
@@ -711,7 +711,14 @@ class TestGetModuleUri:
         )
 
     def test_static_csv_miss_falls_through_to_dynamic(self):
-        """When the static lookup returns ``None`` the dynamic path runs."""
+        """When the static lookup returns ``None`` the dynamic path runs.
+
+        ``release_id`` is intentionally omitted here so that the
+        ad-hoc-lookup branch (which still consults the CSV) is
+        exercised. The script-generation path bypasses the CSV
+        entirely; that contract is pinned by
+        ``test_release_id_bypasses_static_csv``.
+        """
         Svc, _ = _load_module()
         svc = Svc(MagicMock())
 
@@ -733,9 +740,84 @@ class TestGetModuleUri:
         q = svc.session.query.return_value
         q.filter.return_value.first.return_value = release
 
-        uri = svc._get_module_uri(10, release_id=5, mv=mv)
+        uri = svc._get_module_uri(10, mv=mv)
         assert uri is not None
         assert uri.endswith("/corep")
+        data_stub.get_module_schema_ref_by_version.assert_called_once_with(
+            "COREP", "2.0.1"
+        )
+
+    def test_release_id_bypasses_static_csv(self):
+        """When ``release_id`` is given the CSV mapping is *not* consulted.
+
+        The script-generation path must always root URIs at the target
+        release's segment so every module in a script shares the same
+        ``/{release}/`` segment as the matching XBRL Report Packages.
+        Letting CSV intercept the lookup would reintroduce the skew
+        that breaks cross-instance dependency resolution.
+        """
+        Svc, _ = _load_module()
+        svc = Svc(MagicMock())
+
+        mv = MagicMock()
+        mv.code = "COREP_Con"
+        mv.version_number = "2.0.1"
+        mv.start_release_id = 5
+        mv.module = MagicMock()
+        mv.module.framework = MagicMock()
+        mv.module.framework.code = "CRR"
+
+        data_stub = sys.modules["dpmcore.data"]
+        # If the CSV were consulted, this would short-circuit the URI.
+        data_stub.get_module_schema_ref_by_version = MagicMock(
+            return_value="http://example.org/corep_con.json",
+        )
+
+        release = MagicMock()
+        release.code = "4.2.1"
+        q = svc.session.query.return_value
+        q.filter.return_value.first.return_value = release
+
+        uri = svc._get_module_uri(10, release_id=42, mv=mv)
+        assert uri == (
+            "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/crr/4.2.1/mod/"
+            "corep_con"
+        )
+        data_stub.get_module_schema_ref_by_version.assert_not_called()
+
+    def test_release_id_overrides_module_start_release(self):
+        """The URI's release segment uses ``release_id``, not start_release.
+
+        Pins the cross-module fix: a module version whose
+        ``start_release_id`` predates the script's target release must
+        still be rendered with the *target* release in its URI so it
+        matches the engine's package URIs.
+        """
+        Svc, _ = _load_module()
+        svc = Svc(MagicMock())
+
+        mv = MagicMock()
+        mv.code = "AE"
+        mv.version_number = "1.4.0"
+        mv.start_release_id = 11  # release 4.2 — older
+        mv.module = MagicMock()
+        mv.module.framework = MagicMock()
+        mv.module.framework.code = "AE"
+
+        data_stub = sys.modules["dpmcore.data"]
+        data_stub.get_module_schema_ref_by_version = MagicMock(
+            return_value=None,
+        )
+
+        target_release = MagicMock()
+        target_release.code = "4.2.1"
+        q = svc.session.query.return_value
+        q.filter.return_value.first.return_value = target_release
+
+        uri = svc._get_module_uri(10, release_id=12, mv=mv)
+        assert uri == (
+            "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/ae/4.2.1/mod/ae"
+        )
 
     def test_missing_module_code_returns_none(self):
         Svc, _ = _load_module()
@@ -744,6 +826,55 @@ class TestGetModuleUri:
         mv = MagicMock()
         mv.code = None
         mv.module = MagicMock()
+
+        assert svc._get_module_uri(10, mv=mv) is None
+
+    def test_no_release_id_falls_back_to_start_release(self):
+        """No release_id, no version_number → uses ``mv.start_release_id``.
+
+        Covers the legacy ad-hoc-lookup path where the CSV mapping is
+        skipped (no version) and resolution falls through to the
+        module version's start release.
+        """
+        Svc, _ = _load_module()
+        svc = Svc(MagicMock())
+
+        mv = MagicMock()
+        mv.code = "COREP"
+        mv.version_number = None
+        mv.start_release_id = 7
+        mv.module = MagicMock()
+        mv.module.framework = MagicMock()
+        mv.module.framework.code = "CRR"
+
+        release = MagicMock()
+        release.code = "3.4"
+        q = svc.session.query.return_value
+        q.filter.return_value.first.return_value = release
+
+        uri = svc._get_module_uri(10, mv=mv)
+        assert uri == (
+            "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/crr/3.4/mod/corep"
+        )
+
+    def test_no_resolvable_release_id_returns_none(self):
+        """When no release can be resolved at all, returns ``None``.
+
+        Both ``release_id`` and ``mv.start_release_id`` are missing
+        and the CSV mapping doesn't apply (no version) — the resolver
+        bottoms out and returns ``None`` rather than constructing a
+        URI with a missing segment.
+        """
+        Svc, _ = _load_module()
+        svc = Svc(MagicMock())
+
+        mv = MagicMock()
+        mv.code = "COREP"
+        mv.version_number = None
+        mv.start_release_id = None
+        mv.module = MagicMock()
+        mv.module.framework = MagicMock()
+        mv.module.framework.code = "CRR"
 
         assert svc._get_module_uri(10, mv=mv) is None
 
