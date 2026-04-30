@@ -11,6 +11,7 @@ from typing import (
     List,
     Optional,
     Set,
+    Tuple,
 )
 
 from sqlalchemy import or_
@@ -283,75 +284,30 @@ class ScopeCalculatorService:
         cross_deps: List[Dict[str, Any]] = []
         dep_modules: Dict[str, Any] = {}
 
-        for vid in sorted(valid_vids):
-            mv = (
-                self.session.query(ModuleVersion)
-                .filter(ModuleVersion.module_vid == vid)
-                .first()
-            )
+        sorted_vids = sorted(valid_vids)
+        mv_rows = (
+            self.session.query(ModuleVersion)
+            .filter(ModuleVersion.module_vid.in_(sorted_vids))
+            .all()
+        )
+        mv_by_vid = {mv.module_vid: mv for mv in mv_rows}
+
+        for vid in sorted_vids:
+            mv = mv_by_vid.get(vid)
             if not mv:
                 continue
-
-            uri = self._get_module_uri(
-                module_vid=vid,
-                release_id=release_id,
+            entry = self._build_dependency_entry(
+                vid=vid,
                 mv=mv,
+                release_id=release_id,
+                ts=ts,
+                operation_code=operation_code,
             )
-            if not uri:
+            if entry is None:
                 continue
-
-            # Collect tables for this external module. Drop tables
-            # that came back without any variables — the ADAM engine
-            # schema requires ``minProperties: 1`` on each table's
-            # variables map, and "structural-only" tables (no metric
-            # variables) can't satisfy that.
-            tables_dict_full = self._get_module_tables(
-                vid, release_id=release_id
-            )
-            tables_dict = {
-                tcode: tdata
-                for tcode, tdata in tables_dict_full.items()
-                if tdata.get("variables")
-            }
-
-            # Determine ref_period: most specific (non-T) wins
-            ref_period = "T"
-            for tbl_code in tables_dict:
-                rp = ts.get(tbl_code)
-                if rp and rp != "T":
-                    ref_period = rp
-
-            module_entry: Dict[str, Any] = {
-                "URI": uri,
-                "ref_period": ref_period,
-            }
-            if mv.version_number:
-                module_entry["module_version"] = mv.version_number
-
-            from_date = mv.from_reference_date
-            to_date = mv.to_reference_date
-            cross_deps.append(
-                {
-                    "modules": [module_entry],
-                    "affected_operations": (
-                        [operation_code] if operation_code else []
-                    ),
-                    "from_reference_date": (
-                        str(from_date) if from_date else ""
-                    ),
-                    "to_reference_date": (str(to_date) if to_date else ""),
-                }
-            )
-
-            # dependency_modules entry
-            dep_modules[uri] = {
-                "tables": tables_dict,
-                "variables": {
-                    k: v
-                    for tbl in tables_dict.values()
-                    for k, v in tbl.get("variables", {}).items()
-                },
-            }
+            cross_dep, uri, dep_module = entry
+            cross_deps.append(cross_dep)
+            dep_modules[uri] = dep_module
 
         alternative_deps = (
             self.detect_alternative_dependencies(
@@ -369,6 +325,71 @@ class ScopeCalculatorService:
             "alternative_dependencies": alternative_deps,
             "dependency_modules": dep_modules,
         }
+
+    def _build_dependency_entry(
+        self,
+        vid: int,
+        mv: Any,
+        release_id: Optional[int],
+        ts: Dict[str, str],
+        operation_code: Optional[str],
+    ) -> Optional[Tuple[Dict[str, Any], str, Dict[str, Any]]]:
+        """Build a single (cross_dep, uri, dependency_module) triple.
+
+        Returns ``None`` when the module has no resolvable URI or
+        when every one of its tables is variable-less (and therefore
+        dropped, since the engine schema requires
+        ``minProperties: 1`` on each table's variables map).
+        """
+        uri = self._get_module_uri(
+            module_vid=vid,
+            release_id=release_id,
+            mv=mv,
+        )
+        if not uri:
+            return None
+
+        tables_dict_full = self._get_module_tables(vid, release_id=release_id)
+        tables_dict = {
+            tcode: tdata
+            for tcode, tdata in tables_dict_full.items()
+            if tdata.get("variables")
+        }
+        if not tables_dict:
+            return None
+
+        ref_period = "T"
+        for tbl_code in tables_dict:
+            rp = ts.get(tbl_code)
+            if rp and rp != "T":
+                ref_period = rp
+
+        module_entry: Dict[str, Any] = {
+            "URI": uri,
+            "ref_period": ref_period,
+        }
+        if mv.version_number:
+            module_entry["module_version"] = mv.version_number
+
+        from_date = mv.from_reference_date
+        to_date = mv.to_reference_date
+        cross_dep = {
+            "modules": [module_entry],
+            "affected_operations": (
+                [operation_code] if operation_code else []
+            ),
+            "from_reference_date": (str(from_date) if from_date else ""),
+            "to_reference_date": (str(to_date) if to_date else ""),
+        }
+        dep_module = {
+            "tables": tables_dict,
+            "variables": {
+                k: v
+                for tbl in tables_dict.values()
+                for k, v in tbl.get("variables", {}).items()
+            },
+        }
+        return cross_dep, uri, dep_module
 
     # ------------------------------------------------------------------ #
     # Alternative dependency detection (Fix 3)
