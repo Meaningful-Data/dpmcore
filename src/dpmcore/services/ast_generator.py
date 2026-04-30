@@ -630,9 +630,31 @@ class ASTGeneratorService:
             key, entry = self._build_precondition_entry(
                 var_infos, validation_codes
             )
-            preconditions_dict[key] = entry
+            self._merge_precondition_entry(preconditions_dict, key, entry)
 
         return preconditions_dict, precondition_variables
+
+    @staticmethod
+    def _merge_precondition_entry(
+        preconditions_dict: Dict[str, Any],
+        key: str,
+        entry: Dict[str, Any],
+    ) -> None:
+        """Insert *entry* under *key*; merge ops on collision.
+
+        Two preconditions with the same variable-vid set produce the
+        same key. Without merging, the second occurrence used to
+        clobber the first and lose its ``affected_operations``.
+        """
+        existing = preconditions_dict.get(key)
+        if existing is None:
+            preconditions_dict[key] = entry
+            return
+        merged_ops = list(existing.get("affected_operations", []))
+        for op in entry.get("affected_operations", []):
+            if op not in merged_ops:
+                merged_ops.append(op)
+        existing["affected_operations"] = merged_ops
 
     @staticmethod
     def _collect_precondition_var_infos(
@@ -830,6 +852,10 @@ class ASTGeneratorService:
         try:
             _Extractor().visit(ast)
         except Exception:
+            logger.exception(
+                "Failed to extract precondition codes; "
+                "continuing without them.",
+            )
             return []
         return codes
 
@@ -1000,6 +1026,9 @@ class ASTGeneratorService:
             _Extractor().visit(ast)
             return {t: _to_ref_period(p) for t, p in time_shifts.items()}
         except Exception:
+            logger.exception(
+                "Failed to extract time shifts; returning an empty mapping.",
+            )
             return {}
 
 
