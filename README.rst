@@ -22,7 +22,7 @@ Optional extras:
    pip install dpmcore[django]      # Django integration
    pip install dpmcore[postgres]    # PostgreSQL backend
    pip install dpmcore[sqlserver]   # SQL Server backend
-   pip install dpmcore[export]       # Table layout export (openpyxl)
+   pip install dpmcore[export]      # Table layout export (openpyxl)
    pip install dpmcore[cli]         # Command-line interface
    pip install dpmcore[all]         # Everything
 
