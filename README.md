@@ -302,6 +302,47 @@ dpmcore build-meili-json --access-file /path/to/dpm.accdb \
 The `--output` option defaults to `operations.json`. `--source-dir` and
 `--access-file` are mutually exclusive.
 
+**Export table layouts** (Excel):
+
+Export annotated table layouts to ``.xlsx`` for review or distribution.
+You can export all tables in a module, or a specific list of tables.
+
+```python
+from dpmcore import connect
+from dpmcore.services.layout_exporter.models import ExportConfig
+
+config = ExportConfig(
+    annotate=True,
+    add_cell_comments=True,
+    add_header_comments=True,
+)
+
+with connect("sqlite:///dpm.db") as db:
+    svc = db.services.layout_exporter
+
+    # Whole module
+    svc.export_module("FINREP9", release_code="4.2", output_path="finrep9.xlsx",
+                      config=config)
+
+    # Specific tables
+    svc.export_tables(["F_01.01", "F_01.02"], release_code="4.2",
+                      output_path="finrep_subset.xlsx", config=config)
+```
+
+Or from the command line:
+
+```bash
+# Whole module
+dpmcore export-layout --database sqlite:///dpm.db \
+    --module FINREP9 --release 4.2 --output finrep9.xlsx
+
+# Specific tables
+dpmcore export-layout --database sqlite:///dpm.db \
+    --tables F_01.01,F_01.02 --release 4.2 --output finrep_subset.xlsx
+```
+
+Use ``--no-annotate`` or ``--no-comments`` to disable annotations/comments.
+
 **Unified facade:**
 
 ```python
@@ -411,11 +452,12 @@ src/dpmcore/
 │   ├── dpm_xl.py          DpmXlService (facade)
 │   ├── export_csv.py      ExportCsvService (Access → CSV)
 │   ├── meili_build.py     MeiliBuildService (end-to-end pipeline)
-│   └── meili_json.py      MeiliJsonService (JSON generation)
+│   ├── meili_json.py      MeiliJsonService (JSON generation)
+│   └── layout_exporter/   LayoutExporterService (tables → .xlsx)
 ├── loaders/               data-loading (mutates the DB)
 │   └── migration.py       MigrationService (Access import)
 ├── cli/
-│   └── main.py            Click CLI (migrate, export-csv, build-meili-json, serve, generate-script)
+│   └── main.py            Click CLI (migrate, export-csv, build-meili-json, serve, generate-script, export-layout)
 └── dpm_xl/                DPM-XL engine internals
     ├── grammar/           ANTLR4 grammar + generated parser
     ├── ast/               AST nodes, visitor, operands

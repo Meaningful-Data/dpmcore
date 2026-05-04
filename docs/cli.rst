@@ -88,3 +88,87 @@ Start the dpmcore REST API server.
 .. code-block:: bash
 
    dpmcore serve --database sqlite:///dpm.db --host 0.0.0.0 --port 8000
+
+
+``dpmcore export-layout``
+-------------------------
+
+Export annotated table layouts to Excel workbooks. Generates formatted
+``.xlsx`` files with hierarchical headers, data-point cells, dimensional
+annotations, and categorisation tooltips.
+
+.. note::
+
+   Requires the ``export`` extra: ``pip install dpmcore[export]``
+
+.. code-block:: text
+
+   dpmcore export-layout --database <url> (--module <code> | --tables <codes>) [options]
+
+**Options:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Option
+     - Description
+   * - ``--database TEXT``
+     - SQLAlchemy database URL. **(Required)**
+   * - ``--module TEXT``
+     - Module version code to export (e.g. ``FINREP9``, ``AE``, ``DORA``).
+       Exports all tables in the module.
+   * - ``--tables TEXT``
+     - Comma-separated table codes (e.g. ``F_01.01,F_05.01``).
+   * - ``--release TEXT``
+     - Release code filter (e.g. ``4.2``). Defaults to the current
+       (active) release.
+   * - ``--output PATH``
+     - Output file path. Defaults to ``<module>.xlsx`` or ``tables.xlsx``.
+   * - ``--no-annotate``
+     - Disable dimensional annotations below and to the right of the grid.
+   * - ``--no-comments``
+     - Disable Excel comments (tooltips) on headers and data cells.
+
+**Examples:**
+
+.. code-block:: bash
+
+   # Export all tables in FINREP
+   dpmcore export-layout \
+       --database sqlite:///dpm.db \
+       --module FINREP9 \
+       --output finrep.xlsx
+
+   # Export specific tables
+   dpmcore export-layout \
+       --database sqlite:///dpm.db \
+       --tables F_01.01,F_01.02,F_05.01 \
+       --output selected.xlsx
+
+   # Export for a specific release, no comments (faster)
+   dpmcore export-layout \
+       --database sqlite:///dpm.db \
+       --module AE \
+       --release 4.2 \
+       --no-comments \
+       --output ae.xlsx
+
+**Output format:**
+
+Each generated workbook contains:
+
+- An **Index** sheet with a hyperlinked table of contents
+- One sheet per table (alphabetically sorted), each with:
+
+  - Table title and optional sheet (Z-axis) header
+  - Hierarchical column headers with merged cells
+  - Row headers with indentation reflecting the hierarchy
+  - Data cells showing the ``variable_vid`` (data point ID);
+    excluded cells are greyed out
+  - Dimensional annotations below the grid (for column dimensions)
+    and to the right (for row dimensions), colour-coded per dimension
+  - Excel comments on headers and cells showing dimensional
+    categorisations (``Dimension = Member``)
+  - Outline groups for expanding/collapsing hierarchical rows and columns
+  - Frozen panes at the data-area origin

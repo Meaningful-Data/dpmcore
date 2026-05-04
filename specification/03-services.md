@@ -568,9 +568,111 @@ class InstanceService(BaseService):
         ...
 ```
 
-## 8. Migration Service
+## 8. Layout Exporter Service
 
-Database import/export and migration.
+Exports annotated table layouts to Excel workbooks. Produces formatted
+`.xlsx` files that visually render DPM tables with hierarchical headers,
+data-point cells, dimensional annotations, and categorisation tooltips.
+
+```python
+class LayoutExporterService(BaseService):
+    """Export annotated table layouts to Excel workbooks."""
+
+    def export_module(
+        self,
+        module_code: str,
+        release_code: str | None = None,
+        output_path: str | None = None,
+        config: ExportConfig | None = None,
+    ) -> Path:
+        """Export all tables in a module to a single workbook.
+
+        The workbook contains an Index sheet with hyperlinks, followed
+        by one sheet per table in alphabetical order.
+        """
+        ...
+
+    def export_tables(
+        self,
+        table_codes: list[str],
+        release_code: str | None = None,
+        output_path: str | None = None,
+        config: ExportConfig | None = None,
+    ) -> Path:
+        """Export specific tables to a workbook."""
+        ...
+
+    def build_layout(
+        self,
+        table_code: str,
+        release_code: str | None = None,
+    ) -> TableLayout:
+        """Build the intermediate layout for a single table.
+
+        Returns a TableLayout dataclass with sorted headers, cells,
+        and categorisations — useful for programmatic access without
+        generating Excel.
+        """
+        ...
+```
+
+**Configuration:**
+
+```python
+@dataclass
+class ExportConfig:
+    annotate: bool = True            # Dimensional annotations
+    add_header_comments: bool = True # Tooltips on row/column headers
+    add_cell_comments: bool = True   # Tooltips on data cells
+    show_code_row: bool = True       # Separate row for column codes
+    show_code_column: bool = True    # Separate column for row codes
+    show_abstract_header_codes: bool = True
+```
+
+**Result type:**
+
+```python
+@dataclass
+class TableLayout:
+    table_vid: int
+    table_code: str
+    table_name: str
+    rows: list[LayoutHeader]
+    columns: list[LayoutHeader]
+    sheets: list[LayoutHeader]
+    cells: dict[tuple[int, int, int | None], CellData]
+    max_col_depth: int
+    max_row_depth: int
+    dimension_ids: list[tuple[int, str]]
+```
+
+### 8.1 Architecture
+
+The service is implemented as a package with four internal modules:
+
+| Module | Responsibility |
+|--------|---------------|
+| `queries.py` | Batch SQLAlchemy queries (5–7 per table, no N+1) |
+| `processing.py` | Header sorting (TotalOrder algorithm), grid building |
+| `models.py` | Dataclasses (`TableLayout`, `LayoutHeader`, `CellData`, etc.) |
+| `excel_writer.py` | openpyxl workbook generation with formatting |
+
+### 8.2 Header Sort Algorithm
+
+Headers are sorted using a recursive TotalOrder key that respects parent-child
+hierarchy and the `parent_first` flag (whether a parent header renders before
+or after its children):
+
+```
+sort_key = parent_sort_key + order + trailing_separator
+```
+
+Where `trailing_separator` is `.` if the header appears before its children,
+or `:` if it appears after (`:` > `.` in ASCII, so the parent sorts last).
+
+## 9. Migration Service
+
+Database migration and import.
 
 ```python
 class MigrationService(BaseService):
@@ -598,18 +700,18 @@ class MigrationService(BaseService):
         ...
 ```
 
-## 9. DPM-XL Engine Internals
+## 10. DPM-XL Engine Internals
 
 The DPM-XL engine is the internal implementation that the services delegate to.
 It is not part of the public API but is documented here for completeness.
 
-### 9.1 Grammar & Parser
+### 10.1 Grammar & Parser
 
 - **ANTLR4 grammar**: `dpm_xl.g4` defines the DPM-XL language syntax
 - **Generated parser**: Auto-generated lexer, parser, and listener from the grammar
 - **ANTLR version**: 4.9.2 (specific version required)
 
-### 9.2 AST Nodes
+### 10.2 AST Nodes
 
 ```
 ExpressionNode (abstract)
@@ -622,7 +724,7 @@ ExpressionNode (abstract)
 └── AggregationExpression (function, expression, groupBy)
 ```
 
-### 9.3 Type System
+### 10.3 Type System
 
 | Category | Types |
 |----------|-------|
@@ -635,7 +737,7 @@ ExpressionNode (abstract)
 Type promotion rules are defined in `types/promotion.py` and handle implicit
 conversions (e.g., Integer + Decimal → Decimal).
 
-### 9.4 Operators
+### 10.4 Operators
 
 | Category | Operators |
 |----------|-----------|
@@ -648,7 +750,7 @@ conversions (e.g., Integer + Decimal → Decimal).
 | String | String manipulation operators |
 | Time | `TIMESHIFT` and temporal operators |
 
-### 9.5 Symbols
+### 10.5 Symbols
 
 ```
 Operand (abstract)
@@ -663,7 +765,7 @@ Component (abstract)
 Structure (component set with unique keys + single fact)
 ```
 
-### 9.6 Semantic Analyzer
+### 10.6 Semantic Analyzer
 
 The `InputAnalyzer` walks the AST and:
 
@@ -673,7 +775,7 @@ The `InputAnalyzer` walks the AST and:
 4. Resolves cell references to variables
 5. Collects warnings for non-fatal issues
 
-### 9.7 Severity System
+### 10.7 Severity System
 
 Three severity levels for validation operations:
 
@@ -688,11 +790,11 @@ Severity can be set:
 - **Per-operation**: Via 4-tuple expression entries
 - All severity values are case-insensitive
 
-## 10. Extension Points
+## 11. Extension Points
 
 Services are designed for extensibility:
 
-### 10.1 Subclassing
+### 11.1 Subclassing
 
 ```python
 from dpmcore.services import DataDictionaryService
@@ -705,7 +807,7 @@ class CustomDataDictionaryService(DataDictionaryService):
         ...
 ```
 
-### 10.2 Service Registry Extension
+### 11.2 Service Registry Extension
 
 ```python
 from dpmcore.services import ServiceRegistry
@@ -716,7 +818,7 @@ class CustomServiceRegistry(ServiceRegistry):
         self.custom = CustomService(session)
 ```
 
-### 10.3 Django Integration
+### 11.3 Django Integration
 
 In Django mode, services are available as:
 
@@ -732,9 +834,9 @@ def my_view(request):
         return JsonResponse({"tables": [t.to_dict() for t in tables]})
 ```
 
-## 11. Error Handling
+## 12. Error Handling
 
-### 11.1 Exception Hierarchy
+### 12.1 Exception Hierarchy
 
 ```
 DpmCoreError (base)
@@ -752,7 +854,7 @@ DpmCoreError (base)
 └── MigrationError
 ```
 
-### 11.2 Error Messages
+### 12.2 Error Messages
 
 Error messages are defined in a central messages module for consistency and
 potential internationalisation:
@@ -764,7 +866,7 @@ TYPE_MISMATCH = "Cannot apply {operator} to {left_type} and {right_type}"
 INVALID_RELEASE = "Release '{code}' does not exist"
 ```
 
-## 12. Migration from Current Codebase
+## 13. Migration from Current Codebase
 
 | Current (py_dpm) | Target (dpmcore) | Changes |
 |-------------------|-------------------|---------|

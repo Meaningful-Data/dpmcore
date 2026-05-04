@@ -55,6 +55,7 @@ sqlserver = ["pyodbc>=5.0"]
 migration = ["pandas>=2.1.4,<3.0", "numpy>=2.2.0,<2.3"]
 data = ["pandas>=2.1.4,<3.0", "numpy>=2.2.0,<2.3"]
 cli = ["click>=8.1", "rich>=13.7"]
+export = ["openpyxl>=3.1"]
 all = [
     "fastapi>=0.101",
     "uvicorn[standard]>=0.27",
@@ -66,6 +67,7 @@ all = [
     "numpy>=2.2.0,<2.3",
     "click>=8.1",
     "rich>=13.7",
+    "openpyxl>=3.1",
 ]
 
 [project.scripts]
@@ -230,6 +232,13 @@ ignore_errors = true
 # in other third-party imports still surface.
 [[tool.mypy.overrides]]
 module = ["pyodbc"]
+ignore_missing_imports = true
+
+# openpyxl ships untyped. Used by the layout_exporter Excel writer;
+# allow the bare imports rather than installing third-party stubs
+# that may drift from the runtime version.
+[[tool.mypy.overrides]]
+module = ["openpyxl", "openpyxl.*"]
 ignore_missing_imports = true
 
 # Django ORM field declarations (CharField(...), ForeignKey(...),
