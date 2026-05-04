@@ -113,7 +113,7 @@ def export_csv(source: str, output_dir: str) -> None:
     service = ExportCsvService()
 
     try:
-        result = service.export(source, Path(output_dir))
+        result = service.export_safely(source, Path(output_dir))
     except ExportCsvError as exc:
         console.print(f"[red]Error:[/red] {exc}")
         sys.exit(1)
@@ -206,6 +206,88 @@ def build_meili_json(
     if result.ecb_validations_imported:
         console.print("[green]ECB validations imported[/green]")
 
+
+@main.command("update-db")
+@click.option(
+    "--target",
+    required=True,
+    help="Target DB.",
+)
+@click.option(
+    "--access-file",
+    type=click.Path(exists=True, dir_okay=False, path_type=str),
+    default=None,
+    help="Optional Access file. If omitted, data/DPM CSVs are used.",
+)
+@click.option(
+    "--ecb-validations-file",
+    type=click.Path(exists=True, dir_okay=False, path_type=str),
+    default=None,
+    help="Optional ECB validations CSV file.",
+)
+def update_db(
+    target: str,
+    access_file: str | None,
+    ecb_validations_file: str | None,
+) -> None:
+    """Safely update a DPM database."""
+    try:
+        from rich.console import Console
+    except ImportError:
+        click.echo(
+            "Install 'rich' for pretty output: pip install dpmcore[cli]",
+            err=True,
+        )
+        sys.exit(1)
+
+    from dpmcore.services.database_update import (
+        DatabaseUpdateError,
+        DatabaseUpdateService,
+    )
+
+    console = Console()
+
+    if access_file is not None:
+        console.print(
+            f"Updating [cyan]{target}[/cyan] from Access file "
+            f"[cyan]{access_file}[/cyan]..."
+        )
+    else:
+        console.print(
+            f"Updating [cyan]{target}[/cyan] from data/DPM CSVs..."
+        )
+
+    try:
+        result = DatabaseUpdateService().update(
+            target=target,
+            access_file=access_file,
+            ecb_validations_file=ecb_validations_file,
+        )
+    except DatabaseUpdateError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        sys.exit(1)
+
+    migration = result.migration_result
+
+    console.print(
+        f"[green]Updated[/green] {result.target_type} target "
+        f"[cyan]{result.target}[/cyan]"
+    )
+    console.print(
+        f"[bold]{migration.tables_migrated} tables[/bold], "
+        f"{migration.total_rows} rows loaded"
+    )
+
+    if result.used_access_file:
+        console.print("[green]Source loaded from Access file[/green]")
+    else:
+        console.print("[green]Source loaded from data/DPM CSVs[/green]")
+
+    if result.ecb_validations_imported:
+        console.print("[green]ECB validations imported[/green]")
+
+    for warning in migration.warnings:
+        console.print(f"[yellow]Warning:[/yellow] {warning}")
 
 @main.command()
 @click.option(

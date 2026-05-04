@@ -128,7 +128,7 @@ class TestExportCsvCli:
         mock_result.output_dir = tmp_path / "data/DPM"
 
         with patch(
-            "dpmcore.services.export_csv.ExportCsvService.export",
+            "dpmcore.services.export_csv.ExportCsvService.export_safely",
             return_value=mock_result,
         ):
             result = runner.invoke(main, ["export-csv", str(fake_accdb)])
@@ -143,7 +143,7 @@ class TestExportCsvCli:
         from dpmcore.services.export_csv import ExportCsvError
 
         with patch(
-            "dpmcore.services.export_csv.ExportCsvService.export",
+            "dpmcore.services.export_csv.ExportCsvService.export_safely",
             side_effect=ExportCsvError("mdbtools not found"),
         ):
             result = runner.invoke(main, ["export-csv", str(fake_accdb)])
@@ -336,3 +336,161 @@ class TestBuildMeiliJsonCli:
         assert result.exit_code == 0
         assert build_mock.call_args.kwargs["source_dir"] == str(source_dir)
         assert build_mock.call_args.kwargs["access_file"] is None
+
+
+class TestUpdateDbCli:
+    def _mock_result(self, *, used_access_file=False, ecb=False, warnings=None):
+        from pathlib import Path
+
+        r = MagicMock()
+        r.target_type = "sqlite"
+        r.target = Path("data/dpm.sqlite")
+        r.used_access_file = used_access_file
+        r.ecb_validations_imported = ecb
+        r.migration_result.tables_migrated = 5
+        r.migration_result.total_rows = 100
+        r.migration_result.warnings = warnings or []
+        return r
+
+    def test_success_from_csv_dir_prints_startup_message(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(),
+        ):
+            result = runner.invoke(main, ["update-db", "--target", "data/dpm.sqlite"])
+
+        assert result.exit_code == 0
+        assert "data/DPM CSVs" in result.output
+
+    def test_success_from_access_file_prints_path_in_startup(self, runner, tmp_path):
+        access_file = tmp_path / "source.accdb"
+        access_file.touch()
+
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(used_access_file=True),
+        ):
+            result = runner.invoke(
+                main,
+                ["update-db", "--target", "data/dpm.sqlite", "--access-file", str(access_file)],
+            )
+
+        assert result.exit_code == 0
+        assert str(access_file) in result.output
+
+    def test_success_prints_table_and_row_counts(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(),
+        ):
+            result = runner.invoke(main, ["update-db", "--target", "data/dpm.sqlite"])
+
+        assert result.exit_code == 0
+        assert "5 tables" in result.output
+        assert "100" in result.output
+
+    def test_used_access_file_prints_access_source_message(self, runner, tmp_path):
+        access_file = tmp_path / "source.accdb"
+        access_file.touch()
+
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(used_access_file=True),
+        ):
+            result = runner.invoke(
+                main,
+                ["update-db", "--target", "data/dpm.sqlite", "--access-file", str(access_file)],
+            )
+
+        assert "Source loaded from Access file" in result.output
+
+    def test_used_csv_prints_csv_source_message(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(used_access_file=False),
+        ):
+            result = runner.invoke(main, ["update-db", "--target", "data/dpm.sqlite"])
+
+        assert "Source loaded from data/DPM CSVs" in result.output
+
+    def test_ecb_validations_imported_message(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(ecb=True),
+        ):
+            result = runner.invoke(main, ["update-db", "--target", "data/dpm.sqlite"])
+
+        assert "ECB validations imported" in result.output
+
+    def test_warnings_printed(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(warnings=["check column X"]),
+        ):
+            result = runner.invoke(main, ["update-db", "--target", "data/dpm.sqlite"])
+
+        assert "check column X" in result.output
+
+    def test_database_update_error_exits_with_code_1(self, runner):
+        from dpmcore.services.database_update import DatabaseUpdateError
+
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            side_effect=DatabaseUpdateError("unsupported target"),
+        ):
+            result = runner.invoke(main, ["update-db", "--target", "data/dpm.sqlite"])
+
+        assert result.exit_code == 1
+        assert "unsupported target" in result.output
+
+    def test_missing_target_exits_nonzero(self, runner):
+        result = runner.invoke(main, ["update-db"])
+        assert result.exit_code != 0
+
+    def test_help_shows_update_db(self, runner):
+        result = runner.invoke(main, ["--help"])
+        assert "update-db" in result.output
+
+    def test_ecb_validations_file_passed_to_service(self, runner, tmp_path):
+        ecb_file = tmp_path / "ecb.csv"
+        ecb_file.touch()
+
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(),
+        ) as mock_update:
+            result = runner.invoke(
+                main,
+                [
+                    "update-db",
+                    "--target",
+                    "data/dpm.sqlite",
+                    "--ecb-validations-file",
+                    str(ecb_file),
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert mock_update.call_args.kwargs["ecb_validations_file"] == str(ecb_file)
+
+    def test_nonexistent_access_file_exits_nonzero(self, runner, tmp_path):
+        nonexistent = str(tmp_path / "missing.accdb")
+        result = runner.invoke(
+            main,
+            ["update-db", "--target", "data/dpm.sqlite", "--access-file", nonexistent],
+        )
+        assert result.exit_code != 0
+
+    def test_nonexistent_ecb_file_exits_nonzero(self, runner, tmp_path):
+        nonexistent = str(tmp_path / "missing.csv")
+        result = runner.invoke(
+            main,
+            [
+                "update-db",
+                "--target",
+                "data/dpm.sqlite",
+                "--ecb-validations-file",
+                nonexistent,
+            ],
+        )
+        assert result.exit_code != 0

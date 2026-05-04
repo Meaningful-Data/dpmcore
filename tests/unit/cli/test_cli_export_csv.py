@@ -19,7 +19,7 @@ def test_export_csv_cli_success(tmp_path):
     )
 
     with patch(
-        "dpmcore.services.export_csv.ExportCsvService.export",
+        "dpmcore.services.export_csv.ExportCsvService.export_safely",
         return_value=fake_result,
     ):
         result = runner.invoke(
