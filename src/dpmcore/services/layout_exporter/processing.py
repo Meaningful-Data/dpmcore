@@ -81,7 +81,8 @@ def sort_headers(headers: list[LayoutHeader]) -> list[LayoutHeader]:
     """Sort headers using the TotalOrder algorithm.
 
     Builds a recursive sort key that respects parent-child hierarchy
-    and the parent_first flag.
+    and the parent_first flag. ``sort_key`` and ``depth`` are written
+    on each input header in place.
     """
     if not headers:
         return []

@@ -22,10 +22,8 @@ from openpyxl import load_workbook
 
 from dpmcore.services.layout_exporter.excel_writer import (
     ExcelLayoutWriter,
-    _build_header_tooltip,
     _collect_axis_dimensions,
     _dim_display_label,
-    _find_member,
     _find_member_by_label,
     _format_categorisations,
     _is_descendant,
@@ -183,12 +181,6 @@ def test_key_member_display_without_subcategory():
     assert _key_member_display(dm, ch) == "(DOM:) <Key value>"
 
 
-def test_find_member_hit_and_miss():
-    dms = [_dm(property_id=1), _dm(property_id=2)]
-    assert _find_member(dms, 2).property_id == 2
-    assert _find_member(dms, 99) is None
-
-
 def test_find_member_by_label_hit_and_miss():
     dms = [_dm(dimension_code="ATY", dimension_label="Main")]
     assert _find_member_by_label(dms, "Main") is not None
@@ -203,21 +195,6 @@ def test_format_categorisations_populated():
     out = _format_categorisations([_dm(dimension_label="D", member_label="M")])
     assert "D" in out
     assert "M" in out
-
-
-def test_build_header_tooltip_empty():
-    assert _build_header_tooltip([]) == ""
-
-
-def test_build_header_tooltip_populated():
-    h = _lh(
-        code="010",
-        label="L",
-        categorisations=[_dm(dimension_label="D", member_label="M")],
-    )
-    out = _build_header_tooltip([h])
-    assert "010" in out
-    assert "D = M" in out
 
 
 def test_collect_axis_dimensions_aty_first():

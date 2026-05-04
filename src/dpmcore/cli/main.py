@@ -456,8 +456,8 @@ def export_layout(
                 output_path,
                 config,
             )
-        else:
-            codes = [c.strip() for c in table_codes.split(",")]  # type: ignore[union-attr]
+        elif table_codes:
+            codes = [c.strip() for c in table_codes.split(",")]
             path = svc.export_tables(
                 codes,
                 release_code,

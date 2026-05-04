@@ -335,7 +335,7 @@ class ExcelLayoutWriter:
                 for c_off in range(1, num_visible_cols + 1):
                     ec = data_start_col - 1 + c_off
                     cell = ws.cell(row=r, column=ec)
-                    if cell.fill == PatternFill():  # unfilled
+                    if cell.fill.fill_type is None:  # unfilled
                         cell.fill = _GREY_FILL
 
         # Merge column headers: vertical borders for leaves,
@@ -911,17 +911,6 @@ def _key_member_display(dm: DimensionMember, ch: LayoutHeader) -> str:
     return f"({dm.domain_code}:) <Key value>"
 
 
-def _find_member(
-    cats: list[DimensionMember],
-    property_id: int,
-) -> Optional[DimensionMember]:
-    """Find a DimensionMember matching a given property_id."""
-    for dm in cats:
-        if dm.property_id == property_id:
-            return dm
-    return None
-
-
 def _find_member_by_label(
     cats: list[DimensionMember],
     dim_display_label: str,
@@ -937,18 +926,6 @@ def _format_categorisations(cats: list[DimensionMember]) -> str:
     """Format categorisations as tooltip text: Dimension = Member."""
     lines = [f"{dm.dimension_label}  =  {dm.member_label}" for dm in cats]
     return "\n".join(lines)
-
-
-def _build_header_tooltip(headers: list[LayoutHeader]) -> str:
-    """Build a tooltip for sheet headers."""
-    parts: list[str] = []
-    for h in headers:
-        parts.append(f"{h.code} {h.label}")
-        parts.extend(
-            f"  {dm.dimension_label} = {dm.member_label}"
-            for dm in h.categorisations
-        )
-    return "\n".join(parts)
 
 
 def _merge_column_headers(  # noqa: C901

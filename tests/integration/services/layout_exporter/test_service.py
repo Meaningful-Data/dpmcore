@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -23,7 +22,6 @@ from _helpers import (  # noqa: E402  (sys.path injected via conftest)
 )
 from openpyxl import load_workbook
 
-from dpmcore.services.layout_exporter.models import ExportConfig
 from dpmcore.services.layout_exporter.service import (
     LayoutExporterService,
     _fix_xlsx_timestamps,
@@ -563,6 +561,3 @@ def test_fix_xlsx_timestamps_no_op_when_no_marker(tmp_path):
     raw = path.read_bytes()
     _fix_xlsx_timestamps(path)
     assert path.read_bytes() == raw
-
-
-_ = (ExportConfig, tempfile)

@@ -11,9 +11,7 @@ from openpyxl import Workbook
 from dpmcore.services.layout_exporter import excel_writer as ew
 from dpmcore.services.layout_exporter.excel_writer import (
     ExcelLayoutWriter,
-    _build_header_tooltip,
     _dim_display_label,
-    _find_member,
     _find_member_by_label,
     _format_categorisations,
     _is_descendant,
@@ -138,12 +136,6 @@ def test_key_member_display_without_subcategory():
     assert _key_member_display(dm, ch) == "(DOM:) <Key value>"
 
 
-def test_find_member_hit_and_miss():
-    cats = [_dm(prop_id=1), _dm(prop_id=2)]
-    assert _find_member(cats, 2).property_id == 2
-    assert _find_member(cats, 99) is None
-
-
 def test_find_member_by_label_hit_and_miss():
     dm = _dm(code="DC", domain="DOM", label="X")
     assert _find_member_by_label([dm], "(DC:DOM) X") is dm
@@ -154,14 +146,6 @@ def test_format_categorisations_empty_and_populated():
     assert _format_categorisations([]) == ""
     out = _format_categorisations([_dm(label="D", member="M")])
     assert out == "D  =  M"
-
-
-def test_build_header_tooltip_empty_and_populated():
-    assert _build_header_tooltip([]) == ""
-    h = _h(1, code="C", label="L", cats=[_dm(label="D", member="M")])
-    out = _build_header_tooltip([h])
-    assert "C L" in out
-    assert "D = M" in out
 
 
 def test_is_descendant_yes_no_cycle():
