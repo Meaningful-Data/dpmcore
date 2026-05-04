@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 from sqlalchemy import create_engine, text
 
-from dpmcore.services.migration import (
+from dpmcore.loaders.migration import (
     MigrationError,
     MigrationResult,
     MigrationService,
@@ -97,7 +97,7 @@ class TestMigrateBothFail:
                 side_effect=FileNotFoundError,
             ),
             patch(
-                "dpmcore.services.migration.MigrationService"
+                "dpmcore.loaders.migration.MigrationService"
                 "._extract_with_pyodbc",
                 side_effect=ImportError("no pyodbc"),
             ),
@@ -112,7 +112,7 @@ class TestCreateSchema:
         service = MigrationService(mock_engine)
 
         with patch(
-            "dpmcore.services.migration.Base.metadata.create_all"
+            "dpmcore.loaders.migration.Base.metadata.create_all"
         ) as mock_create:
             service._create_schema()
             mock_create.assert_called_once_with(mock_engine)

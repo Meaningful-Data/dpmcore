@@ -714,9 +714,13 @@ def expand_with_expression(node: Any) -> Any:
         else:
             return ASTObjects.Start(children=expanded_children)
 
-    # For other node types, recursively expand children
-    if hasattr(node, "__dict__"):
-        expanded_node = type(node).__new__(type(node))  # type: ignore[call-overload]
+    # For other AST node types, recursively expand children.
+    # Guard with ``isinstance(..., ASTObjects.AST)`` so we don't try
+    # to recreate non-AST objects that happen to have a ``__dict__``
+    # (e.g. ``pandas.DataFrame``/``RangeIndex`` attached to a
+    # ``VarID.data`` attribute by semantic enrichment).
+    if isinstance(node, ASTObjects.AST):
+        expanded_node = type(node).__new__(type(node))
         for attr_name, attr_value in node.__dict__.items():
             setattr(
                 expanded_node, attr_name, expand_with_expression(attr_value)
@@ -777,11 +781,22 @@ def apply_partial_selection(expression: Any, partial_selection: Any) -> Any:
             if hasattr(partial_selection, "is_table_group")
             else False,
         )
+        # Carry over semantic enrichment (cell data, etc.) from the
+        # original VarID — without this, the engine's required
+        # ``data`` array on every VarID disappears whenever a WITH
+        # expansion is applied.
+        for attr in ("data", "key_components"):
+            if hasattr(expression, attr):
+                setattr(new_varid, attr, getattr(expression, attr))
         return new_varid
 
-    # For other node types, recursively apply to children
-    if hasattr(expression, "__dict__"):
-        modified_expr = type(expression).__new__(type(expression))  # type: ignore[call-overload]
+    # For other AST node types, recursively apply to children.
+    # Guarded with ``isinstance(..., ASTObjects.AST)`` so non-AST
+    # objects with a ``__dict__`` (e.g. pandas DataFrame attached to
+    # ``VarID.data``) are returned untouched instead of being
+    # re-instantiated via their ``__new__``.
+    if isinstance(expression, ASTObjects.AST):
+        modified_expr = type(expression).__new__(type(expression))
         for attr_name, attr_value in expression.__dict__.items():
             setattr(
                 modified_expr,
@@ -817,17 +832,16 @@ def serialize_ast(ast_obj: Any) -> NodeValue:
             key: serialize_ast(value) for key, value in expanded_obj.items()
         }
 
-    # Use visitor pattern for GetOp and SubOp to get correct structure
-    # This must be checked BEFORE toJSON() to ensure nested nodes are handled correctly
-    if hasattr(ASTObjects, "GetOp") and isinstance(
-        expanded_obj, ASTObjects.GetOp
-    ):
-        visitor = ASTToJSONVisitor()
-        return visitor.visit(expanded_obj)
-
-    if hasattr(ASTObjects, "SubOp") and isinstance(
-        expanded_obj, ASTObjects.SubOp
-    ):
+    # Route every AST node through ``ASTToJSONVisitor`` so the
+    # output matches the engine-ready shape (singular
+    # ``row``/``column``/``sheet`` instead of plural lists,
+    # primitive ``default`` values, populated ``data`` arrays for
+    # ``VarID``). The previous behaviour of falling back to
+    # ``toJSON`` for everything except ``GetOp``/``SubOp`` emitted
+    # raw node attributes (``rows``/``cols``/``sheets``,
+    # ``is_table_group``, ``default`` as a Constant dict) which the
+    # ADAM engine schema rejects.
+    if isinstance(expanded_obj, ASTObjects.AST):
         visitor = ASTToJSONVisitor()
         return visitor.visit(expanded_obj)
 
