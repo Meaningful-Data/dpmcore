@@ -38,6 +38,8 @@ docs/_build/
 # Database files
 *.db
 *.db-journal
+*.sqlite
+*.sqlite3
 **/*.accdb
 
 # Temporary files

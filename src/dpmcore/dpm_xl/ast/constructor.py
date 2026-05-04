@@ -79,7 +79,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         these are always ``TerminalNodeImpl`` in the terminal positions we
         read — cast once here so call sites stay readable.
         """
-        return cast(TerminalNodeImpl, node).symbol.text
+        return str(cast(TerminalNodeImpl, node).symbol.text)
 
     def visitStart(self, ctx: dpm_xlParser.StartContext) -> Start:
         ctx_list = list(ctx.getChildren())

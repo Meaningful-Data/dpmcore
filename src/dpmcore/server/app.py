@@ -99,6 +99,12 @@ def create_app(
                     "(releases, tables, variables, etc.)."
                 ),
             },
+            {
+                "name": "Scripts",
+                "description": (
+                    "Engine-ready DPM-XL validations script generation."
+                ),
+            },
         ],
     )
 
@@ -165,6 +171,13 @@ def create_app(
 
     structure_router = create_structure_router(get_session)
     router.include_router(structure_router)
+
+    # -- script generation -----------------------------------------------
+
+    from dpmcore.server.routers.scripts import create_scripts_router
+
+    scripts_router = create_scripts_router(get_session)
+    router.include_router(scripts_router)
 
     app.include_router(router)
     return app
