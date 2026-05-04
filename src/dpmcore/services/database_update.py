@@ -12,7 +12,7 @@ from sqlalchemy import MetaData, Table, create_engine, func, inspect, select, te
 
 from dpmcore.services.ecb_validations_import import EcbValidationsImportService
 from dpmcore.services.export_csv import ExportCsvService
-from dpmcore.services.migration import (
+from dpmcore.loaders.migration import (
     MigrationError,
     MigrationResult,
     MigrationService,

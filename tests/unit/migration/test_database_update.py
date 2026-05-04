@@ -8,7 +8,7 @@ from dpmcore.services.database_update import (
     DatabaseUpdateError,
     DatabaseUpdateService,
 )
-from dpmcore.services.migration import MigrationError, MigrationResult
+from dpmcore.loaders.migration import MigrationError, MigrationResult
 
 
 @pytest.fixture
