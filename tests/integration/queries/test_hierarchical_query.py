@@ -224,3 +224,77 @@ def test_get_all_frameworks_release_and_date_mutually_exclusive(
     service = HierarchyService(memory_session)
     with pytest.raises(ValueError, match="maximum of one"):
         service.get_all_frameworks(release_id=1, date="2024-01-01")
+
+
+def test_get_all_frameworks_deep_keeps_framework_with_no_matching_mv(
+    memory_session,
+):
+    """Filter must not drop frameworks whose every MV is excluded.
+
+    Regression for the bug where ``filter_by_release`` was applied as
+    a WHERE predicate on the LEFT-OUTER-joined ``ModuleVersion``,
+    silently turning the outer join into an inner filter and dropping
+    frameworks with no matching module-version.
+    """
+    session = memory_session
+    _seed_two_frameworks(session)
+    # FW3 has one module-version that only exists at release 1 (ends
+    # at 2). Querying release 2 should keep FW3 in the result with an
+    # empty module_versions list, not drop it.
+    session.add(
+        Framework(
+            framework_id=3, code="FW3", name="Framework 3", description="d"
+        )
+    )
+    session.add(Module(module_id=33, framework_id=3))
+    session.add(
+        ModuleVersion(
+            module_vid=330,
+            module_id=33,
+            code="MV3_OLD",
+            start_release_id=1,
+            end_release_id=2,
+        )
+    )
+    session.commit()
+
+    service = HierarchyService(session)
+    deep = service.get_all_frameworks(deep=True, release_id=2)
+
+    by_code = {fw["code"]: fw for fw in deep}
+    assert "FW3" in by_code
+    assert by_code["FW3"]["module_versions"] == []
+
+
+def test_get_all_frameworks_deep_keeps_framework_with_no_matching_date(
+    memory_session,
+):
+    """Same regression, but driven by the ``date`` filter."""
+    session = memory_session
+    _seed_two_frameworks(session)
+    # FW3 has a module-version only valid in 2030; querying for
+    # 2024-06-15 should still return FW3 with empty module_versions.
+    session.add(
+        Framework(
+            framework_id=3, code="FW3", name="Framework 3", description="d"
+        )
+    )
+    session.add(Module(module_id=33, framework_id=3))
+    session.add(
+        ModuleVersion(
+            module_vid=330,
+            module_id=33,
+            code="MV3_FUTURE",
+            start_release_id=1,
+            from_reference_date=date(2030, 1, 1),
+            to_reference_date=date(2030, 12, 31),
+        )
+    )
+    session.commit()
+
+    service = HierarchyService(session)
+    deep = service.get_all_frameworks(deep=True, date="2024-06-15")
+
+    by_code = {fw["code"]: fw for fw in deep}
+    assert "FW3" in by_code
+    assert by_code["FW3"]["module_versions"] == []

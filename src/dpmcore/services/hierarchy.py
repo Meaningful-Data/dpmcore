@@ -70,6 +70,13 @@ def _apply_module_filter(
     skip that fallback and return every module version regardless of
     release window — useful for callers that want the full historical
     tree.
+
+    Predicates are added as WHERE clauses, which is fine for inner-
+    joined queries that just want to discard non-matching rows. For
+    queries that LEFT OUTER JOIN ``ModuleVersion`` and need to keep
+    parent rows (frameworks, modules) even when no module-version
+    matches, use :func:`_filtered_module_version_alias` to push the
+    filter into a subquery instead.
     """
     if date:
         return filter_by_date(
@@ -88,6 +95,46 @@ def _apply_module_filter(
     if historical:
         return query
     return filter_active_only(query, ModuleVersion.end_release_id)
+
+
+def _filtered_module_version_alias(
+    session: "Session",
+    release_id: Optional[int],
+    date: Optional[str],
+    historical: bool = False,
+) -> Any:
+    """Return a ``ModuleVersion`` alias backed by a filtered subquery.
+
+    The returned alias acts like ``ModuleVersion`` (so callers can
+    reference ``alias.module_vid`` etc.) but only contains rows that
+    pass the requested filter. Outer-joining against this alias keeps
+    parent rows (frameworks, modules) in the result even when no
+    module-version matches, which a WHERE-style filter would silently
+    drop.
+
+    The filter semantics mirror :func:`_apply_module_filter`:
+    ``date`` wins over ``release_id``, and when neither is supplied
+    the result is restricted to active rows unless ``historical`` is
+    True.
+    """
+    base = session.query(ModuleVersion)
+    if date:
+        base = filter_by_date(
+            base,
+            date,
+            start_col=ModuleVersion.from_reference_date,
+            end_col=ModuleVersion.to_reference_date,
+        )
+    elif release_id is not None:
+        base = filter_by_release(
+            base,
+            release_id=release_id,
+            start_col=ModuleVersion.start_release_id,
+            end_col=ModuleVersion.end_release_id,
+        )
+    elif not historical:
+        base = filter_active_only(base, ModuleVersion.end_release_id)
+    return aliased(ModuleVersion, base.subquery())
 
 
 class HierarchyService:
@@ -130,7 +177,9 @@ class HierarchyService:
             and each module version contains ``table_versions``
             (possibly empty for the same reason). Frameworks, modules,
             and tables are joined with LEFT OUTER JOIN so empty slots
-            do not silently disappear from the tree.
+            do not silently disappear from the tree. Filter predicates
+            are pushed into a ``ModuleVersion`` subquery so they don't
+            turn the outer joins into an inner filter.
 
         Raises:
             ValueError: If more than one of ``release_id``, ``date``,
@@ -145,22 +194,30 @@ class HierarchyService:
         if not deep:
             return [r.to_dict() for r in self.session.query(Framework).all()]
 
+        # Push the module-version filter into a subquery so the outer
+        # joins below can preserve frameworks / modules that have no
+        # matching module-versions — a WHERE-style filter on the
+        # outer-joined ModuleVersion would silently drop them.
+        mv = _filtered_module_version_alias(
+            self.session, release_id, date, historical=historical
+        )
+
         q = (
             self.session.query(
                 Framework.framework_id.label("framework_id"),
                 Framework.code.label("framework_code"),
                 Framework.name.label("framework_name"),
                 Framework.description.label("framework_description"),
-                ModuleVersion.module_vid.label("module_vid"),
-                ModuleVersion.module_id.label("module_id"),
-                ModuleVersion.start_release_id.label("mv_start_release_id"),
-                ModuleVersion.end_release_id.label("mv_end_release_id"),
-                ModuleVersion.code.label("module_code"),
-                ModuleVersion.name.label("module_name"),
-                ModuleVersion.description.label("module_description"),
-                ModuleVersion.version_number.label("module_version_number"),
-                ModuleVersion.from_reference_date.label("module_from_date"),
-                ModuleVersion.to_reference_date.label("module_to_date"),
+                mv.module_vid.label("module_vid"),
+                mv.module_id.label("module_id"),
+                mv.start_release_id.label("mv_start_release_id"),
+                mv.end_release_id.label("mv_end_release_id"),
+                mv.code.label("module_code"),
+                mv.name.label("module_name"),
+                mv.description.label("module_description"),
+                mv.version_number.label("module_version_number"),
+                mv.from_reference_date.label("module_from_date"),
+                mv.to_reference_date.label("module_to_date"),
                 TableVersion.table_vid.label("table_vid"),
                 TableVersion.code.label("table_version_code"),
                 TableVersion.name.label("table_version_name"),
@@ -180,13 +237,10 @@ class HierarchyService:
             # modules with no tables, etc. still appear in the result
             # tree (with empty lists at the missing level).
             .outerjoin(Module, Module.framework_id == Framework.framework_id)
-            .outerjoin(
-                ModuleVersion, ModuleVersion.module_id == Module.module_id
-            )
+            .outerjoin(mv, mv.module_id == Module.module_id)
             .outerjoin(
                 ModuleVersionComposition,
-                ModuleVersionComposition.module_vid
-                == ModuleVersion.module_vid,
+                ModuleVersionComposition.module_vid == mv.module_vid,
             )
             .outerjoin(
                 TableVersion,
@@ -195,11 +249,10 @@ class HierarchyService:
             .outerjoin(Table, Table.table_id == TableVersion.table_id)
             .order_by(
                 Framework.framework_id,
-                ModuleVersion.module_vid,
+                mv.module_vid,
                 TableVersion.table_vid,
             )
         )
-        q = _apply_module_filter(q, release_id, date, historical=historical)
 
         frameworks: Dict[int, Dict[str, Any]] = {}
         for row in q.all():

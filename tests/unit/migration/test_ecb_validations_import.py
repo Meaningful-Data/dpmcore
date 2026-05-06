@@ -297,6 +297,46 @@ class TestEcbValidationsImport:
         finally:
             session.close()
 
+    def test_get_valid_release_ids_unparseable_start_raises(
+        self, sqlite_engine_with_schema
+    ):
+        from dpmcore.orm.infrastructure import Release
+
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            session.add(Release(release_id=1, code="garbage"))
+            session.add(Release(release_id=2, code="4.1"))
+            session.flush()
+
+            with pytest.raises(
+                EcbValidationsImportError, match="has no sort_order"
+            ):
+                EcbValidationsImportService._get_valid_release_ids(
+                    session, start_release_id=1, end_release_id=None
+                )
+        finally:
+            session.close()
+
+    def test_get_valid_release_ids_unparseable_end_raises(
+        self, sqlite_engine_with_schema
+    ):
+        from dpmcore.orm.infrastructure import Release
+
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            session.add(Release(release_id=1, code="4.0"))
+            session.add(Release(release_id=2, code="garbage"))
+            session.flush()
+
+            with pytest.raises(
+                EcbValidationsImportError, match="has no sort_order"
+            ):
+                EcbValidationsImportService._get_valid_release_ids(
+                    session, start_release_id=1, end_release_id=2
+                )
+        finally:
+            session.close()
+
     # ------------------------------------------------------------------
     # _create_operation_concept (requires schema)
     # ------------------------------------------------------------------

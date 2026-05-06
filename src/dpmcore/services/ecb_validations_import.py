@@ -204,6 +204,11 @@ class EcbValidationsImportService:
             .filter(Release.release_id == start_release_id)
             .scalar()
         )
+        if start_sort is None:
+            raise EcbValidationsImportError(
+                f"Release {start_release_id} has no sort_order — its "
+                "code could not be parsed as MAJOR.MINOR[.PATCH]."
+            )
         query = (
             session.query(Release.release_id)
             .filter(Release.sort_order >= start_sort)
@@ -215,6 +220,12 @@ class EcbValidationsImportService:
                 .filter(Release.release_id == end_release_id)
                 .scalar()
             )
+            if end_sort is None:
+                raise EcbValidationsImportError(
+                    f"Release {end_release_id} has no sort_order — "
+                    "its code could not be parsed as "
+                    "MAJOR.MINOR[.PATCH]."
+                )
             query = query.filter(Release.sort_order < end_sort)
         return [row[0] for row in query.all()]
 

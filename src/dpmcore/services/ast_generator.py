@@ -399,7 +399,9 @@ class ASTGeneratorService:
 
         # Resolve start/end sort_order once at Python time. The bounds
         # are integer release IDs known up-front, so a single Release
-        # lookup beats a correlated subquery executed per row.
+        # lookup beats a correlated subquery executed per row. An
+        # unresolved bound (missing Release row or unparseable code)
+        # would silently widen the window, so fail loudly instead.
         start_sort: Optional[int] = None
         end_sort: Optional[int] = None
         if mv.start_release_id is not None:
@@ -408,12 +410,24 @@ class ASTGeneratorService:
                 .filter(Release.release_id == mv.start_release_id)
                 .scalar()
             )
+            if start_sort is None:
+                raise ValueError(
+                    f"Module version window start release "
+                    f"{mv.start_release_id} has no sort_order — its "
+                    "code could not be parsed as MAJOR.MINOR[.PATCH]."
+                )
         if mv.end_release_id is not None:
             end_sort = (
                 self.session.query(Release.sort_order)
                 .filter(Release.release_id == mv.end_release_id)
                 .scalar()
             )
+            if end_sort is None:
+                raise ValueError(
+                    f"Module version window end release "
+                    f"{mv.end_release_id} has no sort_order — its "
+                    "code could not be parsed as MAJOR.MINOR[.PATCH]."
+                )
 
         base_query = self.session.query(Release)
         if start_sort is not None:
