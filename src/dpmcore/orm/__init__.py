@@ -8,6 +8,9 @@ import dpmcore.orm.glossary  # noqa: F401
 import dpmcore.orm.infrastructure  # noqa: F401
 import dpmcore.orm.operations  # noqa: F401
 import dpmcore.orm.packaging  # noqa: F401
+
+# Register the Release.sort_order auto-populate listeners.
+import dpmcore.orm.release_sort_order  # noqa: F401
 import dpmcore.orm.rendering  # noqa: F401
 import dpmcore.orm.variables  # noqa: F401
 from dpmcore.orm.base import (
