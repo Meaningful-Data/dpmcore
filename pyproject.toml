@@ -1,6 +1,6 @@
 [project]
 name = "dpmcore"
-version = "0.1.0rc1"
+version = "0.1.0rc2"
 description = "Python library for DPM 2.0 Refit regulatory reporting (ORM, services, REST API)"
 license = { text = "Apache-2.0" }
 readme = "README.md"
