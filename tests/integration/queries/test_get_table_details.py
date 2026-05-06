@@ -11,6 +11,11 @@ still exists: structure lookup, release filtering, and the handling of
 missing tables.
 """
 
+from datetime import date
+
+import pytest
+
+from dpmcore.orm.infrastructure import Release
 from dpmcore.orm.packaging import (
     Framework,
     Module,
@@ -100,8 +105,41 @@ def test_get_table_details_structure(memory_session):
 
 
 def test_get_table_details_filtering_by_release_id(memory_session):
-    """release_id filter picks the TableVersion valid at that release."""
+    """release_id filter picks the TableVersion valid at that release.
+
+    After the refactor that brought get_table_details under
+    ``_resolve_table_version``, the release filter is applied to the
+    parent ``ModuleVersion``. Each ``TableVersion`` must therefore be
+    linked to a ``ModuleVersion`` whose release window matches.
+    """
     session = memory_session
+
+    # Release-range filter resolves the target's sort_order (parsed
+    # from semver code), so each release_id must correspond to a real
+    # Release row with a parseable code.
+    session.add(Release(release_id=1, code="1.0", date=date(2024, 1, 1)))
+    session.add(Release(release_id=2, code="2.0", date=date(2025, 1, 1)))
+
+    session.add(Framework(framework_id=1, code="FW"))
+    session.add(Module(module_id=1, framework_id=1))
+    session.add(
+        ModuleVersion(
+            module_vid=10,
+            module_id=1,
+            code="MV1",
+            start_release_id=1,
+            end_release_id=2,
+        )
+    )
+    session.add(
+        ModuleVersion(
+            module_vid=11,
+            module_id=1,
+            code="MV1",
+            start_release_id=2,
+            end_release_id=None,
+        )
+    )
 
     session.add(Table(table_id=1))
     session.add(
@@ -124,8 +162,14 @@ def test_get_table_details_filtering_by_release_id(memory_session):
             end_release_id=None,
         )
     )
+    session.add(
+        ModuleVersionComposition(module_vid=10, table_vid=101, table_id=1)
+    )
+    session.add(
+        ModuleVersionComposition(module_vid=11, table_vid=102, table_id=1)
+    )
 
-    # Minimal linkage so the query picks something up.
+    # Minimal header linkage so the headers query has something to hit.
     session.add(Header(header_id=99))
     session.add(HeaderVersion(header_vid=999, header_id=99))
     session.add(
@@ -143,8 +187,8 @@ def test_get_table_details_filtering_by_release_id(memory_session):
     assert res1["table_vid"] == 101
     assert res1["name"] == "Table V1"
 
-    # release_id=2 -> start<=2 AND (end>2 OR NULL); TV1 ends at 2 so 2>2 False,
-    # TV2 starts 2 end NULL -> kept.
+    # release_id=2 -> start<=2 AND (end>2 OR NULL); MV10 ends at 2 so 2>2
+    # False, MV11 starts 2 end NULL -> kept, picking TV102.
     res2 = service.get_table_details("T_MULTI", release_id=2)
     assert res2 is not None
     assert res2["table_vid"] == 102
@@ -155,3 +199,78 @@ def test_get_table_details_missing_table_returns_none(memory_session):
     """Unknown table_code returns None (replaces py_dpm's ValueError)."""
     service = HierarchyService(memory_session)
     assert service.get_table_details("UNKNOWN_TABLE") is None
+
+
+def test_get_table_details_filtering_by_date(memory_session):
+    """Date routes through ModuleVersion.from_reference_date / to_."""
+    session = memory_session
+    session.add(Release(release_id=1, code="1.0", date=date(2024, 1, 1)))
+    session.add(Release(release_id=2, code="2.0", date=date(2025, 1, 1)))
+    session.add(Framework(framework_id=1, code="FW"))
+    session.add(Module(module_id=1, framework_id=1))
+    session.add(
+        ModuleVersion(
+            module_vid=10,
+            module_id=1,
+            code="MV1",
+            start_release_id=1,
+            end_release_id=2,
+            from_reference_date=date(2024, 1, 1),
+            to_reference_date=date(2024, 12, 31),
+        )
+    )
+    session.add(
+        ModuleVersion(
+            module_vid=11,
+            module_id=1,
+            code="MV1",
+            start_release_id=2,
+            end_release_id=None,
+            from_reference_date=date(2025, 1, 1),
+            to_reference_date=None,
+        )
+    )
+
+    session.add(Table(table_id=1))
+    session.add(
+        TableVersion(
+            table_vid=101,
+            table_id=1,
+            code="T_DATE",
+            name="Table V1",
+            start_release_id=1,
+            end_release_id=2,
+        )
+    )
+    session.add(
+        TableVersion(
+            table_vid=102,
+            table_id=1,
+            code="T_DATE",
+            name="Table V2",
+            start_release_id=2,
+            end_release_id=None,
+        )
+    )
+    session.add(
+        ModuleVersionComposition(module_vid=10, table_vid=101, table_id=1)
+    )
+    session.add(
+        ModuleVersionComposition(module_vid=11, table_vid=102, table_id=1)
+    )
+    session.commit()
+
+    service = HierarchyService(session)
+    early = service.get_table_details("T_DATE", date="2024-06-15")
+    assert early is not None
+    assert early["table_vid"] == 101
+
+    late = service.get_table_details("T_DATE", date="2025-06-15")
+    assert late is not None
+    assert late["table_vid"] == 102
+
+
+def test_get_table_details_release_and_date_mutually_exclusive(memory_session):
+    service = HierarchyService(memory_session)
+    with pytest.raises(ValueError, match="maximum of one"):
+        service.get_table_details("T1", release_id=1, date="2024-01-01")

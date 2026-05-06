@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from dpmcore.services.dpm_xl import DpmXlService
     from dpmcore.services.explorer import ExplorerService
     from dpmcore.services.hierarchy import HierarchyService
+    from dpmcore.services.layout_exporter import LayoutExporterService
     from dpmcore.services.meili_json import MeiliJsonService
     from dpmcore.services.scope_calculator import ScopeCalculatorService
     from dpmcore.services.semantic import SemanticService
@@ -142,6 +143,21 @@ class _ServiceAccessor:
         if "structure" not in self._cache:
             self._cache["structure"] = StructureService(self._session)
         service: StructureService = self._cache["structure"]
+        return service
+
+    # ------------------------------------------------------------------ #
+    # Layout exporter
+    # ------------------------------------------------------------------ #
+
+    @property
+    def layout_exporter(self) -> "LayoutExporterService":
+        from dpmcore.services.layout_exporter import LayoutExporterService
+
+        if "layout_exporter" not in self._cache:
+            self._cache["layout_exporter"] = LayoutExporterService(
+                self._session,
+            )
+        service: LayoutExporterService = self._cache["layout_exporter"]
         return service
 
     # ------------------------------------------------------------------ #

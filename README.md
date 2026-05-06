@@ -72,7 +72,7 @@ from dpmcore import connect
 with connect("sqlite:///dpm.db") as db:
     result = db.services.semantic.validate(
         "{tC_01.00, r0100, c0010} + {tC_01.00, r0200, c0010}",
-        release_id=5,
+        release_code="4.2.1",       # or release_id=<int>
     )
     print(result.is_valid)
     print(result.warning)
@@ -157,6 +157,10 @@ curl -X POST http://localhost:8000/api/v1/scripts \
 
 **Data dictionary queries:**
 
+Release-aware methods accept `release_id` (integer ID) or
+`release_code` (semver string like `"4.2.1"`). At most one may be
+supplied; passing both raises `ValueError`.
+
 ```python
 from dpmcore import connect
 
@@ -164,8 +168,10 @@ with connect("sqlite:///dpm.db") as db:
     dd = db.services.data_dictionary
 
     releases = dd.get_releases()
-    tables   = dd.get_tables(release_id=5)
-    items    = dd.get_all_item_signatures(release_id=5)
+    tables   = dd.get_tables(release_code="4.2.1")
+    items    = dd.get_all_item_signatures(release_code="4.2.1")
+    table    = dd.get_table_version("C_01.00", release_code="4.2.1")
+    cats     = dd.get_item_categories(release_code="4.2.1")
 ```
 
 **Operation scope calculation:**
@@ -176,7 +182,7 @@ from dpmcore import connect
 with connect("sqlite:///dpm.db") as db:
     result = db.services.scope_calculator.calculate_from_expression(
         expression="{tC_01.00, r0100, c0010} = {tC_01.00, r0200, c0010}",
-        release_id=5,
+        release_code="4.2.1",       # or release_id=<int>
     )
     print(result.total_scopes)
     print(result.module_versions)
@@ -190,9 +196,10 @@ from dpmcore import connect
 with connect("sqlite:///dpm.db") as db:
     explorer = db.services.explorer
 
-    var = explorer.get_variable_by_code("mi123", release_id=5)
-    usage = explorer.get_variable_usage(variable_vid=99)
-    tables = explorer.search_table("C_01")
+    var = explorer.get_variable_by_code("mi123", release_code="4.2.1")
+    usage = explorer.get_variable_usage(variable_vid=99,
+                                        release_code="4.2.1")
+    tables = explorer.search_table("C_01", release_code="4.2.1")
 ```
 
 **Hierarchy — framework / module / table tree:**
@@ -203,11 +210,58 @@ from dpmcore import connect
 with connect("sqlite:///dpm.db") as db:
     hierarchy = db.services.hierarchy
 
-    frameworks = hierarchy.get_all_frameworks(release_id=5)
-    module     = hierarchy.get_module_version("F_01.01", release_id=5)
-    tables     = hierarchy.get_tables_for_module("F_01.01", release_id=5)
-    details    = hierarchy.get_table_details("tC_01.00", release_id=5)
+    # Flat framework rows (default) — every Framework, no filtering
+    frameworks = hierarchy.get_all_frameworks()
+
+    # Deep tree: framework -> module_versions -> table_versions
+    tree       = hierarchy.get_all_frameworks(deep=True)
+
+    # Filter by release code — preferred over numeric release_id since
+    # IDs became opaque from DPM 4.2.1 onwards (e.g. release "4.2.1"
+    # has ReleaseID=1010000003, not 6).
+    by_code    = hierarchy.get_all_frameworks(
+        deep=True, release_code="4.2.1"
+    )
+
+    # Filter by business date — resolves via ModuleVersion validity range
+    today_tree = hierarchy.get_all_frameworks(deep=True, date="2025-06-30")
+
+    module     = hierarchy.get_module_version("F_01.01", release_code="4.2")
+    tables     = hierarchy.get_tables_for_module(
+        "F_01.01", release_code="4.2"
+    )
+    details    = hierarchy.get_table_details(
+        "tC_01.00", release_code="4.2"
+    )
+
+    # Per-header modelling metadata (main property + context property/item)
+    modelling  = hierarchy.get_table_modelling(
+        "tC_01.00", release_code="4.2"
+    )
 ```
+
+`get_all_frameworks`, `get_table_details`, and `get_table_modelling`
+accept up to one of `release_id` / `release_code` / `date`;
+`get_module_version` and `get_tables_for_module` accept `release_id`
+or `release_code` only (no `date`). Passing more than one raises
+`ValueError`, and an unknown `release_code` also raises. When no
+filter is supplied, `get_module_version` and `get_all_frameworks`
+fall back to the currently-active (`end_release_id IS NULL`) module
+versions, so results stay deterministic when a module has been
+republished across releases.
+
+> **How range comparisons work.** From DPM **4.2.1** onwards EBA
+> assigns opaque `ReleaseID` values (`4.2.1` is `1010000003`, while
+> older releases are still 1..5). dpmcore therefore compares ranges
+> against `Release.sort_order` — a synthetic integer derived from the
+> parsed semver `code` and auto-populated by an ORM listener
+> (backfilled by `MigrationService` after bulk loads). This means
+> both forms work correctly: `release_id=1010000003` and
+> `release_code="4.2.1"` resolve identically, and a hypothetical
+> backport like `4.0.1` shipped after `4.2.1` is correctly placed
+> inside the `4.0` lineage. Prefer `release_code` for human input
+> because the codes are readable; `release_id` is for cases where
+> you already have the resolved integer in hand.
 
 **Migration — import from Access:**
 
@@ -302,6 +356,47 @@ dpmcore build-meili-json --access-file /path/to/dpm.accdb \
 The `--output` option defaults to `operations.json`. `--source-dir` and
 `--access-file` are mutually exclusive.
 
+**Export table layouts** (Excel):
+
+Export annotated table layouts to ``.xlsx`` for review or distribution.
+You can export all tables in a module, or a specific list of tables.
+
+```python
+from dpmcore import connect
+from dpmcore.services.layout_exporter.models import ExportConfig
+
+config = ExportConfig(
+    annotate=True,
+    add_cell_comments=True,
+    add_header_comments=True,
+)
+
+with connect("sqlite:///dpm.db") as db:
+    svc = db.services.layout_exporter
+
+    # Whole module
+    svc.export_module("FINREP9", release_code="4.2", output_path="finrep9.xlsx",
+                      config=config)
+
+    # Specific tables
+    svc.export_tables(["F_01.01", "F_01.02"], release_code="4.2",
+                      output_path="finrep_subset.xlsx", config=config)
+```
+
+Or from the command line:
+
+```bash
+# Whole module
+dpmcore export-layout --database sqlite:///dpm.db \
+    --module FINREP9 --release 4.2 --output finrep9.xlsx
+
+# Specific tables
+dpmcore export-layout --database sqlite:///dpm.db \
+    --tables F_01.01,F_01.02 --release 4.2 --output finrep_subset.xlsx
+```
+
+Use ``--no-annotate`` or ``--no-comments`` to disable annotations/comments.
+
 **Unified facade:**
 
 ```python
@@ -311,7 +406,9 @@ with connect("sqlite:///dpm.db") as db:
     dpm_xl = db.services.dpm_xl
 
     dpm_xl.validate_syntax("{tC_01.00, r0100, c0010}")
-    dpm_xl.validate_semantic("{tC_01.00, r0100, c0010}", release_id=5)
+    dpm_xl.validate_semantic(
+        "{tC_01.00, r0100, c0010}", release_code="4.2.1",
+    )
 ```
 
 **Direct ORM access:**
@@ -411,11 +508,12 @@ src/dpmcore/
 │   ├── dpm_xl.py          DpmXlService (facade)
 │   ├── export_csv.py      ExportCsvService (Access → CSV)
 │   ├── meili_build.py     MeiliBuildService (end-to-end pipeline)
-│   └── meili_json.py      MeiliJsonService (JSON generation)
+│   ├── meili_json.py      MeiliJsonService (JSON generation)
+│   └── layout_exporter/   LayoutExporterService (tables → .xlsx)
 ├── loaders/               data-loading (mutates the DB)
 │   └── migration.py       MigrationService (Access import)
 ├── cli/
-│   └── main.py            Click CLI (migrate, export-csv, build-meili-json, serve, generate-script)
+│   └── main.py            Click CLI (migrate, export-csv, build-meili-json, serve, generate-script, export-layout)
 └── dpm_xl/                DPM-XL engine internals
     ├── grammar/           ANTLR4 grammar + generated parser
     ├── ast/               AST nodes, visitor, operands

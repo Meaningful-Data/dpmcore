@@ -86,6 +86,7 @@ class MigrationService:
         data, backend = self._extract_tables(access_path)
         self._create_schema()
         warnings = self._load_data(data)
+        self._populate_release_sort_order()
 
         table_details = {name: len(df) for name, df in data.items()}
         total_rows = sum(table_details.values())
@@ -414,6 +415,25 @@ class MigrationService:
         """Drop and recreate all ORM tables for a clean migration."""
         Base.metadata.drop_all(self._engine)
         Base.metadata.create_all(self._engine)
+
+    def _populate_release_sort_order(self) -> None:
+        """Backfill ``Release.sort_order`` from each row's ``code``.
+
+        Bulk loads bypass the ORM ``before_insert`` listener that would
+        normally populate ``sort_order``, so we run a single UPDATE
+        after migration that derives the value from the parsed
+        semver code.
+        """
+        from sqlalchemy.orm import Session
+
+        from dpmcore.orm.infrastructure import Release
+        from dpmcore.orm.release_sort_order import compute_sort_order
+
+        with Session(self._engine) as session:
+            rows = session.query(Release).all()
+            for r in rows:
+                r.sort_order = compute_sort_order(r.code)
+            session.commit()
 
     def _load_data(self, data: Dict[str, Any]) -> List[str]:
         """Write DataFrames into the database.

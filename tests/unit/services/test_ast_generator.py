@@ -600,6 +600,38 @@ class TestResolveRelease:
 
 
 # ------------------------------------------------------------------ #
+# _latest_release_in_window
+# ------------------------------------------------------------------ #
+
+
+class TestLatestReleaseInWindow:
+    def test_unparseable_start_release_raises(self):
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        mv = SimpleNamespace(start_release_id=42, end_release_id=None)
+        # First (and only) sort_order lookup returns None.
+        svc.session.query.return_value.filter.return_value.scalar.return_value = None  # noqa: E501
+        with pytest.raises(
+            ValueError, match="window start release 42 has no sort_order"
+        ):
+            svc._latest_release_in_window(mv)
+
+    def test_unparseable_end_release_raises(self):
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        mv = SimpleNamespace(start_release_id=1, end_release_id=99)
+        # Two sort_order lookups: first OK, second None.
+        svc.session.query.return_value.filter.return_value.scalar.side_effect = [  # noqa: E501
+            10,
+            None,
+        ]
+        with pytest.raises(
+            ValueError, match="window end release 99 has no sort_order"
+        ):
+            svc._latest_release_in_window(mv)
+
+
+# ------------------------------------------------------------------ #
 # _build_dependency_info
 # ------------------------------------------------------------------ #
 

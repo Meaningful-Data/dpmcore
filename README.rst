@@ -22,6 +22,7 @@ Optional extras:
    pip install dpmcore[django]      # Django integration
    pip install dpmcore[postgres]    # PostgreSQL backend
    pip install dpmcore[sqlserver]   # SQL Server backend
+   pip install dpmcore[export]      # Table layout export (openpyxl)
    pip install dpmcore[cli]         # Command-line interface
    pip install dpmcore[all]         # Everything
 
@@ -192,6 +193,35 @@ Or from the command line:
    pip install dpmcore[cli,migration]
    dpmcore migrate --source /path/to/dpm.accdb --database sqlite:///dpm.db
 
+**Table layout export --- annotated Excel workbooks:**
+
+.. code-block:: python
+
+   from dpmcore import connect
+
+   with connect("sqlite:///dpm.db") as db:
+       # Export all tables in a module
+       db.services.layout_exporter.export_module(
+           "FINREP9", output_path="finrep.xlsx",
+       )
+
+       # Export specific tables
+       db.services.layout_exporter.export_tables(
+           ["F_01.01", "F_05.01"], output_path="tables.xlsx",
+       )
+
+       # Get layout data programmatically (without writing Excel)
+       layout = db.services.layout_exporter.build_layout("F_01.01")
+       print(f"{layout.table_code}: {len(layout.rows)} rows, {len(layout.columns)} cols")
+
+Or from the command line:
+
+.. code-block:: bash
+
+   pip install dpmcore[cli,export]
+   dpmcore export-layout --database sqlite:///dpm.db --module FINREP9 --output finrep.xlsx
+   dpmcore export-layout --database sqlite:///dpm.db --tables F_01.01,F_05.01 --output tables.xlsx
+
 **Export Access to CSV** (requires ``migration`` extra and mdb-tools_):
 
 Export every user table from an ``.accdb`` / ``.mdb`` file to individual CSV
@@ -334,6 +364,7 @@ Architecture
    |  | SDMX-like |  |  SemanticSvc   |  |  session.query(...)   |  |
    |  | endpoints |  |  ASTGenerator  |  |  select(Model).where  |  |
    |  |           |  |  ScopeCalc     |  |                       |  |
+   |  |           |  |  LayoutExport  |  |                       |  |
    |  +-----------+  +----------------+  +-----------------------+  |
    |        |                |                     |                |
    |  +-----+----------------+---------------------+----------+    |
@@ -376,11 +407,12 @@ Package Layout
    |   +-- hierarchy.py       HierarchyService
    |   +-- dpm_xl.py          DpmXlService (facade)
    |   +-- migration.py       MigrationService (Access import)
+   |   +-- layout_exporter/   LayoutExporterService (Excel export)
    |   +-- export_csv.py      ExportCsvService (Access → CSV via mdb-tools)
    |   +-- meili_build.py     MeiliBuildService (end-to-end Meilisearch JSON build)
    |   +-- meili_json.py      MeiliJsonService (operations JSON generation)
    +-- cli/
-   |   +-- main.py            Click CLI (migrate, serve, export-csv, build-meili-json)
+   |   +-- main.py            Click CLI (migrate, serve, export-layout, export-csv, build-meili-json)
    +-- dpm_xl/                DPM-XL engine internals
    |   +-- grammar/           ANTLR4 grammar + generated parser
    |   +-- ast/               AST nodes, visitor, operands

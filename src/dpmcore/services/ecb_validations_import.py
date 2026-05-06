@@ -191,13 +191,42 @@ class EcbValidationsImportService:
         start_release_id: int,
         end_release_id: Optional[int],
     ) -> List[int]:
+        """Release IDs in [start, end) ordered by semver sort_order.
+
+        Comparison runs against ``Release.sort_order`` so backports
+        (e.g. a hypothetical ``4.0.1`` post-``4.2.1``) place correctly
+        within their version lineage. The start/end bounds are
+        resolved to integer ``sort_order`` values once before the main
+        query rather than via correlated subqueries.
+        """
+        start_sort = (
+            session.query(Release.sort_order)
+            .filter(Release.release_id == start_release_id)
+            .scalar()
+        )
+        if start_sort is None:
+            raise EcbValidationsImportError(
+                f"Release {start_release_id} has no sort_order — its "
+                "code could not be parsed as MAJOR.MINOR[.PATCH]."
+            )
         query = (
             session.query(Release.release_id)
-            .filter(Release.release_id >= start_release_id)
-            .order_by(Release.release_id)
+            .filter(Release.sort_order >= start_sort)
+            .order_by(Release.sort_order)
         )
         if end_release_id is not None:
-            query = query.filter(Release.release_id < end_release_id)
+            end_sort = (
+                session.query(Release.sort_order)
+                .filter(Release.release_id == end_release_id)
+                .scalar()
+            )
+            if end_sort is None:
+                raise EcbValidationsImportError(
+                    f"Release {end_release_id} has no sort_order — "
+                    "its code could not be parsed as "
+                    "MAJOR.MINOR[.PATCH]."
+                )
+            query = query.filter(Release.sort_order < end_sort)
         return [row[0] for row in query.all()]
 
     def _collect_table_codes_from_ast(self, node: Any) -> Set[str]:

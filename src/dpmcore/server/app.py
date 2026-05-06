@@ -23,6 +23,7 @@ class ExpressionRequest(BaseModel):
 
     expression: str
     release_id: Optional[int] = None
+    release_code: Optional[str] = None
 
 
 class SyntaxResponse(BaseModel):
@@ -156,6 +157,7 @@ def create_app(
         result = DpmXlService(session).validate_semantic(
             body.expression,
             release_id=body.release_id,
+            release_code=body.release_code,
         )
         return SemanticResponse(
             is_valid=result["is_valid"],

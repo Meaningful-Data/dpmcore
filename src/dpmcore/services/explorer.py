@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from dpmcore.dpm_xl.utils.filters import filter_by_release
+from dpmcore.dpm_xl.utils.filters import (
+    filter_by_release,
+    resolve_release_id,
+)
 from dpmcore.orm.operations import (
     OperandReference,
     OperandReferenceLocation,
@@ -35,8 +38,12 @@ class ExplorerService:
         self,
         variable_code: str,
         release_id: Optional[int] = None,
+        release_code: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """Look up a variable by its code."""
+        release_id = resolve_release_id(
+            self.session, release_id=release_id, release_code=release_code
+        )
         q = self.session.query(VariableVersion).filter(
             VariableVersion.code == variable_code,
         )
@@ -54,8 +61,12 @@ class ExplorerService:
         self,
         variable_vid: int,
         release_id: Optional[int] = None,
+        release_code: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Find all operations that reference *variable_vid*."""
+        release_id = resolve_release_id(
+            self.session, release_id=release_id, release_code=release_code
+        )
         q = (
             self.session.query(
                 OperandReference,
@@ -98,8 +109,12 @@ class ExplorerService:
         self,
         query: str,
         release_id: Optional[int] = None,
+        release_code: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Search tables by code (partial match)."""
+        release_id = resolve_release_id(
+            self.session, release_id=release_id, release_code=release_code
+        )
         q = self.session.query(TableVersion).filter(
             TableVersion.code.ilike(f"%{query}%"),
         )

@@ -40,6 +40,10 @@ EXCLUDED_TABLES: Set[str] = {
 # the Access table has no natural primary key).  {table: {col, …}}
 SYNTHETIC_ORM_COLUMNS: Dict[str, Set[str]] = {
     "ModelViolations": {"id"},
+    # Release.SortOrder is computed from Release.Code at insert time
+    # (see dpmcore.orm.release_sort_order). It does not exist in the
+    # Access source schema.
+    "Release": {"SortOrder"},
 }
 
 # Access types → canonical type names used for comparison.
