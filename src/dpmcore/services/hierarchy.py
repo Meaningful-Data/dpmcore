@@ -477,9 +477,19 @@ class HierarchyService:
         # one correlated subquery per item-side column instead of
         # three. ``filter_item_version`` accepts ``None`` (unparseable
         # code) and produces a NULL-comparing clause that never matches.
+        #
+        # Items/categories are versioned independently of TableVersion,
+        # so when the caller asks for a specific release we evaluate
+        # item membership at *that* release rather than at the table
+        # version's start. Without a release filter (date-only or no
+        # filter), fall back to the table version's start release as
+        # the anchor.
+        ref_release_id = (
+            release_id if release_id is not None else tv.start_release_id
+        )
         ref_sort_order = (
             self.session.query(Release.sort_order)
-            .filter(Release.release_id == tv.start_release_id)
+            .filter(Release.release_id == ref_release_id)
             .scalar()
         )
 

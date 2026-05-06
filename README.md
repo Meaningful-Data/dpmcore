@@ -210,7 +210,7 @@ from dpmcore import connect
 with connect("sqlite:///dpm.db") as db:
     hierarchy = db.services.hierarchy
 
-    # Flat framework rows (default) — active releases only
+    # Flat framework rows (default) — every Framework, no filtering
     frameworks = hierarchy.get_all_frameworks()
 
     # Deep tree: framework -> module_versions -> table_versions

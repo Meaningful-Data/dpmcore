@@ -235,3 +235,80 @@ def test_resolves_table_by_release_id(memory_session):
     # but pick a different module-version on the join. The query still works.
     assert service.get_table_modelling("T1", release_id=1) == {50: []}
     assert service.get_table_modelling("T1", release_id=2) == {50: []}
+
+
+def test_item_membership_evaluated_at_requested_release(memory_session):
+    """Items added in a later release must appear when that release is asked.
+
+    Regression: previously the modelling query anchored item/category
+    range comparisons at ``tv.start_release_id`` regardless of the
+    caller's ``release_id`` — so items that gained membership after
+    the table version was first published were silently invisible at
+    later releases.
+    """
+    session = memory_session
+    session.add(Release(release_id=1, code="1.0", date=date(2024, 1, 1)))
+    session.add(Release(release_id=2, code="2.0", date=date(2025, 1, 1)))
+    session.add(Framework(framework_id=1, code="FW"))
+    session.add(Module(module_id=1, framework_id=1))
+    session.add(
+        ModuleVersion(
+            module_vid=10,
+            module_id=1,
+            code="MV1",
+            start_release_id=1,
+            end_release_id=None,
+        )
+    )
+    session.add(Table(table_id=100))
+    # TableVersion starts at release 1 and is still active at release 2.
+    session.add(
+        TableVersion(
+            table_vid=1000,
+            table_id=100,
+            code="T1",
+            start_release_id=1,
+            end_release_id=None,
+        )
+    )
+    session.add(
+        ModuleVersionComposition(module_vid=10, table_vid=1000, table_id=100)
+    )
+    session.add(Header(header_id=50, direction="X"))
+    session.add(
+        HeaderVersion(
+            header_vid=500,
+            header_id=50,
+            code="H1",
+            label="Header 1",
+            property_id=200,
+            context_id=None,
+        )
+    )
+    session.add(
+        TableVersionHeader(
+            table_vid=1000, header_vid=500, header_id=50, order=1
+        )
+    )
+    # The property item only gains category membership at release 2.
+    session.add(Item(item_id=200, name="Main Prop"))
+    session.add(Property(property_id=200))
+    session.add(
+        ItemCategory(
+            item_id=200,
+            start_release_id=2,
+            end_release_id=None,
+            signature="prop:main",
+        )
+    )
+    session.commit()
+
+    service = HierarchyService(session)
+    # At release 1 the item-category does not yet exist -> no entry.
+    at_release_1 = service.get_table_modelling("T1", release_id=1)
+    assert at_release_1[50] == []
+    # At release 2 the item-category is in scope -> one main_property entry.
+    at_release_2 = service.get_table_modelling("T1", release_id=2)
+    assert at_release_2[50] == [
+        {"main_property_code": "prop:main", "main_property_name": "Main Prop"}
+    ]
