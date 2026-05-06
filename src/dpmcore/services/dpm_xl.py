@@ -69,11 +69,16 @@ class DpmXlService:
         self,
         expression: str,
         release_id: Optional[int] = None,
+        release_code: Optional[str] = None,
     ) -> SemanticValidationResult:
         """Full semantic validation (requires DB)."""
         if self.semantic is None:
             raise RuntimeError("No database session provided.")
-        result = self.semantic.validate(expression, release_id=release_id)
+        result = self.semantic.validate(
+            expression,
+            release_id=release_id,
+            release_code=release_code,
+        )
         return {
             "is_valid": result.is_valid,
             "error_message": result.error_message,
