@@ -386,32 +386,47 @@ class ASTGeneratorService:
     def _latest_release_in_window(self, mv: Any) -> Any:
         """Pick the latest ``released`` Release covering *mv*'s window.
 
-        Falls back to the latest of any status if no released row
-        matches. Excluding draft/validation rows from the primary
-        query ensures we don't generate URIs the engine rejects.
+        Comparison runs against ``Release.sort_order`` (parsed from the
+        semver ``code``) so a hypothetical backport like ``4.0.1``
+        published after ``4.2.1`` is correctly placed inside the
+        ``4.0`` lineage. Falls back to the latest of any status if no
+        released row matches.
         """
-        from sqlalchemy import or_
-
         from dpmcore.orm.infrastructure import Release
 
         if self.session is None:
             raise RuntimeError("session required")
-        base_query = self.session.query(Release)
+
+        # Resolve start/end sort_order once at Python time. The bounds
+        # are integer release IDs known up-front, so a single Release
+        # lookup beats a correlated subquery executed per row.
+        start_sort: Optional[int] = None
+        end_sort: Optional[int] = None
         if mv.start_release_id is not None:
-            base_query = base_query.filter(
-                Release.release_id >= mv.start_release_id
+            start_sort = (
+                self.session.query(Release.sort_order)
+                .filter(Release.release_id == mv.start_release_id)
+                .scalar()
             )
         if mv.end_release_id is not None:
-            base_query = base_query.filter(
-                or_(Release.release_id < mv.end_release_id)
+            end_sort = (
+                self.session.query(Release.sort_order)
+                .filter(Release.release_id == mv.end_release_id)
+                .scalar()
             )
+
+        base_query = self.session.query(Release)
+        if start_sort is not None:
+            base_query = base_query.filter(Release.sort_order >= start_sort)
+        if end_sort is not None:
+            base_query = base_query.filter(Release.sort_order < end_sort)
         latest = (
             base_query.filter(Release.status == "released")
-            .order_by(Release.release_id.desc())
+            .order_by(Release.sort_order.desc())
             .first()
         )
         if latest is None:
-            latest = base_query.order_by(Release.release_id.desc()).first()
+            latest = base_query.order_by(Release.sort_order.desc()).first()
         return latest
 
     def _resolve_severities(
