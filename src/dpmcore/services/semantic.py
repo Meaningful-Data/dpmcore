@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
 from dpmcore.dpm_xl.semantic_analyzer import InputAnalyzer
+from dpmcore.dpm_xl.utils.filters import resolve_release_id
 from dpmcore.dpm_xl.warning_collector import collect_warnings
 from dpmcore.errors import SemanticError
 from dpmcore.orm.infrastructure import Release
@@ -52,6 +53,7 @@ class SemanticService:
         self,
         expression: str,
         release_id: Optional[int] = None,
+        release_code: Optional[str] = None,
     ) -> SemanticResult:
         """Full semantic validation of *expression*.
 
@@ -59,6 +61,11 @@ class SemanticService:
         failure.
         """
         try:
+            release_id = resolve_release_id(
+                self.session,
+                release_id=release_id,
+                release_code=release_code,
+            )
             if release_id is not None:
                 exists = (
                     self.session.query(Release.release_id)
@@ -121,6 +128,11 @@ class SemanticService:
         self,
         expression: str,
         release_id: Optional[int] = None,
+        release_code: Optional[str] = None,
     ) -> bool:
         """Quick boolean check."""
-        return self.validate(expression, release_id=release_id).is_valid
+        return self.validate(
+            expression,
+            release_id=release_id,
+            release_code=release_code,
+        ).is_valid

@@ -24,8 +24,6 @@ layer, CLI, and REST API that can be used independently or together.
    :caption: API Reference
 
    api/index
-   api/migration
-   api/connection
 
 Indices and tables
 ==================

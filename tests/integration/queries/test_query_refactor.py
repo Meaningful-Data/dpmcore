@@ -7,9 +7,12 @@ Ported from the py_dpm suite, which exercised both the public
 ported tests exercise the service directly.
 """
 
+from datetime import date
+
 import pytest
 
 from dpmcore.orm.glossary import ItemCategory
+from dpmcore.orm.infrastructure import Release
 from dpmcore.orm.rendering import TableVersion
 from dpmcore.services.data_dictionary import DataDictionaryService
 
@@ -18,6 +21,16 @@ from dpmcore.services.data_dictionary import DataDictionaryService
 def service_with_data(memory_session):
     """Insert three TableVersions spanning three releases."""
     session = memory_session
+    # Release-range filter resolves the target's sort_order (parsed
+    # from semver code), so each release_id used in a filter must
+    # correspond to a real Release row with a parseable code.
+    session.add_all(
+        [
+            Release(release_id=1, code="1.0", date=date(2024, 1, 1)),
+            Release(release_id=2, code="2.0", date=date(2024, 6, 1)),
+            Release(release_id=3, code="3.0", date=date(2025, 1, 1)),
+        ]
+    )
 
     session.add_all(
         [

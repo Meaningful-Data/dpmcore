@@ -25,10 +25,30 @@ def load_module_table_versions(
 ) -> list[Any]:
     """Load all TableVersions for a given module version code.
 
-    Returns TableVersion ORM objects ordered by module composition order.
+    The ``release_code`` filter is a *range* query (any module version
+    whose validity window covers the resolved release), consistent
+    with the rest of the codebase. When ``release_code`` is omitted,
+    only currently-active module versions (``end_release_id IS NULL``)
+    are considered.
+
+    Args:
+        session: SQLAlchemy session.
+        module_code: Module version code (e.g. ``"FINREP9"``).
+        release_code: Optional release code (e.g. ``"4.2"``). Resolved
+            via :class:`Release.code`; raises ``ValueError`` if the
+            code does not match any release.
+
+    Returns:
+        TableVersion ORM objects ordered by module composition order.
     """
+    from dpmcore.dpm_xl.utils.filters import (
+        filter_by_release,
+        resolve_release_id,
+    )
     from dpmcore.orm.packaging import ModuleVersion, ModuleVersionComposition
     from dpmcore.orm.rendering import TableVersion
+
+    release_id = resolve_release_id(session, release_code=release_code)
 
     q = (
         session.query(TableVersion)
@@ -42,16 +62,13 @@ def load_module_table_versions(
         )
         .filter(ModuleVersion.code == module_code)
     )
-
-    if release_code:
-        from dpmcore.orm.infrastructure import Release
-
-        q = q.join(
-            Release,
-            Release.release_id == ModuleVersion.start_release_id,
-        ).filter(Release.code == release_code)
-    else:
-        q = q.filter(ModuleVersion.end_release_id.is_(None))
+    q = filter_by_release(
+        q,
+        start_col=ModuleVersion.start_release_id,
+        end_col=ModuleVersion.end_release_id,
+        release_id=release_id,
+        active_only_fallback=True,
+    )
 
     q = q.order_by(ModuleVersionComposition.order)
     return q.all()
@@ -62,20 +79,34 @@ def load_table_version(
     table_code: str,
     release_code: Optional[str] = None,
 ) -> Optional[Any]:
-    """Load a single TableVersion by code."""
+    """Load a single TableVersion by code.
+
+    The ``release_code`` filter is a *range* query: any TableVersion
+    whose validity window covers the resolved release matches. When
+    omitted, only currently-active table versions are considered.
+
+    Args:
+        session: SQLAlchemy session.
+        table_code: Table code (e.g. ``"F_01.01"``).
+        release_code: Optional release code; raises ``ValueError`` if
+            the code does not match any release.
+    """
+    from dpmcore.dpm_xl.utils.filters import (
+        filter_by_release,
+        resolve_release_id,
+    )
     from dpmcore.orm.rendering import TableVersion
 
+    release_id = resolve_release_id(session, release_code=release_code)
+
     q = session.query(TableVersion).filter(TableVersion.code == table_code)
-
-    if release_code:
-        from dpmcore.orm.infrastructure import Release
-
-        q = q.join(
-            Release,
-            Release.release_id == TableVersion.start_release_id,
-        ).filter(Release.code == release_code)
-    else:
-        q = q.filter(TableVersion.end_release_id.is_(None))
+    q = filter_by_release(
+        q,
+        start_col=TableVersion.start_release_id,
+        end_col=TableVersion.end_release_id,
+        release_id=release_id,
+        active_only_fallback=True,
+    )
 
     return q.first()
 
