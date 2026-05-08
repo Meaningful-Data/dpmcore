@@ -39,7 +39,7 @@ class ExportCsvService:
     Requires mdb-tools (``mdb-tables`` + ``mdb-export``) to be installed.
     """
 
-    def _export(self, access_path: str, output_dir: Path) -> ExportCsvResult:
+    def export(self, access_path: str, output_dir: Path) -> ExportCsvResult:
         """Export every user table in *access_path* to *output_dir*.
 
         Args:
@@ -157,7 +157,7 @@ class ExportCsvService:
         backup_dir = self._backup_dir_for(output_dir)
 
         try:
-            result = self._export(access_path, temp_dir)
+            result = self.export(access_path, temp_dir)
 
             if output_dir.exists():
                 output_dir.replace(backup_dir)
