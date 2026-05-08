@@ -31,9 +31,9 @@ _ECB_UUID_NAMESPACE = uuid.UUID("2aa31856-3c3b-4e53-9e37-ef7c7dd2486a")
 
 
 def _stable_uuid(*parts: object) -> str:
-    """Generate deterministic UUIDs for ECB-derived records."""
+    """Generate deterministic Access-style UUIDs for ECB-derived records."""
     text = "|".join("" if part is None else str(part) for part in parts)
-    return str(uuid.uuid5(_ECB_UUID_NAMESPACE, text)).upper()
+    return f"{{{str(uuid.uuid5(_ECB_UUID_NAMESPACE, text)).upper()}}}"
 
 class EcbValidationsImportError(Exception):
     """Raised when ECB validations cannot be imported."""

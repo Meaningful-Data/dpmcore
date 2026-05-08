@@ -59,7 +59,7 @@ class Variable(Base):
     type: Mapped[Optional[str]] = mapped_column("Type", String(20))
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
@@ -149,7 +149,7 @@ class VariableVersion(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
 
@@ -232,7 +232,7 @@ class VariableCalculation(Base):
     to_reference_date: Mapped[Optional[date]] = mapped_column(
         "ToReferenceDate", Date
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     module: Mapped["Module"] = relationship(
         back_populates="variable_calculations"
@@ -267,7 +267,7 @@ class CompoundKey(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
@@ -314,7 +314,7 @@ class KeyComposition(Base):
         ForeignKey("VariableVersion.VariableVID"),
         primary_key=True,
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     compound_key: Mapped["CompoundKey"] = relationship(
         back_populates="key_compositions"

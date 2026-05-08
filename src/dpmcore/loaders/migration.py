@@ -481,44 +481,6 @@ class MigrationService:
 
         return df
 
-    @staticmethod
-    def _normalize_guid_columns_for_schema(df: Any, orm_table: Any) -> Any:
-        """Normalize Access GUID values before loading into strict DBs."""
-        import pandas as pd
-        from sqlalchemy.sql.sqltypes import String
-
-        def normalize_guid(value: Any) -> str | None:
-            if value is None or pd.isna(value):
-                return None
-
-            text = str(value).strip()
-            if not text:
-                return None
-
-            if text.startswith("{") and text.endswith("}"):
-                text = text[1:-1]
-
-            return text
-
-        for column in orm_table.columns:
-            column_name = column.name
-
-            if column_name not in df.columns:
-                continue
-
-            if not isinstance(column.type, String):
-                continue
-
-            if column.type.length != 36:
-                continue
-
-            if "guid" not in column_name.lower():
-                continue
-
-            df[column_name] = df[column_name].map(normalize_guid)
-
-        return df
-
     def _prepare_bulk_load_constraints(self) -> None:
         """Prepare strict databases for bulk CSV loading."""
         if self._schema is None:
@@ -657,7 +619,6 @@ class MigrationService:
 
             df = self._coerce_temporal_columns_for_schema(df, orm_table)
             df = self._coerce_boolean_columns_for_schema(df, orm_table)
-            df = self._normalize_guid_columns_for_schema(df, orm_table)
 
         try:
             identity_column = identity_columns.get(table_name)

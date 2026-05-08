@@ -8,7 +8,7 @@ class Concept(models.Model):
 
     concept_guid = models.CharField(
         db_column="ConceptGUID",
-        max_length=36,
+        max_length=38,
         primary_key=True,
     )
     class_id = models.ForeignKey(

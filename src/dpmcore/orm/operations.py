@@ -70,7 +70,7 @@ class Operation(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
@@ -149,7 +149,7 @@ class OperationVersion(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     endorsement: Mapped[Optional[str]] = mapped_column(
@@ -367,7 +367,7 @@ class OperationScope(Base):
     from_submission_date: Mapped[Optional[date]] = mapped_column(
         "FromSubmissionDate", Date
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     operation_version: Mapped[Optional["OperationVersion"]] = relationship(
         back_populates="operation_scopes"
@@ -407,7 +407,7 @@ class OperationScopeComposition(Base):
         ForeignKey("ModuleVersion.ModuleVID"),
         primary_key=True,
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     operation_scope: Mapped["OperationScope"] = relationship(
         back_populates="operation_scope_compositions"

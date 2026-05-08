@@ -47,7 +47,7 @@ class Concept(Base):
     __tablename__ = "Concept"
 
     concept_guid: Mapped[str] = mapped_column(
-        "ConceptGUID", String(36), primary_key=True
+        "ConceptGUID", String(38), primary_key=True
     )
     class_id: Mapped[Optional[int]] = mapped_column(
         "ClassID", Integer, ForeignKey("DPMClass.ClassID")
@@ -86,7 +86,7 @@ class ConceptRelation(Base):
         "ConceptRelationID", Integer, primary_key=True
     )
     type: Mapped[Optional[str]] = mapped_column("Type", String(50))
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     related_concepts: Mapped[List["RelatedConcept"]] = relationship(
         back_populates="concept_relation",
@@ -107,7 +107,7 @@ class RelatedConcept(Base):
 
     concept_guid: Mapped[str] = mapped_column(
         "ConceptGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
         primary_key=True,
     )
@@ -120,7 +120,7 @@ class RelatedConcept(Base):
     is_related_concept: Mapped[Optional[bool]] = mapped_column(
         "IsRelatedConcept", Boolean
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     concept: Mapped["Concept"] = relationship(
         back_populates="related_concepts"
@@ -158,7 +158,7 @@ class Organisation(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey(
             "Concept.ConceptGUID",
             use_alter=True,
@@ -431,7 +431,7 @@ class Translation(Base):
 
     concept_guid: Mapped[str] = mapped_column(
         "ConceptGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
         primary_key=True,
     )
@@ -454,7 +454,7 @@ class Translation(Base):
         primary_key=True,
     )
     translation: Mapped[Optional[str]] = mapped_column("Translation", Text)
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     concept: Mapped["Concept"] = relationship(foreign_keys=[concept_guid])
     dpm_attribute: Mapped["DpmAttribute"] = relationship(
@@ -491,7 +491,7 @@ class Changelog(Base):
     __tablename__ = "ChangeLog"
 
     row_guid: Mapped[str] = mapped_column(
-        "RowGUID", String(36), primary_key=True
+        "RowGUID", String(38), primary_key=True
     )
     class_id: Mapped[int] = mapped_column(
         "ClassID",
@@ -600,7 +600,7 @@ class Document(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
 
@@ -643,7 +643,7 @@ class DocumentVersion(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
 
@@ -704,7 +704,7 @@ class Subdivision(Base):
     text_excerpt: Mapped[Optional[str]] = mapped_column("TextExcerpt", Text)
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
@@ -778,11 +778,11 @@ class Reference(Base):
     )
     concept_guid: Mapped[str] = mapped_column(
         "ConceptGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
         primary_key=True,
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     subdivision: Mapped["Subdivision"] = relationship(
         back_populates="references"
@@ -823,7 +823,7 @@ class Release(Base):
     is_current: Mapped[Optional[bool]] = mapped_column("IsCurrent", Boolean)
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     error_date: Mapped[Optional[datetime]] = mapped_column(

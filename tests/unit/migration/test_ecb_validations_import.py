@@ -374,7 +374,7 @@ class TestEcbValidationsImport:
                 session, operation_class=cls, owner=org, stable_key="test"
             )
             assert result is not None
-            assert len(result) == 36  # UUID format
+            assert len(result) == 38  # Access-style {UUID} format
         finally:
             session.close()
 
@@ -795,7 +795,7 @@ class TestStableUuid:
     def test_none_part_handled_without_error(self):
         result = _stable_uuid("concept", None, "key")
         assert isinstance(result, str)
-        assert len(result) == 36
+        assert len(result) == 38
 
     def test_output_is_uppercase(self):
         result = _stable_uuid("test")
