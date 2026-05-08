@@ -228,10 +228,24 @@ def build_meili_json(
     default=None,
     help="Optional ECB validations CSV file.",
 )
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="Load and validate data without replacing the active database.",
+)
+@click.option(
+    "--keep-staging",
+    is_flag=True,
+    default=False,
+    help="Keep temporary SQLite file or staging/backup schemas for debugging.",
+)
 def update_db(
     target: str,
     access_file: str | None,
     ecb_validations_file: str | None,
+    dry_run: bool,
+    keep_staging: bool,
 ) -> None:
     """Safely update a DPM database."""
     try:
@@ -265,6 +279,8 @@ def update_db(
             target=target,
             access_file=access_file,
             ecb_validations_file=ecb_validations_file,
+            dry_run=dry_run,
+            keep_staging=keep_staging,
         )
     except DatabaseUpdateError as exc:
         console.print(f"[red]Error:[/red] {exc}")
@@ -291,6 +307,14 @@ def update_db(
 
     for warning in migration.warnings:
         console.print(f"[yellow]Warning:[/yellow] {warning}")
+
+    if result.dry_run:
+        console.print("[yellow]Dry run completed. Active database was not modified.[/yellow]")
+
+    if result.staging_location:
+        console.print(
+            f"[yellow]Staging artifact:[/yellow] [cyan]{result.staging_location}[/cyan]"
+        )
 
 @main.command()
 @click.option(
