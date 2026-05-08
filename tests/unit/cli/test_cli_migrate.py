@@ -339,7 +339,10 @@ class TestBuildMeiliJsonCli:
 
 
 class TestUpdateDbCli:
-    def _mock_result(self, *, used_access_file=False, ecb=False, warnings=None):
+    def _mock_result(
+        self, *, used_access_file=False, ecb=False, warnings=None,
+        dry_run=False, staging_location=None,
+    ):
         from pathlib import Path
 
         r = MagicMock()
@@ -350,6 +353,8 @@ class TestUpdateDbCli:
         r.migration_result.tables_migrated = 5
         r.migration_result.total_rows = 100
         r.migration_result.warnings = warnings or []
+        r.dry_run = dry_run
+        r.staging_location = staging_location
         return r
 
     def test_success_from_csv_dir_prints_startup_message(self, runner):
@@ -494,3 +499,67 @@ class TestUpdateDbCli:
             ],
         )
         assert result.exit_code != 0
+
+    def test_dry_run_flag_passed_to_service(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(),
+        ) as mock_update:
+            result = runner.invoke(
+                main,
+                ["update-db", "--target", "data/dpm.sqlite", "--dry-run"],
+            )
+
+        assert result.exit_code == 0
+        assert mock_update.call_args.kwargs["dry_run"] is True
+
+    def test_keep_staging_flag_passed_to_service(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(),
+        ) as mock_update:
+            result = runner.invoke(
+                main,
+                ["update-db", "--target", "data/dpm.sqlite", "--keep-staging"],
+            )
+
+        assert result.exit_code == 0
+        assert mock_update.call_args.kwargs["keep_staging"] is True
+
+    def test_dry_run_output_message_printed(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(dry_run=True),
+        ):
+            result = runner.invoke(
+                main,
+                ["update-db", "--target", "data/dpm.sqlite"],
+            )
+
+        assert "Dry run completed" in result.output
+        assert "Active database was not modified" in result.output
+
+    def test_staging_location_output_message_printed(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(staging_location="/tmp/staging.sqlite"),
+        ):
+            result = runner.invoke(
+                main,
+                ["update-db", "--target", "data/dpm.sqlite"],
+            )
+
+        assert "Staging artifact" in result.output
+        assert "/tmp/staging.sqlite" in result.output
+
+    def test_no_dry_run_message_when_dry_run_false(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(dry_run=False),
+        ):
+            result = runner.invoke(
+                main,
+                ["update-db", "--target", "data/dpm.sqlite"],
+            )
+
+        assert "Dry run completed" not in result.output

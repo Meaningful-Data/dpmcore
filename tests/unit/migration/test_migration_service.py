@@ -187,6 +187,29 @@ class TestMigrateCsvDir:
         assert result.table_details["Release"] == 1
         assert result.table_details["Organisation"] == 1
 
+    def test_migrate_from_csv_dir_populates_release_sort_order(
+        self, service, sqlite_engine, tmp_path
+    ):
+        # Bulk load via df.to_sql bypasses the ORM before_insert listener,
+        # so _populate_release_sort_order must be called explicitly after load.
+        (tmp_path / "Release.csv").write_text(
+            "ReleaseID,Code\n1,4.0\n2,4.2\n3,5.0\n",
+            encoding="utf-8",
+        )
+        service.migrate_from_csv_dir(str(tmp_path))
+
+        with sqlite_engine.connect() as conn:
+            rows = conn.execute(
+                text("SELECT ReleaseID, SortOrder FROM Release ORDER BY ReleaseID")
+            ).fetchall()
+
+        assert all(sort_order is not None for _, sort_order in rows), (
+            "SortOrder must be populated after CSV migration; "
+            "EcbValidationsImportService._get_valid_release_ids relies on it"
+        )
+        sort_orders = [row[1] for row in rows]
+        assert sort_orders == sorted(sort_orders), "SortOrder must be monotone"
+
     def test_migrate_from_csv_dir_empty_dir_raises(self, service, tmp_path):
         with pytest.raises(MigrationError, match="No CSV files found"):
             service.migrate_from_csv_dir(str(tmp_path))
@@ -274,3 +297,521 @@ class TestMigrateCsvDir:
 
         assert result["FromSubmissionDate"].iloc[0] is None
         assert result["FromSubmissionDate"].iloc[1] is None
+
+
+# ---------------------------------------------------------------------------
+# MigrationService.__init__ – schema parameter
+# ---------------------------------------------------------------------------
+
+class TestMigrationServiceInit:
+    def test_schema_none_ddl_engine_is_engine(self):
+        engine = MagicMock()
+        service = MigrationService(engine)
+        assert service._ddl_engine is engine
+
+    def test_schema_set_ddl_engine_uses_execution_options(self):
+        engine = MagicMock()
+        translated = MagicMock()
+        engine.execution_options.return_value = translated
+
+        service = MigrationService(engine, schema="staging")
+
+        engine.execution_options.assert_called_once_with(
+            schema_translate_map={None: "staging"}
+        )
+        assert service._ddl_engine is translated
+
+    def test_schema_stored(self):
+        engine = MagicMock()
+        service = MigrationService(engine, schema="staging")
+        assert service._schema == "staging"
+
+    def test_schema_none_stored(self):
+        engine = MagicMock()
+        service = MigrationService(engine)
+        assert service._schema is None
+
+
+# ---------------------------------------------------------------------------
+# _coerce_boolean_columns_for_schema
+# ---------------------------------------------------------------------------
+
+def _make_bool_table():
+    from sqlalchemy import Column, MetaData, Table
+    from sqlalchemy.types import Boolean, String
+
+    meta = MetaData()
+    return Table("TestBool", meta, Column("Flag", Boolean()), Column("Name", String(20)))
+
+
+class TestCoerceBooleanColumnsForSchema:
+    @pytest.fixture
+    def bool_table(self):
+        return _make_bool_table()
+
+    @staticmethod
+    def _coerce(values, table):
+        df = pd.DataFrame({"Flag": list(values)})
+        result = MigrationService._coerce_boolean_columns_for_schema(df, table)
+        out = []
+        for v in result["Flag"]:
+            if v is None or (isinstance(v, float) and pd.isna(v)):
+                out.append(None)
+            else:
+                out.append(bool(v))
+        return out
+
+    # --- string true values ---
+    def test_string_minus_one_is_true(self, bool_table):
+        assert self._coerce(["-1"], bool_table) == [True]
+
+    def test_string_one_is_true(self, bool_table):
+        assert self._coerce(["1"], bool_table) == [True]
+
+    def test_string_true_is_true(self, bool_table):
+        assert self._coerce(["true"], bool_table) == [True]
+
+    def test_string_yes_is_true(self, bool_table):
+        assert self._coerce(["yes"], bool_table) == [True]
+
+    def test_string_y_is_true(self, bool_table):
+        assert self._coerce(["y"], bool_table) == [True]
+
+    def test_string_t_is_true(self, bool_table):
+        assert self._coerce(["t"], bool_table) == [True]
+
+    def test_string_minus_one_float_is_true(self, bool_table):
+        assert self._coerce(["-1.0"], bool_table) == [True]
+
+    def test_string_one_float_is_true(self, bool_table):
+        assert self._coerce(["1.0"], bool_table) == [True]
+
+    # --- string false values ---
+    def test_string_zero_is_false(self, bool_table):
+        assert self._coerce(["0"], bool_table) == [False]
+
+    def test_string_false_is_false(self, bool_table):
+        assert self._coerce(["false"], bool_table) == [False]
+
+    def test_string_no_is_false(self, bool_table):
+        assert self._coerce(["no"], bool_table) == [False]
+
+    def test_string_n_is_false(self, bool_table):
+        assert self._coerce(["n"], bool_table) == [False]
+
+    def test_string_f_is_false(self, bool_table):
+        assert self._coerce(["f"], bool_table) == [False]
+
+    def test_string_zero_float_is_false(self, bool_table):
+        assert self._coerce(["0.0"], bool_table) == [False]
+
+    # --- null values ---
+    def test_empty_string_is_none(self, bool_table):
+        assert self._coerce([""], bool_table) == [None]
+
+    def test_string_nan_is_none(self, bool_table):
+        assert self._coerce(["nan"], bool_table) == [None]
+
+    def test_string_none_is_none(self, bool_table):
+        assert self._coerce(["none"], bool_table) == [None]
+
+    def test_string_null_is_none(self, bool_table):
+        assert self._coerce(["null"], bool_table) == [None]
+
+    def test_string_na_is_none(self, bool_table):
+        assert self._coerce(["<na>"], bool_table) == [None]
+
+    def test_python_none_is_none(self, bool_table):
+        assert self._coerce([None], bool_table) == [None]
+
+    def test_pandas_na_is_none(self, bool_table):
+        assert self._coerce([pd.NA], bool_table) == [None]
+
+    # --- Python type passthroughs ---
+    def test_bool_true_passthrough(self, bool_table):
+        assert self._coerce([True], bool_table) == [True]
+
+    def test_bool_false_passthrough(self, bool_table):
+        assert self._coerce([False], bool_table) == [False]
+
+    def test_int_minus_one_is_true(self, bool_table):
+        assert self._coerce([-1], bool_table) == [True]
+
+    def test_int_one_is_true(self, bool_table):
+        assert self._coerce([1], bool_table) == [True]
+
+    def test_int_zero_is_false(self, bool_table):
+        assert self._coerce([0], bool_table) == [False]
+
+    def test_float_minus_one_is_true(self, bool_table):
+        assert self._coerce([-1.0], bool_table) == [True]
+
+    def test_float_one_is_true(self, bool_table):
+        assert self._coerce([1.0], bool_table) == [True]
+
+    def test_float_zero_is_false(self, bool_table):
+        assert self._coerce([0.0], bool_table) == [False]
+
+    # --- error cases ---
+    def test_unsupported_string_raises_migration_error(self, bool_table):
+        with pytest.raises(MigrationError):
+            self._coerce(["maybe"], bool_table)
+
+    def test_unsupported_numeric_string_raises_migration_error(self, bool_table):
+        with pytest.raises(MigrationError):
+            self._coerce(["2.5"], bool_table)
+
+    def test_unsupported_int_raises_migration_error(self, bool_table):
+        with pytest.raises(MigrationError):
+            self._coerce([2], bool_table)
+
+    def test_unsupported_float_raises_migration_error(self, bool_table):
+        with pytest.raises(MigrationError):
+            self._coerce([2.5], bool_table)
+
+    def test_error_message_includes_table_and_column(self, bool_table):
+        with pytest.raises(MigrationError, match="TestBool"):
+            self._coerce(["bad_value"], bool_table)
+
+        with pytest.raises(MigrationError, match="Flag"):
+            self._coerce(["bad_value"], bool_table)
+
+    # --- skipping behavior ---
+    def test_non_boolean_column_not_modified(self, bool_table):
+        df = pd.DataFrame({"Name": ["yes"]})
+        result = MigrationService._coerce_boolean_columns_for_schema(df, bool_table)
+        assert result["Name"].iloc[0] == "yes"
+
+    def test_column_not_in_df_skipped(self, bool_table):
+        df = pd.DataFrame({"OtherCol": ["yes"]})
+        result = MigrationService._coerce_boolean_columns_for_schema(df, bool_table)
+        assert "Flag" not in result.columns
+
+    # --- case insensitive ---
+    def test_case_insensitive_true(self, bool_table):
+        assert self._coerce(["TRUE"], bool_table) == [True]
+        assert self._coerce(["Yes"], bool_table) == [True]
+
+    def test_case_insensitive_false(self, bool_table):
+        assert self._coerce(["FALSE"], bool_table) == [False]
+        assert self._coerce(["NO"], bool_table) == [False]
+
+    # --- multiple rows ---
+    def test_multiple_rows(self, bool_table):
+        result = self._coerce(["-1", "0", None, "true", "false"], bool_table)
+        assert result == [True, False, None, True, False]
+
+
+# ---------------------------------------------------------------------------
+# _normalize_guid_columns_for_schema
+# ---------------------------------------------------------------------------
+
+def _make_guid_table():
+    from sqlalchemy import Column, MetaData, Table
+    from sqlalchemy.types import Integer, String
+
+    meta = MetaData()
+    return Table(
+        "TestGuid",
+        meta,
+        Column("ConceptGUID", String(36)),
+        Column("ShortStr", String(20)),
+        Column("RefCode", String(36)),
+        Column("IntCol", Integer()),
+    )
+
+
+class TestNormalizeGuidColumnsForSchema:
+    @pytest.fixture
+    def guid_table(self):
+        return _make_guid_table()
+
+    def test_strips_braces(self, guid_table):
+        df = pd.DataFrame({"ConceptGUID": ["{12345678-1234-1234-1234-123456789abc}"]})
+        result = MigrationService._normalize_guid_columns_for_schema(df, guid_table)
+        assert result["ConceptGUID"].iloc[0] == "12345678-1234-1234-1234-123456789abc"
+
+    def test_no_braces_unchanged(self, guid_table):
+        uid = "12345678-1234-1234-1234-123456789abc"
+        df = pd.DataFrame({"ConceptGUID": [uid]})
+        result = MigrationService._normalize_guid_columns_for_schema(df, guid_table)
+        assert result["ConceptGUID"].iloc[0] == uid
+
+    def test_none_becomes_none(self, guid_table):
+        df = pd.DataFrame({"ConceptGUID": [None]})
+        result = MigrationService._normalize_guid_columns_for_schema(df, guid_table)
+        assert result["ConceptGUID"].iloc[0] is None
+
+    def test_empty_string_becomes_none(self, guid_table):
+        df = pd.DataFrame({"ConceptGUID": [""]})
+        result = MigrationService._normalize_guid_columns_for_schema(df, guid_table)
+        assert result["ConceptGUID"].iloc[0] is None
+
+    def test_pandas_na_becomes_none(self, guid_table):
+        df = pd.DataFrame({"ConceptGUID": [pd.NA]})
+        result = MigrationService._normalize_guid_columns_for_schema(df, guid_table)
+        assert result["ConceptGUID"].iloc[0] is None
+
+    def test_short_string_column_not_modified(self, guid_table):
+        df = pd.DataFrame({"ShortStr": ["{abc}"]})
+        result = MigrationService._normalize_guid_columns_for_schema(df, guid_table)
+        assert result["ShortStr"].iloc[0] == "{abc}"
+
+    def test_string36_without_guid_in_name_not_modified(self, guid_table):
+        val = "{12345678-1234-1234-1234-123456789abc}"
+        df = pd.DataFrame({"RefCode": [val]})
+        result = MigrationService._normalize_guid_columns_for_schema(df, guid_table)
+        assert result["RefCode"].iloc[0] == val
+
+    def test_non_string_column_not_modified(self, guid_table):
+        df = pd.DataFrame({"IntCol": [42]})
+        result = MigrationService._normalize_guid_columns_for_schema(df, guid_table)
+        assert result["IntCol"].iloc[0] == 42
+
+    def test_column_not_in_df_skipped(self, guid_table):
+        df = pd.DataFrame({"OtherCol": ["something"]})
+        result = MigrationService._normalize_guid_columns_for_schema(df, guid_table)
+        assert "ConceptGUID" not in result.columns
+
+    def test_multiple_rows(self, guid_table):
+        uid = "12345678-1234-1234-1234-123456789abc"
+        df = pd.DataFrame({"ConceptGUID": [f"{{{uid}}}", uid, None, ""]})
+        result = MigrationService._normalize_guid_columns_for_schema(df, guid_table)
+        values = list(result["ConceptGUID"])
+        assert values[0] == uid
+        assert values[1] == uid
+        assert values[2] is None
+        assert values[3] is None
+
+
+# ---------------------------------------------------------------------------
+# _prepare_bulk_load_constraints
+# ---------------------------------------------------------------------------
+
+class TestPrepareBulkLoadConstraints:
+    def test_schema_none_is_noop(self):
+        engine = MagicMock()
+        service = MigrationService(engine)
+        service._prepare_bulk_load_constraints()
+        engine.begin.assert_not_called()
+
+    def test_postgresql_calls_drop_fk(self):
+        engine = MagicMock()
+        engine.dialect.name = "postgresql"
+        service = MigrationService(engine, schema="staging")
+
+        with patch.object(service, "_drop_postgresql_foreign_keys_for_bulk_load") as mock_drop:
+            service._prepare_bulk_load_constraints()
+
+        mock_drop.assert_called_once()
+
+    def test_mssql_calls_disable_constraints(self):
+        engine = MagicMock()
+        engine.dialect.name = "mssql"
+        service = MigrationService(engine, schema="staging")
+
+        with patch.object(service, "_disable_sqlserver_constraints_for_bulk_load") as mock_disable:
+            service._prepare_bulk_load_constraints()
+
+        mock_disable.assert_called_once()
+
+    def test_other_dialect_is_noop(self):
+        engine = MagicMock()
+        engine.dialect.name = "oracle"
+        service = MigrationService(engine, schema="staging")
+
+        with (
+            patch.object(service, "_drop_postgresql_foreign_keys_for_bulk_load") as mock_pg,
+            patch.object(service, "_disable_sqlserver_constraints_for_bulk_load") as mock_ms,
+        ):
+            service._prepare_bulk_load_constraints()
+
+        mock_pg.assert_not_called()
+        mock_ms.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _drop_postgresql_foreign_keys_for_bulk_load
+# ---------------------------------------------------------------------------
+
+class TestDropPostgresqlForeignKeysForBulkLoad:
+    def _make_service(self):
+        engine = MagicMock()
+        engine.dialect.name = "postgresql"
+        engine.dialect.identifier_preparer.quote_schema.side_effect = lambda s: f'"{s}"'
+        engine.dialect.identifier_preparer.quote.side_effect = lambda s: f'"{s}"'
+        return MigrationService(engine, schema="staging"), engine
+
+    def test_drops_each_constraint(self):
+        service, engine = self._make_service()
+        conn = engine.begin.return_value.__enter__.return_value
+        conn.execute.return_value.fetchall.return_value = [
+            ("MyTable", "fk_one"),
+            ("MyTable", "fk_two"),
+        ]
+
+        service._drop_postgresql_foreign_keys_for_bulk_load()
+
+        assert conn.execute.call_count == 3  # 1 SELECT + 2 ALTER
+
+    def test_no_constraints_executes_only_select(self):
+        service, engine = self._make_service()
+        conn = engine.begin.return_value.__enter__.return_value
+        conn.execute.return_value.fetchall.return_value = []
+
+        service._drop_postgresql_foreign_keys_for_bulk_load()
+
+        assert conn.execute.call_count == 1
+
+    def test_alter_sql_contains_drop_constraint(self):
+        service, engine = self._make_service()
+        conn = engine.begin.return_value.__enter__.return_value
+        conn.execute.return_value.fetchall.return_value = [("T1", "fk_x")]
+
+        service._drop_postgresql_foreign_keys_for_bulk_load()
+
+        alter_sql = str(conn.execute.call_args_list[1].args[0])
+        assert "DROP CONSTRAINT" in alter_sql
+        assert "ALTER TABLE" in alter_sql
+
+
+# ---------------------------------------------------------------------------
+# _disable_sqlserver_constraints_for_bulk_load
+# ---------------------------------------------------------------------------
+
+class TestDisableSqlserverConstraintsForBulkLoad:
+    def _make_service(self):
+        engine = MagicMock()
+        engine.dialect.name = "mssql"
+        engine.dialect.identifier_preparer.quote_schema.side_effect = lambda s: f'"{s}"'
+        engine.dialect.identifier_preparer.quote.side_effect = lambda s: f'"{s}"'
+        return MigrationService(engine, schema="staging"), engine
+
+    def test_disables_constraint_for_each_table(self):
+        service, engine = self._make_service()
+        conn = engine.begin.return_value.__enter__.return_value
+
+        with patch("dpmcore.loaders.migration.inspect") as mock_inspect:
+            mock_inspect.return_value.get_table_names.return_value = ["T1", "T2", "T3"]
+            service._disable_sqlserver_constraints_for_bulk_load()
+
+        assert conn.execute.call_count == 3
+        sql_str = str(conn.execute.call_args_list[0].args[0])
+        assert "NOCHECK CONSTRAINT ALL" in sql_str
+
+    def test_no_tables_executes_nothing(self):
+        service, engine = self._make_service()
+        conn = engine.begin.return_value.__enter__.return_value
+
+        with patch("dpmcore.loaders.migration.inspect") as mock_inspect:
+            mock_inspect.return_value.get_table_names.return_value = []
+            service._disable_sqlserver_constraints_for_bulk_load()
+
+        conn.execute.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _mssql_identity_columns
+# ---------------------------------------------------------------------------
+
+class TestMssqlIdentityColumns:
+    def test_schema_none_returns_empty_dict_without_db_call(self):
+        engine = MagicMock()
+        service = MigrationService(engine)
+
+        result = service._mssql_identity_columns()
+
+        assert result == {}
+        engine.connect.assert_not_called()
+
+    def test_schema_set_returns_mapping_from_query(self):
+        engine = MagicMock()
+        conn = engine.connect.return_value.__enter__.return_value
+        conn.execute.return_value.fetchall.return_value = [
+            ("TableA", "ColID"),
+            ("TableB", "AnotherID"),
+        ]
+
+        service = MigrationService(engine, schema="staging")
+        result = service._mssql_identity_columns()
+
+        assert result == {"TableA": "ColID", "TableB": "AnotherID"}
+
+    def test_schema_set_empty_result_returns_empty_dict(self):
+        engine = MagicMock()
+        conn = engine.connect.return_value.__enter__.return_value
+        conn.execute.return_value.fetchall.return_value = []
+
+        service = MigrationService(engine, schema="staging")
+        result = service._mssql_identity_columns()
+
+        assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# _load_table – identity-insert path
+# ---------------------------------------------------------------------------
+
+class TestLoadTableIdentityInsert:
+    def test_identity_column_present_sets_identity_insert_on_and_off(self):
+        engine = MagicMock()
+        conn = engine.begin.return_value.__enter__.return_value
+        df = pd.DataFrame({"MyID": [1, 2], "Name": ["a", "b"]})
+
+        service = MigrationService(engine, schema="myschema")
+        with patch.object(df, "to_sql"):
+            service._load_table("UnknownTable", df, [], {"UnknownTable": "MyID"})
+
+        sqls = [str(c.args[0]) for c in conn.execute.call_args_list]
+        assert any("IDENTITY_INSERT" in s and "ON" in s for s in sqls)
+        assert any("IDENTITY_INSERT" in s and "OFF" in s for s in sqls)
+
+    def test_identity_insert_with_schema_uses_qualified_bracket_name(self):
+        engine = MagicMock()
+        conn = engine.begin.return_value.__enter__.return_value
+        df = pd.DataFrame({"MyID": [1]})
+
+        service = MigrationService(engine, schema="myschema")
+        with patch.object(df, "to_sql"):
+            service._load_table("T1", df, [], {"T1": "MyID"})
+
+        on_sql = str(conn.execute.call_args_list[0].args[0])
+        assert "[myschema].[T1]" in on_sql
+
+    def test_identity_insert_without_schema_uses_unqualified_bracket_name(self):
+        engine = MagicMock()
+        conn = engine.begin.return_value.__enter__.return_value
+        df = pd.DataFrame({"MyID": [1]})
+
+        service = MigrationService(engine)
+        with patch.object(df, "to_sql"):
+            service._load_table("T1", df, [], {"T1": "MyID"})
+
+        on_sql = str(conn.execute.call_args_list[0].args[0])
+        assert "[T1]" in on_sql
+        assert "[None]" not in on_sql
+
+    def test_identity_column_not_in_df_uses_direct_to_sql(self):
+        engine = MagicMock()
+        df = pd.DataFrame({"Name": ["a"]})
+
+        service = MigrationService(engine)
+        with patch.object(df, "to_sql") as mock_to_sql:
+            service._load_table("T1", df, [], {"T1": "MyID"})
+
+        mock_to_sql.assert_called_once()
+        call_kwargs = mock_to_sql.call_args
+        assert call_kwargs.args[1] is engine
+
+    def test_identity_insert_off_called_even_when_to_sql_raises(self):
+        engine = MagicMock()
+        conn = engine.begin.return_value.__enter__.return_value
+        df = pd.DataFrame({"MyID": [1]})
+
+        service = MigrationService(engine, schema="s")
+        with patch.object(df, "to_sql", side_effect=RuntimeError("disk full")):
+            with pytest.raises(MigrationError, match="disk full"):
+                service._load_table("T1", df, [], {"T1": "MyID"})
+
+        sqls = [str(c.args[0]) for c in conn.execute.call_args_list]
+        assert any("OFF" in s for s in sqls)

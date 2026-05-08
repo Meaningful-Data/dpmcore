@@ -55,6 +55,15 @@ def test_parse_version_unparseable_returns_none() -> None:
     assert parse_version("4.2-rc1") is None
 
 
+def test_compute_sort_order_requires_bigint() -> None:
+    # Values like 4.2.1 produce sort_order=4_000_002_000_001, which exceeds
+    # PostgreSQL/SQL Server INTEGER (max 2_147_483_647). The ORM column must
+    # use BigInteger; this test fails if _SEGMENT_BITS is ever shrunk enough
+    # to sneak under the 32-bit cap.
+    _INT32_MAX = 2_147_483_647
+    assert compute_sort_order("4.2.1") > _INT32_MAX
+
+
 def test_compute_sort_order_is_monotone() -> None:
     """If parse_version(a) < parse_version(b) then sort_order(a) < sort_order(b)."""
     samples = [
