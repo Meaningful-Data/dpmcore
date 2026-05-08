@@ -335,7 +335,7 @@ class DpmAttribute(models.Model):
     )
     name = models.CharField(
         db_column="Name",
-        max_length=20,
+        max_length=255,
         null=True,
         blank=True,
     )

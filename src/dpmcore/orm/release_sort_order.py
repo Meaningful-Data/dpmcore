@@ -22,8 +22,8 @@ from sqlalchemy import event, inspect
 from dpmcore.orm.infrastructure import Release
 
 # Three 6-digit slots per version segment → can hold 999999.999999.999999.
-# Plenty of headroom for any realistic DPM versioning while staying within
-# a SQLite ``INTEGER`` (64-bit signed, max ~9.2e18).
+# Requires BIGINT (64-bit) — the ORM column uses BigInteger for PostgreSQL/
+# SQL Server compatibility. SQLite INTEGER is always 64-bit so it was silent.
 _SEGMENT_BITS = 1_000_000
 
 

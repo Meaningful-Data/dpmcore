@@ -12,6 +12,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Date,
     DateTime,
@@ -393,7 +394,7 @@ class DpmAttribute(Base):
     class_id: Mapped[Optional[int]] = mapped_column(
         "ClassID", Integer, ForeignKey("DPMClass.ClassID")
     )
-    name: Mapped[Optional[str]] = mapped_column("Name", String(20))
+    name: Mapped[Optional[str]] = mapped_column("Name", String(255))
     has_translations: Mapped[Optional[bool]] = mapped_column(
         "HasTranslations", Boolean
     )
@@ -836,7 +837,7 @@ class Release(Base):
     # via the SQLAlchemy ``before_insert`` / ``before_update`` listeners
     # in ``dpmcore.orm.release_sort_order``.
     sort_order: Mapped[Optional[int]] = mapped_column(
-        "SortOrder", Integer, index=True
+        "SortOrder", BigInteger, index=True
     )
 
     concept: Mapped[Optional["Concept"]] = relationship(
