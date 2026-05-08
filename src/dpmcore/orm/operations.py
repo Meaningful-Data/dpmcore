@@ -60,7 +60,7 @@ class Operation(Base):
     operation_id: Mapped[int] = mapped_column(
         "OperationID", Integer, primary_key=True
     )
-    code: Mapped[Optional[str]] = mapped_column("Code", String(20))
+    code: Mapped[Optional[str]] = mapped_column("Code", String(255))
     type: Mapped[Optional[str]] = mapped_column("Type", String(20))
     source: Mapped[Optional[str]] = mapped_column("Source", String(20))
     group_operation_id: Mapped[Optional[int]] = mapped_column(
