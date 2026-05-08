@@ -27,7 +27,13 @@ from dpmcore.services.scope_calculator import ScopeCalculatorService
 from dpmcore.services.syntax import SyntaxService
 
 _RELEASE_CODE_MAP = {"3.2": "3.4"}
+_ECB_UUID_NAMESPACE = uuid.UUID("2aa31856-3c3b-4e53-9e37-ef7c7dd2486a")
 
+
+def _stable_uuid(*parts: object) -> str:
+    """Generate deterministic UUIDs for ECB-derived records."""
+    text = "|".join("" if part is None else str(part) for part in parts)
+    return str(uuid.uuid5(_ECB_UUID_NAMESPACE, text)).upper()
 
 class EcbValidationsImportError(Exception):
     """Raised when ECB validations cannot be imported."""
@@ -137,11 +143,12 @@ class EcbValidationsImportService:
         *,
         operation_class: Optional[DpmClass],
         owner: Optional[Organisation],
+        stable_key: str,
     ) -> Optional[str]:
         if operation_class is None or owner is None:
             return None
 
-        concept_guid = str(uuid.uuid4())
+        concept_guid = _stable_uuid("concept", owner.org_id, stable_key)
         session.add(
             Concept(
                 concept_guid=concept_guid,
@@ -404,6 +411,7 @@ class EcbValidationsImportService:
                 session,
                 operation_class=operation_class,
                 owner=owner,
+                stable_key=f"precondition:{precondition_code}",
             )
             operation = Operation(
                 operation_id=counters["operation_id"],
@@ -515,6 +523,7 @@ class EcbValidationsImportService:
                 session,
                 operation_class=operation_class,
                 owner=ecb_org,
+                stable_key=f"operation:{code}",
             )
             operation = Operation(
                 operation_id=counters["operation_id"],
@@ -664,13 +673,52 @@ class EcbValidationsImportService:
                         )
                         continue
 
-                    for scope in scope_result.scopes:
+                    ordered_scopes = sorted(
+                        scope_result.scopes,
+                        key=lambda scope: tuple(
+                            sorted(
+                                comp.module_vid
+                                for comp in scope.operation_scope_compositions
+                            )
+                        ),
+                    )
+
+                    for scope_index, scope in enumerate(ordered_scopes):
+                        module_vids = tuple(
+                            sorted(
+                                comp.module_vid
+                                for comp in scope.operation_scope_compositions
+                            )
+                        )
+
                         scope.operation_vid = operation_version.operation_vid
                         scope.is_active = active_value
                         scope.severity = severity_value
                         scope.from_submission_date = submission_date
+                        scope.row_guid = _stable_uuid(
+                            "operation-scope",
+                            operation_version.operation_vid,
+                            release_id,
+                            scope_index,
+                            module_vids,
+                        )
+
                         session.add(scope)
-                        for comp in scope.operation_scope_compositions:
+
+                        ordered_compositions = sorted(
+                            scope.operation_scope_compositions,
+                            key=lambda comp: comp.module_vid,
+                        )
+
+                        for comp_index, comp in enumerate(ordered_compositions):
+                            comp.row_guid = _stable_uuid(
+                                "operation-scope-composition",
+                                operation_version.operation_vid,
+                                release_id,
+                                scope_index,
+                                comp_index,
+                                comp.module_vid,
+                            )
                             session.add(comp)
                             compositions_created += 1
                         scopes_created += 1
