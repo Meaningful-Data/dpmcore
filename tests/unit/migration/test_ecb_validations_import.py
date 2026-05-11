@@ -771,6 +771,7 @@ class TestEcbValidationsImport:
 # _stable_uuid
 # ---------------------------------------------------------------------------
 
+
 class TestStableUuid:
     def test_deterministic_same_input_same_output(self):
         uid1 = _stable_uuid("concept", 42, "my-key")

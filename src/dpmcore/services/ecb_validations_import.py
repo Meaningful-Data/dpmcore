@@ -35,6 +35,7 @@ def _stable_uuid(*parts: object) -> str:
     text = "|".join("" if part is None else str(part) for part in parts)
     return f"{{{str(uuid.uuid5(_ECB_UUID_NAMESPACE, text)).upper()}}}"
 
+
 class EcbValidationsImportError(Exception):
     """Raised when ECB validations cannot be imported."""
 
@@ -556,7 +557,7 @@ class EcbValidationsImportService:
 
         records = df.to_dict(orient="records")
 
-        for index, row in enumerate(records, start=1):
+        for _index, row in enumerate(records, start=1):
             code = self._normalize_text(row.get("vr_code"))
             if code is None:
                 continue

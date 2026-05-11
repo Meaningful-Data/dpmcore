@@ -190,7 +190,9 @@ class DatabaseUpdateService:
             )
 
             if ecb_validations_file is not None:
-                staging_engine = self._engine_for_schema(engine, staging_schema)
+                staging_engine = self._engine_for_schema(
+                    engine, staging_schema
+                )
                 EcbValidationsImportService(staging_engine).import_csv(
                     ecb_validations_file
                 )
@@ -337,7 +339,6 @@ class DatabaseUpdateService:
         """
         return engine.execution_options(schema_translate_map={None: schema})
 
-
     def _validate_schema(
         self,
         *,
@@ -405,9 +406,10 @@ class DatabaseUpdateService:
             DatabaseUpdateError: If any table's actual row count is below the
                 expected minimum.
         """
-        for table_name, expected_rows in (
-            migration_result.table_details.items()
-        ):
+        for (
+            table_name,
+            expected_rows,
+        ) in migration_result.table_details.items():
             result = conn.execute(
                 text(
                     "SELECT COUNT(*) FROM "  # noqa: S608
@@ -528,11 +530,13 @@ class DatabaseUpdateService:
         if target_type == "postgresql":
             timeout_sql = "SET LOCAL lock_timeout = '2s'"
             dialect_label = "PostgreSQL"
+
             def lock_sql(table: str) -> str:
                 return f"LOCK TABLE {table} IN ACCESS EXCLUSIVE MODE NOWAIT"
         elif target_type == "sqlserver":
             timeout_sql = "SET LOCK_TIMEOUT 2000"
             dialect_label = "SQL Server"
+
             def lock_sql(table: str) -> str:
                 return (
                     f"SELECT TOP (0) * FROM {table}"  # noqa: S608
@@ -739,9 +743,7 @@ class DatabaseUpdateService:
         Raises:
             DatabaseUpdateError: If ``target_type`` is not supported.
         """
-        source_table = self._qualified_table(
-            engine, source_schema, table_name
-        )
+        source_table = self._qualified_table(engine, source_schema, table_name)
         destination_schema_quoted = self._quote_schema(
             engine, destination_schema
         )
@@ -949,7 +951,9 @@ class DatabaseUpdateService:
                 )
 
                 if ecb_validations_file is not None:
-                    EcbValidationsImportService(engine).import_csv(ecb_validations_file)
+                    EcbValidationsImportService(engine).import_csv(
+                        ecb_validations_file
+                    )
 
                 self._validate_sqlite(
                     engine,
@@ -1034,9 +1038,10 @@ class DatabaseUpdateService:
             )
 
         with engine.connect() as conn:
-            for table_name, expected_rows in (
-                migration_result.table_details.items()
-            ):
+            for (
+                table_name,
+                expected_rows,
+            ) in migration_result.table_details.items():
                 actual_rows = conn.execute(
                     text(f'SELECT COUNT(*) FROM "{table_name}"')  # noqa: S608
                 ).scalar_one()

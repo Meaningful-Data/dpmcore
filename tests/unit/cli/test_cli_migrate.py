@@ -340,8 +340,13 @@ class TestBuildMeiliJsonCli:
 
 class TestUpdateDbCli:
     def _mock_result(
-        self, *, used_access_file=False, ecb=False, warnings=None,
-        dry_run=False, staging_location=None,
+        self,
+        *,
+        used_access_file=False,
+        ecb=False,
+        warnings=None,
+        dry_run=False,
+        staging_location=None,
     ):
         from pathlib import Path
 
@@ -362,12 +367,16 @@ class TestUpdateDbCli:
             "dpmcore.services.database_update.DatabaseUpdateService.update",
             return_value=self._mock_result(),
         ):
-            result = runner.invoke(main, ["update-db", "--target", "data/dpm.sqlite"])
+            result = runner.invoke(
+                main, ["update-db", "--target", "data/dpm.sqlite"]
+            )
 
         assert result.exit_code == 0
         assert "data/DPM CSVs" in result.output
 
-    def test_success_from_access_file_prints_path_in_startup(self, runner, tmp_path):
+    def test_success_from_access_file_prints_path_in_startup(
+        self, runner, tmp_path
+    ):
         access_file = tmp_path / "source.accdb"
         access_file.touch()
 
@@ -377,7 +386,13 @@ class TestUpdateDbCli:
         ):
             result = runner.invoke(
                 main,
-                ["update-db", "--target", "data/dpm.sqlite", "--access-file", str(access_file)],
+                [
+                    "update-db",
+                    "--target",
+                    "data/dpm.sqlite",
+                    "--access-file",
+                    str(access_file),
+                ],
             )
 
         assert result.exit_code == 0
@@ -388,13 +403,17 @@ class TestUpdateDbCli:
             "dpmcore.services.database_update.DatabaseUpdateService.update",
             return_value=self._mock_result(),
         ):
-            result = runner.invoke(main, ["update-db", "--target", "data/dpm.sqlite"])
+            result = runner.invoke(
+                main, ["update-db", "--target", "data/dpm.sqlite"]
+            )
 
         assert result.exit_code == 0
         assert "5 tables" in result.output
         assert "100" in result.output
 
-    def test_used_access_file_prints_access_source_message(self, runner, tmp_path):
+    def test_used_access_file_prints_access_source_message(
+        self, runner, tmp_path
+    ):
         access_file = tmp_path / "source.accdb"
         access_file.touch()
 
@@ -404,7 +423,13 @@ class TestUpdateDbCli:
         ):
             result = runner.invoke(
                 main,
-                ["update-db", "--target", "data/dpm.sqlite", "--access-file", str(access_file)],
+                [
+                    "update-db",
+                    "--target",
+                    "data/dpm.sqlite",
+                    "--access-file",
+                    str(access_file),
+                ],
             )
 
         assert "Source loaded from Access file" in result.output
@@ -414,7 +439,9 @@ class TestUpdateDbCli:
             "dpmcore.services.database_update.DatabaseUpdateService.update",
             return_value=self._mock_result(used_access_file=False),
         ):
-            result = runner.invoke(main, ["update-db", "--target", "data/dpm.sqlite"])
+            result = runner.invoke(
+                main, ["update-db", "--target", "data/dpm.sqlite"]
+            )
 
         assert "Source loaded from data/DPM CSVs" in result.output
 
@@ -423,7 +450,9 @@ class TestUpdateDbCli:
             "dpmcore.services.database_update.DatabaseUpdateService.update",
             return_value=self._mock_result(ecb=True),
         ):
-            result = runner.invoke(main, ["update-db", "--target", "data/dpm.sqlite"])
+            result = runner.invoke(
+                main, ["update-db", "--target", "data/dpm.sqlite"]
+            )
 
         assert "ECB validations imported" in result.output
 
@@ -432,7 +461,9 @@ class TestUpdateDbCli:
             "dpmcore.services.database_update.DatabaseUpdateService.update",
             return_value=self._mock_result(warnings=["check column X"]),
         ):
-            result = runner.invoke(main, ["update-db", "--target", "data/dpm.sqlite"])
+            result = runner.invoke(
+                main, ["update-db", "--target", "data/dpm.sqlite"]
+            )
 
         assert "check column X" in result.output
 
@@ -443,7 +474,9 @@ class TestUpdateDbCli:
             "dpmcore.services.database_update.DatabaseUpdateService.update",
             side_effect=DatabaseUpdateError("unsupported target"),
         ):
-            result = runner.invoke(main, ["update-db", "--target", "data/dpm.sqlite"])
+            result = runner.invoke(
+                main, ["update-db", "--target", "data/dpm.sqlite"]
+            )
 
         assert result.exit_code == 1
         assert "unsupported target" in result.output
@@ -476,13 +509,21 @@ class TestUpdateDbCli:
             )
 
         assert result.exit_code == 0
-        assert mock_update.call_args.kwargs["ecb_validations_file"] == str(ecb_file)
+        assert mock_update.call_args.kwargs["ecb_validations_file"] == str(
+            ecb_file
+        )
 
     def test_nonexistent_access_file_exits_nonzero(self, runner, tmp_path):
         nonexistent = str(tmp_path / "missing.accdb")
         result = runner.invoke(
             main,
-            ["update-db", "--target", "data/dpm.sqlite", "--access-file", nonexistent],
+            [
+                "update-db",
+                "--target",
+                "data/dpm.sqlite",
+                "--access-file",
+                nonexistent,
+            ],
         )
         assert result.exit_code != 0
 
@@ -542,7 +583,9 @@ class TestUpdateDbCli:
     def test_staging_location_output_message_printed(self, runner):
         with patch(
             "dpmcore.services.database_update.DatabaseUpdateService.update",
-            return_value=self._mock_result(staging_location="/tmp/staging.sqlite"),  # noqa: S108
+            return_value=self._mock_result(
+                staging_location="/tmp/staging.sqlite"  # noqa: S108
+            ),
         ):
             result = runner.invoke(
                 main,
