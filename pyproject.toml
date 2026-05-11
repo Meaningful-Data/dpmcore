@@ -46,7 +46,7 @@ documentation = "https://docs.dpmcore.meaningfuldata.eu"
 # ubuntu_test_24_04.yml can install this library with system packages
 # via `pip install --no-dependencies`. Version bumps above these floors
 # should stay within semver compatibility.
-server = ["fastapi>=0.101", "uvicorn[standard]>=0.27"]
+server = ["fastapi>=0.101", "uvicorn[standard]>=0.46.0"]
 django = ["django>=4.2", "mssql-django>=1.4"]
 postgres = ["psycopg2-binary>=2.9,<3.0"]
 sqlserver = ["pyodbc>=5.0"]
@@ -58,7 +58,7 @@ cli = ["click>=8.1", "rich>=13.7"]
 export = ["openpyxl>=3.1"]
 all = [
     "fastapi>=0.101",
-    "uvicorn[standard]>=0.27",
+    "uvicorn[standard]>=0.46.0",
     "django>=4.2",
     "mssql-django>=1.4",
     "psycopg2-binary>=2.9,<3.0",
