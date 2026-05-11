@@ -200,7 +200,9 @@ class TestMigrateCsvDir:
 
         with sqlite_engine.connect() as conn:
             rows = conn.execute(
-                text("SELECT ReleaseID, SortOrder FROM Release ORDER BY ReleaseID")
+                text(
+                    "SELECT ReleaseID, SortOrder FROM Release ORDER BY ReleaseID"
+                )
             ).fetchall()
 
         assert all(sort_order is not None for _, sort_order in rows), (
@@ -303,6 +305,7 @@ class TestMigrateCsvDir:
 # MigrationService.__init__ – schema parameter
 # ---------------------------------------------------------------------------
 
+
 class TestMigrationServiceInit:
     def test_schema_none_ddl_engine_is_engine(self):
         engine = MagicMock()
@@ -336,12 +339,15 @@ class TestMigrationServiceInit:
 # _coerce_boolean_columns_for_schema
 # ---------------------------------------------------------------------------
 
+
 def _make_bool_table():
     from sqlalchemy import Column, MetaData, Table
     from sqlalchemy.types import Boolean, String
 
     meta = MetaData()
-    return Table("TestBool", meta, Column("Flag", Boolean()), Column("Name", String(20)))
+    return Table(
+        "TestBool", meta, Column("Flag", Boolean()), Column("Name", String(20))
+    )
 
 
 class TestCoerceBooleanColumnsForSchema:
@@ -457,7 +463,9 @@ class TestCoerceBooleanColumnsForSchema:
         with pytest.raises(MigrationError):
             self._coerce(["maybe"], bool_table)
 
-    def test_unsupported_numeric_string_raises_migration_error(self, bool_table):
+    def test_unsupported_numeric_string_raises_migration_error(
+        self, bool_table
+    ):
         with pytest.raises(MigrationError):
             self._coerce(["2.5"], bool_table)
 
@@ -479,12 +487,16 @@ class TestCoerceBooleanColumnsForSchema:
     # --- skipping behavior ---
     def test_non_boolean_column_not_modified(self, bool_table):
         df = pd.DataFrame({"Name": ["yes"]})
-        result = MigrationService._coerce_boolean_columns_for_schema(df, bool_table)
+        result = MigrationService._coerce_boolean_columns_for_schema(
+            df, bool_table
+        )
         assert result["Name"].iloc[0] == "yes"
 
     def test_column_not_in_df_skipped(self, bool_table):
         df = pd.DataFrame({"OtherCol": ["yes"]})
-        result = MigrationService._coerce_boolean_columns_for_schema(df, bool_table)
+        result = MigrationService._coerce_boolean_columns_for_schema(
+            df, bool_table
+        )
         assert "Flag" not in result.columns
 
     # --- case insensitive ---
@@ -506,6 +518,7 @@ class TestCoerceBooleanColumnsForSchema:
 # _prepare_bulk_load_constraints
 # ---------------------------------------------------------------------------
 
+
 class TestPrepareBulkLoadConstraints:
     def test_schema_none_is_noop(self):
         engine = MagicMock()
@@ -518,7 +531,9 @@ class TestPrepareBulkLoadConstraints:
         engine.dialect.name = "postgresql"
         service = MigrationService(engine, schema="staging")
 
-        with patch.object(service, "_drop_postgresql_foreign_keys_for_bulk_load") as mock_drop:
+        with patch.object(
+            service, "_drop_postgresql_foreign_keys_for_bulk_load"
+        ) as mock_drop:
             service._prepare_bulk_load_constraints()
 
         mock_drop.assert_called_once()
@@ -528,7 +543,9 @@ class TestPrepareBulkLoadConstraints:
         engine.dialect.name = "mssql"
         service = MigrationService(engine, schema="staging")
 
-        with patch.object(service, "_disable_sqlserver_constraints_for_bulk_load") as mock_disable:
+        with patch.object(
+            service, "_disable_sqlserver_constraints_for_bulk_load"
+        ) as mock_disable:
             service._prepare_bulk_load_constraints()
 
         mock_disable.assert_called_once()
@@ -539,8 +556,12 @@ class TestPrepareBulkLoadConstraints:
         service = MigrationService(engine, schema="staging")
 
         with (
-            patch.object(service, "_drop_postgresql_foreign_keys_for_bulk_load") as mock_pg,
-            patch.object(service, "_disable_sqlserver_constraints_for_bulk_load") as mock_ms,
+            patch.object(
+                service, "_drop_postgresql_foreign_keys_for_bulk_load"
+            ) as mock_pg,
+            patch.object(
+                service, "_disable_sqlserver_constraints_for_bulk_load"
+            ) as mock_ms,
         ):
             service._prepare_bulk_load_constraints()
 
@@ -552,12 +573,17 @@ class TestPrepareBulkLoadConstraints:
 # _drop_postgresql_foreign_keys_for_bulk_load
 # ---------------------------------------------------------------------------
 
+
 class TestDropPostgresqlForeignKeysForBulkLoad:
     def _make_service(self):
         engine = MagicMock()
         engine.dialect.name = "postgresql"
-        engine.dialect.identifier_preparer.quote_schema.side_effect = lambda s: f'"{s}"'
-        engine.dialect.identifier_preparer.quote.side_effect = lambda s: f'"{s}"'
+        engine.dialect.identifier_preparer.quote_schema.side_effect = (
+            lambda s: f'"{s}"'
+        )
+        engine.dialect.identifier_preparer.quote.side_effect = lambda s: (
+            f'"{s}"'
+        )
         return MigrationService(engine, schema="staging"), engine
 
     def test_drops_each_constraint(self):
@@ -597,12 +623,17 @@ class TestDropPostgresqlForeignKeysForBulkLoad:
 # _disable_sqlserver_constraints_for_bulk_load
 # ---------------------------------------------------------------------------
 
+
 class TestDisableSqlserverConstraintsForBulkLoad:
     def _make_service(self):
         engine = MagicMock()
         engine.dialect.name = "mssql"
-        engine.dialect.identifier_preparer.quote_schema.side_effect = lambda s: f'"{s}"'
-        engine.dialect.identifier_preparer.quote.side_effect = lambda s: f'"{s}"'
+        engine.dialect.identifier_preparer.quote_schema.side_effect = (
+            lambda s: f'"{s}"'
+        )
+        engine.dialect.identifier_preparer.quote.side_effect = lambda s: (
+            f'"{s}"'
+        )
         return MigrationService(engine, schema="staging"), engine
 
     def test_disables_constraint_for_each_table(self):
@@ -610,7 +641,11 @@ class TestDisableSqlserverConstraintsForBulkLoad:
         conn = engine.begin.return_value.__enter__.return_value
 
         with patch("dpmcore.loaders.migration.inspect") as mock_inspect:
-            mock_inspect.return_value.get_table_names.return_value = ["T1", "T2", "T3"]
+            mock_inspect.return_value.get_table_names.return_value = [
+                "T1",
+                "T2",
+                "T3",
+            ]
             service._disable_sqlserver_constraints_for_bulk_load()
 
         assert conn.execute.call_count == 3
@@ -631,6 +666,7 @@ class TestDisableSqlserverConstraintsForBulkLoad:
 # ---------------------------------------------------------------------------
 # _mssql_identity_columns
 # ---------------------------------------------------------------------------
+
 
 class TestMssqlIdentityColumns:
     def test_schema_none_returns_empty_dict_without_db_call(self):
@@ -670,6 +706,7 @@ class TestMssqlIdentityColumns:
 # _load_table – identity-insert path
 # ---------------------------------------------------------------------------
 
+
 class TestLoadTableIdentityInsert:
     def test_identity_column_present_sets_identity_insert_on_and_off(self):
         engine = MagicMock()
@@ -678,7 +715,9 @@ class TestLoadTableIdentityInsert:
 
         service = MigrationService(engine, schema="myschema")
         with patch.object(df, "to_sql"):
-            service._load_table("UnknownTable", df, [], {"UnknownTable": "MyID"})
+            service._load_table(
+                "UnknownTable", df, [], {"UnknownTable": "MyID"}
+            )
 
         sqls = [str(c.args[0]) for c in conn.execute.call_args_list]
         assert any("IDENTITY_INSERT" in s and "ON" in s for s in sqls)
@@ -696,7 +735,9 @@ class TestLoadTableIdentityInsert:
         on_sql = str(conn.execute.call_args_list[0].args[0])
         assert "[myschema].[T1]" in on_sql
 
-    def test_identity_insert_without_schema_uses_unqualified_bracket_name(self):
+    def test_identity_insert_without_schema_uses_unqualified_bracket_name(
+        self,
+    ):
         engine = MagicMock()
         conn = engine.begin.return_value.__enter__.return_value
         df = pd.DataFrame({"MyID": [1]})

@@ -118,7 +118,7 @@ class ExportCsvService:
             table_name
             for line in raw.splitlines()
             if (table_name := line.strip())
-               and not any(
+            and not any(
                 table_name.startswith(prefix)
                 for prefix in _SYSTEM_TABLE_PREFIXES
             )

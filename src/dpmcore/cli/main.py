@@ -270,9 +270,7 @@ def update_db(
             f"[cyan]{access_file}[/cyan]..."
         )
     else:
-        console.print(
-            f"Updating [cyan]{target}[/cyan] from data/DPM CSVs..."
-        )
+        console.print(f"Updating [cyan]{target}[/cyan] from data/DPM CSVs...")
 
     try:
         result = DatabaseUpdateService().update(
@@ -319,6 +317,7 @@ def update_db(
             f"[yellow]Staging artifact:[/yellow] "
             f"[cyan]{result.staging_location}[/cyan]"
         )
+
 
 @main.command()
 @click.option(

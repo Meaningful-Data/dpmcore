@@ -14,7 +14,9 @@ def test_list_tables_filters_system_tables():
 
     raw_tables = "Release\nModule\nMSysObjects\n~TmpTable\nCell\n"
 
-    with patch("subprocess.check_output", return_value=raw_tables) as mock_output:
+    with patch(
+        "subprocess.check_output", return_value=raw_tables
+    ) as mock_output:
         tables = service._list_tables("/fake.accdb")
 
     assert tables == ["Release", "Module", "Cell"]
@@ -103,7 +105,9 @@ class TestExportSafely:
         output_dir = tmp_path / "DPM"
 
         with patch.object(
-            service, "export", return_value=self._fake_result(["T1", "T2"], output_dir)
+            service,
+            "export",
+            return_value=self._fake_result(["T1", "T2"], output_dir),
         ):
             result = service.export_safely("/fake.accdb", output_dir)
 
@@ -119,7 +123,9 @@ class TestExportSafely:
         (output_dir / "old.csv").write_text("old")
 
         with patch.object(
-            service, "export", return_value=self._fake_result(["T1"], output_dir)
+            service,
+            "export",
+            return_value=self._fake_result(["T1"], output_dir),
         ):
             result = service.export_safely("/fake.accdb", output_dir)
 
@@ -141,7 +147,9 @@ class TestExportSafely:
         output_dir.mkdir()
         (output_dir / "original.csv").write_text("original")
 
-        with patch.object(service, "export", side_effect=ExportCsvError("mdbtools failed")):
+        with patch.object(
+            service, "export", side_effect=ExportCsvError("mdbtools failed")
+        ):
             with pytest.raises(ExportCsvError, match="mdbtools failed"):
                 service.export_safely("/fake.accdb", output_dir)
 
@@ -154,7 +162,9 @@ class TestExportSafely:
         output_dir.mkdir()
         (output_dir / "original.csv").write_text("original")
 
-        with patch.object(service, "export", side_effect=RuntimeError("unexpected")):
+        with patch.object(
+            service, "export", side_effect=RuntimeError("unexpected")
+        ):
             with pytest.raises(ExportCsvError, match="unexpected"):
                 service.export_safely("/fake.accdb", output_dir)
 
@@ -166,7 +176,9 @@ class TestExportSafely:
         output_dir = tmp_path / "DPM"
 
         with patch.object(
-            service, "export", return_value=self._fake_result(["T1"], output_dir)
+            service,
+            "export",
+            return_value=self._fake_result(["T1"], output_dir),
         ):
             service.export_safely("/fake.accdb", output_dir)
 
@@ -176,7 +188,9 @@ class TestExportSafely:
         service = ExportCsvService()
         output_dir = tmp_path / "DPM"
 
-        with patch.object(service, "export", side_effect=ExportCsvError("fail")):
+        with patch.object(
+            service, "export", side_effect=ExportCsvError("fail")
+        ):
             with pytest.raises(ExportCsvError):
                 service.export_safely("/fake.accdb", output_dir)
 

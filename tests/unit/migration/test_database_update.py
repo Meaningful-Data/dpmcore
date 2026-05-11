@@ -33,7 +33,9 @@ def _engine_with_tables(tmp_path, tables: dict):
     engine = create_engine(f"sqlite:///{db_path}")
     with engine.connect() as conn:
         for name, count in tables.items():
-            conn.execute(text(f'CREATE TABLE "{name}" (id INTEGER PRIMARY KEY)'))
+            conn.execute(
+                text(f'CREATE TABLE "{name}" (id INTEGER PRIMARY KEY)')
+            )
             for i in range(count):
                 conn.execute(text(f'INSERT INTO "{name}" VALUES ({i})'))  # noqa: S608
         conn.commit()
@@ -65,25 +67,35 @@ class TestDetectTargetType:
         assert service.detect_target_type("sqlite:///dpm.db") == "sqlite"
 
     def test_postgresql_url(self, service):
-        assert service.detect_target_type("postgresql://host/db") == "postgresql"
+        assert (
+            service.detect_target_type("postgresql://host/db") == "postgresql"
+        )
 
     def test_postgres_url(self, service):
         assert service.detect_target_type("postgres://host/db") == "postgresql"
 
     def test_mssql_url(self, service):
-        assert service.detect_target_type("mssql+pyodbc://host/db") == "sqlserver"
+        assert (
+            service.detect_target_type("mssql+pyodbc://host/db") == "sqlserver"
+        )
 
     def test_unknown_raises(self, service):
-        with pytest.raises(DatabaseUpdateError, match="Could not detect target type"):
+        with pytest.raises(
+            DatabaseUpdateError, match="Could not detect target type"
+        ):
             service.detect_target_type("unknown_format")
 
 
 class TestSqlitePathFromTarget:
     def test_plain_path(self, service):
-        assert service._sqlite_path_from_target("data/dpm.sqlite") == Path("data/dpm.sqlite")
+        assert service._sqlite_path_from_target("data/dpm.sqlite") == Path(
+            "data/dpm.sqlite"
+        )
 
     def test_sqlite_url(self, service):
-        assert service._sqlite_path_from_target("sqlite:///data/dpm.db") == Path("data/dpm.db")
+        assert service._sqlite_path_from_target(
+            "sqlite:///data/dpm.db"
+        ) == Path("data/dpm.db")
 
     def test_sqlite_url_two_slashes_raises(self, service):
         with pytest.raises(DatabaseUpdateError, match="sqlite:///"):
@@ -97,7 +109,9 @@ class TestUpdateDispatch:
 
     def test_calls_update_sqlite_from_csv_dir(self, service, tmp_path):
         target = tmp_path / "out.sqlite"
-        with patch.object(service, "_update_sqlite", return_value=MagicMock()) as mock_update:
+        with patch.object(
+            service, "_update_sqlite", return_value=MagicMock()
+        ) as mock_update:
             service.update(target=str(target), source_dir=str(tmp_path))
 
         kw = mock_update.call_args.kwargs
@@ -111,14 +125,18 @@ class TestUpdateDispatch:
         access_file.touch()
 
         with (
-            patch("dpmcore.services.database_update.ExportCsvService") as MockExport,
+            patch(
+                "dpmcore.services.database_update.ExportCsvService"
+            ) as MockExport,
             patch.object(service, "_update_sqlite", return_value=MagicMock()),
         ):
             MockExport.return_value.export_safely.return_value = MagicMock()
             service.update(target=str(target), access_file=str(access_file))
 
         MockExport.return_value.export_safely.assert_called_once()
-        assert MockExport.return_value.export_safely.call_args.args[0] == str(access_file)
+        assert MockExport.return_value.export_safely.call_args.args[0] == str(
+            access_file
+        )
 
     def test_used_access_file_flag_true_when_provided(self, service, tmp_path):
         target = tmp_path / "out.sqlite"
@@ -126,8 +144,12 @@ class TestUpdateDispatch:
         access_file.touch()
 
         with (
-            patch("dpmcore.services.database_update.ExportCsvService") as MockExport,
-            patch.object(service, "_update_sqlite", return_value=MagicMock()) as mock_update,
+            patch(
+                "dpmcore.services.database_update.ExportCsvService"
+            ) as MockExport,
+            patch.object(
+                service, "_update_sqlite", return_value=MagicMock()
+            ) as mock_update,
         ):
             MockExport.return_value.export_safely.return_value = MagicMock()
             service.update(target=str(target), access_file=str(access_file))
@@ -147,7 +169,9 @@ class TestUpdateSqliteInternal:
     def _run(self, service, target, tmp_path, **kwargs):
         """Call _update_sqlite with MigrationService mocked to return no tables."""
         with (
-            patch("dpmcore.services.database_update.MigrationService") as MockMigration,
+            patch(
+                "dpmcore.services.database_update.MigrationService"
+            ) as MockMigration,
             patch.object(DatabaseUpdateService, "_validate_csv_count"),
             patch.object(DatabaseUpdateService, "_validate_required_content"),
         ):
@@ -179,7 +203,9 @@ class TestUpdateSqliteInternal:
 
         assert list(tmp_path.glob(".dpm.sqlite.tmp-*")) == []
 
-    def test_backup_removed_after_success_when_target_existed(self, service, tmp_path):
+    def test_backup_removed_after_success_when_target_existed(
+        self, service, tmp_path
+    ):
         target = tmp_path / "dpm.sqlite"
         target.write_bytes(b"old")
 
@@ -188,16 +214,22 @@ class TestUpdateSqliteInternal:
         assert list(tmp_path.glob("dpm.sqlite.backup-*")) == []
         assert target.exists()
 
-    def test_result_contains_correct_migration_result(self, service, fake_migration_result, tmp_path):
+    def test_result_contains_correct_migration_result(
+        self, service, fake_migration_result, tmp_path
+    ):
         target = tmp_path / "dpm.sqlite"
 
         with (
-            patch("dpmcore.services.database_update.MigrationService") as MockMigration,
+            patch(
+                "dpmcore.services.database_update.MigrationService"
+            ) as MockMigration,
             patch.object(DatabaseUpdateService, "_validate_csv_count"),
             patch.object(DatabaseUpdateService, "_validate_sqlite"),
             patch.object(service, "_replace_sqlite_file"),
         ):
-            MockMigration.return_value.migrate_from_csv_dir.return_value = fake_migration_result
+            MockMigration.return_value.migrate_from_csv_dir.return_value = (
+                fake_migration_result
+            )
             result = service._update_sqlite(
                 target_path=target,
                 csv_dir=tmp_path,
@@ -208,11 +240,17 @@ class TestUpdateSqliteInternal:
 
         assert result.migration_result is fake_migration_result
 
-    def test_migration_error_raises_database_update_error(self, service, tmp_path):
+    def test_migration_error_raises_database_update_error(
+        self, service, tmp_path
+    ):
         target = tmp_path / "dpm.sqlite"
 
-        with patch("dpmcore.services.database_update.MigrationService") as MockMigration:
-            MockMigration.return_value.migrate_from_csv_dir.side_effect = MigrationError("bad csv")
+        with patch(
+            "dpmcore.services.database_update.MigrationService"
+        ) as MockMigration:
+            MockMigration.return_value.migrate_from_csv_dir.side_effect = (
+                MigrationError("bad csv")
+            )
 
             with pytest.raises(DatabaseUpdateError, match="bad csv"):
                 service._update_sqlite(
@@ -225,11 +263,17 @@ class TestUpdateSqliteInternal:
 
         assert not target.exists()
 
-    def test_generic_exception_wrapped_as_database_update_error(self, service, tmp_path):
+    def test_generic_exception_wrapped_as_database_update_error(
+        self, service, tmp_path
+    ):
         target = tmp_path / "dpm.sqlite"
 
-        with patch("dpmcore.services.database_update.MigrationService") as MockMigration:
-            MockMigration.return_value.migrate_from_csv_dir.side_effect = RuntimeError("disk full")
+        with patch(
+            "dpmcore.services.database_update.MigrationService"
+        ) as MockMigration:
+            MockMigration.return_value.migrate_from_csv_dir.side_effect = (
+                RuntimeError("disk full")
+            )
 
             with pytest.raises(DatabaseUpdateError, match="disk full"):
                 service._update_sqlite(
@@ -240,12 +284,18 @@ class TestUpdateSqliteInternal:
                     ecb_validations_file=None,
                 )
 
-    def test_existing_target_restored_on_migration_error(self, service, tmp_path):
+    def test_existing_target_restored_on_migration_error(
+        self, service, tmp_path
+    ):
         target = tmp_path / "dpm.sqlite"
         target.write_bytes(b"old content")
 
-        with patch("dpmcore.services.database_update.MigrationService") as MockMigration:
-            MockMigration.return_value.migrate_from_csv_dir.side_effect = MigrationError("fail")
+        with patch(
+            "dpmcore.services.database_update.MigrationService"
+        ) as MockMigration:
+            MockMigration.return_value.migrate_from_csv_dir.side_effect = (
+                MigrationError("fail")
+            )
 
             with pytest.raises(DatabaseUpdateError):
                 service._update_sqlite(
@@ -278,12 +328,18 @@ class TestUpdateSqliteInternal:
         ecb_file.write_text("vr_code,start_release\nV1,4.0\n")
 
         with (
-            patch("dpmcore.services.database_update.MigrationService") as MockMigration,
-            patch("dpmcore.services.database_update.EcbValidationsImportService") as MockEcb,
+            patch(
+                "dpmcore.services.database_update.MigrationService"
+            ) as MockMigration,
+            patch(
+                "dpmcore.services.database_update.EcbValidationsImportService"
+            ) as MockEcb,
             patch.object(DatabaseUpdateService, "_validate_csv_count"),
             patch.object(DatabaseUpdateService, "_validate_required_content"),
         ):
-            MockMigration.return_value.migrate_from_csv_dir.return_value = _empty_migration_result()
+            MockMigration.return_value.migrate_from_csv_dir.return_value = (
+                _empty_migration_result()
+            )
             result = service._update_sqlite(
                 target_path=target,
                 csv_dir=tmp_path,
@@ -312,26 +368,36 @@ class TestDetectTargetTypeEdgeCases:
 
 class TestSqlitePathFromTargetEdgeCases:
     def test_url_encoded_spaces_in_path(self, service):
-        assert service._sqlite_path_from_target("sqlite:///path/to/my%20file.db") == Path(
-            "path/to/my file.db"
-        )
+        assert service._sqlite_path_from_target(
+            "sqlite:///path/to/my%20file.db"
+        ) == Path("path/to/my file.db")
 
 
 class TestUpdateDispatchEdgeCases:
-    def test_ecb_validations_file_passed_to_update_sqlite(self, service, tmp_path):
+    def test_ecb_validations_file_passed_to_update_sqlite(
+        self, service, tmp_path
+    ):
         target = tmp_path / "out.sqlite"
         ecb_file = tmp_path / "ecb.csv"
         ecb_file.touch()
 
-        with patch.object(service, "_update_sqlite", return_value=MagicMock()) as mock_update:
-            service.update(target=str(target), ecb_validations_file=str(ecb_file))
+        with patch.object(
+            service, "_update_sqlite", return_value=MagicMock()
+        ) as mock_update:
+            service.update(
+                target=str(target), ecb_validations_file=str(ecb_file)
+            )
 
-        assert mock_update.call_args.kwargs["ecb_validations_file"] == str(ecb_file)
+        assert mock_update.call_args.kwargs["ecb_validations_file"] == str(
+            ecb_file
+        )
 
     def test_no_ecb_file_passes_none(self, service, tmp_path):
         target = tmp_path / "out.sqlite"
 
-        with patch.object(service, "_update_sqlite", return_value=MagicMock()) as mock_update:
+        with patch.object(
+            service, "_update_sqlite", return_value=MagicMock()
+        ) as mock_update:
             service.update(target=str(target))
 
         assert mock_update.call_args.kwargs["ecb_validations_file"] is None
@@ -344,7 +410,9 @@ class TestReplaceSqliteFile:
         target = tmp_path / "target.db"
         backup = tmp_path / "backup.db"
 
-        service._replace_sqlite_file(target_path=target, temp_path=temp, backup_path=backup)
+        service._replace_sqlite_file(
+            target_path=target, temp_path=temp, backup_path=backup
+        )
 
         assert target.read_bytes() == b"new"
         assert not temp.exists()
@@ -357,7 +425,9 @@ class TestReplaceSqliteFile:
         target.write_bytes(b"old")
         backup = tmp_path / "backup.db"
 
-        service._replace_sqlite_file(target_path=target, temp_path=temp, backup_path=backup)
+        service._replace_sqlite_file(
+            target_path=target, temp_path=temp, backup_path=backup
+        )
 
         assert target.read_bytes() == b"new"
         assert backup.read_bytes() == b"old"
@@ -370,7 +440,9 @@ class TestReplaceSqliteFile:
         target.write_bytes(b"old")
         backup = tmp_path / "backup.db"
 
-        with patch.object(Path, "replace", side_effect=[None, OSError("disk full")]):
+        with patch.object(
+            Path, "replace", side_effect=[None, OSError("disk full")]
+        ):
             with pytest.raises(OSError, match="disk full"):
                 service._replace_sqlite_file(
                     target_path=target, temp_path=temp, backup_path=backup
@@ -420,7 +492,9 @@ class TestUpdateSqliteInternalEdgeCases:
         target.write_bytes(b"original")
 
         with (
-            patch("dpmcore.services.database_update.MigrationService") as MockMigration,
+            patch(
+                "dpmcore.services.database_update.MigrationService"
+            ) as MockMigration,
             patch.object(DatabaseUpdateService, "_validate_csv_count"),
             patch.object(
                 DatabaseUpdateService,
@@ -428,9 +502,13 @@ class TestUpdateSqliteInternalEdgeCases:
                 side_effect=DatabaseUpdateError("first validation failed"),
             ),
         ):
-            MockMigration.return_value.migrate_from_csv_dir.return_value = _empty_migration_result()
+            MockMigration.return_value.migrate_from_csv_dir.return_value = (
+                _empty_migration_result()
+            )
 
-            with pytest.raises(DatabaseUpdateError, match="first validation failed"):
+            with pytest.raises(
+                DatabaseUpdateError, match="first validation failed"
+            ):
                 service._update_sqlite(
                     target_path=target,
                     csv_dir=tmp_path,
@@ -442,7 +520,9 @@ class TestUpdateSqliteInternalEdgeCases:
         assert target.read_bytes() == b"original"
         assert not list(tmp_path.glob(".dpm.sqlite.tmp-*"))
 
-    def test_final_validation_failure_restores_old_target(self, service, tmp_path):
+    def test_final_validation_failure_restores_old_target(
+        self, service, tmp_path
+    ):
         target = tmp_path / "dpm.sqlite"
         target.write_bytes(b"old content")
 
@@ -454,13 +534,23 @@ class TestUpdateSqliteInternalEdgeCases:
                 raise DatabaseUpdateError("final validation failed")
 
         with (
-            patch("dpmcore.services.database_update.MigrationService") as MockMigration,
+            patch(
+                "dpmcore.services.database_update.MigrationService"
+            ) as MockMigration,
             patch.object(DatabaseUpdateService, "_validate_csv_count"),
-            patch.object(DatabaseUpdateService, "_validate_sqlite", side_effect=_validate),
+            patch.object(
+                DatabaseUpdateService,
+                "_validate_sqlite",
+                side_effect=_validate,
+            ),
         ):
-            MockMigration.return_value.migrate_from_csv_dir.return_value = _empty_migration_result()
+            MockMigration.return_value.migrate_from_csv_dir.return_value = (
+                _empty_migration_result()
+            )
 
-            with pytest.raises(DatabaseUpdateError, match="final validation failed"):
+            with pytest.raises(
+                DatabaseUpdateError, match="final validation failed"
+            ):
                 service._update_sqlite(
                     target_path=target,
                     csv_dir=tmp_path,
@@ -476,11 +566,15 @@ class TestUpdateSqliteInternalEdgeCases:
         target = tmp_path / "nested" / "deep" / "dpm.sqlite"
 
         with (
-            patch("dpmcore.services.database_update.MigrationService") as MockMigration,
+            patch(
+                "dpmcore.services.database_update.MigrationService"
+            ) as MockMigration,
             patch.object(DatabaseUpdateService, "_validate_csv_count"),
             patch.object(DatabaseUpdateService, "_validate_required_content"),
         ):
-            MockMigration.return_value.migrate_from_csv_dir.return_value = _empty_migration_result()
+            MockMigration.return_value.migrate_from_csv_dir.return_value = (
+                _empty_migration_result()
+            )
             service._update_sqlite(
                 target_path=target,
                 csv_dir=tmp_path,
@@ -533,7 +627,9 @@ class TestValidateSqlite:
         )
         engine = _engine_with_tables(tmp_path, {"T1": 3})
         try:
-            with pytest.raises(DatabaseUpdateError, match="Expected 5 rows, got 3"):
+            with pytest.raises(
+                DatabaseUpdateError, match="Expected 5 rows, got 3"
+            ):
                 service._validate_sqlite(engine, migration_result)
         finally:
             engine.dispose()
@@ -549,7 +645,9 @@ class TestValidateSqlite:
         engine = _engine_with_tables(tmp_path, {"T1": 4, "Extra": 2})
         try:
             with patch.object(service, "_validate_required_content"):
-                service._validate_sqlite(engine, migration_result)  # must not raise
+                service._validate_sqlite(
+                    engine, migration_result
+                )  # must not raise
         finally:
             engine.dispose()
 
@@ -564,7 +662,9 @@ class TestValidateSqlite:
         engine = _engine_with_tables(tmp_path, {})
         try:
             with patch.object(service, "_validate_required_content"):
-                service._validate_sqlite(engine, migration_result)  # must not raise
+                service._validate_sqlite(
+                    engine, migration_result
+                )  # must not raise
         finally:
             engine.dispose()
 
@@ -573,52 +673,83 @@ class TestValidateSqlite:
 # _validate_sqlite – exact_counts parameter
 # ---------------------------------------------------------------------------
 
+
 class TestValidateSqliteExactCounts:
-    def test_exact_counts_false_passes_when_actual_equals_expected(self, service, tmp_path):
+    def test_exact_counts_false_passes_when_actual_equals_expected(
+        self, service, tmp_path
+    ):
         migration_result = MigrationResult(
-            tables_migrated=1, total_rows=4,
-            table_details={"T1": 4}, warnings=[], backend_used="csv",
+            tables_migrated=1,
+            total_rows=4,
+            table_details={"T1": 4},
+            warnings=[],
+            backend_used="csv",
         )
         engine = _engine_with_tables(tmp_path, {"T1": 4})
         try:
             with patch.object(service, "_validate_required_content"):
-                service._validate_sqlite(engine, migration_result, exact_counts=False)
+                service._validate_sqlite(
+                    engine, migration_result, exact_counts=False
+                )
         finally:
             engine.dispose()
 
-    def test_exact_counts_false_passes_when_actual_exceeds_expected(self, service, tmp_path):
+    def test_exact_counts_false_passes_when_actual_exceeds_expected(
+        self, service, tmp_path
+    ):
         migration_result = MigrationResult(
-            tables_migrated=1, total_rows=4,
-            table_details={"T1": 4}, warnings=[], backend_used="csv",
+            tables_migrated=1,
+            total_rows=4,
+            table_details={"T1": 4},
+            warnings=[],
+            backend_used="csv",
         )
         engine = _engine_with_tables(tmp_path, {"T1": 6})
         try:
             with patch.object(service, "_validate_required_content"):
-                service._validate_sqlite(engine, migration_result, exact_counts=False)
+                service._validate_sqlite(
+                    engine, migration_result, exact_counts=False
+                )
         finally:
             engine.dispose()
 
-    def test_exact_counts_false_raises_when_actual_below_expected(self, service, tmp_path):
+    def test_exact_counts_false_raises_when_actual_below_expected(
+        self, service, tmp_path
+    ):
         migration_result = MigrationResult(
-            tables_migrated=1, total_rows=5,
-            table_details={"T1": 5}, warnings=[], backend_used="csv",
+            tables_migrated=1,
+            total_rows=5,
+            table_details={"T1": 5},
+            warnings=[],
+            backend_used="csv",
         )
         engine = _engine_with_tables(tmp_path, {"T1": 3})
         try:
             with pytest.raises(DatabaseUpdateError, match="at least 5 rows"):
-                service._validate_sqlite(engine, migration_result, exact_counts=False)
+                service._validate_sqlite(
+                    engine, migration_result, exact_counts=False
+                )
         finally:
             engine.dispose()
 
-    def test_exact_counts_true_raises_when_actual_exceeds_expected(self, service, tmp_path):
+    def test_exact_counts_true_raises_when_actual_exceeds_expected(
+        self, service, tmp_path
+    ):
         migration_result = MigrationResult(
-            tables_migrated=1, total_rows=4,
-            table_details={"T1": 4}, warnings=[], backend_used="csv",
+            tables_migrated=1,
+            total_rows=4,
+            table_details={"T1": 4},
+            warnings=[],
+            backend_used="csv",
         )
         engine = _engine_with_tables(tmp_path, {"T1": 6})
         try:
-            with pytest.raises(DatabaseUpdateError, match="Expected 4 rows, got 6"):
-                service._validate_sqlite(engine, migration_result, exact_counts=True)
+            with pytest.raises(
+                DatabaseUpdateError, match="Expected 4 rows, got 6"
+            ):
+                service._validate_sqlite(
+                    engine, migration_result, exact_counts=True
+                )
         finally:
             engine.dispose()
 
@@ -627,19 +758,32 @@ class TestValidateSqliteExactCounts:
 # update() dispatch to _update_staged_database
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateDispatchStagedDatabase:
-    def test_postgresql_target_calls_update_staged_database(self, service, tmp_path):
-        with patch.object(service, "_update_staged_database", return_value=MagicMock()) as mock_staged:
-            service.update(target="postgresql://host/db", source_dir=str(tmp_path))
+    def test_postgresql_target_calls_update_staged_database(
+        self, service, tmp_path
+    ):
+        with patch.object(
+            service, "_update_staged_database", return_value=MagicMock()
+        ) as mock_staged:
+            service.update(
+                target="postgresql://host/db", source_dir=str(tmp_path)
+            )
 
         kw = mock_staged.call_args.kwargs
         assert kw["target_type"] == "postgresql"
         assert kw["active_schema"] == "public"
         assert kw["target"] == "postgresql://host/db"
 
-    def test_sqlserver_target_calls_update_staged_database(self, service, tmp_path):
-        with patch.object(service, "_update_staged_database", return_value=MagicMock()) as mock_staged:
-            service.update(target="mssql+pyodbc://host/db", source_dir=str(tmp_path))
+    def test_sqlserver_target_calls_update_staged_database(
+        self, service, tmp_path
+    ):
+        with patch.object(
+            service, "_update_staged_database", return_value=MagicMock()
+        ) as mock_staged:
+            service.update(
+                target="mssql+pyodbc://host/db", source_dir=str(tmp_path)
+            )
 
         kw = mock_staged.call_args.kwargs
         assert kw["target_type"] == "sqlserver"
@@ -649,8 +793,12 @@ class TestUpdateDispatchStagedDatabase:
         ecb = tmp_path / "ecb.csv"
         ecb.touch()
 
-        with patch.object(service, "_update_staged_database", return_value=MagicMock()) as mock_staged:
-            service.update(target="postgresql://host/db", ecb_validations_file=str(ecb))
+        with patch.object(
+            service, "_update_staged_database", return_value=MagicMock()
+        ) as mock_staged:
+            service.update(
+                target="postgresql://host/db", ecb_validations_file=str(ecb)
+            )
 
         kw = mock_staged.call_args.kwargs
         assert kw["ecb_validations_file"] == str(ecb)
@@ -660,17 +808,26 @@ class TestUpdateDispatchStagedDatabase:
 # _create_target_engine
 # ---------------------------------------------------------------------------
 
+
 class TestCreateTargetEngine:
     def test_sqlserver_creates_engine_with_fast_executemany(self, service):
-        with patch("dpmcore.services.database_update.create_engine") as mock_create:
+        with patch(
+            "dpmcore.services.database_update.create_engine"
+        ) as mock_create:
             mock_create.return_value = MagicMock()
-            service._create_target_engine("mssql+pyodbc://host/db", "sqlserver")
+            service._create_target_engine(
+                "mssql+pyodbc://host/db", "sqlserver"
+            )
 
         call_kwargs = mock_create.call_args.kwargs
         assert call_kwargs.get("fast_executemany") is True
 
-    def test_non_sqlserver_creates_engine_without_fast_executemany(self, service):
-        with patch("dpmcore.services.database_update.create_engine") as mock_create:
+    def test_non_sqlserver_creates_engine_without_fast_executemany(
+        self, service
+    ):
+        with patch(
+            "dpmcore.services.database_update.create_engine"
+        ) as mock_create:
             mock_create.return_value = MagicMock()
             service._create_target_engine("postgresql://host/db", "postgresql")
 
@@ -681,6 +838,7 @@ class TestCreateTargetEngine:
 # ---------------------------------------------------------------------------
 # _engine_for_schema
 # ---------------------------------------------------------------------------
+
 
 class TestEngineForSchema:
     def test_creates_schema_translate_map(self, service):
@@ -700,6 +858,7 @@ class TestEngineForSchema:
 # _ordered_tables_for_schema
 # ---------------------------------------------------------------------------
 
+
 class TestOrderedTablesForSchema:
     def _mock_engine_with_tables(self, tables):
         engine = MagicMock()
@@ -711,18 +870,28 @@ class TestOrderedTablesForSchema:
         orm_names = {t.name for t in Base.metadata.sorted_tables}
         one_orm = next(iter(orm_names))
 
-        engine, inspector = self._mock_engine_with_tables([one_orm, "ExtraTable"])
+        engine, inspector = self._mock_engine_with_tables(
+            [one_orm, "ExtraTable"]
+        )
 
-        with patch("dpmcore.services.database_update.inspect", return_value=inspector):
-            result = service._ordered_tables_for_schema(engine=engine, schema="s")
+        with patch(
+            "dpmcore.services.database_update.inspect", return_value=inspector
+        ):
+            result = service._ordered_tables_for_schema(
+                engine=engine, schema="s"
+            )
 
         assert result.index(one_orm) < result.index("ExtraTable")
 
     def test_extra_tables_sorted_alphabetically(self, service):
         engine, inspector = self._mock_engine_with_tables(["Zzz", "Aaa"])
 
-        with patch("dpmcore.services.database_update.inspect", return_value=inspector):
-            result = service._ordered_tables_for_schema(engine=engine, schema="s")
+        with patch(
+            "dpmcore.services.database_update.inspect", return_value=inspector
+        ):
+            result = service._ordered_tables_for_schema(
+                engine=engine, schema="s"
+            )
 
         extras = [t for t in result if t in {"Aaa", "Zzz"}]
         assert extras == ["Aaa", "Zzz"]
@@ -732,9 +901,13 @@ class TestOrderedTablesForSchema:
         if len(orm_names_forward) < 2:
             pytest.skip("need at least two ORM tables")
 
-        engine, inspector = self._mock_engine_with_tables(orm_names_forward[:2])
+        engine, inspector = self._mock_engine_with_tables(
+            orm_names_forward[:2]
+        )
 
-        with patch("dpmcore.services.database_update.inspect", return_value=inspector):
+        with patch(
+            "dpmcore.services.database_update.inspect", return_value=inspector
+        ):
             fwd = service._ordered_tables_for_schema(
                 engine=engine, schema="s", reverse_orm_order=False
             )
@@ -749,27 +922,36 @@ class TestOrderedTablesForSchema:
 # _create_schema_if_missing
 # ---------------------------------------------------------------------------
 
+
 class TestCreateSchemaIfMissing:
     def test_skips_create_when_schema_already_exists(self, service):
         engine = MagicMock()
-        engine.dialect.identifier_preparer.quote_schema.side_effect = lambda s: f'"{s}"'
+        engine.dialect.identifier_preparer.quote_schema.side_effect = (
+            lambda s: f'"{s}"'
+        )
         inspector = MagicMock()
         inspector.get_schema_names.return_value = ["staging"]
         conn = engine.begin.return_value.__enter__.return_value
 
-        with patch("dpmcore.services.database_update.inspect", return_value=inspector):
+        with patch(
+            "dpmcore.services.database_update.inspect", return_value=inspector
+        ):
             service._create_schema_if_missing(engine, "staging")
 
         conn.execute.assert_not_called()
 
     def test_executes_create_schema_when_missing(self, service):
         engine = MagicMock()
-        engine.dialect.identifier_preparer.quote_schema.side_effect = lambda s: f'"{s}"'
+        engine.dialect.identifier_preparer.quote_schema.side_effect = (
+            lambda s: f'"{s}"'
+        )
         inspector = MagicMock()
         inspector.get_schema_names.return_value = []
         conn = engine.begin.return_value.__enter__.return_value
 
-        with patch("dpmcore.services.database_update.inspect", return_value=inspector):
+        with patch(
+            "dpmcore.services.database_update.inspect", return_value=inspector
+        ):
             service._create_schema_if_missing(engine, "staging")
 
         conn.execute.assert_called_once()
@@ -781,18 +963,24 @@ class TestCreateSchemaIfMissing:
 # _safe_drop_schema
 # ---------------------------------------------------------------------------
 
+
 class TestSafeDropSchema:
     def test_none_engine_returns_without_error(self, service):
-        service._safe_drop_schema(None, "postgresql", "staging")  # must not raise
+        service._safe_drop_schema(
+            None, "postgresql", "staging"
+        )  # must not raise
 
     def test_exception_in_drop_schema_is_swallowed(self, service):
-        with patch.object(service, "_drop_schema", side_effect=RuntimeError("locked")):
+        with patch.object(
+            service, "_drop_schema", side_effect=RuntimeError("locked")
+        ):
             service._safe_drop_schema(MagicMock(), "postgresql", "staging")
 
 
 # ---------------------------------------------------------------------------
 # _drop_schema
 # ---------------------------------------------------------------------------
+
 
 class TestDropSchema:
     def _inspector_with_schemas(self, schemas):
@@ -806,19 +994,27 @@ class TestDropSchema:
         inspector = self._inspector_with_schemas([])
         conn = engine.begin.return_value.__enter__.return_value
 
-        with patch("dpmcore.services.database_update.inspect", return_value=inspector):
+        with patch(
+            "dpmcore.services.database_update.inspect", return_value=inspector
+        ):
             service._drop_schema(engine, "postgresql", "missing")
 
         conn.execute.assert_not_called()
 
     def test_postgresql_drops_schema_with_cascade(self, service):
         engine = MagicMock()
-        engine.dialect.identifier_preparer.quote_schema.side_effect = lambda s: f'"{s}"'
-        engine.dialect.identifier_preparer.quote.side_effect = lambda s: f'"{s}"'
+        engine.dialect.identifier_preparer.quote_schema.side_effect = (
+            lambda s: f'"{s}"'
+        )
+        engine.dialect.identifier_preparer.quote.side_effect = lambda s: (
+            f'"{s}"'
+        )
         inspector = self._inspector_with_schemas(["staging"])
         conn = engine.begin.return_value.__enter__.return_value
 
-        with patch("dpmcore.services.database_update.inspect", return_value=inspector):
+        with patch(
+            "dpmcore.services.database_update.inspect", return_value=inspector
+        ):
             service._drop_schema(engine, "postgresql", "staging")
 
         sql = str(conn.execute.call_args.args[0])
@@ -827,14 +1023,23 @@ class TestDropSchema:
 
     def test_sqlserver_drops_fk_constraints_before_tables(self, service):
         engine = MagicMock()
-        engine.dialect.identifier_preparer.quote_schema.side_effect = lambda s: f'"{s}"'
-        engine.dialect.identifier_preparer.quote.side_effect = lambda s: f'"{s}"'
+        engine.dialect.identifier_preparer.quote_schema.side_effect = (
+            lambda s: f'"{s}"'
+        )
+        engine.dialect.identifier_preparer.quote.side_effect = lambda s: (
+            f'"{s}"'
+        )
         inspector = self._inspector_with_schemas(["staging"])
         inspector.get_table_names.return_value = []
 
         with (
-            patch("dpmcore.services.database_update.inspect", return_value=inspector),
-            patch.object(service, "_drop_sqlserver_foreign_keys_for_schema") as mock_drop_fk,
+            patch(
+                "dpmcore.services.database_update.inspect",
+                return_value=inspector,
+            ),
+            patch.object(
+                service, "_drop_sqlserver_foreign_keys_for_schema"
+            ) as mock_drop_fk,
         ):
             service._drop_schema(engine, "sqlserver", "staging")
 
@@ -842,13 +1047,20 @@ class TestDropSchema:
 
     def test_sqlserver_drops_each_table_then_schema(self, service):
         engine = MagicMock()
-        engine.dialect.identifier_preparer.quote_schema.side_effect = lambda s: f'"{s}"'
-        engine.dialect.identifier_preparer.quote.side_effect = lambda s: f'"{s}"'
+        engine.dialect.identifier_preparer.quote_schema.side_effect = (
+            lambda s: f'"{s}"'
+        )
+        engine.dialect.identifier_preparer.quote.side_effect = lambda s: (
+            f'"{s}"'
+        )
         inspector = self._inspector_with_schemas(["staging"])
         conn = engine.begin.return_value.__enter__.return_value
 
         with (
-            patch("dpmcore.services.database_update.inspect", return_value=inspector),
+            patch(
+                "dpmcore.services.database_update.inspect",
+                return_value=inspector,
+            ),
             patch.object(
                 service,
                 "_ordered_tables_for_schema",
@@ -860,7 +1072,9 @@ class TestDropSchema:
 
         sqls = [str(c.args[0]) for c in conn.execute.call_args_list]
         drop_table_count = sum(1 for s in sqls if "DROP TABLE" in s)
-        drop_schema_count = sum(1 for s in sqls if "DROP SCHEMA" in s and "TABLE" not in s)
+        drop_schema_count = sum(
+            1 for s in sqls if "DROP SCHEMA" in s and "TABLE" not in s
+        )
         assert drop_table_count == 2
         assert drop_schema_count == 1
 
@@ -869,10 +1083,13 @@ class TestDropSchema:
 # Quote helpers
 # ---------------------------------------------------------------------------
 
+
 class TestQualifyHelpers:
     def test_quote_schema_uses_dialect_preparer(self, service):
         engine = MagicMock()
-        engine.dialect.identifier_preparer.quote_schema.return_value = '"myschema"'
+        engine.dialect.identifier_preparer.quote_schema.return_value = (
+            '"myschema"'
+        )
         assert service._quote_schema(engine, "myschema") == '"myschema"'
 
     def test_quote_name_uses_dialect_preparer(self, service):
@@ -882,8 +1099,12 @@ class TestQualifyHelpers:
 
     def test_qualified_table_combines_schema_and_name(self, service):
         engine = MagicMock()
-        engine.dialect.identifier_preparer.quote_schema.side_effect = lambda s: f'"{s}"'
-        engine.dialect.identifier_preparer.quote.side_effect = lambda s: f'"{s}"'
+        engine.dialect.identifier_preparer.quote_schema.side_effect = (
+            lambda s: f'"{s}"'
+        )
+        engine.dialect.identifier_preparer.quote.side_effect = lambda s: (
+            f'"{s}"'
+        )
         result = service._qualified_table(engine, "myschema", "mytable")
         assert result == '"myschema"."mytable"'
 
@@ -892,87 +1113,141 @@ class TestQualifyHelpers:
 # _validate_schema
 # ---------------------------------------------------------------------------
 
+
 class TestValidateSchema:
     def _mock_engine(self, tables, row_count_return=None):
         engine = MagicMock()
-        engine.dialect.identifier_preparer.quote_schema.side_effect = lambda s: f'"{s}"'
-        engine.dialect.identifier_preparer.quote.side_effect = lambda s: f'"{s}"'
+        engine.dialect.identifier_preparer.quote_schema.side_effect = (
+            lambda s: f'"{s}"'
+        )
+        engine.dialect.identifier_preparer.quote.side_effect = lambda s: (
+            f'"{s}"'
+        )
         inspector = MagicMock()
         inspector.get_table_names.return_value = list(tables)
         conn = engine.connect.return_value.__enter__.return_value
         if row_count_return is not None:
-            conn.execute.return_value.scalar_one.return_value = str(row_count_return)
+            conn.execute.return_value.scalar_one.return_value = str(
+                row_count_return
+            )
         return engine, inspector
 
     def test_missing_tables_raises(self, service):
         engine, inspector = self._mock_engine(["T1"])
         migration_result = MigrationResult(
-            tables_migrated=2, total_rows=6,
-            table_details={"T1": 3, "T2": 3}, warnings=[], backend_used="csv",
+            tables_migrated=2,
+            total_rows=6,
+            table_details={"T1": 3, "T2": 3},
+            warnings=[],
+            backend_used="csv",
         )
 
         with (
             pytest.raises(DatabaseUpdateError, match="Missing tables"),
-            patch("dpmcore.services.database_update.inspect", return_value=inspector),
+            patch(
+                "dpmcore.services.database_update.inspect",
+                return_value=inspector,
+            ),
         ):
-            service._validate_schema(engine=engine, schema="s", migration_result=migration_result, ecb_validations_file=None)
+            service._validate_schema(
+                engine=engine,
+                schema="s",
+                migration_result=migration_result,
+                ecb_validations_file=None,
+            )
 
     def test_passes_when_all_tables_exist_and_counts_sufficient(self, service):
         engine, inspector = self._mock_engine(["T1"], row_count_return=4)
         migration_result = MigrationResult(
-            tables_migrated=1, total_rows=4,
-            table_details={"T1": 4}, warnings=[], backend_used="csv",
+            tables_migrated=1,
+            total_rows=4,
+            table_details={"T1": 4},
+            warnings=[],
+            backend_used="csv",
         )
 
         with (
-            patch("dpmcore.services.database_update.inspect", return_value=inspector),
+            patch(
+                "dpmcore.services.database_update.inspect",
+                return_value=inspector,
+            ),
             patch.object(service, "_validate_required_content"),
         ):
-            service._validate_schema(engine=engine, schema="s", migration_result=migration_result, ecb_validations_file=None)
+            service._validate_schema(
+                engine=engine,
+                schema="s",
+                migration_result=migration_result,
+                ecb_validations_file=None,
+            )
 
 
 # ---------------------------------------------------------------------------
 # _validate_schema_counts
 # ---------------------------------------------------------------------------
 
+
 class TestValidateSchemaCounts:
     def _setup(self, actual_row_count):
         engine = MagicMock()
-        engine.dialect.identifier_preparer.quote_schema.side_effect = lambda s: f'"{s}"'
-        engine.dialect.identifier_preparer.quote.side_effect = lambda s: f'"{s}"'
+        engine.dialect.identifier_preparer.quote_schema.side_effect = (
+            lambda s: f'"{s}"'
+        )
+        engine.dialect.identifier_preparer.quote.side_effect = lambda s: (
+            f'"{s}"'
+        )
         conn = MagicMock()
-        conn.execute.return_value.scalar_one.return_value = str(actual_row_count)
+        conn.execute.return_value.scalar_one.return_value = str(
+            actual_row_count
+        )
         return engine, conn
 
     def test_raises_when_actual_below_expected(self, service):
         engine, conn = self._setup(2)
         migration_result = MigrationResult(
-            tables_migrated=1, total_rows=5,
-            table_details={"T1": 5}, warnings=[], backend_used="csv",
+            tables_migrated=1,
+            total_rows=5,
+            table_details={"T1": 5},
+            warnings=[],
+            backend_used="csv",
         )
         with pytest.raises(DatabaseUpdateError, match="Expected at least 5"):
             service._validate_schema_counts(
-                conn=conn, engine=engine, schema="s", migration_result=migration_result
+                conn=conn,
+                engine=engine,
+                schema="s",
+                migration_result=migration_result,
             )
 
     def test_passes_when_actual_equals_expected(self, service):
         engine, conn = self._setup(5)
         migration_result = MigrationResult(
-            tables_migrated=1, total_rows=5,
-            table_details={"T1": 5}, warnings=[], backend_used="csv",
+            tables_migrated=1,
+            total_rows=5,
+            table_details={"T1": 5},
+            warnings=[],
+            backend_used="csv",
         )
         service._validate_schema_counts(
-            conn=conn, engine=engine, schema="s", migration_result=migration_result
+            conn=conn,
+            engine=engine,
+            schema="s",
+            migration_result=migration_result,
         )
 
     def test_passes_when_actual_exceeds_expected(self, service):
         engine, conn = self._setup(10)
         migration_result = MigrationResult(
-            tables_migrated=1, total_rows=5,
-            table_details={"T1": 5}, warnings=[], backend_used="csv",
+            tables_migrated=1,
+            total_rows=5,
+            table_details={"T1": 5},
+            warnings=[],
+            backend_used="csv",
         )
         service._validate_schema_counts(
-            conn=conn, engine=engine, schema="s", migration_result=migration_result
+            conn=conn,
+            engine=engine,
+            schema="s",
+            migration_result=migration_result,
         )
 
 
@@ -980,11 +1255,16 @@ class TestValidateSchemaCounts:
 # _check_swap_locks
 # ---------------------------------------------------------------------------
 
+
 class TestCheckSwapLocks:
     def _setup_engine(self, existing_tables):
         engine = MagicMock()
-        engine.dialect.identifier_preparer.quote_schema.side_effect = lambda s: f'"{s}"'
-        engine.dialect.identifier_preparer.quote.side_effect = lambda s: f'"{s}"'
+        engine.dialect.identifier_preparer.quote_schema.side_effect = (
+            lambda s: f'"{s}"'
+        )
+        engine.dialect.identifier_preparer.quote.side_effect = lambda s: (
+            f'"{s}"'
+        )
         inspector = MagicMock()
         inspector.get_table_names.return_value = list(existing_tables)
         return engine, inspector
@@ -995,8 +1275,13 @@ class TestCheckSwapLocks:
         inspector.get_table_names.return_value = []
 
         with (
-            pytest.raises(DatabaseUpdateError, match="Unsupported staged target"),
-            patch("dpmcore.services.database_update.inspect", return_value=inspector),
+            pytest.raises(
+                DatabaseUpdateError, match="Unsupported staged target"
+            ),
+            patch(
+                "dpmcore.services.database_update.inspect",
+                return_value=inspector,
+            ),
         ):
             service._check_swap_locks(
                 engine=engine,
@@ -1010,7 +1295,9 @@ class TestCheckSwapLocks:
         conn = engine.connect.return_value.__enter__.return_value
         transaction = conn.begin.return_value
 
-        with patch("dpmcore.services.database_update.inspect", return_value=inspector):
+        with patch(
+            "dpmcore.services.database_update.inspect", return_value=inspector
+        ):
             service._check_swap_locks(
                 engine=engine,
                 target_type="postgresql",
@@ -1022,7 +1309,9 @@ class TestCheckSwapLocks:
         assert not any("LOCK TABLE" in s for s in sqls)
         transaction.rollback.assert_called()
 
-    def test_lock_failure_raises_database_update_error_postgresql(self, service):
+    def test_lock_failure_raises_database_update_error_postgresql(
+        self, service
+    ):
         engine, inspector = self._setup_engine(["T1"])
         conn = engine.connect.return_value.__enter__.return_value
         transaction = conn.begin.return_value
@@ -1030,7 +1319,10 @@ class TestCheckSwapLocks:
 
         with (
             pytest.raises(DatabaseUpdateError, match="PostgreSQL locks"),
-            patch("dpmcore.services.database_update.inspect", return_value=inspector),
+            patch(
+                "dpmcore.services.database_update.inspect",
+                return_value=inspector,
+            ),
         ):
             service._check_swap_locks(
                 engine=engine,
@@ -1041,7 +1333,9 @@ class TestCheckSwapLocks:
 
         transaction.rollback.assert_called()
 
-    def test_lock_failure_raises_database_update_error_sqlserver(self, service):
+    def test_lock_failure_raises_database_update_error_sqlserver(
+        self, service
+    ):
         engine, inspector = self._setup_engine(["T1"])
         conn = engine.connect.return_value.__enter__.return_value
         transaction = conn.begin.return_value
@@ -1049,7 +1343,10 @@ class TestCheckSwapLocks:
 
         with (
             pytest.raises(DatabaseUpdateError, match="SQL Server locks"),
-            patch("dpmcore.services.database_update.inspect", return_value=inspector),
+            patch(
+                "dpmcore.services.database_update.inspect",
+                return_value=inspector,
+            ),
         ):
             service._check_swap_locks(
                 engine=engine,
@@ -1065,7 +1362,9 @@ class TestCheckSwapLocks:
         conn = engine.connect.return_value.__enter__.return_value
         transaction = conn.begin.return_value
 
-        with patch("dpmcore.services.database_update.inspect", return_value=inspector):
+        with patch(
+            "dpmcore.services.database_update.inspect", return_value=inspector
+        ):
             service._check_swap_locks(
                 engine=engine,
                 target_type="postgresql",
@@ -1079,6 +1378,7 @@ class TestCheckSwapLocks:
 # ---------------------------------------------------------------------------
 # _set_swap_timeout
 # ---------------------------------------------------------------------------
+
 
 class TestSetSwapTimeout:
     def test_postgresql_sets_lock_timeout(self, service):
@@ -1103,11 +1403,16 @@ class TestSetSwapTimeout:
 # _move_table
 # ---------------------------------------------------------------------------
 
+
 class TestMoveTable:
     def _make_engine(self):
         engine = MagicMock()
-        engine.dialect.identifier_preparer.quote_schema.side_effect = lambda s: f'"{s}"'
-        engine.dialect.identifier_preparer.quote.side_effect = lambda s: f'"{s}"'
+        engine.dialect.identifier_preparer.quote_schema.side_effect = (
+            lambda s: f'"{s}"'
+        )
+        engine.dialect.identifier_preparer.quote.side_effect = lambda s: (
+            f'"{s}"'
+        )
         return engine
 
     def test_postgresql_uses_alter_table_set_schema(self, service):
@@ -1115,8 +1420,12 @@ class TestMoveTable:
         conn = MagicMock()
 
         service._move_table(
-            conn=conn, engine=engine, target_type="postgresql",
-            source_schema="staging", destination_schema="public", table_name="T1",
+            conn=conn,
+            engine=engine,
+            target_type="postgresql",
+            source_schema="staging",
+            destination_schema="public",
+            table_name="T1",
         )
 
         sql = str(conn.execute.call_args.args[0])
@@ -1127,8 +1436,12 @@ class TestMoveTable:
         conn = MagicMock()
 
         service._move_table(
-            conn=conn, engine=engine, target_type="sqlserver",
-            source_schema="staging", destination_schema="dbo", table_name="T1",
+            conn=conn,
+            engine=engine,
+            target_type="sqlserver",
+            source_schema="staging",
+            destination_schema="dbo",
+            table_name="T1",
         )
 
         sql = str(conn.execute.call_args.args[0])
@@ -1138,10 +1451,16 @@ class TestMoveTable:
         engine = self._make_engine()
         conn = MagicMock()
 
-        with pytest.raises(DatabaseUpdateError, match="Unsupported target type"):
+        with pytest.raises(
+            DatabaseUpdateError, match="Unsupported target type"
+        ):
             service._move_table(
-                conn=conn, engine=engine, target_type="oracle",
-                source_schema="s", destination_schema="d", table_name="T",
+                conn=conn,
+                engine=engine,
+                target_type="oracle",
+                source_schema="s",
+                destination_schema="d",
+                table_name="T",
             )
 
 
@@ -1149,16 +1468,22 @@ class TestMoveTable:
 # _swap_staging_to_active
 # ---------------------------------------------------------------------------
 
+
 class TestSwapStagingToActive:
     def test_calls_move_table_for_each_active_and_staging_table(self, service):
         engine = MagicMock()
         migration_result = MigrationResult(
-            tables_migrated=2, total_rows=6,
-            table_details={"T1": 3, "T2": 3}, warnings=[], backend_used="csv",
+            tables_migrated=2,
+            total_rows=6,
+            table_details={"T1": 3, "T2": 3},
+            warnings=[],
+            backend_used="csv",
         )
 
         with (
-            patch.object(service, "_ordered_tables_for_schema") as mock_ordered,
+            patch.object(
+                service, "_ordered_tables_for_schema"
+            ) as mock_ordered,
             patch.object(service, "_set_swap_timeout"),
             patch.object(service, "_move_table") as mock_move,
             patch.object(service, "_validate_schema_counts"),
@@ -1181,12 +1506,17 @@ class TestSwapStagingToActive:
     def test_validates_counts_after_swap(self, service):
         engine = MagicMock()
         migration_result = MigrationResult(
-            tables_migrated=0, total_rows=0,
-            table_details={}, warnings=[], backend_used="csv",
+            tables_migrated=0,
+            total_rows=0,
+            table_details={},
+            warnings=[],
+            backend_used="csv",
         )
 
         with (
-            patch.object(service, "_ordered_tables_for_schema", return_value=[]),
+            patch.object(
+                service, "_ordered_tables_for_schema", return_value=[]
+            ),
             patch.object(service, "_set_swap_timeout"),
             patch.object(service, "_move_table"),
             patch.object(service, "_validate_schema_counts") as mock_validate,
@@ -1209,24 +1539,32 @@ class TestSwapStagingToActive:
 # _update_staged_database
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateStagedDatabase:
     def test_returns_correct_result(self, service, tmp_path):
         fake_result = MigrationResult(
-            tables_migrated=1, total_rows=5,
-            table_details={"T1": 5}, warnings=[], backend_used="csv",
+            tables_migrated=1,
+            total_rows=5,
+            table_details={"T1": 5},
+            warnings=[],
+            backend_used="csv",
         )
 
         with (
             patch.object(service, "_create_target_engine"),
             patch.object(service, "_create_schema_if_missing"),
-            patch("dpmcore.services.database_update.MigrationService") as MockMigration,
+            patch(
+                "dpmcore.services.database_update.MigrationService"
+            ) as MockMigration,
             patch.object(service, "_validate_csv_count"),
             patch.object(service, "_validate_schema"),
             patch.object(service, "_check_swap_locks"),
             patch.object(service, "_swap_staging_to_active"),
             patch.object(service, "_safe_drop_schema"),
         ):
-            MockMigration.return_value.migrate_from_csv_dir.return_value = fake_result
+            MockMigration.return_value.migrate_from_csv_dir.return_value = (
+                fake_result
+            )
 
             result = service._update_staged_database(
                 target="postgresql://host/db",
@@ -1245,8 +1583,11 @@ class TestUpdateStagedDatabase:
 
     def test_ecb_validations_imported_flag(self, service, tmp_path):
         fake_result = MigrationResult(
-            tables_migrated=0, total_rows=0,
-            table_details={}, warnings=[], backend_used="csv",
+            tables_migrated=0,
+            total_rows=0,
+            table_details={},
+            warnings=[],
+            backend_used="csv",
         )
         ecb_file = tmp_path / "ecb.csv"
         ecb_file.touch()
@@ -1254,8 +1595,12 @@ class TestUpdateStagedDatabase:
         with (
             patch.object(service, "_create_target_engine"),
             patch.object(service, "_create_schema_if_missing"),
-            patch("dpmcore.services.database_update.MigrationService") as MockMigration,
-            patch("dpmcore.services.database_update.EcbValidationsImportService"),
+            patch(
+                "dpmcore.services.database_update.MigrationService"
+            ) as MockMigration,
+            patch(
+                "dpmcore.services.database_update.EcbValidationsImportService"
+            ),
             patch.object(service, "_engine_for_schema"),
             patch.object(service, "_validate_csv_count"),
             patch.object(service, "_validate_schema"),
@@ -1263,7 +1608,9 @@ class TestUpdateStagedDatabase:
             patch.object(service, "_swap_staging_to_active"),
             patch.object(service, "_safe_drop_schema"),
         ):
-            MockMigration.return_value.migrate_from_csv_dir.return_value = fake_result
+            MockMigration.return_value.migrate_from_csv_dir.return_value = (
+                fake_result
+            )
 
             result = service._update_staged_database(
                 target="postgresql://host/db",
@@ -1277,14 +1624,20 @@ class TestUpdateStagedDatabase:
 
         assert result.ecb_validations_imported is True
 
-    def test_migration_error_raised_as_database_update_error(self, service, tmp_path):
+    def test_migration_error_raised_as_database_update_error(
+        self, service, tmp_path
+    ):
         with (
             patch.object(service, "_create_target_engine"),
             patch.object(service, "_create_schema_if_missing"),
-            patch("dpmcore.services.database_update.MigrationService") as MockMigration,
+            patch(
+                "dpmcore.services.database_update.MigrationService"
+            ) as MockMigration,
             patch.object(service, "_safe_drop_schema"),
         ):
-            MockMigration.return_value.migrate_from_csv_dir.side_effect = MigrationError("csv fail")
+            MockMigration.return_value.migrate_from_csv_dir.side_effect = (
+                MigrationError("csv fail")
+            )
 
             with pytest.raises(DatabaseUpdateError, match="csv fail"):
                 service._update_staged_database(
@@ -1301,10 +1654,14 @@ class TestUpdateStagedDatabase:
         with (
             patch.object(service, "_create_target_engine"),
             patch.object(service, "_create_schema_if_missing"),
-            patch("dpmcore.services.database_update.MigrationService") as MockMigration,
+            patch(
+                "dpmcore.services.database_update.MigrationService"
+            ) as MockMigration,
             patch.object(service, "_safe_drop_schema") as mock_drop,
         ):
-            MockMigration.return_value.migrate_from_csv_dir.side_effect = MigrationError("fail")
+            MockMigration.return_value.migrate_from_csv_dir.side_effect = (
+                MigrationError("fail")
+            )
 
             with pytest.raises(DatabaseUpdateError):
                 service._update_staged_database(
@@ -1319,14 +1676,20 @@ class TestUpdateStagedDatabase:
 
         assert mock_drop.call_count >= 1
 
-    def test_generic_exception_wrapped_as_database_update_error(self, service, tmp_path):
+    def test_generic_exception_wrapped_as_database_update_error(
+        self, service, tmp_path
+    ):
         with (
             patch.object(service, "_create_target_engine"),
             patch.object(service, "_create_schema_if_missing"),
-            patch("dpmcore.services.database_update.MigrationService") as MockMigration,
+            patch(
+                "dpmcore.services.database_update.MigrationService"
+            ) as MockMigration,
             patch.object(service, "_safe_drop_schema"),
         ):
-            MockMigration.return_value.migrate_from_csv_dir.side_effect = RuntimeError("oom")
+            MockMigration.return_value.migrate_from_csv_dir.side_effect = (
+                RuntimeError("oom")
+            )
 
             with pytest.raises(DatabaseUpdateError, match="oom"):
                 service._update_staged_database(
@@ -1344,46 +1707,67 @@ class TestUpdateStagedDatabase:
 # _validate_csv_count
 # ---------------------------------------------------------------------------
 
+
 class TestValidateCsvCount:
     def test_no_csv_files_raises(self, service, tmp_path):
         migration_result = MigrationResult(
-            tables_migrated=0, total_rows=0,
-            table_details={}, warnings=[], backend_used="csv",
+            tables_migrated=0,
+            total_rows=0,
+            table_details={},
+            warnings=[],
+            backend_used="csv",
         )
         with pytest.raises(DatabaseUpdateError, match="No CSV files found"):
-            service._validate_csv_count(csv_dir=tmp_path, migration_result=migration_result)
+            service._validate_csv_count(
+                csv_dir=tmp_path, migration_result=migration_result
+            )
 
     def test_count_mismatch_raises(self, service, tmp_path):
         (tmp_path / "T1.csv").touch()
         (tmp_path / "T2.csv").touch()
         migration_result = MigrationResult(
-            tables_migrated=1, total_rows=5,
-            table_details={"T1": 5}, warnings=[], backend_used="csv",
+            tables_migrated=1,
+            total_rows=5,
+            table_details={"T1": 5},
+            warnings=[],
+            backend_used="csv",
         )
         with pytest.raises(DatabaseUpdateError, match="2 CSV files"):
-            service._validate_csv_count(csv_dir=tmp_path, migration_result=migration_result)
+            service._validate_csv_count(
+                csv_dir=tmp_path, migration_result=migration_result
+            )
 
     def test_matching_count_passes(self, service, tmp_path):
         (tmp_path / "T1.csv").touch()
         migration_result = MigrationResult(
-            tables_migrated=1, total_rows=5,
-            table_details={"T1": 5}, warnings=[], backend_used="csv",
+            tables_migrated=1,
+            total_rows=5,
+            table_details={"T1": 5},
+            warnings=[],
+            backend_used="csv",
         )
-        service._validate_csv_count(csv_dir=tmp_path, migration_result=migration_result)
+        service._validate_csv_count(
+            csv_dir=tmp_path, migration_result=migration_result
+        )
 
 
 # ---------------------------------------------------------------------------
 # _update_sqlite – dry_run / keep_staging
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateSqliteDryRun:
     def _patched_sqlite(self, service, tmp_path, **kwargs):
         with (
-            patch("dpmcore.services.database_update.MigrationService") as MockMigration,
+            patch(
+                "dpmcore.services.database_update.MigrationService"
+            ) as MockMigration,
             patch.object(DatabaseUpdateService, "_validate_sqlite"),
             patch.object(DatabaseUpdateService, "_validate_csv_count"),
         ):
-            MockMigration.return_value.migrate_from_csv_dir.return_value = _empty_migration_result()
+            MockMigration.return_value.migrate_from_csv_dir.return_value = (
+                _empty_migration_result()
+            )
             return service._update_sqlite(
                 target_path=tmp_path / "dpm.sqlite",
                 csv_dir=tmp_path,
@@ -1403,10 +1787,18 @@ class TestUpdateSqliteDryRun:
         self._patched_sqlite(service, tmp_path, dry_run=True)
         assert target.read_bytes() == b"original"
 
-    def test_dry_run_keep_staging_sets_staging_location(self, service, tmp_path):
-        result = self._patched_sqlite(service, tmp_path, dry_run=True, keep_staging=True)
+    def test_dry_run_keep_staging_sets_staging_location(
+        self, service, tmp_path
+    ):
+        result = self._patched_sqlite(
+            service, tmp_path, dry_run=True, keep_staging=True
+        )
         assert result.staging_location is not None
 
-    def test_dry_run_no_keep_staging_staging_location_is_none(self, service, tmp_path):
-        result = self._patched_sqlite(service, tmp_path, dry_run=True, keep_staging=False)
+    def test_dry_run_no_keep_staging_staging_location_is_none(
+        self, service, tmp_path
+    ):
+        result = self._patched_sqlite(
+            service, tmp_path, dry_run=True, keep_staging=False
+        )
         assert result.staging_location is None

@@ -539,8 +539,7 @@ class MigrationService:
                 )
                 conn.execute(
                     text(
-                        f"ALTER TABLE {qualified_table} "
-                        "NOCHECK CONSTRAINT ALL"
+                        f"ALTER TABLE {qualified_table} NOCHECK CONSTRAINT ALL"
                     )
                 )
 
@@ -597,11 +596,11 @@ class MigrationService:
         return warnings
 
     def _load_table(
-            self,
-            table_name: str,
-            df: Any,
-            warnings: List[str],
-            identity_columns: dict[str, str],
+        self,
+        table_name: str,
+        df: Any,
+        warnings: List[str],
+        identity_columns: dict[str, str],
     ) -> None:
         """Load a single DataFrame into the database."""
         # Filter DataFrame columns to only those present in the
@@ -649,9 +648,7 @@ class MigrationService:
                         )
                     finally:
                         conn.execute(
-                            text(
-                                f"SET IDENTITY_INSERT {qualified_table} OFF"
-                            )
+                            text(f"SET IDENTITY_INSERT {qualified_table} OFF")
                         )
 
             else:
