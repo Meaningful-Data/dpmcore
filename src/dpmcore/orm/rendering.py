@@ -71,7 +71,7 @@ class Table(Base):
     is_flat: Mapped[Optional[bool]] = mapped_column("IsFlat", Boolean)
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
@@ -174,7 +174,7 @@ class TableVersion(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
 
@@ -258,7 +258,7 @@ class Header(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
@@ -351,7 +351,7 @@ class HeaderVersion(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
 
@@ -422,7 +422,7 @@ class Cell(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
@@ -497,7 +497,7 @@ class TableVersionCell(Base):
         Integer,
         ForeignKey("VariableVersion.VariableVID"),
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     table_version: Mapped["TableVersion"] = relationship(
         back_populates="table_version_cells"
@@ -558,7 +558,7 @@ class TableVersionHeader(Base):
     order: Mapped[Optional[int]] = mapped_column("Order", Integer)
     is_abstract: Mapped[Optional[bool]] = mapped_column("IsAbstract", Boolean)
     is_unique: Mapped[Optional[bool]] = mapped_column("IsUnique", Boolean)
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     table_version: Mapped["TableVersion"] = relationship(
         back_populates="table_version_headers"
@@ -605,7 +605,7 @@ class TableGroup(Base):
     type: Mapped[Optional[str]] = mapped_column("Type", String(20))
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     start_release_id: Mapped[Optional[int]] = mapped_column(
@@ -690,7 +690,7 @@ class TableGroupComposition(Base):
         Integer,
         ForeignKey("Release.ReleaseID"),
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     table_group: Mapped["TableGroup"] = relationship(
         back_populates="table_group_compositions"
@@ -764,7 +764,7 @@ class TableAssociation(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
@@ -822,7 +822,7 @@ class KeyHeaderMapping(Base):
         Integer,
         ForeignKey("Header.HeaderID"),
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     table_association: Mapped["TableAssociation"] = relationship(
         back_populates="key_header_mappings"

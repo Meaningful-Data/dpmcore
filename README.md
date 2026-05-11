@@ -291,6 +291,57 @@ pip install dpmcore[cli,migration]
 dpmcore migrate --source /path/to/dpm.accdb --database sqlite:///dpm.db
 ```
 
+**Update database** (requires `migration` extra):
+
+Safely replace an existing DPM database with fresh data. Data is loaded into a
+temporary staging area and validated before the active database is touched. If
+anything fails the original database is left intact.
+
+- **SQLite** — loads into a temp file; the target `.db` is swapped only after
+  validation passes.
+- **PostgreSQL / SQL Server** — loads into a staging schema; swapped atomically
+  into the active position after validation.
+
+```python
+from dpmcore.services.database_update import DatabaseUpdateService
+
+result = DatabaseUpdateService().update(
+    target="sqlite:///dpm.db",          # SQLite path or URL, PostgreSQL/SQL Server URL
+    access_file="/path/to/dpm.accdb",   # optional; omit to read from data/DPM/
+    ecb_validations_file="ecb.csv",     # optional
+    dry_run=False,
+    keep_staging=False,
+)
+print(f"Updated {result.target_type} database — "
+      f"{result.migration_result.tables_migrated} tables, "
+      f"{result.migration_result.total_rows} rows")
+```
+
+Or from the command line:
+
+```bash
+# Update a SQLite database from data/DPM/ CSV files
+dpmcore update-db --target dpm.db
+
+# Update from an Access file
+dpmcore update-db --target dpm.db --access-file /path/to/DPM_v4_2_1.accdb
+
+# Dry run — validate only, do not replace active database
+dpmcore update-db --target dpm.db --dry-run
+
+# PostgreSQL
+dpmcore update-db --target postgresql://user:pass@localhost:5432/dpm
+
+# SQL Server
+dpmcore update-db \
+    --target "mssql+pyodbc://user:pass@server/dpm?driver=ODBC+Driver+17+for+SQL+Server"
+```
+
+The `--target` option accepts a bare SQLite filename (``dpm.db``,
+``dpm.sqlite``, ``dpm.sqlite3``), a ``sqlite:///`` URL, a ``postgresql://``
+URL, or a ``mssql+pyodbc://`` URL.  Use ``--keep-staging`` to retain the
+temporary file / schema for debugging.
+
 **Export Access to CSV** (requires `migration` extra and [mdb-tools](https://github.com/mdbtools/mdbtools)):
 
 Export every user table from an `.accdb` / `.mdb` file to individual CSV
@@ -509,11 +560,12 @@ src/dpmcore/
 │   ├── export_csv.py      ExportCsvService (Access → CSV)
 │   ├── meili_build.py     MeiliBuildService (end-to-end pipeline)
 │   ├── meili_json.py      MeiliJsonService (JSON generation)
+│   ├── database_update.py DatabaseUpdateService (atomic DB update)
 │   └── layout_exporter/   LayoutExporterService (tables → .xlsx)
 ├── loaders/               data-loading (mutates the DB)
 │   └── migration.py       MigrationService (Access import)
 ├── cli/
-│   └── main.py            Click CLI (migrate, export-csv, build-meili-json, serve, generate-script, export-layout)
+│   └── main.py            Click CLI (migrate, export-csv, build-meili-json, update-db, serve, generate-script, export-layout)
 └── dpm_xl/                DPM-XL engine internals
     ├── grammar/           ANTLR4 grammar + generated parser
     ├── ast/               AST nodes, visitor, operands

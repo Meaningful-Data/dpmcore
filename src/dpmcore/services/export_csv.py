@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
@@ -109,13 +111,13 @@ class ExportCsvService:
 
     def _list_tables(self, access_path: str) -> List[str]:
         raw = subprocess.check_output(  # noqa: S603
-            ["mdb-tables", access_path],  # noqa: S607
+            ["mdb-tables", "-1", access_path],  # noqa: S607
             text=True,
         )
         return [
             table_name
-            for token in raw.split()
-            if (table_name := token.strip())
+            for line in raw.splitlines()
+            if (table_name := line.strip())
             and not any(
                 table_name.startswith(prefix)
                 for prefix in _SYSTEM_TABLE_PREFIXES
@@ -138,3 +140,67 @@ class ExportCsvService:
             ) from exc
 
         target_path.write_text(csv_text, encoding="utf-8")
+
+    def export_safely(
+        self, access_path: str, output_dir: Path
+    ) -> ExportCsvResult:
+        """Safely export Access tables, replacing the output dir at the end."""
+        if output_dir.exists() and not output_dir.is_dir():
+            raise ExportCsvError(
+                f"Output path '{output_dir}' is not a directory."
+            )
+
+        output_dir.parent.mkdir(parents=True, exist_ok=True)
+
+        temp_dir = Path(
+            tempfile.mkdtemp(
+                prefix=f".{output_dir.name}.tmp-",
+                dir=output_dir.parent,
+            )
+        )
+        backup_dir = self._backup_dir_for(output_dir)
+
+        try:
+            result = self.export(access_path, temp_dir)
+
+            if output_dir.exists():
+                output_dir.replace(backup_dir)
+
+            try:
+                temp_dir.replace(output_dir)
+            except Exception:
+                self._restore_backup(backup_dir, output_dir)
+                raise
+
+            if backup_dir.exists():
+                shutil.rmtree(backup_dir)
+
+            return ExportCsvResult(
+                tables_exported=result.tables_exported,
+                output_dir=output_dir,
+                table_names=result.table_names,
+            )
+
+        except ExportCsvError:
+            self._restore_backup(backup_dir, output_dir)
+            raise
+        except Exception as exc:
+            self._restore_backup(backup_dir, output_dir)
+            raise ExportCsvError(
+                f"Safe CSV export failed for '{access_path}': {exc}"
+            ) from exc
+
+        finally:
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir, ignore_errors=True)
+
+    @staticmethod
+    def _restore_backup(backup_dir: Path, output_dir: Path) -> None:
+        """Restore backup_dir to output_dir if output_dir is missing."""
+        if backup_dir.exists() and not output_dir.exists():
+            backup_dir.replace(output_dir)
+
+    @staticmethod
+    def _backup_dir_for(output_dir: Path) -> Path:
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        return output_dir.with_name(f"{output_dir.name}.backup-{timestamp}")

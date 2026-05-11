@@ -62,7 +62,7 @@ class Framework(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
@@ -106,7 +106,7 @@ class Module(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     is_document_module: Mapped[Optional[bool]] = mapped_column(
@@ -193,7 +193,7 @@ class ModuleVersion(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     is_reported: Mapped[Optional[bool]] = mapped_column("IsReported", Boolean)
@@ -267,7 +267,7 @@ class ModuleVersionComposition(Base):
         ForeignKey("TableVersion.TableVID"),
     )
     order: Mapped[Optional[int]] = mapped_column("Order", Integer)
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     module_version: Mapped["ModuleVersion"] = relationship(
         back_populates="module_version_compositions"
@@ -306,7 +306,7 @@ class ModuleParameters(Base):
         ForeignKey("VariableVersion.VariableVID"),
         primary_key=True,
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     module_version: Mapped["ModuleVersion"] = relationship(
         back_populates="module_parameters"
