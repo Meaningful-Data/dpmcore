@@ -19,13 +19,13 @@ from dpmcore.orm.glossary import (
     Item,
     ItemCategory,
 )
-from dpmcore.orm.infrastructure import Release
 from dpmcore.orm.packaging import (
     Framework,
     Module,
     ModuleVersion,
     ModuleVersionComposition,
 )
+from dpmcore.orm.release_sort_order import load_release_sort_orders
 from dpmcore.orm.rendering import (
     Cell,
     HeaderVersion,
@@ -37,6 +37,30 @@ from dpmcore.orm.rendering import (
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+
+
+def _most_recent_by_release(
+    session: "Session",
+    rows: List[Any],
+    release_key: Any,
+) -> Optional[Any]:
+    """Pick the row whose start-release sorts last by semver order.
+
+    Rows whose release has no parseable sort order lose to any
+    parseable row, mirroring ``NULLS LAST`` ordering.
+    """
+    if not rows:
+        return None
+    sort_orders = load_release_sort_orders(session)
+
+    def key(row: Any) -> tuple[int, int]:
+        rid = release_key(row)
+        so = sort_orders.get(rid) if rid is not None else None
+        if so is None:
+            return (0, 0)
+        return (1, so)
+
+    return max(rows, key=key)
 
 
 def _ensure_single_filter(
@@ -331,20 +355,8 @@ class HierarchyService:
             self.session, release_id=release_id, release_code=release_code
         )
 
-        # Order by Release.sort_order — start_release_id is no longer
-        # monotonic post-4.2.1 (4.2.1 has ReleaseID 1010000003), so
-        # picking the "most recent" via the raw FK would be wrong on
-        # any DB that contains opaque IDs. LEFT JOIN so a missing or
-        # unparseable Release does not drop the row entirely; a NULL
-        # sort_order simply sorts last via ``nulls_last``.
-        mv_start_release = aliased(Release)
-        q = (
-            self.session.query(ModuleVersion)
-            .outerjoin(
-                mv_start_release,
-                mv_start_release.release_id == ModuleVersion.start_release_id,
-            )
-            .filter(ModuleVersion.code == module_code)
+        q = self.session.query(ModuleVersion).filter(
+            ModuleVersion.code == module_code
         )
         if release_id is not None:
             q = filter_by_release(
@@ -355,9 +367,9 @@ class HierarchyService:
             )
         else:
             q = filter_active_only(q, ModuleVersion.end_release_id)
-        row = q.order_by(
-            mv_start_release.sort_order.desc().nulls_last()
-        ).first()
+        row = _most_recent_by_release(
+            self.session, q.all(), lambda mv: mv.start_release_id
+        )
         return row.to_dict() if row else None
 
     def get_table_details(
@@ -472,25 +484,18 @@ class HierarchyService:
         if tv is None:
             raise ValueError(f"Table {table_code} was not found.")
 
-        # Resolve the reference release's sort_order once at Python
-        # time so the per-row ItemCategory range comparisons emit just
-        # one correlated subquery per item-side column instead of
-        # three. ``filter_item_version`` accepts ``None`` (unparseable
-        # code) and produces a NULL-comparing clause that never matches.
-        #
         # Items/categories are versioned independently of TableVersion,
         # so when the caller asks for a specific release we evaluate
-        # item membership at *that* release rather than at the table
-        # version's start. Without a release filter (date-only or no
-        # filter), fall back to the table version's start release as
-        # the anchor.
+        # item membership at *that* release; otherwise fall back to the
+        # table version's start release.
         ref_release_id = (
             release_id if release_id is not None else tv.start_release_id
         )
+        sort_orders = load_release_sort_orders(self.session)
         ref_sort_order = (
-            self.session.query(Release.sort_order)
-            .filter(Release.release_id == ref_release_id)
-            .scalar()
+            sort_orders.get(ref_release_id)
+            if ref_release_id is not None
+            else None
         )
 
         iccp = aliased(ItemCategory)
@@ -532,6 +537,7 @@ class HierarchyService:
                 and_(
                     ContextComposition.property_id == iccp.item_id,
                     filter_item_version(
+                        sort_orders,
                         ref_sort_order,
                         iccp.start_release_id,
                         iccp.end_release_id,
@@ -543,6 +549,7 @@ class HierarchyService:
                 and_(
                     ContextComposition.item_id == icci.item_id,
                     filter_item_version(
+                        sort_orders,
                         ref_sort_order,
                         icci.start_release_id,
                         icci.end_release_id,
@@ -554,6 +561,7 @@ class HierarchyService:
                 and_(
                     HeaderVersion.property_id == icmp.item_id,
                     filter_item_version(
+                        sort_orders,
                         ref_sort_order,
                         icmp.start_release_id,
                         icmp.end_release_id,
@@ -637,17 +645,11 @@ class HierarchyService:
         Joins through ModuleVersionComposition + ModuleVersion so that
         the date filter (which is tracked on ModuleVersion) applies
         consistently. Falls back to the most recent module-version
-        match when several rows survive the filter.
-
-        "Most recent" is decided by ``Release.sort_order`` because the
-        raw ``start_release_id`` FK is no longer monotonic post-4.2.1
-        (4.2.1 has ``ReleaseID = 1010000003``). LEFT JOIN so a missing
-        or unparseable Release does not drop the row; a NULL
-        sort_order simply sorts last via ``nulls_last``.
+        match (by semver-parsed sort order of ``start_release_id``)
+        when several rows survive the filter.
         """
-        mv_start_release = aliased(Release)
         q = (
-            self.session.query(TableVersion)
+            self.session.query(TableVersion, ModuleVersion.start_release_id)
             .join(
                 ModuleVersionComposition,
                 ModuleVersionComposition.table_vid == TableVersion.table_vid,
@@ -657,13 +659,15 @@ class HierarchyService:
                 ModuleVersion.module_vid
                 == ModuleVersionComposition.module_vid,
             )
-            .outerjoin(
-                mv_start_release,
-                mv_start_release.release_id == ModuleVersion.start_release_id,
-            )
             .filter(TableVersion.code == table_code)
         )
         q = _apply_module_filter(q, release_id, date)
-        return q.order_by(
-            mv_start_release.sort_order.desc().nulls_last()
-        ).first()
+        rows = q.all()
+        if not rows:
+            return None
+        picked = _most_recent_by_release(
+            self.session, rows, lambda row: row[1]
+        )
+        if picked is None:
+            return None
+        return picked[0]

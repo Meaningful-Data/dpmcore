@@ -3,19 +3,25 @@
 Provides composable SQLAlchemy filter conditions for
 release-based versioning and date-range queries.
 
-Release-range comparisons use ``Release.sort_order`` rather than
-``Release.release_id`` because EBA's post-4.2.1 ID scheme is no longer
-monotonic (4.2.1 has ``ReleaseID = 1010000003``). ``sort_order`` is
-populated from the parsed semver ``code``, so a hypothetical backport
-``4.0.1`` is correctly placed inside the ``4.0`` lineage even when
-published chronologically after ``4.2.1``.
+Release-range comparisons compare against the semver-parsed sort order
+of ``Release.code`` (computed in Python via
+:func:`dpmcore.orm.release_sort_order.compute_sort_order`) rather than
+against the raw ``Release.release_id`` FK, because EBA's post-4.2.1 ID
+scheme is no longer monotonic (4.2.1 has ``ReleaseID = 1010000003``).
+A hypothetical backport ``4.0.1`` is correctly placed inside the
+``4.0`` lineage even when published chronologically after ``4.2.1``.
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from sqlalchemy import Date, and_, cast, or_, select
-from sqlalchemy.orm import aliased
+from sqlalchemy import Date, and_, cast, or_
+
+from dpmcore.orm.release_sort_order import (
+    load_release_sort_orders,
+    release_ids_for_sort_order,
+    resolve_sort_order,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -115,25 +121,6 @@ def resolve_release_id(
     return row[0]
 
 
-def sort_order_subquery(release_id_col: Any) -> Any:
-    """Return a scalar subquery for ``Release.sort_order`` of *col*.
-
-    Useful when a JOIN cannot be added to the query (typically inside a
-    JOIN ``ON`` clause that already correlates against an aliased
-    ``Release`` row). Prefer joining an aliased ``Release`` and
-    referencing its ``sort_order`` directly when the surrounding query
-    can be mutated — see :func:`filter_by_release` for an example.
-    """
-    # Local import keeps this util's dependency direction clean.
-    from dpmcore.orm.infrastructure import Release
-
-    return (
-        select(Release.sort_order)
-        .where(Release.release_id == release_id_col)
-        .scalar_subquery()
-    )
-
-
 def filter_by_release(
     query: Any,
     start_col: Any,
@@ -145,27 +132,19 @@ def filter_by_release(
 
     Logic (semver-aware):
         If release_id provided:
-            start.sort_order <= target.sort_order AND
-            (end IS NULL OR end.sort_order > target.sort_order)
+            sort_order(start) <= sort_order(target) AND
+            (end IS NULL OR sort_order(end) > sort_order(target))
         If release_id is None:
             * ``active_only_fallback=True`` → ``end_col IS NULL`` only
               (currently-active rows). Useful for callers that want a
               deterministic default when no release is supplied.
             * Otherwise → return query unmodified.
 
-    Implementation note: the comparison joins two aliased ``Release``
-    rows (one for ``start_col``, one for ``end_col``) so the database
-    looks up ``sort_order`` once per row rather than re-running a
-    correlated subquery for every comparison. The end-side join is a
-    LEFT OUTER JOIN to preserve rows where ``end_col IS NULL``
-    (currently-active records).
-
     Args:
         query: SQLAlchemy ``Query`` — must be a session-bound ``Query``
             (i.e. produced by ``Session.query(...)``). Core ``Select``
             statements are not supported because the helper needs the
-            session to resolve the target release's sort order before
-            adding the filter joins.
+            session to load the release mapping.
         start_col: Column for start release ID (FK to ``Release``).
         end_col: Column for end release ID (FK to ``Release``).
         release_id: Release ID to filter for.
@@ -180,15 +159,13 @@ def filter_by_release(
         TypeError: If ``query`` is not a session-bound SQLAlchemy
             ``Query`` (e.g. a Core ``Select`` was passed).
         ValueError: If ``release_id`` does not correspond to a known
-            ``Release`` row, or that release has no parseable
-            ``sort_order``.
+            ``Release`` row, or that release's code is not parseable
+            as ``MAJOR.MINOR[.PATCH]``.
     """
     if release_id is None:
         if active_only_fallback:
             return filter_active_only(query, end_col)
         return query
-
-    from dpmcore.orm.infrastructure import Release
 
     session = getattr(query, "session", None)
     if session is None:
@@ -198,30 +175,15 @@ def filter_by_release(
             f"{type(query).__name__!r} which has no .session — Core "
             "Select statements are not supported.",
         )
-    target_sort_order = (
-        session.query(Release.sort_order)
-        .filter(Release.release_id == release_id)
-        .scalar()
-    )
-    if target_sort_order is None:
-        raise ValueError(
-            f"Release {release_id} has no sort_order — its code "
-            "could not be parsed as MAJOR.MINOR[.PATCH].",
-        )
 
-    start_release = aliased(Release)
-    end_release = aliased(Release)
-    return (
-        query.join(start_release, start_release.release_id == start_col)
-        .outerjoin(end_release, end_release.release_id == end_col)
-        .filter(
-            and_(
-                start_release.sort_order <= target_sort_order,
-                or_(
-                    end_col.is_(None),
-                    end_release.sort_order > target_sort_order,
-                ),
-            )
+    target_sort_order = resolve_sort_order(session, release_id)
+    sort_orders = load_release_sort_orders(session)
+    start_ids = release_ids_for_sort_order(sort_orders, le=target_sort_order)
+    end_ids = release_ids_for_sort_order(sort_orders, gt=target_sort_order)
+    return query.filter(
+        and_(
+            start_col.in_(start_ids),
+            or_(end_col.is_(None), end_col.in_(end_ids)),
         )
     )
 
@@ -240,6 +202,7 @@ def filter_active_only(query: Any, end_col: Any) -> Any:
 
 
 def filter_item_version(
+    sort_orders: Dict[int, Optional[int]],
     ref_sort_order: Optional[int],
     item_start_col: Any,
     item_end_col: Any,
@@ -248,31 +211,27 @@ def filter_item_version(
 
     Pattern (semver-aware):
 
-        item_start.sort_order <= ref_sort_order
-        AND (item_end IS NULL OR ref_sort_order < item_end.sort_order)
-
-    The reference side is passed as a Python ``int`` (the caller has
-    already resolved its ``Release.sort_order``) so only one correlated
-    subquery is emitted per item-side column instead of three.
-    Comparison still runs against ``Release.sort_order`` so backports
-    like a future ``4.0.1`` published after ``4.2.1`` slot into the
-    correct lineage.
+        sort_order(item_start) <= ref_sort_order
+        AND (item_end IS NULL OR ref_sort_order < sort_order(item_end))
 
     Args:
-        ref_sort_order: Reference release's pre-resolved
-            ``Release.sort_order`` value. ``None`` (unparseable code)
-            makes every comparison evaluate to NULL — i.e. the join
-            condition never matches.
+        sort_orders: Pre-loaded mapping from
+            :func:`load_release_sort_orders`.
+        ref_sort_order: Reference release's pre-resolved sort order.
+            ``None`` (unparseable code) collapses to a condition that
+            never matches.
         item_start_col: Item's start-release ID column.
         item_end_col: Item's end-release ID column.
 
     Returns:
         SQLAlchemy boolean expression.
     """
+    if ref_sort_order is None:
+        return and_(item_start_col.is_(None), item_start_col.isnot(None))
+
+    start_ids = release_ids_for_sort_order(sort_orders, le=ref_sort_order)
+    end_ids = release_ids_for_sort_order(sort_orders, gt=ref_sort_order)
     return and_(
-        sort_order_subquery(item_start_col) <= ref_sort_order,
-        or_(
-            sort_order_subquery(item_end_col) > ref_sort_order,
-            item_end_col.is_(None),
-        ),
+        item_start_col.in_(start_ids),
+        or_(item_end_col.is_(None), item_end_col.in_(end_ids)),
     )
