@@ -55,6 +55,186 @@ Migrate an Access database into a SQL database.
        --source dpm.accdb \
        --database mssql+pyodbc://user:pass@server/db?driver=ODBC+Driver+17
 
+``dpmcore update-db``
+--------------------
+
+Safely update a DPM database from CSV files or an Access file.
+
+The command loads data into a temporary staging area, validates it, and only
+then atomically replaces the active database. If any step fails the active
+database is left untouched.
+
+- **SQLite** — data is loaded into a hidden temp file; the target ``.db`` file
+  is replaced only after validation passes.
+- **PostgreSQL / SQL Server** — data is loaded into a temporary staging schema;
+  after validation the staging schema is swapped atomically into the active
+  position.
+
+.. code-block:: text
+
+   dpmcore update-db --target <url_or_path> [options]
+
+**Options:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Option
+     - Description
+   * - ``--target TEXT``
+     - Target database. Accepts a SQLite path (``dpm.db``, ``dpm.sqlite``,
+       ``dpm.sqlite3``), a SQLite URL (``sqlite:///path/to/dpm.db``), a
+       PostgreSQL URL (``postgresql://user:pass@host/db``), or a SQL Server
+       URL (``mssql+pyodbc://user:pass@server/db?driver=...``).
+       **(Required)**
+   * - ``--access-file PATH``
+     - Path to an Access ``.accdb`` or ``.mdb`` file. When provided, the
+       Access file is exported to CSV automatically before loading.
+       If omitted, CSV files are read directly from ``data/DPM/``.
+   * - ``--ecb-validations-file PATH``
+     - Path to an ECB validations CSV file. When provided, the file is
+       imported after the main migration and before final validation.
+   * - ``--dry-run``
+     - Load and validate data without replacing the active database.
+       Useful to check whether new data is valid before committing the
+       update.
+   * - ``--keep-staging``
+     - Keep the temporary SQLite file or the staging/backup schemas after
+       the command finishes. Useful for debugging failed updates.
+
+**Examples:**
+
+.. code-block:: bash
+
+   # Update a SQLite database from the default CSV directory (data/DPM/)
+   dpmcore update-db --target dpm.db
+
+   # Update using a SQLite URL
+   dpmcore update-db --target sqlite:///path/to/dpm.db
+
+   # Update from an Access file
+   dpmcore update-db \
+       --target dpm.db \
+       --access-file /path/to/DPM_v4_2_1.accdb
+
+   # Include ECB validations
+   dpmcore update-db \
+       --target dpm.db \
+       --ecb-validations-file ecb_validations.csv
+
+   # Dry run — validate only, do not replace active database
+   dpmcore update-db --target dpm.db --dry-run
+
+   # Dry run keeping the staging file for inspection
+   dpmcore update-db --target dpm.db --dry-run --keep-staging
+
+   # Update a PostgreSQL database
+   dpmcore update-db \
+       --target postgresql://user:pass@localhost:5432/dpm \
+       --ecb-validations-file ecb_validations.csv
+
+   # Update a SQL Server database
+   dpmcore update-db \
+       --target "mssql+pyodbc://user:pass@server/dpm?driver=ODBC+Driver+17+for+SQL+Server"
+
+**Exit codes:**
+
+- ``0`` — update completed successfully (or dry run validated successfully).
+- ``1`` — update failed; the active database was not modified.
+
+``dpmcore export-csv``
+---------------------
+
+Export all user tables from a Microsoft Access database to CSV files.
+
+Requires **mdb-tools** (``mdb-tables`` + ``mdb-export``) to be installed and
+available in ``PATH``.  Tables are exported in parallel (up to 8 workers).
+
+.. code-block:: text
+
+   dpmcore export-csv SOURCE [--output-dir PATH]
+
+**Arguments / Options:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Argument / Option
+     - Description
+   * - ``SOURCE``
+     - Path to the Access ``.accdb`` or ``.mdb`` file. **(Required)**
+   * - ``--output-dir PATH``
+     - Directory where ``<TableName>.csv`` files are written.
+       Created (including parents) if it does not exist.
+       Defaults to ``data/DPM``.
+
+**Examples:**
+
+.. code-block:: bash
+
+   # Export to the default directory (data/DPM/)
+   dpmcore export-csv /path/to/DPM_v4_2_1.accdb
+
+   # Export to a custom directory
+   dpmcore export-csv /path/to/DPM_v4_2_1.accdb --output-dir exports/csv
+
+``dpmcore build-meili-json``
+-----------------------------
+
+Build a Meilisearch-ready JSON file containing all DPM operation versions with
+their scopes, module assignments, operand references, and version history.
+
+The pipeline is: *Access → CSV → in-memory SQLite → JSON*. When
+``--access-file`` is supplied the CSV export is handled transparently.
+``--source-dir`` and ``--access-file`` are mutually exclusive; at least one
+must be supplied.
+
+.. code-block:: text
+
+   dpmcore build-meili-json [--source-dir PATH | --access-file PATH]
+                            [--ecb-validations-file PATH] [--output PATH]
+
+**Options:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Option
+     - Description
+   * - ``--source-dir PATH``
+     - Directory containing pre-exported CSV tables (e.g. ``data/DPM``).
+       Mutually exclusive with ``--access-file``.
+   * - ``--access-file PATH``
+     - Path to an Access ``.accdb`` or ``.mdb`` file. The file is exported
+       to a temporary CSV directory automatically.
+       Mutually exclusive with ``--source-dir``.
+   * - ``--ecb-validations-file PATH``
+     - Optional path to an ECB validations CSV file. When provided, ECB
+       validation versions are imported before building the JSON.
+   * - ``--output PATH``
+     - Output JSON file path. Defaults to ``operations.json``.
+
+**Examples:**
+
+.. code-block:: bash
+
+   # From a pre-exported CSV directory
+   dpmcore build-meili-json --source-dir data/DPM --output operations.json
+
+   # Directly from an Access file (CSV export handled transparently)
+   dpmcore build-meili-json \
+       --access-file /path/to/DPM_v4_2_1.accdb \
+       --output operations.json
+
+   # With optional ECB validations
+   dpmcore build-meili-json \
+       --access-file /path/to/DPM_v4_2_1.accdb \
+       --ecb-validations-file ecb_validations.csv \
+       --output operations.json
+
 ``dpmcore serve``
 -----------------
 

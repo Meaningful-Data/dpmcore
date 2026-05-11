@@ -262,7 +262,7 @@ def update_db(
         DatabaseUpdateService,
     )
 
-    console = Console()
+    console = Console(soft_wrap=True)
 
     if access_file is not None:
         console.print(
