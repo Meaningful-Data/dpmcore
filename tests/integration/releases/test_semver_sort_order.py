@@ -2,8 +2,8 @@
 
 DPM ``ReleaseID`` values are no longer monotonic (4.2.1 has
 ``ReleaseID = 1010000003`` while older releases are still 1..5), so
-range filters must compare against ``Release.sort_order`` (parsed
-from semver ``code``) rather than against the raw integer ID.
+range filters must compare against a semver-parsed sort order rather
+than against the raw integer ID.
 
 The headline scenario is a *backport*: a hypothetical ``4.0.1``
 published chronologically after ``4.2.1`` but semantically belonging
@@ -88,12 +88,13 @@ def test_compute_sort_order_is_monotone() -> None:
     assert compute_sort_order("4.0.1") < compute_sort_order("4.1")
 
 
-def test_release_sort_order_auto_populated() -> None:
-    """The ``before_insert`` listener fills ``sort_order`` from ``code``."""
+def test_load_release_sort_orders_from_code() -> None:
+    """``load_release_sort_orders`` parses ``Release.code`` per row."""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
 
     from dpmcore.orm import Base
+    from dpmcore.orm.release_sort_order import load_release_sort_orders
 
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -107,7 +108,7 @@ def test_release_sort_order_auto_populated() -> None:
             ),
         )
         session.commit()
-        rows = {r.release_id: r.sort_order for r in session.query(Release)}
+        rows = load_release_sort_orders(session)
     # 4.2 → (4, 2, 0); 4.2.1 → (4, 2, 1) — the latter must compare greater.
     assert rows[1] is not None
     assert rows[1010000003] is not None
@@ -262,7 +263,7 @@ def test_unparseable_release_code_excluded(memory_session):
 
 
 # --------------------------------------------------------------------- #
-# filter_item_version (per-row sort_order subqueries)
+# filter_item_version (IN-list expanded from semver-parsed sort order)
 # --------------------------------------------------------------------- #
 
 
@@ -270,9 +271,10 @@ def test_filter_item_version_handles_backport(backport_session):
     """ItemCategory range filter pulls in the right metadata for a backport.
 
     The query joins TableVersion to ItemCategory using
-    ``filter_item_version`` — the JOIN condition compares
-    ``Release.sort_order``. An ItemCategory valid 4.0..4.2 (FK
-    start=3 end=5) must match a TableVersion at the 4.0.1 backport.
+    ``filter_item_version`` — the JOIN condition expands into
+    ``release_id IN (...)`` lists built from the semver-parsed sort
+    order of each release's ``code``. An ItemCategory valid 4.0..4.2
+    (FK start=3 end=5) must match a TableVersion at the 4.0.1 backport.
     """
     session = backport_session
     session.add(Category(category_id=1, code="C1"))
@@ -335,5 +337,5 @@ def test_filter_item_version_handles_backport(backport_session):
         e.get("main_property_code") == "prop:42" for e in main_entries
     ), (
         "ItemCategory valid 4.0..4.2 must match a TableVersion at the "
-        "4.0.1 backport via filter_item_version's sort_order JOIN."
+        "4.0.1 backport via filter_item_version's IN-list filter."
     )

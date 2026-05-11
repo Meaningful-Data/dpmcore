@@ -1,25 +1,21 @@
-"""Auto-populate ``Release.sort_order`` from ``Release.code``.
+"""Compute release sort order from ``Release.code`` at query time.
 
 DPM ``ReleaseID`` values are no longer monotonic (4.2.1 has
 ``ReleaseID = 1010000003`` while older releases are still 1..5), so
 release-range comparisons cannot rely on numeric ID ordering. Instead
 we parse ``Release.code`` as a semver-style version tuple and pack it
-into a single ``SortOrder`` integer, which is the column compared at
-every range-filter site.
-
-Backports — e.g. a hypothetical ``4.0.1`` published *after* ``4.2.1``
-— still slot correctly into the ``4.0`` lineage when ordered by
-``SortOrder``, which is the semantic that EBA's range expressions
-("module is valid from release X to Y") actually intend.
+into a single sortable integer. Backports — e.g. a hypothetical
+``4.0.1`` published after ``4.2.1`` — still slot correctly into the
+``4.0`` lineage because comparison runs against the parsed semver, not
+the FK ID.
 """
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-from sqlalchemy import event, inspect
-
-from dpmcore.orm.infrastructure import Release
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 # Three 6-digit slots per version segment → can hold 999999.999999.999999.
 # Requires BIGINT (64-bit) — the ORM column uses BigInteger for PostgreSQL/
@@ -62,9 +58,8 @@ def compute_sort_order(code: Optional[str]) -> Optional[int]:
     if ``parse_version(a) < parse_version(b)`` then
     ``compute_sort_order(a) < compute_sort_order(b)``.
 
-    Returns ``None`` when the code is missing or unparseable so the
-    DB row can still be inserted; range queries simply exclude such
-    rows from comparison.
+    Returns ``None`` when the code is missing or unparseable so callers
+    can decide whether to skip or fail for that release.
     """
     parsed = parse_version(code)
     if parsed is None:
@@ -75,25 +70,96 @@ def compute_sort_order(code: Optional[str]) -> Optional[int]:
     )
 
 
-@event.listens_for(Release, "before_insert")
-def _release_before_insert(
-    mapper: Any, connection: Any, target: Release
-) -> None:
-    """Auto-populate ``sort_order`` on insert when not explicitly set."""
-    if target.sort_order is None:
-        target.sort_order = compute_sort_order(target.code)
+def load_release_sort_orders(
+    session: "Session",
+) -> Dict[int, Optional[int]]:
+    """Return ``{release_id: sort_order}`` parsed from ``Release.code``.
 
-
-@event.listens_for(Release, "before_update")
-def _release_before_update(
-    mapper: Any, connection: Any, target: Release
-) -> None:
-    """Recompute ``sort_order`` only when ``code`` is dirty.
-
-    Skipping the recompute on unrelated updates lets the migration
-    backfill (which sets ``sort_order`` directly before commit) and
-    any future manual override survive.
+    Rows whose code is unparseable map to ``None`` so callers can fail
+    loudly when one of them is named as a bound.
     """
-    code_history = inspect(target).attrs.code.history
-    if code_history.has_changes():
-        target.sort_order = compute_sort_order(target.code)
+    from dpmcore.orm.infrastructure import Release
+
+    rows = session.query(Release.release_id, Release.code).all()
+    return {rid: compute_sort_order(code) for rid, code in rows}
+
+
+def resolve_sort_order(
+    session: "Session", release_id: int, *, role: str = "release"
+) -> int:
+    """Return the parsed sort order for ``release_id`` or raise.
+
+    Args:
+        session: Open SQLAlchemy session.
+        release_id: Numeric FK of the release whose sort order to
+            resolve.
+        role: Short label used in the error message to identify the
+            release's role (``"window start release"`` etc.) so callers
+            don't have to wrap the call in their own try/except just to
+            customise wording.
+
+    Raises:
+        ValueError: If no Release row matches ``release_id`` or its
+            code cannot be parsed as ``MAJOR.MINOR[.PATCH]``.
+    """
+    from dpmcore.orm.infrastructure import Release
+
+    row = (
+        session.query(Release.code)
+        .filter(Release.release_id == release_id)
+        .first()
+    )
+    if row is None:
+        raise ValueError(
+            f"{role} {release_id} has no sort_order — "
+            "no Release row matches that ID."
+        )
+    sort_order = compute_sort_order(row[0])
+    if sort_order is None:
+        raise ValueError(
+            f"{role} {release_id} has no sort_order — its "
+            "code could not be parsed as MAJOR.MINOR[.PATCH]."
+        )
+    return sort_order
+
+
+def release_ids_for_sort_order(
+    sort_orders: Dict[int, Optional[int]],
+    *,
+    le: Optional[int] = None,
+    lt: Optional[int] = None,
+    ge: Optional[int] = None,
+    gt: Optional[int] = None,
+) -> List[int]:
+    """Filter ``{release_id: sort_order}`` by inequality predicates.
+
+    Releases whose ``sort_order`` is ``None`` (unparseable code) are
+    always excluded — they cannot satisfy a comparison either way.
+
+    Args:
+        sort_orders: Mapping from :func:`load_release_sort_orders`.
+        le: Optional ``sort_order <= le`` bound.
+        lt: Optional ``sort_order < lt`` bound.
+        ge: Optional ``sort_order >= ge`` bound.
+        gt: Optional ``sort_order > gt`` bound. All bounds are
+            combined with logical AND.
+
+    Returns:
+        Sorted list of matching release IDs (ascending by
+        ``sort_order``).
+    """
+    matches: List[tuple[int, int]] = []
+    for rid, so in sort_orders.items():
+        if so is None:
+            continue
+        if le is not None and not so <= le:
+            continue
+        if lt is not None and not so < lt:
+            continue
+        if ge is not None and not so >= ge:
+            continue
+        if gt is not None and not so > gt:
+            continue
+        matches.append((rid, so))
+    matches.sort(key=lambda pair: pair[1])
+    return [rid for rid, _ in matches]

@@ -199,43 +199,36 @@ class EcbValidationsImportService:
         start_release_id: int,
         end_release_id: Optional[int],
     ) -> List[int]:
-        """Release IDs in [start, end) ordered by semver sort_order.
+        """Release IDs in [start, end) ordered by semver sort order.
 
-        Comparison runs against ``Release.sort_order`` so backports
-        (e.g. a hypothetical ``4.0.1`` post-``4.2.1``) place correctly
-        within their version lineage. The start/end bounds are
-        resolved to integer ``sort_order`` values once before the main
-        query rather than via correlated subqueries.
+        Comparison runs against the semver-parsed sort order of each
+        release's ``code`` so backports (e.g. a hypothetical ``4.0.1``
+        post-``4.2.1``) place correctly within their version lineage.
         """
-        start_sort = (
-            session.query(Release.sort_order)
-            .filter(Release.release_id == start_release_id)
-            .scalar()
+        from dpmcore.orm.release_sort_order import (
+            load_release_sort_orders,
+            release_ids_for_sort_order,
         )
+
+        sort_orders = load_release_sort_orders(session)
+        start_sort = sort_orders.get(start_release_id)
         if start_sort is None:
             raise EcbValidationsImportError(
                 f"Release {start_release_id} has no sort_order — its "
                 "code could not be parsed as MAJOR.MINOR[.PATCH]."
             )
-        query = (
-            session.query(Release.release_id)
-            .filter(Release.sort_order >= start_sort)
-            .order_by(Release.sort_order)
-        )
-        if end_release_id is not None:
-            end_sort = (
-                session.query(Release.sort_order)
-                .filter(Release.release_id == end_release_id)
-                .scalar()
+        if end_release_id is None:
+            return release_ids_for_sort_order(sort_orders, ge=start_sort)
+        end_sort = sort_orders.get(end_release_id)
+        if end_sort is None:
+            raise EcbValidationsImportError(
+                f"Release {end_release_id} has no sort_order — "
+                "its code could not be parsed as "
+                "MAJOR.MINOR[.PATCH]."
             )
-            if end_sort is None:
-                raise EcbValidationsImportError(
-                    f"Release {end_release_id} has no sort_order — "
-                    "its code could not be parsed as "
-                    "MAJOR.MINOR[.PATCH]."
-                )
-            query = query.filter(Release.sort_order < end_sort)
-        return [row[0] for row in query.all()]
+        return release_ids_for_sort_order(
+            sort_orders, ge=start_sort, lt=end_sort
+        )
 
     def _collect_table_codes_from_ast(self, node: Any) -> Set[str]:
         table_codes: Set[str] = set()

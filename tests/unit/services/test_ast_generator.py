@@ -609,8 +609,12 @@ class TestLatestReleaseInWindow:
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
         mv = SimpleNamespace(start_release_id=42, end_release_id=None)
-        # First (and only) sort_order lookup returns None.
-        svc.session.query.return_value.filter.return_value.scalar.return_value = None  # noqa: E501
+        # resolve_sort_order issues session.query(Release.code).filter(
+        # Release.release_id == ...).first(); return an unparseable code
+        # so compute_sort_order produces None and the helper raises.
+        svc.session.query.return_value.filter.return_value.first.return_value = (  # noqa: E501
+            "garbage",
+        )
         with pytest.raises(
             ValueError, match="window start release 42 has no sort_order"
         ):
@@ -620,10 +624,12 @@ class TestLatestReleaseInWindow:
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
         mv = SimpleNamespace(start_release_id=1, end_release_id=99)
-        # Two sort_order lookups: first OK, second None.
-        svc.session.query.return_value.filter.return_value.scalar.side_effect = [  # noqa: E501
-            10,
-            None,
+        # Two resolve_sort_order calls: first returns a parseable code,
+        # second returns an unparseable one so the end-bound resolver
+        # raises.
+        svc.session.query.return_value.filter.return_value.first.side_effect = [  # noqa: E501
+            ("4.0",),
+            ("garbage",),
         ]
         with pytest.raises(
             ValueError, match="window end release 99 has no sort_order"
