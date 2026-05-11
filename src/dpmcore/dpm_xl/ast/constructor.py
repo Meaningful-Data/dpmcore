@@ -665,12 +665,10 @@ class ASTVisitor(dpm_xlParserVisitor):
             interval = False
         return interval
 
-    def visitDefault(
-        self, ctx: dpm_xlParser.DefaultContext
-    ) -> Constant | None:
+    def visitDefault(self, ctx: dpm_xlParser.DefaultContext) -> Constant:
         third = ctx.getChild(2)
         if isinstance(third, TerminalNodeImpl) and third.symbol.text == "null":
-            return None
+            return Constant(type_="Null", value=None)
         default_value: Constant = self.visitLiteral(
             cast(dpm_xlParser.LiteralContext, third)
         )

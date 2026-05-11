@@ -200,3 +200,36 @@ class TestCheckDefaultValue:
         assert "Invalid default type" in str(exc_info.value)
         assert "Integer" in str(exc_info.value)
         assert "Boolean" in str(exc_info.value)
+
+    def test_null_default_for_item_is_valid(self):
+        """Null default for Item operand should be valid.
+
+        Null is the universal default and can be promoted to any type.
+        Regression test for issue #2: ``default: null`` was returning
+        Python ``None`` from the constructor, allowing an outer ``with``
+        clause's default to leak in and trigger a spurious 3-6 error.
+        """
+        default_value = self._create_constant("Null", None)
+        expected_type = Item()
+
+        InputAnalyzer._InputAnalyzer__check_default_value(
+            default_value, expected_type
+        )
+
+    def test_null_default_for_boolean_is_valid(self):
+        """Null default for Boolean operand should be valid."""
+        default_value = self._create_constant("Null", None)
+        expected_type = Boolean()
+
+        InputAnalyzer._InputAnalyzer__check_default_value(
+            default_value, expected_type
+        )
+
+    def test_null_default_for_number_is_valid(self):
+        """Null default for Number operand should be valid."""
+        default_value = self._create_constant("Null", None)
+        expected_type = Number()
+
+        InputAnalyzer._InputAnalyzer__check_default_value(
+            default_value, expected_type
+        )
