@@ -566,7 +566,7 @@ class Context(Base):
         "ContextID", Integer, primary_key=True
     )
     signature: Mapped[Optional[str]] = mapped_column(
-        "Signature", String(2000), unique=True
+        "Signature", String(2000)
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
