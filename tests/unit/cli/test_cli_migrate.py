@@ -542,7 +542,7 @@ class TestUpdateDbCli:
     def test_staging_location_output_message_printed(self, runner):
         with patch(
             "dpmcore.services.database_update.DatabaseUpdateService.update",
-            return_value=self._mock_result(staging_location="/tmp/staging.sqlite"),
+            return_value=self._mock_result(staging_location="/tmp/staging.sqlite"),  # noqa: S108
         ):
             result = runner.invoke(
                 main,
@@ -550,7 +550,7 @@ class TestUpdateDbCli:
             )
 
         assert "Staging artifact" in result.output
-        assert "/tmp/staging.sqlite" in result.output
+        assert "/tmp/staging.sqlite" in result.output  # noqa: S108
 
     def test_no_dry_run_message_when_dry_run_false(self, runner):
         with patch(

@@ -25,7 +25,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import Engine, text, inspect
+from sqlalchemy import Engine, inspect, text
 
 from dpmcore.orm.base import Base
 
@@ -235,7 +235,7 @@ class MigrationService:
                 keep_default_na=False,
                 na_values=[""],
             )
-            data[table_name] = self._coerce_numeric_columns_for_csv(df)
+            data[table_name] = self._coerce_numeric_columns(df)
 
         return self._order_data_by_schema(data)
 
@@ -252,7 +252,9 @@ class MigrationService:
 
         return ordered
 
-    def _migrate_data(self, data: Dict[str, Any], *, backend: str) -> MigrationResult:
+    def _migrate_data(
+        self, data: Dict[str, Any], *, backend: str
+    ) -> MigrationResult:
         """Create schema, load *data*, and build a standard result."""
         self._create_schema()
         warnings = self._load_data(data)
@@ -305,9 +307,6 @@ class MigrationService:
                 df[column] = pd.to_numeric(df[column], errors="coerce")
 
         return df
-
-    # Back-compat alias — older callers used the CSV-specific name.
-    _coerce_numeric_columns_for_csv = _coerce_numeric_columns
 
     @staticmethod
     def _coerce_temporal_columns_for_schema(df: Any, orm_table: Any) -> Any:  # noqa: C901
@@ -412,55 +411,7 @@ class MigrationService:
     @staticmethod
     def _coerce_boolean_columns_for_schema(df: Any, orm_table: Any) -> Any:
         """Convert Access-style boolean values to Python bools."""
-        import pandas as pd
         from sqlalchemy.sql.sqltypes import Boolean
-
-        true_values = {"-1", "-1.0", "1", "1.0", "true", "yes", "y", "t"}
-        false_values = {"0", "0.0", "false", "no", "n", "f"}
-        null_values = {"", "nan", "none", "null", "<na>"}
-
-        def convert_bool(value: Any) -> bool | None:
-            if value is None or pd.isna(value):
-                return None
-
-            if isinstance(value, bool):
-                return value
-
-            if isinstance(value, int):
-                if value in {-1, 1}:
-                    return True
-                if value == 0:
-                    return False
-
-            if isinstance(value, float):
-                if value in {-1.0, 1.0}:
-                    return True
-                if value == 0.0:
-                    return False
-
-            text = str(value).strip().lower()
-
-            if text in null_values:
-                return None
-
-            if text in true_values:
-                return True
-
-            if text in false_values:
-                return False
-
-            try:
-                numeric_value = float(text)
-            except ValueError:
-                numeric_value = None
-
-            if numeric_value in {-1.0, 1.0}:
-                return True
-
-            if numeric_value == 0.0:
-                return False
-
-            raise MigrationError(f"Unsupported boolean value {value!r}")
 
         for column in orm_table.columns:
             column_name = column.name
@@ -472,7 +423,9 @@ class MigrationService:
                 continue
 
             try:
-                df[column_name] = df[column_name].map(convert_bool)
+                df[column_name] = df[column_name].map(
+                    MigrationService._convert_bool_value
+                )
             except MigrationError as exc:
                 raise MigrationError(
                     f"Table '{orm_table.name}', column '{column_name}' "
@@ -480,6 +433,47 @@ class MigrationService:
                 ) from exc
 
         return df
+
+    @staticmethod
+    def _convert_bool_value(value: Any) -> bool | None:
+        """Coerce a single value to bool or None."""
+        import pandas as pd
+
+        if value is None or pd.isna(value):
+            return None
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            if value in {-1, 1}:
+                return True
+            if value == 0:
+                return False
+        return MigrationService._convert_text_bool(str(value).strip().lower())
+
+    @staticmethod
+    def _convert_text_bool(text: str) -> bool | None:
+        """Coerce a normalised text token to bool or None."""
+        _null = {"", "nan", "none", "null", "<na>"}
+        _true = {"-1", "-1.0", "1", "1.0", "true", "yes", "y", "t"}
+        _false = {"0", "0.0", "false", "no", "n", "f"}
+
+        if text in _null:
+            return None
+        if text in _true:
+            return True
+        if text in _false:
+            return False
+        try:
+            numeric = float(text)
+        except ValueError as exc:
+            raise MigrationError(
+                f"Unsupported boolean value {text!r}"
+            ) from exc
+        if numeric in {-1.0, 1.0}:
+            return True
+        if numeric == 0.0:
+            return False
+        raise MigrationError(f"Unsupported boolean value {text!r}")
 
     def _prepare_bulk_load_constraints(self) -> None:
         """Prepare strict databases for bulk CSV loading."""
@@ -507,10 +501,14 @@ class MigrationService:
             """
         )
 
+        if self._schema is None:
+            return
         preparer = self._engine.dialect.identifier_preparer
 
         with self._engine.begin() as conn:
-            constraints = conn.execute(query, {"schema": self._schema}).fetchall()
+            constraints = conn.execute(
+                query, {"schema": self._schema}
+            ).fetchall()
 
             for table_name, constraint_name in constraints:
                 qualified_table = (
@@ -526,6 +524,8 @@ class MigrationService:
 
     def _disable_sqlserver_constraints_for_bulk_load(self) -> None:
         """Disable FK/check constraints in staging to allow bulk loading."""
+        if self._schema is None:
+            return
         inspector = inspect(self._engine)
         table_names = inspector.get_table_names(schema=self._schema)
 
@@ -538,7 +538,10 @@ class MigrationService:
                     f"{preparer.quote(table_name)}"
                 )
                 conn.execute(
-                    text(f"ALTER TABLE {qualified_table} NOCHECK CONSTRAINT ALL")
+                    text(
+                        f"ALTER TABLE {qualified_table} "
+                        "NOCHECK CONSTRAINT ALL"
+                    )
                 )
 
     # -------------------------------------------------------------- #
@@ -594,16 +597,17 @@ class MigrationService:
         return warnings
 
     def _load_table(
-        self,
-        table_name: str,
-        df: Any,
-        warnings: List[str],
-        identity_columns: dict[str, str],
+            self,
+            table_name: str,
+            df: Any,
+            warnings: List[str],
+            identity_columns: dict[str, str],
     ) -> None:
         """Load a single DataFrame into the database."""
         # Filter DataFrame columns to only those present in the
         # ORM schema so that unexpected Access columns produce a
         # warning instead of a hard failure.
+
         orm_table = Base.metadata.tables.get(table_name)
         if orm_table is not None:
             known_cols = {c.name for c in orm_table.columns}
@@ -631,7 +635,9 @@ class MigrationService:
                 )
 
                 with self._engine.begin() as conn:
-                    conn.execute(text(f"SET IDENTITY_INSERT {qualified_table} ON"))
+                    conn.execute(
+                        text(f"SET IDENTITY_INSERT {qualified_table} ON")
+                    )
                     try:
                         df.to_sql(
                             table_name,
@@ -642,7 +648,11 @@ class MigrationService:
                             chunksize=10_000,
                         )
                     finally:
-                        conn.execute(text(f"SET IDENTITY_INSERT {qualified_table} OFF"))
+                        conn.execute(
+                            text(
+                                f"SET IDENTITY_INSERT {qualified_table} OFF"
+                            )
+                        )
 
             else:
                 df.to_sql(
@@ -660,7 +670,7 @@ class MigrationService:
             ) from exc
 
     def _mssql_identity_columns(self) -> dict[str, str]:
-        """Return {table_name: identity_column} for all tables in the schema."""
+        """Return {table_name: identity_column} for tables in the schema."""
         if self._schema is None:
             return {}
 
@@ -679,4 +689,4 @@ class MigrationService:
                 {"schema": self._schema},
             ).fetchall()
 
-        return {table_name: col_name for table_name, col_name in rows}
+        return {row[0]: row[1] for row in rows}

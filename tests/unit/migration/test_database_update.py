@@ -4,12 +4,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy import create_engine, text
 
+from dpmcore.loaders.migration import MigrationError, MigrationResult
 from dpmcore.orm.base import Base
 from dpmcore.services.database_update import (
     DatabaseUpdateError,
     DatabaseUpdateService,
 )
-from dpmcore.loaders.migration import MigrationError, MigrationResult
 
 
 @pytest.fixture
@@ -35,7 +35,7 @@ def _engine_with_tables(tmp_path, tables: dict):
         for name, count in tables.items():
             conn.execute(text(f'CREATE TABLE "{name}" (id INTEGER PRIMARY KEY)'))
             for i in range(count):
-                conn.execute(text(f'INSERT INTO "{name}" VALUES ({i})'))
+                conn.execute(text(f'INSERT INTO "{name}" VALUES ({i})'))  # noqa: S608
         conn.commit()
     return engine
 
@@ -831,7 +831,6 @@ class TestDropSchema:
         engine.dialect.identifier_preparer.quote.side_effect = lambda s: f'"{s}"'
         inspector = self._inspector_with_schemas(["staging"])
         inspector.get_table_names.return_value = []
-        conn = engine.begin.return_value.__enter__.return_value
 
         with (
             patch("dpmcore.services.database_update.inspect", return_value=inspector),

@@ -2,7 +2,11 @@ from unittest.mock import patch
 
 import pytest
 
-from dpmcore.services.export_csv import ExportCsvError, ExportCsvResult, ExportCsvService
+from dpmcore.services.export_csv import (
+    ExportCsvError,
+    ExportCsvResult,
+    ExportCsvService,
+)
 
 
 def test_list_tables_filters_system_tables():

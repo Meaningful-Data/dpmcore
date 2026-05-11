@@ -8,16 +8,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote
 
-from sqlalchemy import Engine, create_engine, inspect, text
+from sqlalchemy import Connection, Engine, create_engine, inspect, text
 
-from dpmcore.orm.base import Base
-from dpmcore.services.ecb_validations_import import EcbValidationsImportService
-from dpmcore.services.export_csv import ExportCsvService
 from dpmcore.loaders.migration import (
     MigrationError,
     MigrationResult,
     MigrationService,
 )
+from dpmcore.orm.base import Base
+from dpmcore.services.ecb_validations_import import EcbValidationsImportService
+from dpmcore.services.export_csv import ExportCsvService
 
 
 class DatabaseUpdateError(Exception):
@@ -80,8 +80,10 @@ class DatabaseUpdateService:
                     keep_staging=keep_staging,
                 )
 
-            elif target_type in ["postgresql", "sqlserver"]:
-                active_schema = "dbo" if target_type == "sqlserver" else "public"
+            else:
+                active_schema = (
+                    "dbo" if target_type == "sqlserver" else "public"
+                )
 
                 return self._update_staged_database(
                     target=target,
@@ -157,10 +159,10 @@ class DatabaseUpdateService:
             active_schema: Schema name to replace (usually ``'public'``).
             csv_dir: Directory containing source CSV files.
             source: Human-readable source path included in the result.
-            used_access_file: Whether the CSVs were exported from an Access file.
+            used_access_file: Whether the CSVs came from an Access file.
             ecb_validations_file: Optional path to an ECB validations CSV.
             dry_run: Validate but do not swap the staging schema into active.
-            keep_staging: Preserve staging/backup schemas on success or failure.
+            keep_staging: Keep staging/backup schemas on success or failure.
 
         Returns:
             A `DatabaseUpdateResult` describing the completed update.
@@ -179,13 +181,19 @@ class DatabaseUpdateService:
             engine = self._create_target_engine(target, target_type)
             self._create_schema_if_missing(engine, staging_schema)
 
-            migration_result = MigrationService(engine, schema=staging_schema).migrate_from_csv_dir(str(csv_dir))
+            migration_result = MigrationService(
+                engine, schema=staging_schema
+            ).migrate_from_csv_dir(str(csv_dir))
 
-            self._validate_csv_count(csv_dir=csv_dir, migration_result=migration_result)
+            self._validate_csv_count(
+                csv_dir=csv_dir, migration_result=migration_result
+            )
 
             if ecb_validations_file is not None:
                 staging_engine = self._engine_for_schema(engine, staging_schema)
-                EcbValidationsImportService(staging_engine).import_csv(ecb_validations_file)
+                EcbValidationsImportService(staging_engine).import_csv(
+                    ecb_validations_file
+                )
 
             self._validate_schema(
                 engine=engine,
@@ -265,7 +273,9 @@ class DatabaseUpdateService:
             A connected `Engine` instance.
         """
         if target_type == "sqlserver":
-            return create_engine(target, fast_executemany=True, pool_pre_ping=True)
+            return create_engine(
+                target, fast_executemany=True, pool_pre_ping=True
+            )
 
         return create_engine(target, pool_pre_ping=True)
 
@@ -281,11 +291,15 @@ class DatabaseUpdateService:
             return
 
         with engine.begin() as conn:
-            conn.execute(text(f"CREATE SCHEMA {self._quote_schema(engine, schema)}"))
+            conn.execute(
+                text(f"CREATE SCHEMA {self._quote_schema(engine, schema)}")
+            )
 
     @staticmethod
-    def _validate_csv_count(*, csv_dir: Path, migration_result: MigrationResult) -> None:
-        """Raise if the number of CSV files does not match the tables migrated.
+    def _validate_csv_count(
+        *, csv_dir: Path, migration_result: MigrationResult
+    ) -> None:
+        """Raise if the CSV file count does not match the tables migrated.
 
         Args:
             csv_dir: Directory that was scanned for ``.csv`` files.
@@ -302,16 +316,17 @@ class DatabaseUpdateService:
         if migration_result.tables_migrated != csv_count:
             raise DatabaseUpdateError(
                 f"Validation failed. Found {csv_count} CSV files in "
-                f"'{csv_dir}', but migrated {migration_result.tables_migrated} "
+                f"'{csv_dir}', but migrated "
+                f"{migration_result.tables_migrated} "
                 "tables."
             )
 
     @staticmethod
     def _engine_for_schema(engine: Engine, schema: str) -> Engine:
-        """Return an engine variant that redirects the default schema to ``schema``.
+        """Return an engine variant that redirects the default schema.
 
-        Uses ``execution_options(schema_translate_map={None: schema})`` so ORM
-        queries targeting the default schema are redirected transparently.
+        Uses ``execution_options(schema_translate_map={None: schema})`` so
+        ORM queries targeting the default schema are redirected transparently.
 
         Args:
             engine: Base engine to wrap.
@@ -331,7 +346,7 @@ class DatabaseUpdateService:
         migration_result: MigrationResult,
         ecb_validations_file: str | None,
     ) -> None:
-        """Validate that all expected tables exist in ``schema`` with sufficient rows.
+        """Validate all expected tables exist in ``schema`` with enough rows.
 
         Args:
             engine: Connected engine.
@@ -356,7 +371,12 @@ class DatabaseUpdateService:
             )
 
         with engine.connect() as conn:
-            self._validate_schema_counts(conn=conn, engine=engine, schema=schema, migration_result=migration_result)
+            self._validate_schema_counts(
+                conn=conn,
+                engine=engine,
+                schema=schema,
+                migration_result=migration_result,
+            )
 
             self._validate_required_content(
                 conn=conn,
@@ -368,16 +388,16 @@ class DatabaseUpdateService:
     def _validate_schema_counts(
         self,
         *,
-        conn,
+        conn: Connection,
         engine: Engine,
         schema: str,
         migration_result: MigrationResult,
     ) -> None:
-        """Raise if any migrated table in ``schema`` has fewer rows than expected.
+        """Raise if a migrated table in ``schema`` has too few rows.
 
         Args:
-            conn: Open database connection (used within the caller's transaction).
-            engine: Engine whose dialect is used to build quoted identifiers.
+            conn: Open database connection (within the caller's transaction).
+            engine: Engine whose dialect builds quoted identifiers.
             schema: Schema that holds the tables.
             migration_result: Expected minimum row counts per table.
 
@@ -385,10 +405,12 @@ class DatabaseUpdateService:
             DatabaseUpdateError: If any table's actual row count is below the
                 expected minimum.
         """
-        for table_name, expected_rows in migration_result.table_details.items():
+        for table_name, expected_rows in (
+            migration_result.table_details.items()
+        ):
             result = conn.execute(
                 text(
-                    f"SELECT COUNT(*) FROM "
+                    "SELECT COUNT(*) FROM "  # noqa: S608
                     f"{self._qualified_table(engine, schema, table_name)}"
                 )
             )
@@ -397,10 +419,13 @@ class DatabaseUpdateService:
             if actual_rows < expected_rows:
                 raise DatabaseUpdateError(
                     f"Validation failed for table '{schema}.{table_name}'. "
-                    f"Expected at least {expected_rows} rows, got {actual_rows}."
+                    f"Expected at least {expected_rows} rows, "
+                    f"got {actual_rows}."
                 )
 
-    def _qualified_table(self, engine: Engine, schema: str, table_name: str) -> str:
+    def _qualified_table(
+        self, engine: Engine, schema: str, table_name: str
+    ) -> str:
         """Return a fully-qualified ``"schema"."table"`` SQL identifier."""
         return (
             f"{self._quote_schema(engine, schema)}."
@@ -420,7 +445,7 @@ class DatabaseUpdateService:
     def _validate_required_content(
         self,
         *,
-        conn,
+        conn: Connection,
         engine: Engine,
         schema: str | None,
         ecb_validations_file: str | None,
@@ -432,9 +457,9 @@ class DatabaseUpdateService:
         ``Operation`` and ``OperationVersion``.
 
         Args:
-            conn: Open database connection (used within the caller's transaction).
-            engine: Engine whose dialect is used to build quoted identifiers.
-            schema: Schema to check, or ``None`` for the default (SQLite) schema.
+            conn: Open database connection (within the caller's transaction).
+            engine: Engine whose dialect builds quoted identifiers.
+            schema: Schema to check, or ``None`` for the default (SQLite).
             ecb_validations_file: When not ``None``, enables the ECB-specific
                 checks.
 
@@ -446,7 +471,7 @@ class DatabaseUpdateService:
         if ecb_validations_file is not None:
             required_tables.update({"Operation": 1, "OperationVersion": 1})
 
-        inspector = inspect(engine)
+        inspector = inspect(conn)
         if schema is None:
             existing_tables = set(inspector.get_table_names())
         else:
@@ -454,7 +479,9 @@ class DatabaseUpdateService:
 
         missing_tables = sorted(set(required_tables) - existing_tables)
         if missing_tables:
-            raise DatabaseUpdateError(f"Validation failed. Missing tables: {missing_tables}")
+            raise DatabaseUpdateError(
+                f"Validation failed. Missing tables: {missing_tables}"
+            )
 
         for table_name, min_rows in required_tables.items():
             if schema is None:
@@ -463,13 +490,15 @@ class DatabaseUpdateService:
                 qualified = self._qualified_table(engine, schema, table_name)
 
             actual_rows = int(
-                conn.execute(text(f"SELECT COUNT(*) FROM {qualified}")).scalar_one()
+                conn.execute(
+                    text(f"SELECT COUNT(*) FROM {qualified}")  # noqa: S608
+                ).scalar_one()
             )
 
             if actual_rows < min_rows:
                 raise DatabaseUpdateError(
                     f"Validation failed. Critical table '{table_name}' "
-                    f"must contain at least {min_rows} row(s), got {actual_rows}."
+                    f"must have at least {min_rows} row(s), got {actual_rows}."
                 )
 
     def _check_swap_locks(
@@ -505,9 +534,14 @@ class DatabaseUpdateService:
             timeout_sql = "SET LOCK_TIMEOUT 2000"
             dialect_label = "SQL Server"
             def lock_sql(table: str) -> str:
-                return f"SELECT TOP (0) * FROM {table} WITH (TABLOCKX, HOLDLOCK)"
+                return (
+                    f"SELECT TOP (0) * FROM {table}"  # noqa: S608
+                    " WITH (TABLOCKX, HOLDLOCK)"
+                )
         else:
-            raise DatabaseUpdateError(f"Unsupported staged target '{target_type}'.")
+            raise DatabaseUpdateError(
+                f"Unsupported staged target '{target_type}'."
+            )
 
         inspector = inspect(engine)
         existing_tables = set(inspector.get_table_names(schema=active_schema))
@@ -521,13 +555,17 @@ class DatabaseUpdateService:
                     if table_name not in existing_tables:
                         continue
 
-                    conn.execute(text(lock_sql(self._qualified_table(engine, active_schema, table_name))))
+                    qualified = self._qualified_table(
+                        engine, active_schema, table_name
+                    )
+                    conn.execute(text(lock_sql(qualified)))
 
             except Exception as exc:
                 transaction.rollback()
                 raise DatabaseUpdateError(
-                    f"Final swap was not started because {dialect_label} locks "
-                    "could not be acquired. The active database was not modified."
+                    f"Final swap was not started because "
+                    f"{dialect_label} locks could not be acquired. "
+                    "The active database was not modified."
                 ) from exc
 
             transaction.rollback()
@@ -543,16 +581,16 @@ class DatabaseUpdateService:
         migration_result: MigrationResult,
         ecb_validations_file: str | None,
     ) -> None:
-        """Atomically replace the active schema with the validated staging schema.
+        """Atomically replace the active schema with the validated staging one.
 
         Within a single transaction:
 
         1. Moves all tables from ``active_schema`` → ``backup_schema``.
         2. Moves all tables from ``staging_schema`` → ``active_schema``.
-        3. Validates row counts and required content in the new active schema.
+        3. Validates row counts and required content in the new active one.
 
-        If validation fails the transaction rolls back, leaving the active schema
-        untouched.
+        If validation fails the transaction rolls back, leaving the active
+        schema untouched.
 
         Args:
             engine: Connected engine.
@@ -561,10 +599,12 @@ class DatabaseUpdateService:
             active_schema: Schema that will be replaced.
             backup_schema: Schema to receive the old active tables.
             migration_result: Expected minimum row counts per table.
-            ecb_validations_file: Optional path used by ``_validate_required_content``.
+            ecb_validations_file: Optional path used by
+                ``_validate_required_content``.
 
         Raises:
-            DatabaseUpdateError: If any table move or post-swap validation fails.
+            DatabaseUpdateError: If any table move or post-swap validation
+                fails.
         """
         active_tables_to_backup = self._ordered_tables_for_schema(
             engine=engine,
@@ -642,7 +682,7 @@ class DatabaseUpdateService:
 
         orm_tables = [table.name for table in Base.metadata.sorted_tables]
         if reverse_orm_order:
-            orm_tables = list(reversed(orm_tables))
+            orm_tables.reverse()
 
         ordered = [
             table_name
@@ -654,7 +694,7 @@ class DatabaseUpdateService:
 
         return ordered + remaining
 
-    def _set_swap_timeout(self, conn, target_type: str) -> None:
+    def _set_swap_timeout(self, conn: Connection, target_type: str) -> None:
         """Set a short lock timeout for the current swap transaction.
 
         Issues ``SET LOCAL lock_timeout`` for PostgreSQL or
@@ -676,14 +716,14 @@ class DatabaseUpdateService:
     def _move_table(
         self,
         *,
-        conn,
+        conn: Connection,
         engine: Engine,
         target_type: str,
         source_schema: str,
         destination_schema: str,
         table_name: str,
     ) -> None:
-        """Move ``table_name`` from ``source_schema`` to ``destination_schema``.
+        """Move a table from ``source_schema`` to ``destination_schema``.
 
         For PostgreSQL, uses ``ALTER TABLE … SET SCHEMA``.  For SQL Server,
         uses ``ALTER SCHEMA … TRANSFER``.
@@ -699,8 +739,12 @@ class DatabaseUpdateService:
         Raises:
             DatabaseUpdateError: If ``target_type`` is not supported.
         """
-        source_table = self._qualified_table(engine, source_schema, table_name)
-        destination_schema_quoted = self._quote_schema(engine, destination_schema)
+        source_table = self._qualified_table(
+            engine, source_schema, table_name
+        )
+        destination_schema_quoted = self._quote_schema(
+            engine, destination_schema
+        )
 
         if target_type == "postgresql":
             conn.execute(
@@ -743,7 +787,9 @@ class DatabaseUpdateService:
         except Exception:
             return
 
-    def _drop_schema(self, engine: Engine, target_type: str, schema: str) -> None:
+    def _drop_schema(
+        self, engine: Engine, target_type: str, schema: str
+    ) -> None:
         """Drop ``schema`` and all its tables.
 
         For PostgreSQL, issues ``DROP SCHEMA … CASCADE``.  For SQL Server,
@@ -791,8 +837,10 @@ class DatabaseUpdateService:
                 text(f"DROP SCHEMA {self._quote_schema(engine, schema)}")
             )
 
-    def _drop_sqlserver_foreign_keys_for_schema(self, engine: Engine, schema: str) -> None:
-        """Drop all foreign-key constraints that reference or belong to ``schema``.
+    def _drop_sqlserver_foreign_keys_for_schema(
+        self, engine: Engine, schema: str
+    ) -> None:
+        """Drop all FK constraints that reference or belong to ``schema``.
 
         Queries ``sys.foreign_keys`` to find every FK where either the parent
         or the referenced table lives in ``schema``, then issues an
@@ -810,7 +858,8 @@ class DatabaseUpdateService:
             FROM sys.foreign_keys fk
                      JOIN sys.tables pt ON fk.parent_object_id = pt.object_id
                      JOIN sys.schemas ps ON pt.schema_id = ps.schema_id
-                     JOIN sys.tables rt ON fk.referenced_object_id = rt.object_id
+                     JOIN sys.tables rt
+                       ON fk.referenced_object_id = rt.object_id
                      JOIN sys.schemas rs ON rt.schema_id = rs.schema_id
             WHERE ps.name = :schema
                OR rs.name = :schema
@@ -821,16 +870,16 @@ class DatabaseUpdateService:
             rows = conn.execute(query, {"schema": schema}).fetchall()
 
             for parent_schema, parent_table, fk_name in rows:
+                parent_table_q = self._qualified_table(
+                    engine, parent_schema, parent_table
+                )
+                fk_name_q = self._quote_name(engine, fk_name)
                 conn.execute(
                     text(
-                        f"ALTER TABLE "
-                        f"{self._qualified_table(engine, parent_schema, parent_table)} "
-                        f"DROP CONSTRAINT {self._quote_name(engine, fk_name)}"
+                        f"ALTER TABLE {parent_table_q} "
+                        f"DROP CONSTRAINT {fk_name_q}"
                     )
                 )
-
-
-
 
     def _update_sqlite(
         self,
@@ -853,10 +902,10 @@ class DatabaseUpdateService:
             target_path: Filesystem path to the target ``.db`` file.
             csv_dir: Directory containing source CSV files.
             source: Human-readable source path included in the result.
-            used_access_file: Whether the CSVs were exported from an Access file.
+            used_access_file: Whether the CSVs came from an Access file.
             ecb_validations_file: Optional path to an ECB validations CSV.
             dry_run: Validate but do not replace the active database file.
-            keep_staging: Preserve the staging temp file when ``dry_run`` is set.
+            keep_staging: Keep the staging temp file when ``dry_run`` is set.
 
         Returns:
             A `DatabaseUpdateResult` describing the completed update.
@@ -873,16 +922,24 @@ class DatabaseUpdateService:
             )
 
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        temp_path = target_path.with_name(f".{target_path.name}.tmp-{timestamp}")
-        backup_path = target_path.with_name(f"{target_path.name}.backup-{timestamp}")
+        temp_path = target_path.with_name(
+            f".{target_path.name}.tmp-{timestamp}"
+        )
+        backup_path = target_path.with_name(
+            f"{target_path.name}.backup-{timestamp}"
+        )
 
         try:
             engine = create_engine(f"sqlite:///{temp_path.as_posix()}")
 
             try:
-                migration_result = MigrationService(engine).migrate_from_csv_dir(str(csv_dir))
+                migration_result = MigrationService(
+                    engine
+                ).migrate_from_csv_dir(str(csv_dir))
 
-                self._validate_csv_count(csv_dir=csv_dir, migration_result=migration_result)
+                self._validate_csv_count(
+                    csv_dir=csv_dir, migration_result=migration_result
+                )
 
                 self._validate_sqlite(
                     engine,
@@ -977,9 +1034,11 @@ class DatabaseUpdateService:
             )
 
         with engine.connect() as conn:
-            for table_name, expected_rows in migration_result.table_details.items():
+            for table_name, expected_rows in (
+                migration_result.table_details.items()
+            ):
                 actual_rows = conn.execute(
-                    text(f'SELECT COUNT(*) FROM "{table_name}"')
+                    text(f'SELECT COUNT(*) FROM "{table_name}"')  # noqa: S608
                 ).scalar_one()
 
                 if exact_counts and actual_rows != expected_rows:
@@ -991,7 +1050,8 @@ class DatabaseUpdateService:
                 if not exact_counts and actual_rows < expected_rows:
                     raise DatabaseUpdateError(
                         f"SQLite validation failed for table '{table_name}'. "
-                        f"Expected at least {expected_rows} rows, got {actual_rows}."
+                        f"Expected at least {expected_rows} rows, "
+                        f"got {actual_rows}."
                     )
 
             self._validate_required_content(

@@ -250,7 +250,7 @@ class TestMigrateCsvDir:
             }
         )
 
-        result = service._coerce_numeric_columns_for_csv(df)
+        result = service._coerce_numeric_columns(df)
 
         assert result["Row"].iloc[0] == "01"
         assert result["Column"].iloc[0] == "002"

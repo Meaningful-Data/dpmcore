@@ -309,11 +309,15 @@ def update_db(
         console.print(f"[yellow]Warning:[/yellow] {warning}")
 
     if result.dry_run:
-        console.print("[yellow]Dry run completed. Active database was not modified.[/yellow]")
+        console.print(
+            "[yellow]Dry run completed. "
+            "Active database was not modified.[/yellow]"
+        )
 
     if result.staging_location:
         console.print(
-            f"[yellow]Staging artifact:[/yellow] [cyan]{result.staging_location}[/cyan]"
+            f"[yellow]Staging artifact:[/yellow] "
+            f"[cyan]{result.staging_location}[/cyan]"
         )
 
 @main.command()

@@ -9,9 +9,9 @@ from __future__ import annotations
 import shutil
 import subprocess
 import tempfile
-from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
@@ -141,10 +141,14 @@ class ExportCsvService:
 
         target_path.write_text(csv_text, encoding="utf-8")
 
-    def export_safely(self, access_path: str, output_dir: Path) -> ExportCsvResult:
-        """Export Access tables safely by replacing the output dir at the end."""
+    def export_safely(
+        self, access_path: str, output_dir: Path
+    ) -> ExportCsvResult:
+        """Safely export Access tables, replacing the output dir at the end."""
         if output_dir.exists() and not output_dir.is_dir():
-            raise ExportCsvError(f"Output path '{output_dir}' is not a directory.")
+            raise ExportCsvError(
+                f"Output path '{output_dir}' is not a directory."
+            )
 
         output_dir.parent.mkdir(parents=True, exist_ok=True)
 
@@ -165,8 +169,7 @@ class ExportCsvService:
             try:
                 temp_dir.replace(output_dir)
             except Exception:
-                if backup_dir.exists() and not output_dir.exists():
-                    backup_dir.replace(output_dir)
+                self._restore_backup(backup_dir, output_dir)
                 raise
 
             if backup_dir.exists():
@@ -179,13 +182,10 @@ class ExportCsvService:
             )
 
         except ExportCsvError:
-            if backup_dir.exists() and not output_dir.exists():
-                backup_dir.replace(output_dir)
+            self._restore_backup(backup_dir, output_dir)
             raise
         except Exception as exc:
-            if backup_dir.exists() and not output_dir.exists():
-                backup_dir.replace(output_dir)
-
+            self._restore_backup(backup_dir, output_dir)
             raise ExportCsvError(
                 f"Safe CSV export failed for '{access_path}': {exc}"
             ) from exc
@@ -193,6 +193,12 @@ class ExportCsvService:
         finally:
             if temp_dir.exists():
                 shutil.rmtree(temp_dir, ignore_errors=True)
+
+    @staticmethod
+    def _restore_backup(backup_dir: Path, output_dir: Path) -> None:
+        """Restore backup_dir to output_dir if output_dir is missing."""
+        if backup_dir.exists() and not output_dir.exists():
+            backup_dir.replace(output_dir)
 
     @staticmethod
     def _backup_dir_for(output_dir: Path) -> Path:

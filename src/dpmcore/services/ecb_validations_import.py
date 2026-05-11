@@ -554,7 +554,9 @@ class EcbValidationsImportService:
         precondition_cache: Dict[tuple[str, int], int] = {}
         created_versions: Dict[tuple[str, int], OperationVersion] = {}
 
-        for row in df.to_dict(orient="records"):
+        records = df.to_dict(orient="records")
+
+        for index, row in enumerate(records, start=1):
             code = self._normalize_text(row.get("vr_code"))
             if code is None:
                 continue
@@ -710,7 +712,9 @@ class EcbValidationsImportService:
                             key=lambda comp: comp.module_vid,
                         )
 
-                        for comp_index, comp in enumerate(ordered_compositions):
+                        for comp_index, comp in enumerate(
+                            ordered_compositions
+                        ):
                             comp.row_guid = _stable_uuid(
                                 "operation-scope-composition",
                                 operation_version.operation_vid,
