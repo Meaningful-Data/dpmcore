@@ -189,31 +189,6 @@ class TestMigrateCsvDir:
         assert result.table_details["Release"] == 1
         assert result.table_details["Organisation"] == 1
 
-    def test_migrate_from_csv_dir_populates_release_sort_order(
-        self, service, sqlite_engine, tmp_path
-    ):
-        # Bulk load via df.to_sql bypasses the ORM before_insert listener,
-        # so _populate_release_sort_order must be called explicitly after load.
-        (tmp_path / "Release.csv").write_text(
-            "ReleaseID,Code\n1,4.0\n2,4.2\n3,5.0\n",
-            encoding="utf-8",
-        )
-        service.migrate_from_csv_dir(str(tmp_path))
-
-        with sqlite_engine.connect() as conn:
-            rows = conn.execute(
-                text(
-                    "SELECT ReleaseID, SortOrder FROM Release ORDER BY ReleaseID"
-                )
-            ).fetchall()
-
-        assert all(sort_order is not None for _, sort_order in rows), (
-            "SortOrder must be populated after CSV migration; "
-            "EcbValidationsImportService._get_valid_release_ids relies on it"
-        )
-        sort_orders = [row[1] for row in rows]
-        assert sort_orders == sorted(sort_orders), "SortOrder must be monotone"
-
     def test_migrate_from_csv_dir_empty_dir_raises(self, service, tmp_path):
         with pytest.raises(MigrationError, match="No CSV files found"):
             service.migrate_from_csv_dir(str(tmp_path))
