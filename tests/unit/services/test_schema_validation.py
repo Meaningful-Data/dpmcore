@@ -35,7 +35,12 @@ def full_engine(empty_engine):
 
 
 def _insert_minimal_row(conn, table_name: str) -> None:
-    """Insert a single row of NULLs (SQLite tolerates this for tests)."""
+    """Insert one row with type-appropriate sample values for every column.
+
+    Uses :func:`_sample_value` per column so NOT NULL / typed constraints
+    are satisfied across SQLite, PostgreSQL, and SQL Server — the goal is
+    just to make the table non-empty for the seed-table sanity check.
+    """
     table = Base.metadata.tables[table_name]
     quoted = conn.dialect.identifier_preparer.quote(table_name)
     cols = list(table.columns)
