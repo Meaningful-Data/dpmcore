@@ -28,7 +28,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "sqlalchemy>=2.0,<3.0",
+    "sqlalchemy>=2.0.49,<3.0",
     # Runtime must match the ANTLR version used to generate the grammar
     # in src/dpmcore/dpm_xl/grammar/generated/. Regenerating with a newer
     # ANTLR is tracked separately.
