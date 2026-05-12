@@ -18,8 +18,8 @@ imported lazily so the rest of dpmcore works without them.
 from __future__ import annotations
 
 import logging
-import os
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -27,7 +27,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, inspect, select, text
 
 from dpmcore.orm.base import Base
 from dpmcore.orm.infrastructure import Release
@@ -65,9 +65,15 @@ class MigrationService:
         engine: A SQLAlchemy :class:`~sqlalchemy.engine.Engine`.
     """
 
-    def __init__(self, engine: Engine) -> None:
+    def __init__(self, engine: Engine, schema: str | None = None) -> None:
         """Initialise with a SQLAlchemy Engine."""
         self._engine = engine
+        self._schema = schema
+        self._ddl_engine = (
+            engine.execution_options(schema_translate_map={None: schema})
+            if schema is not None
+            else engine
+        )
 
     # -------------------------------------------------------------- #
     # Public API
@@ -244,7 +250,7 @@ class MigrationService:
                 keep_default_na=False,
                 na_values=[""],
             )
-            data[table_name] = self._coerce_numeric_columns_for_csv(df)
+            data[table_name] = self._coerce_numeric_columns(df)
 
         return self._order_data_by_schema(data)
 
@@ -282,6 +288,7 @@ class MigrationService:
         """
         self._create_schema()
         warnings = self._load_data(data)
+        self._populate_release_sort_order()
 
         table_details = {name: len(df) for name, df in data.items()}
         total_rows = sum(table_details.values())
@@ -327,7 +334,7 @@ class MigrationService:
 
         new_path.parent.mkdir(parents=True, exist_ok=True)
         self._engine.dispose()
-        os.replace(current, new_path)
+        shutil.move(str(current), str(new_path))
         return new_path
 
     def _conventional_name(self, current: Path) -> str:
@@ -415,9 +422,6 @@ class MigrationService:
                 df[column] = pd.to_numeric(df[column], errors="coerce")
 
         return df
-
-    # Back-compat alias — older callers used the CSV-specific name.
-    _coerce_numeric_columns_for_csv = _coerce_numeric_columns
 
     @staticmethod
     def _coerce_temporal_columns_for_schema(df: Any, orm_table: Any) -> Any:  # noqa: C901
@@ -519,14 +523,169 @@ class MigrationService:
 
         return df
 
+    @staticmethod
+    def _coerce_boolean_columns_for_schema(df: Any, orm_table: Any) -> Any:
+        """Convert Access-style boolean values to Python bools."""
+        from sqlalchemy.sql.sqltypes import Boolean
+
+        for column in orm_table.columns:
+            column_name = column.name
+
+            if column_name not in df.columns:
+                continue
+
+            if not isinstance(column.type, Boolean):
+                continue
+
+            try:
+                df[column_name] = df[column_name].map(
+                    MigrationService._convert_bool_value
+                )
+            except MigrationError as exc:
+                raise MigrationError(
+                    f"Table '{orm_table.name}', column '{column_name}' "
+                    f"contains invalid boolean values: {exc}"
+                ) from exc
+
+        return df
+
+    @staticmethod
+    def _convert_bool_value(value: Any) -> bool | None:
+        """Coerce a single value to bool or None."""
+        import pandas as pd
+
+        if value is None or pd.isna(value):
+            return None
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            if value in {-1, 1}:
+                return True
+            if value == 0:
+                return False
+        return MigrationService._convert_text_bool(str(value).strip().lower())
+
+    @staticmethod
+    def _convert_text_bool(text: str) -> bool | None:
+        """Coerce a normalised text token to bool or None."""
+        _null = {"", "nan", "none", "null", "<na>"}
+        _true = {"-1", "-1.0", "1", "1.0", "true", "yes", "y", "t"}
+        _false = {"0", "0.0", "false", "no", "n", "f"}
+
+        if text in _null:
+            return None
+        if text in _true:
+            return True
+        if text in _false:
+            return False
+        try:
+            numeric = float(text)
+        except ValueError as exc:
+            raise MigrationError(
+                f"Unsupported boolean value {text!r}"
+            ) from exc
+        if numeric in {-1.0, 1.0}:
+            return True
+        if numeric == 0.0:
+            return False
+        raise MigrationError(f"Unsupported boolean value {text!r}")
+
+    def _prepare_bulk_load_constraints(self) -> None:
+        """Prepare strict databases for bulk CSV loading."""
+        if self._schema is None:
+            return
+
+        dialect = self._engine.dialect.name
+
+        if dialect == "postgresql":
+            self._drop_postgresql_foreign_keys_for_bulk_load()
+            return
+
+        if dialect == "mssql":
+            self._disable_sqlserver_constraints_for_bulk_load()
+            return
+
+    def _drop_postgresql_foreign_keys_for_bulk_load(self) -> None:
+        """Drop FK constraints in staging to allow bulk loading."""
+        query = text(
+            """
+            SELECT table_name, constraint_name
+            FROM information_schema.table_constraints
+            WHERE table_schema = :schema
+              AND constraint_type = 'FOREIGN KEY'
+            """
+        )
+
+        if self._schema is None:
+            return
+        preparer = self._engine.dialect.identifier_preparer
+
+        with self._engine.begin() as conn:
+            constraints = conn.execute(
+                query, {"schema": self._schema}
+            ).fetchall()
+
+            for table_name, constraint_name in constraints:
+                qualified_table = (
+                    f"{preparer.quote_schema(self._schema)}."
+                    f"{preparer.quote(table_name)}"
+                )
+                conn.execute(
+                    text(
+                        f"ALTER TABLE {qualified_table} "
+                        f"DROP CONSTRAINT {preparer.quote(constraint_name)}"
+                    )
+                )
+
+    def _disable_sqlserver_constraints_for_bulk_load(self) -> None:
+        """Disable FK/check constraints in staging to allow bulk loading."""
+        if self._schema is None:
+            return
+        inspector = inspect(self._engine)
+        table_names = inspector.get_table_names(schema=self._schema)
+
+        preparer = self._engine.dialect.identifier_preparer
+
+        with self._engine.begin() as conn:
+            for table_name in table_names:
+                qualified_table = (
+                    f"{preparer.quote_schema(self._schema)}."
+                    f"{preparer.quote(table_name)}"
+                )
+                conn.execute(
+                    text(
+                        f"ALTER TABLE {qualified_table} NOCHECK CONSTRAINT ALL"
+                    )
+                )
+
     # -------------------------------------------------------------- #
     # Schema creation & data loading
     # -------------------------------------------------------------- #
 
     def _create_schema(self) -> None:
         """Drop and recreate all ORM tables for a clean migration."""
-        Base.metadata.drop_all(self._engine)
-        Base.metadata.create_all(self._engine)
+        Base.metadata.drop_all(self._ddl_engine)
+        Base.metadata.create_all(self._ddl_engine)
+        self._prepare_bulk_load_constraints()
+
+    def _populate_release_sort_order(self) -> None:
+        """Backfill ``Release.sort_order`` from each row's ``code``.
+
+        Bulk loads bypass the ORM ``before_insert`` listener that would
+        normally populate ``sort_order``, so we run a single UPDATE
+        after migration that derives the value from the parsed
+        semver code.
+        """
+        from sqlalchemy.orm import Session
+
+        from dpmcore.orm.infrastructure import Release
+        from dpmcore.orm.release_sort_order import compute_sort_order
+
+        with Session(self._ddl_engine) as session:
+            rows = session.query(Release).all()
+            for r in rows:
+                r.sort_order = compute_sort_order(r.code)
+            session.commit()
 
     def _load_data(self, data: Dict[str, Any]) -> List[str]:
         """Write DataFrames into the database.
@@ -540,8 +699,14 @@ class MigrationService:
         """
         warnings: List[str] = []
 
+        identity_cols = (
+            self._mssql_identity_columns()
+            if self._engine.dialect.name == "mssql"
+            else {}
+        )
+
         for table_name, df in data.items():
-            self._load_table(table_name, df, warnings)
+            self._load_table(table_name, df, warnings, identity_cols)
 
         return warnings
 
@@ -550,11 +715,13 @@ class MigrationService:
         table_name: str,
         df: Any,
         warnings: List[str],
+        identity_columns: dict[str, str],
     ) -> None:
         """Load a single DataFrame into the database."""
         # Filter DataFrame columns to only those present in the
         # ORM schema so that unexpected Access columns produce a
         # warning instead of a hard failure.
+
         orm_table = Base.metadata.tables.get(table_name)
         if orm_table is not None:
             known_cols = {c.name for c in orm_table.columns}
@@ -569,15 +736,69 @@ class MigrationService:
                 df = df[[c for c in df.columns if c in known_cols]]
 
             df = self._coerce_temporal_columns_for_schema(df, orm_table)
+            df = self._coerce_boolean_columns_for_schema(df, orm_table)
 
         try:
-            df.to_sql(
-                table_name,
-                self._engine,
-                if_exists="append",
-                index=False,
-            )
+            identity_column = identity_columns.get(table_name)
+
+            if identity_column is not None and identity_column in df.columns:
+                qualified_table = (
+                    f"[{self._schema}].[{table_name}]"
+                    if self._schema is not None
+                    else f"[{table_name}]"
+                )
+
+                with self._engine.begin() as conn:
+                    conn.execute(
+                        text(f"SET IDENTITY_INSERT {qualified_table} ON")
+                    )
+                    try:
+                        df.to_sql(
+                            table_name,
+                            conn,
+                            schema=self._schema,
+                            if_exists="append",
+                            index=False,
+                            chunksize=10_000,
+                        )
+                    finally:
+                        conn.execute(
+                            text(f"SET IDENTITY_INSERT {qualified_table} OFF")
+                        )
+
+            else:
+                df.to_sql(
+                    table_name,
+                    self._engine,
+                    schema=self._schema,
+                    if_exists="append",
+                    index=False,
+                    chunksize=10_000,
+                )
+
         except Exception as exc:
             raise MigrationError(
                 f"Failed to load table '{table_name}': {exc}"
             ) from exc
+
+    def _mssql_identity_columns(self) -> dict[str, str]:
+        """Return {table_name: identity_column} for tables in the schema."""
+        if self._schema is None:
+            return {}
+
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT t.name, c.name
+                    FROM sys.columns c
+                             JOIN sys.tables t ON c.object_id = t.object_id
+                             JOIN sys.schemas s ON t.schema_id = s.schema_id
+                    WHERE s.name = :schema
+                      AND c.is_identity = 1
+                    """
+                ),
+                {"schema": self._schema},
+            ).fetchall()
+
+        return {row[0]: row[1] for row in rows}

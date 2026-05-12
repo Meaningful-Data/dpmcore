@@ -1,3 +1,4 @@
+import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,6 +9,7 @@ from dpmcore.orm.infrastructure import Organisation
 from dpmcore.services.ecb_validations_import import (
     EcbValidationsImportError,
     EcbValidationsImportService,
+    _stable_uuid,
 )
 
 
@@ -347,7 +349,7 @@ class TestEcbValidationsImport:
         session = sessionmaker(bind=sqlite_engine_with_schema)()
         try:
             result = service_with_schema._create_operation_concept(
-                session, operation_class=None, owner=None
+                session, operation_class=None, owner=None, stable_key="test"
             )
             assert result is None
         finally:
@@ -369,10 +371,10 @@ class TestEcbValidationsImport:
             session.flush()
 
             result = service_with_schema._create_operation_concept(
-                session, operation_class=cls, owner=org
+                session, operation_class=cls, owner=org, stable_key="test"
             )
             assert result is not None
-            assert len(result) == 36  # UUID format
+            assert len(result) == 38  # Access-style {UUID} format
         finally:
             session.close()
 
@@ -763,3 +765,49 @@ class TestEcbValidationsImport:
                 match="Failed to import ECB validations",
             ):
                 service_with_schema.import_csv(str(csv_file))
+
+
+# ---------------------------------------------------------------------------
+# _stable_uuid
+# ---------------------------------------------------------------------------
+
+
+class TestStableUuid:
+    def test_deterministic_same_input_same_output(self):
+        uid1 = _stable_uuid("concept", 42, "my-key")
+        uid2 = _stable_uuid("concept", 42, "my-key")
+        assert uid1 == uid2
+
+    def test_different_inputs_produce_different_uuids(self):
+        uid1 = _stable_uuid("concept", 1, "key-a")
+        uid2 = _stable_uuid("concept", 1, "key-b")
+        assert uid1 != uid2
+
+    def test_different_prefixes_produce_different_uuids(self):
+        uid1 = _stable_uuid("concept", 1, "key")
+        uid2 = _stable_uuid("other", 1, "key")
+        assert uid1 != uid2
+
+    def test_none_parts_treated_as_empty_string(self):
+        # None is converted to "" in the text join, so they produce identical UUIDs
+        assert _stable_uuid(None) == _stable_uuid("")
+        assert _stable_uuid("a", None, "b") == _stable_uuid("a", "", "b")
+
+    def test_none_part_handled_without_error(self):
+        result = _stable_uuid("concept", None, "key")
+        assert isinstance(result, str)
+        assert len(result) == 38
+
+    def test_output_is_uppercase(self):
+        result = _stable_uuid("test")
+        assert result == result.upper()
+
+    def test_output_is_valid_uuid_format(self):
+        result = _stable_uuid("concept", 1, "key")
+        parsed = uuid.UUID(result)
+        assert parsed.version == 5
+
+    def test_ordering_of_parts_matters(self):
+        uid1 = _stable_uuid("a", "b")
+        uid2 = _stable_uuid("b", "a")
+        assert uid1 != uid2

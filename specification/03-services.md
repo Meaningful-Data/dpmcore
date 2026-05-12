@@ -700,7 +700,120 @@ class MigrationService(BaseService):
         ...
 ```
 
-## 10. DPM-XL Engine Internals
+## 10. Database Update Service
+
+Safe, atomic update of a live DPM database from CSV files or an Access export.
+The service validates all data in a staging area before committing any change to
+the active database.
+
+### 10.1 Supported targets
+
+| Target type | Detection | Swap mechanism |
+|-------------|-----------|----------------|
+| SQLite | `.db`, `.sqlite`, `.sqlite3` extensions or `sqlite:///` URL | Hidden temp file; atomic file rename |
+| PostgreSQL | `postgresql://` or `postgres://` URL | Staging schema; atomic `ALTER TABLE … SET SCHEMA` |
+| SQL Server | `mssql+pyodbc://` or `sqlserver://` URL | Staging schema; atomic `ALTER SCHEMA … TRANSFER` |
+
+### 10.2 API
+
+```python
+from dpmcore.services.database_update import DatabaseUpdateService, DatabaseUpdateResult
+
+result: DatabaseUpdateResult = DatabaseUpdateService().update(
+    target="sqlite:///dpm.db",           # or PostgreSQL / SQL Server URL
+    access_file=None,                    # optional: path to .accdb/.mdb
+    ecb_validations_file=None,           # optional: path to ECB CSV
+    source_dir="data/DPM",              # CSV source directory (default)
+    dry_run=False,                       # validate only, no swap
+    keep_staging=False,                  # keep staging artefact on finish
+)
+```
+
+**Result type:**
+
+```python
+@dataclass(frozen=True)
+class DatabaseUpdateResult:
+    target_type: str           # "sqlite", "postgresql", or "sqlserver"
+    target: str                # target URL or path as provided
+    source: str                # source path (CSV dir or Access file)
+    used_access_file: bool     # True when --access-file was used
+    migration_result: MigrationResult
+    ecb_validations_imported: bool
+    dry_run: bool = False
+    staging_location: str | None = None  # set when --keep-staging + dry_run
+```
+
+### 10.3 Update flow
+
+**SQLite:**
+
+1. Create a hidden temp file (`.target.tmp-<timestamp>.db`).
+2. Run `MigrationService.migrate_from_csv_dir()` into the temp file.
+3. Validate row counts and required tables (`Release`, `Organisation`).
+4. If `ecb_validations_file` is provided, import it and re-validate.
+5. Back up the existing target file, then rename the temp file to the target.
+6. Run a final post-swap validation; restore backup on failure.
+7. Delete the backup on success (unless `--keep-staging`).
+
+**PostgreSQL / SQL Server:**
+
+1. Create a staging schema (``dpmcore_staging_<timestamp>``).
+2. Run `MigrationService.migrate_from_csv_dir()` into the staging schema.
+3. Validate row counts and required tables in staging.
+4. If `ecb_validations_file` is provided, import it into staging and re-validate.
+5. Check that exclusive locks can be acquired on all active tables.
+6. Create a backup schema (``dpmcore_backup_<timestamp>``).
+7. Atomically move active tables → backup, staging tables → active.
+8. Validate the new active schema; roll back transaction on failure.
+9. Drop staging and backup schemas (unless `--keep-staging`).
+
+### 10.4 Validation
+
+Two validation gates are applied on every update:
+
+**Table-count validation** — every table loaded must have at least as many rows
+in the database as it had in the source CSV.
+
+**Required-content validation** — the following tables must exist and contain at
+least one row:
+
+| Table | Always checked | Only with `ecb_validations_file` |
+|-------|:--------------:|:--------------------------------:|
+| `Release` | ✓ | |
+| `Organisation` | ✓ | |
+| `Operation` | | ✓ |
+| `OperationVersion` | | ✓ |
+
+### 10.5 Target type detection
+
+```python
+target_type = DatabaseUpdateService.detect_target_type(target)
+# returns "sqlite", "postgresql", or "sqlserver"
+# raises DatabaseUpdateError for unrecognised URLs
+```
+
+### 10.6 Error handling
+
+```python
+from dpmcore.services.database_update import DatabaseUpdateError
+
+try:
+    result = DatabaseUpdateService().update(target="postgresql://host/dpm")
+except DatabaseUpdateError as exc:
+    print(f"Update failed: {exc}")
+    # active database was NOT modified
+```
+
+`DatabaseUpdateError` is raised when:
+
+- The target type cannot be detected.
+- Migration or validation fails in staging.
+- The schema/file swap fails.
+
+In all cases the active database is left untouched.
+
+## 11. DPM-XL Engine Internals
 
 The DPM-XL engine is the internal implementation that the services delegate to.
 It is not part of the public API but is documented here for completeness.

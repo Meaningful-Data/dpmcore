@@ -73,7 +73,7 @@ class Category(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     created_release: Mapped[Optional[int]] = mapped_column(
@@ -138,7 +138,7 @@ class SubCategory(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
@@ -196,7 +196,7 @@ class SubCategoryVersion(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
 
@@ -275,7 +275,7 @@ class SubCategoryItem(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
 
@@ -330,7 +330,7 @@ class Item(Base):
     is_active: Mapped[Optional[bool]] = mapped_column("IsActive", Boolean)
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
@@ -408,7 +408,7 @@ class ItemCategory(Base):
         Integer,
         ForeignKey("Release.ReleaseID"),
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     item: Mapped["Item"] = relationship(back_populates="item_categories")
     start_release: Mapped["Release"] = relationship(
@@ -461,7 +461,7 @@ class Property(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
@@ -530,7 +530,7 @@ class PropertyCategory(Base):
         Integer,
         ForeignKey("Release.ReleaseID"),
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     property: Mapped["Property"] = relationship(
         back_populates="property_categories"
@@ -565,12 +565,10 @@ class Context(Base):
     context_id: Mapped[int] = mapped_column(
         "ContextID", Integer, primary_key=True
     )
-    signature: Mapped[Optional[str]] = mapped_column(
-        "Signature", String(2000), unique=True
-    )
+    signature: Mapped[Optional[str]] = mapped_column("Signature", String(2000))
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
@@ -631,7 +629,7 @@ class ContextComposition(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(36),
+        String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
 
@@ -689,7 +687,7 @@ class CompoundItemContext(Base):
         Integer,
         ForeignKey("Release.ReleaseID"),
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     item: Mapped["Item"] = relationship(
         back_populates="compound_item_contexts"
@@ -745,7 +743,7 @@ class SupercategoryComposition(Base):
         Integer,
         ForeignKey("Release.ReleaseID"),
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(36))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     supercategory: Mapped["Category"] = relationship(
         foreign_keys=[supercategory_id],

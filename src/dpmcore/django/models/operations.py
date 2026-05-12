@@ -12,7 +12,7 @@ class Operation(models.Model):
     )
     code = models.CharField(
         db_column="Code",
-        max_length=20,
+        max_length=255,
         null=True,
         blank=True,
     )
