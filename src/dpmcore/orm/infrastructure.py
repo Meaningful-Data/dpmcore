@@ -12,7 +12,6 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import (
-    BigInteger,
     Boolean,
     Date,
     DateTime,
@@ -832,13 +831,6 @@ class Release(Base):
     type: Mapped[Optional[str]] = mapped_column("Type", String(20))
     error: Mapped[Optional[str]] = mapped_column("Error", String(4000))
     owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
-    # Synthetic — derived from ``code`` (semver-parsed) so range filters
-    # do not depend on the integer ordering of ``ReleaseID``. Populated
-    # via the SQLAlchemy ``before_insert`` / ``before_update`` listeners
-    # in ``dpmcore.orm.release_sort_order``.
-    sort_order: Mapped[Optional[int]] = mapped_column(
-        "SortOrder", BigInteger, index=True
-    )
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
