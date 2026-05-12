@@ -34,6 +34,9 @@ if TYPE_CHECKING:
     from dpmcore.services.hierarchy import HierarchyService
     from dpmcore.services.layout_exporter import LayoutExporterService
     from dpmcore.services.meili_json import MeiliJsonService
+    from dpmcore.services.schema_validation import (
+        SchemaValidationResult,
+    )
     from dpmcore.services.scope_calculator import ScopeCalculatorService
     from dpmcore.services.semantic import SemanticService
     from dpmcore.services.structure import StructureService
@@ -227,6 +230,30 @@ class DpmConnection:
         Use for advanced ORM queries that bypass the service layer.
         """
         return self.session
+
+    # ------------------------------------------------------------------ #
+    # Schema validation
+    # ------------------------------------------------------------------ #
+
+    def validate_schema(self) -> "SchemaValidationResult":
+        """Run a shallow shape + data-sanity check on the database.
+
+        Reflects the engine, compares against the dpmcore ORM
+        metadata (case-insensitively), and probes a small set of
+        canonical seed tables for non-emptiness. Designed to be cheap
+        (tens of milliseconds on a real DPM database) — not a deep
+        audit.
+
+        Returns:
+            A :class:`SchemaValidationResult` with the discrepancies.
+            An empty or non-DPM database returns a result with
+            ``is_valid=False`` rather than raising.
+        """
+        from dpmcore.services.schema_validation import (
+            SchemaValidationService,
+        )
+
+        return SchemaValidationService(self.engine).validate()
 
     # ------------------------------------------------------------------ #
     # Lifecycle
