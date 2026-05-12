@@ -48,6 +48,26 @@ db = connect(
 )
 ```
 
+**Validate a database** (shallow shape + seed-data sanity check):
+
+```python
+from dpmcore import connect
+
+with connect("sqlite:///dpm.db") as db:
+    result = db.validate_schema()
+    print(result.is_valid)                # True / False
+    print(result.missing_tables)          # []
+    print(result.empty_required_tables)   # []
+```
+
+Or from the command line (exits non-zero on failure, suitable for CI
+healthchecks):
+
+```bash
+dpmcore validate --database sqlite:///dpm.db
+dpmcore validate --database sqlite:///dpm.db --json
+```
+
 **Syntax validation** (no database needed):
 
 ```python
