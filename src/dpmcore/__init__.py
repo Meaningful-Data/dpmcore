@@ -1,6 +1,6 @@
 """Your opinionated Python DPM library."""
 
-__version__ = "0.1.0rc4"
+__version__ = "0.1.0rc5"
 
 from dpmcore.connection import DpmConnection, connect
 

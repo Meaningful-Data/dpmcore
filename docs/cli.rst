@@ -55,8 +55,56 @@ Migrate an Access database into a SQL database.
        --source dpm.accdb \
        --database mssql+pyodbc://user:pass@server/db?driver=ODBC+Driver+17
 
-``dpmcore update-db``
+``dpmcore validate``
 --------------------
+
+Run a shallow shape + data-sanity check on a database. Reports missing
+tables, missing columns, and required seed tables that exist but are
+empty. Designed to be cheap (tens of milliseconds on a real DPM
+database) — not a deep audit. Comparisons are case-insensitive so the
+same check works across SQLite, PostgreSQL, and SQL Server.
+
+.. code-block:: text
+
+   dpmcore validate --database <url> [--json]
+
+**Options:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Option
+     - Description
+   * - ``--database TEXT``
+     - SQLAlchemy database URL. **(Required)**
+   * - ``--json``
+     - Emit the result as a JSON document instead of a rich table.
+       Useful for CI/healthcheck scripts.
+
+**Exit codes:**
+
+* ``0`` — schema is valid (all expected tables and columns present and
+  all required seed tables non-empty).
+* ``1`` — at least one of: missing table, missing column, empty
+  required seed table.
+
+**Examples:**
+
+.. code-block:: bash
+
+   # Human-readable output
+   dpmcore validate --database sqlite:///dpm.db
+
+   # JSON output (e.g. for CI)
+   dpmcore validate --database sqlite:///dpm.db --json
+
+   # Use as a healthcheck (in scripts)
+   dpmcore validate --database "$DB_URL" --json > /dev/null \
+       && echo "ok" || echo "schema check failed"
+
+``dpmcore update-db``
+---------------------
 
 Safely update a DPM database from CSV files or an Access file.
 
@@ -144,7 +192,7 @@ database is left untouched.
 - ``1`` — update failed; the active database was not modified.
 
 ``dpmcore export-csv``
----------------------
+----------------------
 
 Export all user tables from a Microsoft Access database to CSV files.
 
@@ -181,7 +229,7 @@ available in ``PATH``.  Tables are exported in parallel (up to 8 workers).
    dpmcore export-csv /path/to/DPM_v4_2_1.accdb --output-dir exports/csv
 
 ``dpmcore build-meili-json``
------------------------------
+----------------------------
 
 Build a Meilisearch-ready JSON file containing all DPM operation versions with
 their scopes, module assignments, operand references, and version history.

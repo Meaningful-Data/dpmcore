@@ -37,8 +37,21 @@ def main() -> None:
     required=True,
     help="SQLAlchemy database URL (e.g. sqlite:///dpm.db).",
 )
-def migrate(source: str, database: str) -> None:
+@click.option(
+    "--output",
+    "output_path",
+    default=None,
+    type=click.Path(dir_okay=False, path_type=str),
+    help=(
+        "Final path for the resulting SQLite file. When omitted, "
+        "defaults to '<stem>_<release>_<YYYYMMDD>.db' next to the "
+        "input --database path. Ignored for non-SQLite engines."
+    ),
+)
+def migrate(source: str, database: str, output_path: str | None) -> None:
     """Migrate an Access database into a SQL database."""
+    from pathlib import Path
+
     try:
         from rich.console import Console
         from rich.table import Table
@@ -62,7 +75,10 @@ def migrate(source: str, database: str) -> None:
     service = MigrationService(engine)
 
     try:
-        result = service.migrate_from_access(source)
+        result = service.migrate_from_access(
+            source,
+            output_path=Path(output_path) if output_path else None,
+        )
     except MigrationError as exc:
         console.print(f"[red]Error:[/red] {exc}")
         sys.exit(1)
@@ -81,6 +97,10 @@ def migrate(source: str, database: str) -> None:
         f"{result.total_rows} rows "
         f"(backend: {result.backend_used})"
     )
+    if result.database_path is not None:
+        console.print(
+            f"[bold]Database:[/bold] [green]{result.database_path}[/green]"
+        )
 
     for warning in result.warnings:
         console.print(f"[yellow]Warning:[/yellow] {warning}")
@@ -499,6 +519,88 @@ def generate_script(
         f"[green]Wrote script to[/green] {output} "
         f"({len(items)} expressions, {n_dep} dependency modules)"
     )
+
+
+@main.command()
+@click.option(
+    "--database",
+    required=True,
+    help="SQLAlchemy database URL (e.g. sqlite:///dpm.db).",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Emit the result as JSON instead of a rich table.",
+)
+def validate(database: str, as_json: bool) -> None:
+    """Validate that a database has the expected DPM schema and seed data."""
+    import json as _json
+
+    from dpmcore.connection import connect
+
+    with connect(database) as db:
+        result = db.validate_schema()
+
+    if as_json:
+        click.echo(
+            _json.dumps(
+                {
+                    "is_valid": result.is_valid,
+                    "backend": result.backend,
+                    "missing_tables": result.missing_tables,
+                    "missing_columns": result.missing_columns,
+                    "empty_required_tables": result.empty_required_tables,
+                    "elapsed_ms": round(result.elapsed_ms, 2),
+                },
+                indent=2,
+            )
+        )
+        sys.exit(0 if result.is_valid else 1)
+
+    try:
+        from rich.console import Console
+        from rich.table import Table
+    except ImportError:
+        click.echo(
+            "Install 'rich' for pretty output: pip install dpmcore[cli]",
+            err=True,
+        )
+        sys.exit(1)
+
+    console = Console()
+    status = (
+        "[green]valid[/green]" if result.is_valid else "[red]invalid[/red]"
+    )
+    console.print(
+        f"Schema: {status}  "
+        f"(backend: {result.backend}, "
+        f"{result.elapsed_ms:.1f} ms)"
+    )
+
+    if result.missing_tables:
+        table = Table(title="Missing tables")
+        table.add_column("Table", style="red")
+        for name in result.missing_tables:
+            table.add_row(name)
+        console.print(table)
+
+    if result.missing_columns:
+        table = Table(title="Missing columns")
+        table.add_column("Table", style="cyan")
+        table.add_column("Columns", style="red")
+        for tname, cols in result.missing_columns.items():
+            table.add_row(tname, ", ".join(cols))
+        console.print(table)
+
+    if result.empty_required_tables:
+        table = Table(title="Empty required tables")
+        table.add_column("Table", style="yellow")
+        for name in result.empty_required_tables:
+            table.add_row(name)
+        console.print(table)
+
+    sys.exit(0 if result.is_valid else 1)
 
 
 @main.command("export-layout")

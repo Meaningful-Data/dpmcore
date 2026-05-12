@@ -12,6 +12,8 @@ from dpmcore.loaders.migration import (
     MigrationService,
 )
 
+FIXED_TOKEN = "20260512"  # noqa: S105
+
 
 @pytest.fixture
 def sqlite_engine():
@@ -299,6 +301,236 @@ class TestMigrateCsvDir:
 
         assert result["FromSubmissionDate"].iloc[0] is None
         assert result["FromSubmissionDate"].iloc[1] is None
+
+
+class TestRenameWithMetadata:
+    @staticmethod
+    def _csv_dir_with_release(tmp_path, code="4.2", is_current=1):
+        (tmp_path / "Release.csv").write_text(
+            "ReleaseID,Code,Date,IsCurrent\n"
+            f"1,{code},2026-01-01,{is_current}\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    @pytest.fixture(autouse=True)
+    def _frozen_today(self):
+        with patch.object(
+            MigrationService, "_today_token", return_value=FIXED_TOKEN
+        ):
+            yield
+
+    def test_renames_sqlite_file_with_release_and_date(self, tmp_path):
+        db_path = tmp_path / "dpm.db"
+        engine = create_engine(f"sqlite:///{db_path}")
+        service = MigrationService(engine)
+
+        csv_dir = tmp_path / "csv"
+        csv_dir.mkdir()
+        self._csv_dir_with_release(csv_dir)
+
+        result = service.migrate_from_csv_dir(str(csv_dir))
+
+        expected = tmp_path / f"dpm_4.2_{FIXED_TOKEN}.db"
+        assert result.database_path == expected
+        assert expected.exists()
+        assert not db_path.exists()
+
+    def test_renames_without_release_token_when_no_release(self, tmp_path):
+        db_path = tmp_path / "dpm.db"
+        engine = create_engine(f"sqlite:///{db_path}")
+        service = MigrationService(engine)
+
+        csv_dir = tmp_path / "csv"
+        csv_dir.mkdir()
+        (csv_dir / "Organisation.csv").write_text(
+            "OrgID,Name,Acronym,IDPrefix\n1,EBA,EBA,1\n",
+            encoding="utf-8",
+        )
+
+        result = service.migrate_from_csv_dir(str(csv_dir))
+
+        expected = tmp_path / f"dpm_{FIXED_TOKEN}.db"
+        assert result.database_path == expected
+        assert expected.exists()
+
+    def test_falls_back_to_any_release_when_none_is_current(self, tmp_path):
+        db_path = tmp_path / "dpm.db"
+        engine = create_engine(f"sqlite:///{db_path}")
+        service = MigrationService(engine)
+
+        csv_dir = tmp_path / "csv"
+        csv_dir.mkdir()
+        self._csv_dir_with_release(csv_dir, code="3.9", is_current=0)
+
+        result = service.migrate_from_csv_dir(str(csv_dir))
+
+        assert result.database_path is not None
+        assert "3.9" in result.database_path.name
+
+    def test_sanitises_unsafe_characters_in_release_code(self, tmp_path):
+        db_path = tmp_path / "dpm.db"
+        engine = create_engine(f"sqlite:///{db_path}")
+        service = MigrationService(engine)
+
+        csv_dir = tmp_path / "csv"
+        csv_dir.mkdir()
+        self._csv_dir_with_release(csv_dir, code="4.2/rc1")
+
+        result = service.migrate_from_csv_dir(str(csv_dir))
+
+        assert result.database_path is not None
+        assert "/" not in result.database_path.name
+        assert "4.2-rc1" in result.database_path.name
+
+    def test_returns_none_path_for_in_memory_engine(self, service, tmp_path):
+        csv_dir = tmp_path / "csv"
+        csv_dir.mkdir()
+        self._csv_dir_with_release(csv_dir)
+
+        result = service.migrate_from_csv_dir(str(csv_dir))
+
+        assert result.database_path is None
+
+    def test_sqlite_file_path_returns_none_for_non_sqlite_url(self):
+        engine = MagicMock()
+        engine.url.get_backend_name.return_value = "postgresql"
+        engine.url.database = "dpm"
+
+        service = MigrationService(engine)
+        assert service._sqlite_file_path() is None
+
+    def test_sqlite_file_path_returns_none_when_file_missing(self, tmp_path):
+        missing = tmp_path / "nope.db"
+        engine = create_engine(f"sqlite:///{missing}")
+        service = MigrationService(engine)
+        assert service._sqlite_file_path() is None
+
+    def test_sqlite_file_path_returns_none_when_database_is_blank(self):
+        engine = MagicMock()
+        engine.url.get_backend_name.return_value = "sqlite"
+        engine.url.database = ""
+        service = MigrationService(engine)
+        assert service._sqlite_file_path() is None
+
+    def test_release_code_sanitises_to_none_when_only_unsafe(self, tmp_path):
+        db_path = tmp_path / "dpm.db"
+        engine = create_engine(f"sqlite:///{db_path}")
+        service = MigrationService(engine)
+
+        csv_dir = tmp_path / "csv"
+        csv_dir.mkdir()
+        self._csv_dir_with_release(csv_dir, code="///")
+
+        result = service.migrate_from_csv_dir(str(csv_dir))
+
+        assert result.database_path is not None
+        assert result.database_path.name == f"dpm_{FIXED_TOKEN}.db"
+
+
+class TestOutputPathOverride:
+    @pytest.fixture(autouse=True)
+    def _frozen_today(self):
+        with patch.object(
+            MigrationService, "_today_token", return_value=FIXED_TOKEN
+        ):
+            yield
+
+    def test_output_path_overrides_convention(self, tmp_path):
+        db_path = tmp_path / "dpm.db"
+        engine = create_engine(f"sqlite:///{db_path}")
+        service = MigrationService(engine)
+
+        csv_dir = tmp_path / "csv"
+        csv_dir.mkdir()
+        (csv_dir / "Release.csv").write_text(
+            "ReleaseID,Code,IsCurrent\n1,4.2,1\n",
+            encoding="utf-8",
+        )
+
+        target = tmp_path / "custom" / "mydb.sqlite"
+        result = service.migrate_from_csv_dir(str(csv_dir), output_path=target)
+
+        assert result.database_path == target
+        assert target.exists()
+        assert not db_path.exists()
+
+    def test_output_path_creates_parent_dirs(self, tmp_path):
+        db_path = tmp_path / "dpm.db"
+        engine = create_engine(f"sqlite:///{db_path}")
+        service = MigrationService(engine)
+
+        csv_dir = tmp_path / "csv"
+        csv_dir.mkdir()
+        (csv_dir / "Organisation.csv").write_text(
+            "OrgID,Name,Acronym,IDPrefix\n1,EBA,EBA,1\n",
+            encoding="utf-8",
+        )
+
+        target = tmp_path / "nested" / "deeper" / "out.db"
+        result = service.migrate_from_csv_dir(str(csv_dir), output_path=target)
+
+        assert result.database_path == target
+        assert target.exists()
+
+    def test_output_path_ignored_for_in_memory_engine(self, service, tmp_path):
+        csv_dir = tmp_path / "csv"
+        csv_dir.mkdir()
+        (csv_dir / "Organisation.csv").write_text(
+            "OrgID,Name,Acronym,IDPrefix\n1,EBA,EBA,1\n",
+            encoding="utf-8",
+        )
+
+        result = service.migrate_from_csv_dir(
+            str(csv_dir), output_path=tmp_path / "ignored.db"
+        )
+
+        assert result.database_path is None
+        assert not (tmp_path / "ignored.db").exists()
+
+    def test_output_path_noop_when_same_as_current(self, tmp_path):
+        db_path = tmp_path / "dpm.db"
+        engine = create_engine(f"sqlite:///{db_path}")
+        service = MigrationService(engine)
+
+        csv_dir = tmp_path / "csv"
+        csv_dir.mkdir()
+        (csv_dir / "Organisation.csv").write_text(
+            "OrgID,Name,Acronym,IDPrefix\n1,EBA,EBA,1\n",
+            encoding="utf-8",
+        )
+
+        result = service.migrate_from_csv_dir(
+            str(csv_dir), output_path=db_path
+        )
+
+        assert result.database_path == db_path
+        assert db_path.exists()
+
+    def test_migrate_from_access_accepts_output_path(self, tmp_path):
+        db_path = tmp_path / "dpm.db"
+        engine = create_engine(f"sqlite:///{db_path}")
+        service = MigrationService(engine)
+
+        with patch("subprocess.check_output") as mock_sub:
+            mock_sub.side_effect = [
+                "Organisation\n",
+                "OrgID,Name,Acronym,IDPrefix\n1,EBA,EBA,1\n",
+            ]
+            target = tmp_path / "renamed.db"
+            result = service.migrate_from_access(
+                "/fake.accdb", output_path=target
+            )
+
+        assert result.database_path == target
+        assert target.exists()
+
+
+class TestTodayToken:
+    def test_returns_utc_yyyymmdd_string(self):
+        token = MigrationService._today_token()
+        assert len(token) == 8
+        assert token.isdigit()
 
 
 # ---------------------------------------------------------------------------
