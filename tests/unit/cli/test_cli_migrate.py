@@ -24,6 +24,7 @@ class TestMigrateSuccess:
         mock_result.table_details = {"T1": 4, "T2": 6}
         mock_result.warnings = []
         mock_result.backend_used = "mdbtools"
+        mock_result.database_path = None
 
         with patch(
             "dpmcore.loaders.migration.MigrationService"
@@ -45,6 +46,109 @@ class TestMigrateSuccess:
         assert result.exit_code == 0
         assert "T1" in result.output
         assert "T2" in result.output
+        assert "Database:" not in result.output
+
+    def test_prints_renamed_database_path(self, runner, tmp_path):
+        fake_accdb = tmp_path / "test.accdb"
+        fake_accdb.touch()
+
+        mock_result = MagicMock()
+        mock_result.tables_migrated = 1
+        mock_result.total_rows = 1
+        mock_result.table_details = {"Release": 1}
+        mock_result.warnings = []
+        mock_result.backend_used = "mdbtools"
+        mock_result.database_path = tmp_path / "dpm_4.2_20260512.db"
+
+        with patch(
+            "dpmcore.loaders.migration.MigrationService"
+        ) as MockService:
+            MockService.return_value.migrate_from_access.return_value = (
+                mock_result
+            )
+            result = runner.invoke(
+                main,
+                [
+                    "migrate",
+                    "--source",
+                    str(fake_accdb),
+                    "--database",
+                    "sqlite:///test.db",
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert "Database:" in result.output
+        flat = "".join(result.output.split())
+        assert "dpm_4.2_20260512.db" in flat
+
+    def test_output_flag_forwards_to_service(self, runner, tmp_path):
+        from pathlib import Path
+
+        fake_accdb = tmp_path / "test.accdb"
+        fake_accdb.touch()
+        target = tmp_path / "custom.db"
+
+        mock_result = MagicMock()
+        mock_result.tables_migrated = 1
+        mock_result.total_rows = 1
+        mock_result.table_details = {"Release": 1}
+        mock_result.warnings = []
+        mock_result.backend_used = "mdbtools"
+        mock_result.database_path = target
+
+        with patch(
+            "dpmcore.loaders.migration.MigrationService"
+        ) as MockService:
+            mock_migrate = MockService.return_value.migrate_from_access
+            mock_migrate.return_value = mock_result
+            result = runner.invoke(
+                main,
+                [
+                    "migrate",
+                    "--source",
+                    str(fake_accdb),
+                    "--database",
+                    "sqlite:///test.db",
+                    "--output",
+                    str(target),
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert mock_migrate.call_args.kwargs["output_path"] == Path(
+            str(target)
+        )
+
+    def test_no_output_flag_passes_none(self, runner, tmp_path):
+        fake_accdb = tmp_path / "test.accdb"
+        fake_accdb.touch()
+
+        mock_result = MagicMock()
+        mock_result.tables_migrated = 0
+        mock_result.total_rows = 0
+        mock_result.table_details = {}
+        mock_result.warnings = []
+        mock_result.backend_used = "mdbtools"
+        mock_result.database_path = None
+
+        with patch(
+            "dpmcore.loaders.migration.MigrationService"
+        ) as MockService:
+            mock_migrate = MockService.return_value.migrate_from_access
+            mock_migrate.return_value = mock_result
+            runner.invoke(
+                main,
+                [
+                    "migrate",
+                    "--source",
+                    str(fake_accdb),
+                    "--database",
+                    "sqlite:///test.db",
+                ],
+            )
+
+        assert mock_migrate.call_args.kwargs["output_path"] is None
 
 
 class TestMigrateMissingOptions:

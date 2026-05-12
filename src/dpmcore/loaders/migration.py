@@ -18,16 +18,19 @@ imported lazily so the rest of dpmcore works without them.
 from __future__ import annotations
 
 import logging
+import os
+import re
 import subprocess
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from io import StringIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import Engine
+from sqlalchemy import Engine, select
 
 from dpmcore.orm.base import Base
+from dpmcore.orm.infrastructure import Release
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +51,7 @@ class MigrationResult:
     table_details: Dict[str, int]
     warnings: List[str]
     backend_used: str
+    database_path: Optional[Path] = None
 
 
 class MigrationService:
@@ -69,12 +73,21 @@ class MigrationService:
     # Public API
     # -------------------------------------------------------------- #
 
-    def migrate_from_access(self, access_path: str) -> MigrationResult:
+    def migrate_from_access(
+        self,
+        access_path: str,
+        *,
+        output_path: Optional[Path] = None,
+    ) -> MigrationResult:
         """Extract tables from *access_path* and load into the database.
 
         Args:
             access_path: Filesystem path to an ``.accdb`` or ``.mdb``
                 file.
+            output_path: Optional final path for the resulting SQLite
+                file. When omitted, the file is renamed to
+                ``<stem>_<release>_<YYYYMMDD>.db`` next to the original
+                location. Ignored for non-SQLite engines.
 
         Returns:
             A :class:`MigrationResult` with details of what was loaded.
@@ -84,22 +97,21 @@ class MigrationService:
                 the file.
         """
         data, backend = self._extract_tables(access_path)
-        self._create_schema()
-        warnings = self._load_data(data)
+        return self._finalize(data, backend=backend, output_path=output_path)
 
-        table_details = {name: len(df) for name, df in data.items()}
-        total_rows = sum(table_details.values())
+    def migrate_from_csv_dir(
+        self,
+        csv_dir: str,
+        *,
+        output_path: Optional[Path] = None,
+    ) -> MigrationResult:
+        """Load every CSV file from *csv_dir* into the target database.
 
-        return MigrationResult(
-            tables_migrated=len(table_details),
-            total_rows=total_rows,
-            table_details=table_details,
-            warnings=warnings,
-            backend_used=backend,
-        )
-
-    def migrate_from_csv_dir(self, csv_dir: str) -> MigrationResult:
-        """Load every CSV file from *csv_dir* into the target database."""
+        Args:
+            csv_dir: Directory containing one CSV file per table.
+            output_path: Optional final path for the resulting SQLite
+                file. See :meth:`migrate_from_access` for details.
+        """
         path = Path(csv_dir)
         if not path.exists():
             raise MigrationError(f"CSV directory '{csv_dir}' does not exist.")
@@ -110,7 +122,11 @@ class MigrationService:
         if not data:
             raise MigrationError(f"No CSV files found in '{csv_dir}'.")
 
-        return self._migrate_data(data, backend="csv")
+        return self._finalize(
+            data,
+            backend="csv",
+            output_path=output_path,
+        )
 
     # -------------------------------------------------------------- #
     # Extraction
@@ -245,18 +261,32 @@ class MigrationService:
 
         return ordered
 
-    def _migrate_data(
+    def _finalize(
         self,
         data: Dict[str, Any],
         *,
         backend: str,
+        output_path: Optional[Path] = None,
     ) -> MigrationResult:
-        """Create schema, load *data*, and build a standard result."""
+        """Create schema, load *data*, rename file, build the result.
+
+        When the engine points to a SQLite file (not ``:memory:``), the
+        file is moved to *output_path* if given, or otherwise renamed
+        to embed the release code and generation date into the
+        filename — e.g. ``dpm.db`` becomes ``dpm_4.2_20260512.db``.
+        The resulting path is returned in
+        :attr:`MigrationResult.database_path`. After the move the
+        original engine no longer points to a valid file — callers
+        that need to reuse the database must build a new engine from
+        the returned path.
+        """
         self._create_schema()
         warnings = self._load_data(data)
 
         table_details = {name: len(df) for name, df in data.items()}
         total_rows = sum(table_details.values())
+
+        database_path = self._relocate_database(output_path)
 
         return MigrationResult(
             tables_migrated=len(table_details),
@@ -264,7 +294,90 @@ class MigrationService:
             table_details=table_details,
             warnings=warnings,
             backend_used=backend,
+            database_path=database_path,
         )
+
+    # -------------------------------------------------------------- #
+    # Filename convention
+    # -------------------------------------------------------------- #
+
+    def _relocate_database(
+        self,
+        output_path: Optional[Path],
+    ) -> Optional[Path]:
+        """Move the SQLite file to its final location.
+
+        When *output_path* is given, the file is moved there verbatim;
+        otherwise the conventional ``<stem>_<release>_<YYYYMMDD>.db``
+        name is applied next to the original location. Returns
+        ``None`` when the engine is not a SQLite file engine
+        (``:memory:``, PostgreSQL, etc.).
+        """
+        current = self._sqlite_file_path()
+        if current is None:
+            return None
+
+        if output_path is not None:
+            new_path = Path(output_path)
+        else:
+            new_path = current.with_name(self._conventional_name(current))
+
+        if new_path == current:
+            return current
+
+        new_path.parent.mkdir(parents=True, exist_ok=True)
+        self._engine.dispose()
+        os.replace(current, new_path)
+        return new_path
+
+    def _conventional_name(self, current: Path) -> str:
+        """Build the ``<stem>_<release>_<YYYYMMDD><suffix>`` filename."""
+        tokens = [current.stem]
+        release_code = self._current_release_code()
+        if release_code:
+            tokens.append(release_code)
+        tokens.append(self._today_token())
+        return "_".join(tokens) + current.suffix
+
+    @staticmethod
+    def _today_token() -> str:
+        """Return today's UTC date as ``YYYYMMDD``."""
+        return datetime.now(tz=timezone.utc).strftime("%Y%m%d")
+
+    def _sqlite_file_path(self) -> Optional[Path]:
+        """Return the SQLite file path, or ``None`` if not applicable."""
+        url = self._engine.url
+        if url.get_backend_name() != "sqlite":
+            return None
+        database = url.database
+        if not database or database == ":memory:":
+            return None
+        path = Path(database)
+        if not path.is_file():
+            return None
+        return path
+
+    def _current_release_code(self) -> Optional[str]:
+        """Return a filename-safe code for the current release."""
+        from sqlalchemy.orm import Session
+
+        with Session(self._engine) as session:
+            stmt = (
+                select(Release.code)
+                .where(Release.is_current.is_(True))
+                .order_by(Release.date.desc())
+            )
+            code = session.scalars(stmt).first()
+            if code is None:
+                code = session.scalars(
+                    select(Release.code)
+                    .where(Release.code.is_not(None))
+                    .order_by(Release.date.desc())
+                ).first()
+
+        if not code:
+            return None
+        return re.sub(r"[^A-Za-z0-9.+-]+", "-", code).strip("-") or None
 
     @staticmethod
     def _coerce_numeric_columns(df: Any) -> Any:

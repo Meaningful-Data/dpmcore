@@ -37,8 +37,21 @@ def main() -> None:
     required=True,
     help="SQLAlchemy database URL (e.g. sqlite:///dpm.db).",
 )
-def migrate(source: str, database: str) -> None:
+@click.option(
+    "--output",
+    "output_path",
+    default=None,
+    type=click.Path(dir_okay=False, path_type=str),
+    help=(
+        "Final path for the resulting SQLite file. When omitted, "
+        "defaults to '<stem>_<release>_<YYYYMMDD>.db' next to the "
+        "input --database path. Ignored for non-SQLite engines."
+    ),
+)
+def migrate(source: str, database: str, output_path: str | None) -> None:
     """Migrate an Access database into a SQL database."""
+    from pathlib import Path
+
     try:
         from rich.console import Console
         from rich.table import Table
@@ -62,7 +75,10 @@ def migrate(source: str, database: str) -> None:
     service = MigrationService(engine)
 
     try:
-        result = service.migrate_from_access(source)
+        result = service.migrate_from_access(
+            source,
+            output_path=Path(output_path) if output_path else None,
+        )
     except MigrationError as exc:
         console.print(f"[red]Error:[/red] {exc}")
         sys.exit(1)
@@ -81,6 +97,10 @@ def migrate(source: str, database: str) -> None:
         f"{result.total_rows} rows "
         f"(backend: {result.backend_used})"
     )
+    if result.database_path is not None:
+        console.print(
+            f"[bold]Database:[/bold] [green]{result.database_path}[/green]"
+        )
 
     for warning in result.warnings:
         console.print(f"[yellow]Warning:[/yellow] {warning}")
