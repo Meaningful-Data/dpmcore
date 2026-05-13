@@ -487,10 +487,11 @@ class Binary(Operator):
                 left, right, rslt_structure, rslt_type, result_dataframe
             )
             return recordset
-        # Scalar path: left/right are Scalars or ConstantOperands at this point.
-        if not isinstance(left, (Scalar, ConstantOperand)) or not isinstance(
-            right, (Scalar, ConstantOperand)
-        ):
+        # Scalar path: left/right are Scalars, ConstantOperands, or
+        # ScalarSets (e.g. the right-hand side of ``in``).
+        if not isinstance(
+            left, (Scalar, ConstantOperand, ScalarSet)
+        ) or not isinstance(right, (Scalar, ConstantOperand, ScalarSet)):
             raise Exception(
                 "Invalid operand types for scalar binary operation"
             )
