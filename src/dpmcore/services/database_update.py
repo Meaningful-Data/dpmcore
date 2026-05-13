@@ -948,7 +948,7 @@ class DatabaseUpdateService:
             try:
                 migration_result = MigrationService(
                     engine
-                ).migrate_from_csv_dir(str(csv_dir))
+                ).migrate_from_csv_dir(str(csv_dir), output_path=temp_path)
 
                 self._validate_csv_count(
                     csv_dir=csv_dir, migration_result=migration_result

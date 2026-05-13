@@ -156,6 +156,24 @@ class TestUpdateDispatch:
 
         assert mock_update.call_args.kwargs["used_access_file"] is True
 
+    def test_dry_run_and_keep_staging_forwarded_to_update_sqlite(
+        self, service, tmp_path
+    ):
+        target = tmp_path / "out.sqlite"
+        with patch.object(
+            service, "_update_sqlite", return_value=MagicMock()
+        ) as mock_update:
+            service.update(
+                target=str(target),
+                source_dir=str(tmp_path),
+                dry_run=True,
+                keep_staging=True,
+            )
+
+        kw = mock_update.call_args.kwargs
+        assert kw["dry_run"] is True
+        assert kw["keep_staging"] is True
+
 
 class TestUpdateSqliteInternal:
     """Tests for _update_sqlite.
@@ -196,6 +214,38 @@ class TestUpdateSqliteInternal:
         assert result.target == str(target)
         assert result.used_access_file is False
         assert result.ecb_validations_imported is False
+
+    def test_migrate_called_with_output_path_to_prevent_relocation(
+        self, service, tmp_path
+    ):
+        # Regression: without output_path, MigrationService._finalize renames
+        # the temp file, leaving the engine pointing at a non-existent path and
+        # causing _validate_sqlite to see an empty DB ("missing tables").
+        target = tmp_path / "dpm.sqlite"
+        with (
+            patch(
+                "dpmcore.services.database_update.MigrationService"
+            ) as MockMigration,
+            patch.object(DatabaseUpdateService, "_validate_csv_count"),
+            patch.object(DatabaseUpdateService, "_validate_required_content"),
+        ):
+            MockMigration.return_value.migrate_from_csv_dir.return_value = (
+                _empty_migration_result()
+            )
+            service._update_sqlite(
+                target_path=target,
+                csv_dir=tmp_path,
+                source=str(tmp_path),
+                used_access_file=False,
+                ecb_validations_file=None,
+            )
+
+        call_kwargs = (
+            MockMigration.return_value.migrate_from_csv_dir.call_args.kwargs
+        )
+        output_path = call_kwargs["output_path"]
+        assert output_path.parent == tmp_path
+        assert output_path.name.startswith(".dpm.sqlite.tmp-")
 
     def test_temp_file_removed_after_success(self, service, tmp_path):
         target = tmp_path / "dpm.sqlite"
@@ -584,6 +634,52 @@ class TestUpdateSqliteInternalEdgeCases:
             )
 
         assert target.exists()
+
+    def test_validation_exact_counts_logic_with_ecb_file(
+        self, service, tmp_path
+    ):
+        # Regression guard: when an ECB file is provided the pre-ECB validation
+        # must use exact_counts=True, and both the post-ECB and final validations
+        # must use exact_counts=False (ECB import may add rows beyond the CSV count).
+        target = tmp_path / "dpm.sqlite"
+        ecb_file = str(tmp_path / "ecb.csv")
+        validate_calls = []
+
+        def capture(engine, migration_result, **kwargs):
+            validate_calls.append(kwargs)
+
+        with (
+            patch(
+                "dpmcore.services.database_update.MigrationService"
+            ) as MockMigration,
+            patch(
+                "dpmcore.services.database_update.EcbValidationsImportService"
+            ),
+            patch.object(DatabaseUpdateService, "_validate_csv_count"),
+            patch.object(DatabaseUpdateService, "_replace_sqlite_file"),
+            patch.object(
+                DatabaseUpdateService, "_validate_sqlite", side_effect=capture
+            ),
+        ):
+            MockMigration.return_value.migrate_from_csv_dir.return_value = (
+                _empty_migration_result()
+            )
+            service._update_sqlite(
+                target_path=target,
+                csv_dir=tmp_path,
+                source=str(tmp_path),
+                used_access_file=False,
+                ecb_validations_file=ecb_file,
+            )
+
+        assert len(validate_calls) == 3
+        assert validate_calls[0]["exact_counts"] is True  # pre-ECB: strict
+        assert (
+            validate_calls[1]["exact_counts"] is False
+        )  # post-ECB: allows extra rows
+        assert (
+            validate_calls[2]["exact_counts"] is False
+        )  # final: allows extra rows
 
 
 class TestValidateSqlite:
