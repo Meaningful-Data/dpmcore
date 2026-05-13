@@ -11,12 +11,19 @@ from __future__ import annotations
 from typing import Optional
 
 from sqlalchemy import Integer, String, create_engine
-from sqlalchemy.orm import Mapped, Session, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from dpmcore.orm.base import Base
 
 
-class _Item(Base):
+# Use an isolated DeclarativeBase so the test model isn't registered on
+# the shared ``dpmcore.orm.base.Base.metadata`` (which would leak into
+# SchemaValidationService's view of "expected tables").
+class _IsolatedBase(DeclarativeBase):
+    to_dict = Base.to_dict
+
+
+class _Item(_IsolatedBase):
     __tablename__ = "_items_to_dict_test"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -26,7 +33,7 @@ class _Item(Base):
 
 def _seed_session() -> Session:
     engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine, tables=[_Item.__table__])
+    _IsolatedBase.metadata.create_all(engine, tables=[_Item.__table__])
     session = Session(bind=engine)
     session.add(_Item(id=1, code="A", payload="a" * 100))
     session.commit()
