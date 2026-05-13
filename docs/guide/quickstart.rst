@@ -32,11 +32,18 @@ All services are available through ``db.services``:
        # Semantic validation
        db.services.semantic.validate(
            "{tC_01.00, r0100, c0010}",
-           release_id=5,
+           release_code="4.2.1",       # or release_id=<int>
        )
 
        # Data dictionary
        releases = db.services.data_dictionary.get_releases()
+
+       # Framework / module / table tree
+       tree = db.services.hierarchy.get_all_frameworks(deep=True)
+       details = db.services.hierarchy.get_table_details(
+           "C_01.00", date="2024-06-30"
+       )
+       modelling = db.services.hierarchy.get_table_modelling("C_01.00")
 
        # Migration (from Access)
        result = db.services.migration.migrate_from_access("/path/to/dpm.accdb")

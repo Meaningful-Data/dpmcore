@@ -1,12 +1,6 @@
 API Reference
 =============
 
-.. toctree::
-   :maxdepth: 2
-
-   migration
-   connection
-
 Services
 --------
 
@@ -33,3 +27,13 @@ All services are accessible through :attr:`DpmConnection.services`:
    :class:`~dpmcore.services.migration.MigrationService` is the exception —
    it accepts an ``Engine`` because it needs ``Base.metadata.create_all()``
    and ``DataFrame.to_sql()``.
+
+Service references
+~~~~~~~~~~~~~~~~~~
+
+.. toctree::
+   :maxdepth: 1
+
+   hierarchy
+   migration
+   connection

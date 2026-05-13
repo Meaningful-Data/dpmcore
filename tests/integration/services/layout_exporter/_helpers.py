@@ -43,8 +43,8 @@ from dpmcore.orm.variables import Variable, VariableVersion
 
 
 def seed_releases(session: Session) -> None:
-    session.add(Release(release_id=1, code="REL1"))
-    session.add(Release(release_id=2, code="REL2"))
+    session.add(Release(release_id=1, code="1.0"))
+    session.add(Release(release_id=2, code="2.0"))
 
 
 def seed_data_types(session: Session) -> None:

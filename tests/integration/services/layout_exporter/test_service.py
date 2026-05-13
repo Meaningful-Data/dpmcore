@@ -63,12 +63,29 @@ def test_export_module_raises_when_no_tables(memory_session):
 
 
 def test_export_module_raises_includes_release_in_msg(memory_session):
+    """When tables are missing for a known release, the message names it.
+
+    ``release_code`` is a range filter (resolves through
+    ``resolve_release_id`` + ``filter_by_release``), so the code must
+    refer to a real ``Release`` row. An *unknown* code raises a
+    different error from ``resolve_release_id`` itself; that case is
+    covered separately in :func:`test_export_module_unknown_release_raises`.
+    """
+    seed_releases(memory_session)  # adds 1.0 and 2.0
+    memory_session.commit()
     svc = LayoutExporterService(memory_session)
     with pytest.raises(
         ValueError,
-        match=r"No tables found.*at release 'REL_X'",
+        match=r"No tables found.*at release '1.0'",
     ):
-        svc.export_module("UNKNOWN", release_code="REL_X")
+        svc.export_module("UNKNOWN", release_code="1.0")
+
+
+def test_export_module_unknown_release_raises(memory_session):
+    """An unknown release code surfaces the resolver's ValueError."""
+    svc = LayoutExporterService(memory_session)
+    with pytest.raises(ValueError, match="not found"):
+        svc.export_module("UNKNOWN", release_code="999.0")
 
 
 def test_export_module_filters_empty_layouts(memory_session, tmp_path):
@@ -310,7 +327,7 @@ def test_build_layout_raises_when_table_missing(memory_session):
 def test_build_layout_with_release_code(memory_session):
     build_basic_module_with_table(memory_session)
     svc = LayoutExporterService(memory_session)
-    layout = svc.build_layout("T1", release_code="REL1")
+    layout = svc.build_layout("T1", release_code="1.0")
     assert layout.table_code == "T1"
 
 

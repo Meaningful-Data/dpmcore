@@ -17,6 +17,7 @@ from typing import (
 from sqlalchemy import or_
 
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
+from dpmcore.dpm_xl.utils.filters import resolve_release_id
 from dpmcore.dpm_xl.utils.scopes_calculator import (
     OperationScopeService,
 )
@@ -98,6 +99,7 @@ class ScopeCalculatorService:
         expression: str,
         release_id: Optional[int] = None,
         precondition_items: Optional[List[str]] = None,
+        release_code: Optional[str] = None,
     ) -> ScopeResult:
         """Calculate scopes for *expression*.
 
@@ -108,6 +110,11 @@ class ScopeCalculatorService:
         the validation has no preconditions.
         """
         try:
+            release_id = resolve_release_id(
+                self.session,
+                release_id=release_id,
+                release_code=release_code,
+            )
             self._check_release_exists(release_id)
             ast = self._syntax.parse(expression)
             oc = OperandsChecking(
@@ -155,9 +162,15 @@ class ScopeCalculatorService:
         precondition_items: Optional[List[str]] = None,
         release_id: Optional[int] = None,
         table_codes: Optional[List[str]] = None,
+        release_code: Optional[str] = None,
     ) -> ScopeResult:
         """Calculate scopes directly from table version IDs."""
         try:
+            release_id = resolve_release_id(
+                self.session,
+                release_id=release_id,
+                release_code=release_code,
+            )
             self._check_release_exists(release_id)
             scope_svc = OperationScopeService(session=self.session)
             scopes, _ = scope_svc.calculate_operation_scope(
@@ -221,6 +234,7 @@ class ScopeCalculatorService:
         release_id: Optional[int] = None,
         time_shifts: Optional[Dict[str, str]] = None,
         compute_alternative_deps: bool = True,
+        release_code: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Build dependency information for a scope result.
 
@@ -237,6 +251,9 @@ class ScopeCalculatorService:
                 single ``scope_result``. Aggregating callers that
                 compute alternatives across many scope results should
                 pass ``False`` to avoid the per-call work.
+            release_code: Optional release code; resolved to
+                ``release_id`` via :class:`Release.code`. Mutually
+                exclusive with ``release_id``.
 
         Returns a dict with:
         - ``intra_instance_validations``
@@ -244,6 +261,9 @@ class ScopeCalculatorService:
         - ``alternative_dependencies``
         - ``dependency_modules``
         """
+        release_id = resolve_release_id(
+            self.session, release_id=release_id, release_code=release_code
+        )
         empty_result: Dict[str, Any] = {
             "intra_instance_validations": [],
             "cross_instance_dependencies": [],
@@ -400,6 +420,7 @@ class ScopeCalculatorService:
         scope_results: List[ScopeResult],
         primary_module_vid: int,
         release_id: Optional[int] = None,
+        release_code: Optional[str] = None,
     ) -> List[List[str]]:
         """Detect pairs of external modules that are alternatives.
 
@@ -409,6 +430,9 @@ class ScopeCalculatorService:
 
         Returns a list of ``[uri_a, uri_b]`` pairs (sorted).
         """
+        release_id = resolve_release_id(
+            self.session, release_id=release_id, release_code=release_code
+        )
         single_ext_vids, all_ext_vid_sets = self._collect_external_vid_sets(
             scope_results, primary_module_vid
         )

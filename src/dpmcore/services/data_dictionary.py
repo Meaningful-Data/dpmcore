@@ -10,6 +10,7 @@ from dpmcore.dpm_xl.utils.filters import (
     filter_active_only,
     filter_by_date,
     filter_by_release,
+    resolve_release_id,
 )
 from dpmcore.orm.glossary import ItemCategory
 from dpmcore.orm.infrastructure import Release
@@ -82,6 +83,11 @@ class DataDictionaryService:
         q = self.session.query(TableVersion.code)
 
         if date:
+            if release_id is not None or release_code is not None:
+                raise ValueError(
+                    "Specify a maximum of one of release_id, "
+                    "release_code or date.",
+                )
             q = q.join(
                 ModuleVersionComposition,
                 TableVersion.table_vid == ModuleVersionComposition.table_vid,
@@ -96,20 +102,17 @@ class DataDictionaryService:
                 ModuleVersion.from_reference_date,
                 ModuleVersion.to_reference_date,
             )
-        elif release_id:
-            q = filter_by_release(
-                q,
-                release_id=release_id,
-                start_col=TableVersion.start_release_id,
-                end_col=TableVersion.end_release_id,
+        else:
+            resolved = resolve_release_id(
+                self.session, release_id=release_id, release_code=release_code
             )
-        elif release_code:
-            q = filter_by_release(
-                q,
-                release_code=release_code,
-                start_col=TableVersion.start_release_id,
-                end_col=TableVersion.end_release_id,
-            )
+            if resolved is not None:
+                q = filter_by_release(
+                    q,
+                    release_id=resolved,
+                    start_col=TableVersion.start_release_id,
+                    end_col=TableVersion.end_release_id,
+                )
 
         q = q.order_by(TableVersion.code)
         return [row[0] for row in q.all()]
@@ -118,8 +121,12 @@ class DataDictionaryService:
         self,
         table_code: str,
         release_id: Optional[int] = None,
+        release_code: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """Return table version info for a given table code."""
+        release_id = resolve_release_id(
+            self.session, release_id=release_id, release_code=release_code
+        )
         q = self.session.query(TableVersion).filter(
             TableVersion.code == table_code,
         )
@@ -140,8 +147,12 @@ class DataDictionaryService:
     def get_all_item_signatures(
         self,
         release_id: Optional[int] = None,
+        release_code: Optional[str] = None,
     ) -> List[str]:
         """Return all distinct item signatures."""
+        release_id = resolve_release_id(
+            self.session, release_id=release_id, release_code=release_code
+        )
         q = self.session.query(
             distinct(ItemCategory.signature).label("signature"),
         ).filter(ItemCategory.signature.isnot(None))
@@ -162,8 +173,12 @@ class DataDictionaryService:
     def get_item_categories(
         self,
         release_id: Optional[int] = None,
+        release_code: Optional[str] = None,
     ) -> List[Tuple[str, str]]:
         """Return (code, signature) pairs for item categories."""
+        release_id = resolve_release_id(
+            self.session, release_id=release_id, release_code=release_code
+        )
         q = self.session.query(
             ItemCategory.code,
             ItemCategory.signature,

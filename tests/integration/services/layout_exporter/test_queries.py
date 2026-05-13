@@ -37,7 +37,7 @@ def test_load_module_table_versions_no_release(memory_session):
 def test_load_module_table_versions_with_release(memory_session):
     build_basic_module_with_table(memory_session)
     result = queries.load_module_table_versions(
-        memory_session, "MOD1", release_code="REL1"
+        memory_session, "MOD1", release_code="1.0"
     )
     assert len(result) == 1
     assert result[0].code == "T1"
@@ -94,7 +94,7 @@ def test_load_table_version_no_release(memory_session):
 
 def test_load_table_version_with_release(memory_session):
     build_basic_module_with_table(memory_session)
-    tv = queries.load_table_version(memory_session, "T1", release_code="REL1")
+    tv = queries.load_table_version(memory_session, "T1", release_code="1.0")
     assert tv is not None
     assert tv.code == "T1"
 

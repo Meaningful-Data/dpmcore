@@ -22,14 +22,18 @@ class Base(DeclarativeBase):
     def to_dict(self) -> Dict[str, Any]:
         """Serialise model instance to dictionary.
 
+        Deferred columns are skipped so accessing ``to_dict()`` never
+        triggers a lazy DB load for columns the caller did not ask for.
+
         Returns:
-            Column-name → value mapping for every mapped column.
+            Column-name → value mapping for every non-deferred column.
         """
         from sqlalchemy.inspection import inspect
 
         return {
             c.key: getattr(self, c.key)
             for c in inspect(self).mapper.column_attrs
+            if ("deferred", True) not in c.strategy_key
         }
 
 

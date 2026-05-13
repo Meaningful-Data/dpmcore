@@ -8,6 +8,8 @@ Ported from py_dpm. Exercises:
    ``release_id``.
 """
 
+from datetime import date
+
 import pandas as pd
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -15,6 +17,7 @@ from sqlalchemy.orm import sessionmaker
 from dpmcore.dpm_xl.ast import operands as operands_module
 from dpmcore.dpm_xl.utils.filters import filter_by_release
 from dpmcore.orm import Base
+from dpmcore.orm.infrastructure import Release
 from dpmcore.orm.rendering import TableVersion
 
 
@@ -29,6 +32,10 @@ def _make_session():
 def test_filter_by_release_uses_is_null_for_end_release():
     """End-column NULL handling must compile to ``IS NULL``."""
     session = _make_session()
+    # The helper now resolves the target's sort_order via session, so a
+    # Release row must exist with a parseable code.
+    session.add(Release(release_id=5, code="3.4", date=date(2024, 2, 6)))
+    session.commit()
 
     query = session.query(TableVersion)
     filtered = filter_by_release(
@@ -60,13 +67,11 @@ def test_operands_check_headers_calls_filter_by_release_with_correct_args(
         start_col,
         end_col,
         release_id=None,
-        release_code=None,
     ):
         called["query"] = query
         called["start_col"] = start_col
         called["end_col"] = end_col
         called["release_id"] = release_id
-        called["release_code"] = release_code
         return query
 
     monkeypatch.setattr(
@@ -114,4 +119,3 @@ def test_operands_check_headers_calls_filter_by_release_with_correct_args(
     assert called["start_col"] is TableVersion.start_release_id
     assert called["end_col"] is TableVersion.end_release_id
     assert called["release_id"] == 7
-    assert called["release_code"] is None

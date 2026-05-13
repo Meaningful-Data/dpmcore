@@ -1,6 +1,6 @@
 [project]
 name = "dpmcore"
-version = "0.1.0rc1"
+version = "0.1.0rc6"
 description = "Python library for DPM 2.0 Refit regulatory reporting (ORM, services, REST API)"
 license = { text = "Apache-2.0" }
 readme = "README.md"
@@ -79,7 +79,7 @@ packages = [{ include = "dpmcore", from = "src" }]
 [tool.poetry.group.dev.dependencies]
 coverage = ">=7.6,<8.0"
 ruff = ">=0.14"
-mypy = ">=1.13"
+mypy = ">=1.20.2"
 pytest = ">=8.3"
 pytest-asyncio = ">=0.24"
 pytest-cov = ">=6.0"

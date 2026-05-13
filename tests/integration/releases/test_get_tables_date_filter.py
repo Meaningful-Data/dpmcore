@@ -9,6 +9,7 @@ from datetime import date
 
 import pytest
 
+from dpmcore.orm.infrastructure import Release
 from dpmcore.orm.packaging import (
     Module,
     ModuleVersion,
@@ -28,6 +29,10 @@ def service_with_dates(memory_session):
         Module 2  2024-01-01 -- (ongoing)    contains T2 + T3
     """
     session = memory_session
+
+    # release_id=1 must correspond to a real Release row with a
+    # parseable code so the new sort_order-based filter can resolve it.
+    session.add(Release(release_id=1, code="1.0", date=date(2023, 1, 1)))
 
     session.add_all([Table(table_id=1), Table(table_id=2), Table(table_id=3)])
     session.add_all([Module(module_id=1), Module(module_id=2)])

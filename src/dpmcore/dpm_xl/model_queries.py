@@ -21,6 +21,7 @@ import pandas as pd
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import aliased
 
+from dpmcore.dpm_xl.utils.filters import filter_by_release
 from dpmcore.orm.glossary import (
     Item,
     ItemCategory,
@@ -199,37 +200,6 @@ def _check_ranges_values_are_present(
             ):
                 return pd.DataFrame(columns=data.columns)
     return data
-
-
-def _old_filter_by_release(
-    query: "Query[Any]",
-    # start/end_release are ORM InstrumentedAttributes; see _filter_elements.
-    start_release: Any,
-    end_release: Any,
-    release_id: int | None,
-) -> "Query[Any]":
-    """Legacy release filter (inlined from old models).
-
-    Args:
-        query: SQLAlchemy query.
-        start_release: Start release column.
-        end_release: End release column.
-        release_id: Release ID or None.
-
-    Returns:
-        Filtered query.
-    """
-    if release_id is None:
-        return query.filter(end_release.is_(None))
-    return query.filter(
-        and_(
-            start_release <= release_id,
-            or_(
-                end_release > release_id,
-                end_release.is_(None),
-            ),
-        )
-    )
 
 
 # ------------------------------------------------------------------ #
@@ -1332,11 +1302,11 @@ class ViewDatapointsQuery:
             query = _apply_dimension_filter(query, aliases["hvs"].code, sheets)
 
         if release_id is not None:
-            query = _old_filter_by_release(
+            query = filter_by_release(
                 query,
-                ModuleVersion.start_release_id,
-                ModuleVersion.end_release_id,
-                release_id,
+                start_col=ModuleVersion.start_release_id,
+                end_col=ModuleVersion.end_release_id,
+                release_id=release_id,
             )
 
         data = read_sql_with_connection(
@@ -1412,11 +1382,11 @@ class ViewDatapointsQuery:
                     query = query.filter(col.in_(values))
 
         if release_id:
-            query = _old_filter_by_release(
+            query = filter_by_release(
                 query,
-                ModuleVersion.start_release_id,
-                ModuleVersion.end_release_id,
-                release_id,
+                start_col=ModuleVersion.start_release_id,
+                end_col=ModuleVersion.end_release_id,
+                release_id=release_id,
             )
 
         return read_sql_with_connection(
@@ -1540,17 +1510,19 @@ class ViewKeyComponentsQuery:
             DataType.code.label("data_type"),
         )
         query = query.filter(TableVersion.code == table)
-        query = _old_filter_by_release(
+        query = filter_by_release(
             query,
-            ItemCategory.start_release_id,
-            ItemCategory.end_release_id,
-            release_id,
+            start_col=ItemCategory.start_release_id,
+            end_col=ItemCategory.end_release_id,
+            release_id=release_id,
+            active_only_fallback=True,
         )
-        query = _old_filter_by_release(
+        query = filter_by_release(
             query,
-            ModuleVersion.start_release_id,
-            ModuleVersion.end_release_id,
-            release_id,
+            start_col=ModuleVersion.start_release_id,
+            end_col=ModuleVersion.end_release_id,
+            release_id=release_id,
+            active_only_fallback=True,
         )
         query = query.distinct()
         return read_sql_with_connection(
@@ -1627,11 +1599,12 @@ class ViewOpenKeysQuery:
             DataType.code.label("data_type"),
         )
         query = query.filter(ItemCategory.code.in_(dimension_codes))
-        query = _old_filter_by_release(
+        query = filter_by_release(
             query,
-            ItemCategory.start_release_id,
-            ItemCategory.end_release_id,
-            release_id,
+            start_col=ItemCategory.start_release_id,
+            end_col=ItemCategory.end_release_id,
+            release_id=release_id,
+            active_only_fallback=True,
         )
         query = query.distinct()
         return read_sql_with_connection(

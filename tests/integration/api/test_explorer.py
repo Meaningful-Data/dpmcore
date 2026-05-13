@@ -12,9 +12,23 @@ list of removed scenarios.
 Ported scenarios: ``search_table``, ``get_variable_by_code``.
 """
 
+from datetime import date
+
+from dpmcore.orm.infrastructure import Release
 from dpmcore.orm.rendering import TableVersion
 from dpmcore.orm.variables import Variable, VariableVersion
 from dpmcore.services.explorer import ExplorerService
+
+
+def _seed_two_releases(session) -> None:
+    """Create release_id 1 and 2 with parseable semver codes.
+
+    The release-range filter resolves the target release's
+    ``sort_order`` (parsed from ``code``), so any ``release_id`` used
+    in a filter must correspond to a real ``Release`` row.
+    """
+    session.add(Release(release_id=1, code="1.0", date=date(2024, 1, 1)))
+    session.add(Release(release_id=2, code="2.0", date=date(2025, 1, 1)))
 
 
 def test_search_table_returns_matching_table_versions(memory_session):
@@ -45,6 +59,7 @@ def test_search_table_returns_matching_table_versions(memory_session):
 def test_search_table_release_id_filter(memory_session):
     """release_id is applied against TableVersion start/end release."""
     session = memory_session
+    _seed_two_releases(session)
     session.add_all(
         [
             TableVersion(
@@ -79,6 +94,7 @@ def test_search_table_release_id_filter(memory_session):
 def test_get_variable_by_code_active_version(memory_session):
     """get_variable_by_code returns the first matching VariableVersion."""
     session = memory_session
+    _seed_two_releases(session)
 
     session.add(Variable(variable_id=1001))
     session.add(Variable(variable_id=2001))

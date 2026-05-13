@@ -386,33 +386,52 @@ class ASTGeneratorService:
     def _latest_release_in_window(self, mv: Any) -> Any:
         """Pick the latest ``released`` Release covering *mv*'s window.
 
-        Falls back to the latest of any status if no released row
-        matches. Excluding draft/validation rows from the primary
-        query ensures we don't generate URIs the engine rejects.
+        Comparison runs against the semver-parsed sort order of each
+        candidate's ``code`` so a hypothetical backport like ``4.0.1``
+        published after ``4.2.1`` is correctly placed inside the
+        ``4.0`` lineage. Falls back to the latest of any status if no
+        released row matches.
         """
-        from sqlalchemy import or_
-
         from dpmcore.orm.infrastructure import Release
+        from dpmcore.orm.release_sort_order import (
+            compute_sort_order,
+            resolve_sort_order,
+        )
 
         if self.session is None:
             raise RuntimeError("session required")
-        base_query = self.session.query(Release)
+
+        start_sort: Optional[int] = None
+        end_sort: Optional[int] = None
         if mv.start_release_id is not None:
-            base_query = base_query.filter(
-                Release.release_id >= mv.start_release_id
+            start_sort = resolve_sort_order(
+                self.session,
+                mv.start_release_id,
+                role="Module version window start release",
             )
         if mv.end_release_id is not None:
-            base_query = base_query.filter(
-                or_(Release.release_id < mv.end_release_id)
+            end_sort = resolve_sort_order(
+                self.session,
+                mv.end_release_id,
+                role="Module version window end release",
             )
-        latest = (
-            base_query.filter(Release.status == "released")
-            .order_by(Release.release_id.desc())
-            .first()
-        )
-        if latest is None:
-            latest = base_query.order_by(Release.release_id.desc()).first()
-        return latest
+
+        rows = self.session.query(Release).all()
+        candidates: List[tuple[int, Any]] = []
+        for r in rows:
+            so = compute_sort_order(r.code)
+            if so is None:
+                continue
+            if start_sort is not None and so < start_sort:
+                continue
+            if end_sort is not None and so >= end_sort:
+                continue
+            candidates.append((so, r))
+        if not candidates:
+            return None
+        released = [(so, r) for so, r in candidates if r.status == "released"]
+        pool = released or candidates
+        return max(pool, key=lambda pair: pair[0])[1]
 
     def _resolve_severities(
         self,

@@ -24,6 +24,7 @@ class TestMigrateSuccess:
         mock_result.table_details = {"T1": 4, "T2": 6}
         mock_result.warnings = []
         mock_result.backend_used = "mdbtools"
+        mock_result.database_path = None
 
         with patch(
             "dpmcore.loaders.migration.MigrationService"
@@ -45,6 +46,109 @@ class TestMigrateSuccess:
         assert result.exit_code == 0
         assert "T1" in result.output
         assert "T2" in result.output
+        assert "Database:" not in result.output
+
+    def test_prints_renamed_database_path(self, runner, tmp_path):
+        fake_accdb = tmp_path / "test.accdb"
+        fake_accdb.touch()
+
+        mock_result = MagicMock()
+        mock_result.tables_migrated = 1
+        mock_result.total_rows = 1
+        mock_result.table_details = {"Release": 1}
+        mock_result.warnings = []
+        mock_result.backend_used = "mdbtools"
+        mock_result.database_path = tmp_path / "dpm_4.2_20260512.db"
+
+        with patch(
+            "dpmcore.loaders.migration.MigrationService"
+        ) as MockService:
+            MockService.return_value.migrate_from_access.return_value = (
+                mock_result
+            )
+            result = runner.invoke(
+                main,
+                [
+                    "migrate",
+                    "--source",
+                    str(fake_accdb),
+                    "--database",
+                    "sqlite:///test.db",
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert "Database:" in result.output
+        flat = "".join(result.output.split())
+        assert "dpm_4.2_20260512.db" in flat
+
+    def test_output_flag_forwards_to_service(self, runner, tmp_path):
+        from pathlib import Path
+
+        fake_accdb = tmp_path / "test.accdb"
+        fake_accdb.touch()
+        target = tmp_path / "custom.db"
+
+        mock_result = MagicMock()
+        mock_result.tables_migrated = 1
+        mock_result.total_rows = 1
+        mock_result.table_details = {"Release": 1}
+        mock_result.warnings = []
+        mock_result.backend_used = "mdbtools"
+        mock_result.database_path = target
+
+        with patch(
+            "dpmcore.loaders.migration.MigrationService"
+        ) as MockService:
+            mock_migrate = MockService.return_value.migrate_from_access
+            mock_migrate.return_value = mock_result
+            result = runner.invoke(
+                main,
+                [
+                    "migrate",
+                    "--source",
+                    str(fake_accdb),
+                    "--database",
+                    "sqlite:///test.db",
+                    "--output",
+                    str(target),
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert mock_migrate.call_args.kwargs["output_path"] == Path(
+            str(target)
+        )
+
+    def test_no_output_flag_passes_none(self, runner, tmp_path):
+        fake_accdb = tmp_path / "test.accdb"
+        fake_accdb.touch()
+
+        mock_result = MagicMock()
+        mock_result.tables_migrated = 0
+        mock_result.total_rows = 0
+        mock_result.table_details = {}
+        mock_result.warnings = []
+        mock_result.backend_used = "mdbtools"
+        mock_result.database_path = None
+
+        with patch(
+            "dpmcore.loaders.migration.MigrationService"
+        ) as MockService:
+            mock_migrate = MockService.return_value.migrate_from_access
+            mock_migrate.return_value = mock_result
+            runner.invoke(
+                main,
+                [
+                    "migrate",
+                    "--source",
+                    str(fake_accdb),
+                    "--database",
+                    "sqlite:///test.db",
+                ],
+            )
+
+        assert mock_migrate.call_args.kwargs["output_path"] is None
 
 
 class TestMigrateMissingOptions:
@@ -128,7 +232,7 @@ class TestExportCsvCli:
         mock_result.output_dir = tmp_path / "data/DPM"
 
         with patch(
-            "dpmcore.services.export_csv.ExportCsvService.export",
+            "dpmcore.services.export_csv.ExportCsvService.export_safely",
             return_value=mock_result,
         ):
             result = runner.invoke(main, ["export-csv", str(fake_accdb)])
@@ -143,7 +247,7 @@ class TestExportCsvCli:
         from dpmcore.services.export_csv import ExportCsvError
 
         with patch(
-            "dpmcore.services.export_csv.ExportCsvService.export",
+            "dpmcore.services.export_csv.ExportCsvService.export_safely",
             side_effect=ExportCsvError("mdbtools not found"),
         ):
             result = runner.invoke(main, ["export-csv", str(fake_accdb)])
@@ -336,3 +440,273 @@ class TestBuildMeiliJsonCli:
         assert result.exit_code == 0
         assert build_mock.call_args.kwargs["source_dir"] == str(source_dir)
         assert build_mock.call_args.kwargs["access_file"] is None
+
+
+class TestUpdateDbCli:
+    def _mock_result(
+        self,
+        *,
+        used_access_file=False,
+        ecb=False,
+        warnings=None,
+        dry_run=False,
+        staging_location=None,
+    ):
+        from pathlib import Path
+
+        r = MagicMock()
+        r.target_type = "sqlite"
+        r.target = Path("data/dpm.sqlite")
+        r.used_access_file = used_access_file
+        r.ecb_validations_imported = ecb
+        r.migration_result.tables_migrated = 5
+        r.migration_result.total_rows = 100
+        r.migration_result.warnings = warnings or []
+        r.dry_run = dry_run
+        r.staging_location = staging_location
+        return r
+
+    def test_success_from_csv_dir_prints_startup_message(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(),
+        ):
+            result = runner.invoke(
+                main, ["update-db", "--target", "data/dpm.sqlite"]
+            )
+
+        assert result.exit_code == 0
+        assert "data/DPM CSVs" in result.output
+
+    def test_success_from_access_file_prints_path_in_startup(
+        self, runner, tmp_path
+    ):
+        access_file = tmp_path / "source.accdb"
+        access_file.touch()
+
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(used_access_file=True),
+        ):
+            result = runner.invoke(
+                main,
+                [
+                    "update-db",
+                    "--target",
+                    "data/dpm.sqlite",
+                    "--access-file",
+                    str(access_file),
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert str(access_file) in result.output
+
+    def test_success_prints_table_and_row_counts(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(),
+        ):
+            result = runner.invoke(
+                main, ["update-db", "--target", "data/dpm.sqlite"]
+            )
+
+        assert result.exit_code == 0
+        assert "5 tables" in result.output
+        assert "100" in result.output
+
+    def test_used_access_file_prints_access_source_message(
+        self, runner, tmp_path
+    ):
+        access_file = tmp_path / "source.accdb"
+        access_file.touch()
+
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(used_access_file=True),
+        ):
+            result = runner.invoke(
+                main,
+                [
+                    "update-db",
+                    "--target",
+                    "data/dpm.sqlite",
+                    "--access-file",
+                    str(access_file),
+                ],
+            )
+
+        assert "Source loaded from Access file" in result.output
+
+    def test_used_csv_prints_csv_source_message(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(used_access_file=False),
+        ):
+            result = runner.invoke(
+                main, ["update-db", "--target", "data/dpm.sqlite"]
+            )
+
+        assert "Source loaded from data/DPM CSVs" in result.output
+
+    def test_ecb_validations_imported_message(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(ecb=True),
+        ):
+            result = runner.invoke(
+                main, ["update-db", "--target", "data/dpm.sqlite"]
+            )
+
+        assert "ECB validations imported" in result.output
+
+    def test_warnings_printed(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(warnings=["check column X"]),
+        ):
+            result = runner.invoke(
+                main, ["update-db", "--target", "data/dpm.sqlite"]
+            )
+
+        assert "check column X" in result.output
+
+    def test_database_update_error_exits_with_code_1(self, runner):
+        from dpmcore.services.database_update import DatabaseUpdateError
+
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            side_effect=DatabaseUpdateError("unsupported target"),
+        ):
+            result = runner.invoke(
+                main, ["update-db", "--target", "data/dpm.sqlite"]
+            )
+
+        assert result.exit_code == 1
+        assert "unsupported target" in result.output
+
+    def test_missing_target_exits_nonzero(self, runner):
+        result = runner.invoke(main, ["update-db"])
+        assert result.exit_code != 0
+
+    def test_help_shows_update_db(self, runner):
+        result = runner.invoke(main, ["--help"])
+        assert "update-db" in result.output
+
+    def test_ecb_validations_file_passed_to_service(self, runner, tmp_path):
+        ecb_file = tmp_path / "ecb.csv"
+        ecb_file.touch()
+
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(),
+        ) as mock_update:
+            result = runner.invoke(
+                main,
+                [
+                    "update-db",
+                    "--target",
+                    "data/dpm.sqlite",
+                    "--ecb-validations-file",
+                    str(ecb_file),
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert mock_update.call_args.kwargs["ecb_validations_file"] == str(
+            ecb_file
+        )
+
+    def test_nonexistent_access_file_exits_nonzero(self, runner, tmp_path):
+        nonexistent = str(tmp_path / "missing.accdb")
+        result = runner.invoke(
+            main,
+            [
+                "update-db",
+                "--target",
+                "data/dpm.sqlite",
+                "--access-file",
+                nonexistent,
+            ],
+        )
+        assert result.exit_code != 0
+
+    def test_nonexistent_ecb_file_exits_nonzero(self, runner, tmp_path):
+        nonexistent = str(tmp_path / "missing.csv")
+        result = runner.invoke(
+            main,
+            [
+                "update-db",
+                "--target",
+                "data/dpm.sqlite",
+                "--ecb-validations-file",
+                nonexistent,
+            ],
+        )
+        assert result.exit_code != 0
+
+    def test_dry_run_flag_passed_to_service(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(),
+        ) as mock_update:
+            result = runner.invoke(
+                main,
+                ["update-db", "--target", "data/dpm.sqlite", "--dry-run"],
+            )
+
+        assert result.exit_code == 0
+        assert mock_update.call_args.kwargs["dry_run"] is True
+
+    def test_keep_staging_flag_passed_to_service(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(),
+        ) as mock_update:
+            result = runner.invoke(
+                main,
+                ["update-db", "--target", "data/dpm.sqlite", "--keep-staging"],
+            )
+
+        assert result.exit_code == 0
+        assert mock_update.call_args.kwargs["keep_staging"] is True
+
+    def test_dry_run_output_message_printed(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(dry_run=True),
+        ):
+            result = runner.invoke(
+                main,
+                ["update-db", "--target", "data/dpm.sqlite"],
+            )
+
+        assert "Dry run completed" in result.output
+        assert "Active database was not modified" in result.output
+
+    def test_staging_location_output_message_printed(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(
+                staging_location="/tmp/staging.sqlite"  # noqa: S108
+            ),
+        ):
+            result = runner.invoke(
+                main,
+                ["update-db", "--target", "data/dpm.sqlite"],
+            )
+
+        assert "Staging artifact" in result.output
+        assert "/tmp/staging.sqlite" in result.output  # noqa: S108
+
+    def test_no_dry_run_message_when_dry_run_false(self, runner):
+        with patch(
+            "dpmcore.services.database_update.DatabaseUpdateService.update",
+            return_value=self._mock_result(dry_run=False),
+        ):
+            result = runner.invoke(
+                main,
+                ["update-db", "--target", "data/dpm.sqlite"],
+            )
+
+        assert "Dry run completed" not in result.output

@@ -60,13 +60,28 @@ def test_get_tables_by_release_id(service_with_releases):
     assert "T1" not in tables_r2
 
 
-def test_release_id_takes_precedence_over_release_code(service_with_releases):
-    """If both release_id and release_code are supplied, release_id wins.
+def test_release_id_and_release_code_are_mutually_exclusive(
+    service_with_releases,
+):
+    """Passing both release_id and release_code must raise.
 
-    ``DataDictionaryService.get_tables`` uses an if/elif cascade:
-    ``date`` > ``release_id`` > ``release_code``. Only release_id is
-    consulted here and the result mirrors release_id=1.
+    Previously ``release_code`` was silently a no-op when
+    ``filter_by_release`` was given both, which masked caller bugs.
+    With ``release_code`` now actually resolving via ``Release.code``,
+    the two are exclusive and the resolver raises ``ValueError``.
     """
-    tables = service_with_releases.get_tables(release_code="2.0", release_id=1)
+    with pytest.raises(ValueError, match="maximum of one"):
+        service_with_releases.get_tables(release_code="2.0", release_id=1)
+
+
+def test_get_tables_by_release_code(service_with_releases):
+    """release_code resolves to the matching release_id and filters."""
+    tables = service_with_releases.get_tables(release_code="1.0")
     assert "T1" in tables
     assert "T2" not in tables
+
+
+def test_unknown_release_code_raises(service_with_releases):
+    """An unknown release code surfaces a ValueError from the resolver."""
+    with pytest.raises(ValueError, match="not found"):
+        service_with_releases.get_tables(release_code="999.0")
