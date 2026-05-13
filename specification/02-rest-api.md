@@ -561,7 +561,8 @@ POST /api/v1/scope
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `expression` | string | yes | DPM-XL expression to analyse |
-| `release_id` | int \| null | no | Restrict lookup to a specific release |
+| `release_id` | int \| null | no | Restrict lookup to a specific release (by database ID) |
+| `release_code` | string \| null | no | Restrict lookup to a specific release (by code, e.g. `"3.4"`) |
 | `precondition_items` | `[string]` \| null | no | List of precondition item codes to apply |
 
 **Response body:**
