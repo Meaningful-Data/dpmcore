@@ -240,7 +240,9 @@ class TestUpdateSqliteInternal:
                 ecb_validations_file=None,
             )
 
-        call_kwargs = MockMigration.return_value.migrate_from_csv_dir.call_args.kwargs
+        call_kwargs = (
+            MockMigration.return_value.migrate_from_csv_dir.call_args.kwargs
+        )
         output_path = call_kwargs["output_path"]
         assert output_path.parent == tmp_path
         assert output_path.name.startswith(".dpm.sqlite.tmp-")
@@ -633,7 +635,9 @@ class TestUpdateSqliteInternalEdgeCases:
 
         assert target.exists()
 
-    def test_validation_exact_counts_logic_with_ecb_file(self, service, tmp_path):
+    def test_validation_exact_counts_logic_with_ecb_file(
+        self, service, tmp_path
+    ):
         # Regression guard: when an ECB file is provided the pre-ECB validation
         # must use exact_counts=True, and both the post-ECB and final validations
         # must use exact_counts=False (ECB import may add rows beyond the CSV count).
@@ -669,9 +673,13 @@ class TestUpdateSqliteInternalEdgeCases:
             )
 
         assert len(validate_calls) == 3
-        assert validate_calls[0]["exact_counts"] is True   # pre-ECB: strict
-        assert validate_calls[1]["exact_counts"] is False  # post-ECB: allows extra rows
-        assert validate_calls[2]["exact_counts"] is False  # final: allows extra rows
+        assert validate_calls[0]["exact_counts"] is True  # pre-ECB: strict
+        assert (
+            validate_calls[1]["exact_counts"] is False
+        )  # post-ECB: allows extra rows
+        assert (
+            validate_calls[2]["exact_counts"] is False
+        )  # final: allows extra rows
 
 
 class TestValidateSqlite:
