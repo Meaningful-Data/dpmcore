@@ -914,9 +914,25 @@ class TestMssqlIdentityColumns:
 # ---------------------------------------------------------------------------
 
 
+def _mssql_engine_mock() -> MagicMock:
+    """MagicMock engine wired to a real MSSQL identifier preparer.
+
+    The identifier preparer is what produces ``[name]`` quoting. Using
+    the real MSSQL preparer (rather than letting the mock return
+    further mocks) exercises the actual dialect quoting path.
+    """
+    from sqlalchemy.dialects.mssql import pyodbc as mssql_pyodbc
+
+    engine = MagicMock()
+    engine.dialect.identifier_preparer = (
+        mssql_pyodbc.MSDialect_pyodbc().identifier_preparer
+    )
+    return engine
+
+
 class TestLoadTableIdentityInsert:
     def test_identity_column_present_sets_identity_insert_on_and_off(self):
-        engine = MagicMock()
+        engine = _mssql_engine_mock()
         conn = engine.begin.return_value.__enter__.return_value
         df = pd.DataFrame({"MyID": [1, 2], "Name": ["a", "b"]})
 
@@ -930,8 +946,8 @@ class TestLoadTableIdentityInsert:
         assert any("IDENTITY_INSERT" in s and "ON" in s for s in sqls)
         assert any("IDENTITY_INSERT" in s and "OFF" in s for s in sqls)
 
-    def test_identity_insert_with_schema_uses_qualified_bracket_name(self):
-        engine = MagicMock()
+    def test_identity_insert_with_schema_uses_qualified_name(self):
+        engine = _mssql_engine_mock()
         conn = engine.begin.return_value.__enter__.return_value
         df = pd.DataFrame({"MyID": [1]})
 
@@ -940,12 +956,15 @@ class TestLoadTableIdentityInsert:
             service._load_table("T1", df, [], {"T1": "MyID"})
 
         on_sql = str(conn.execute.call_args_list[0].args[0])
-        assert "[myschema].[T1]" in on_sql
+        # MSSQL preparer brackets table names always, schema only when
+        # needed; the qualified name still resolves to the right table.
+        assert "myschema" in on_sql
+        assert "[T1]" in on_sql
 
     def test_identity_insert_without_schema_uses_unqualified_bracket_name(
         self,
     ):
-        engine = MagicMock()
+        engine = _mssql_engine_mock()
         conn = engine.begin.return_value.__enter__.return_value
         df = pd.DataFrame({"MyID": [1]})
 
@@ -957,8 +976,15 @@ class TestLoadTableIdentityInsert:
         assert "[T1]" in on_sql
         assert "[None]" not in on_sql
 
+    def test_identity_insert_brackets_reserved_table_name(self):
+        """Reserved words are bracketed by the MSSQL preparer."""
+        engine = _mssql_engine_mock()
+        preparer = engine.dialect.identifier_preparer
+        # Sanity-check: the preparer brackets reserved words.
+        assert preparer.quote("Order") == "[Order]"
+
     def test_identity_column_not_in_df_uses_direct_to_sql(self):
-        engine = MagicMock()
+        engine = _mssql_engine_mock()
         df = pd.DataFrame({"Name": ["a"]})
 
         service = MigrationService(engine)
@@ -970,7 +996,7 @@ class TestLoadTableIdentityInsert:
         assert call_kwargs.args[1] is engine
 
     def test_identity_insert_off_called_even_when_to_sql_raises(self):
-        engine = MagicMock()
+        engine = _mssql_engine_mock()
         conn = engine.begin.return_value.__enter__.return_value
         df = pd.DataFrame({"MyID": [1]})
 

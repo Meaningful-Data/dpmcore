@@ -517,6 +517,14 @@ class DatabaseUpdateService:
         every table in ``active_schema``.  The transaction is always rolled
         back — this is a preflight check only and never modifies the database.
 
+        This check is *advisory*: locks are released when this method
+        returns, so another transaction can re-acquire them before
+        :meth:`_swap_staging_to_active` runs. A passing preflight means
+        "no contention right now", not "the swap is guaranteed to
+        succeed". The real swap still uses its own ``lock_timeout`` and
+        will surface the same error if a competing transaction has
+        meanwhile taken the locks.
+
         Args:
             engine: Connected engine.
             target_type: Either ``'postgresql'`` or ``'sqlserver'``.
@@ -528,11 +536,14 @@ class DatabaseUpdateService:
                 timeout.
         """
         if target_type == "postgresql":
+            # ``lock_timeout`` gives competing transactions up to 2s to
+            # release the lock before failing. ``NOWAIT`` would short-
+            # circuit that window and make ``lock_timeout`` dead code.
             timeout_sql = "SET LOCAL lock_timeout = '2s'"
             dialect_label = "PostgreSQL"
 
             def lock_sql(table: str) -> str:
-                return f"LOCK TABLE {table} IN ACCESS EXCLUSIVE MODE NOWAIT"
+                return f"LOCK TABLE {table} IN ACCESS EXCLUSIVE MODE"
         elif target_type == "sqlserver":
             timeout_sql = "SET LOCK_TIMEOUT 2000"
             dialect_label = "SQL Server"

@@ -15,11 +15,18 @@ class ScopeRequest(BaseModel):
 
     expression: str
     release_id: Optional[int] = None
+    release_code: Optional[str] = None
     precondition_items: Optional[List[str]] = None
 
 
 class ScopeResponse(BaseModel):
-    """Response body for ``POST /scope``."""
+    """Response body for ``POST /scope``.
+
+    The raw ``scopes`` collection produced by the service is intentionally
+    omitted: it contains ORM objects that are not JSON-serialisable and
+    callers only need the summary fields below. ``total_scopes`` and
+    ``module_versions`` carry the information consumers actually use.
+    """
 
     total_scopes: int
     is_cross_module: bool
@@ -50,6 +57,7 @@ def create_scope_router(
             expression=body.expression,
             release_id=body.release_id,
             precondition_items=body.precondition_items,
+            release_code=body.release_code,
         )
         return ScopeResponse(
             total_scopes=result.total_scopes,
