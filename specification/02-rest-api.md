@@ -378,3 +378,245 @@ Authentication is **optional** and configurable per deployment:
 
 When running as a Django app, authentication delegates to Django's
 authentication system.
+
+## 10. DPM-XL Service Endpoints
+
+These endpoints expose DPM-XL service operations: syntax validation,
+semantic validation, engine-ready script generation, and scope calculation.
+Unlike structure queries, they all use `POST` and accept a JSON request body.
+
+### 10.1 Syntax Validation
+
+Checks whether a DPM-XL expression is syntactically well-formed. Does not
+require a database connection.
+
+```
+POST /api/v1/validate/syntax
+```
+
+**Request body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `expression` | string | yes | DPM-XL expression to validate |
+
+**Response body:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `is_valid` | bool | `true` if the expression parses without errors |
+| `error_message` | string \| null | Parse error description, or `null` on success |
+| `expression` | string | The expression that was evaluated |
+
+**Example:**
+
+```bash
+POST /api/v1/validate/syntax
+Content-Type: application/json
+
+{
+  "expression": "{tC_01.00, r0010, c0010} = 0"
+}
+```
+
+```json
+{
+  "is_valid": true,
+  "error_message": null,
+  "expression": "{tC_01.00, r0010, c0010} = 0"
+}
+```
+
+### 10.2 Semantic Validation
+
+Validates a DPM-XL expression against the DPM structural metadata stored in
+the database. Checks that referenced tables, rows, and columns exist and are
+consistent.
+
+```
+POST /api/v1/validate/semantic
+```
+
+**Request body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `expression` | string | yes | DPM-XL expression to validate |
+| `release_id` | int \| null | no | Restrict lookup to a specific release |
+
+**Response body:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `is_valid` | bool | `true` if the expression is semantically valid |
+| `error_message` | string \| null | Validation error description, or `null` on success |
+| `error_code` | string \| null | Machine-readable error code, or `null` on success |
+| `expression` | string | The expression that was evaluated |
+| `warning` | string \| null | Non-fatal warning (e.g. deprecated reference), or `null` |
+
+**Example:**
+
+```bash
+POST /api/v1/validate/semantic
+Content-Type: application/json
+
+{
+  "expression": "{tC_01.00, r0010, c0010} = 0",
+  "release_id": 1
+}
+```
+
+```json
+{
+  "is_valid": true,
+  "error_message": null,
+  "error_code": null,
+  "expression": "{tC_01.00, r0010, c0010} = 0",
+  "warning": null
+}
+```
+
+### 10.3 Script Generation
+
+Generates an engine-ready DPM-XL validations script (enriched AST) for a
+given module. Takes a list of `[expression, validation_code]` pairs and
+returns the structured JSON consumed directly by the validation engine.
+
+```
+POST /api/v1/scripts
+```
+
+**Request body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `expressions` | `[[string, string], ...]` | yes | List of `[expression, validation_code]` pairs |
+| `module_code` | string | yes | Code of the target module (e.g. `"C_01.00"`) |
+| `module_version` | string | yes | Version of the target module (e.g. `"3.4"`) |
+| `preconditions` | array \| null | no | List of precondition objects (see below) |
+| `severity` | string \| null | no | Default severity level for all validations |
+| `severities` | object \| null | no | Per-validation-code severity overrides (`{"V001": "warning"}`) |
+| `release` | string \| null | no | Release code to resolve module references against |
+
+Each `preconditions` entry:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `expression` | string | Precondition DPM-XL expression |
+| `validation_codes` | `[string]` | Validation codes this precondition guards |
+
+**Response body:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | bool | `true` if the script was generated without errors |
+| `enriched_ast` | object \| null | Engine-ready namespaced AST (`{module_uri: {...}}`) |
+| `error` | string \| null | Error description if `success` is `false` |
+
+**Example:**
+
+```bash
+POST /api/v1/scripts
+Content-Type: application/json
+
+{
+  "expressions": [
+    ["{tC_01.00, r0010, c0010} = 0", "V001"],
+    ["{tC_01.00, r0020, c0010} >= 0", "V002"]
+  ],
+  "module_code": "C_01.00",
+  "module_version": "3.4"
+}
+```
+
+```json
+{
+  "success": true,
+  "enriched_ast": {
+    "eba_met:C_01.00(3.4)": {
+      "module_code": "C_01.00",
+      "dpm_release": "3.4",
+      "operations": { ... },
+      "variables": { ... },
+      "tables": { ... }
+    }
+  },
+  "error": null
+}
+```
+
+### 10.4 Scope Calculation
+
+Calculates the **scope** of a DPM-XL expression: how many (table, row, column)
+coordinate combinations the expression covers, which modules are involved, and
+whether the expression is cross-module.
+
+```
+POST /api/v1/scope
+```
+
+**Request body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `expression` | string | yes | DPM-XL expression to analyse |
+| `release_id` | int \| null | no | Restrict lookup to a specific release |
+| `precondition_items` | `[string]` \| null | no | List of precondition item codes to apply |
+
+**Response body:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `total_scopes` | int | Total number of coordinate combinations covered |
+| `is_cross_module` | bool | `true` if the expression spans more than one module |
+| `module_versions` | `[int]` | Database IDs of the module versions involved |
+| `has_error` | bool | `true` if scope calculation failed |
+| `error_message` | string \| null | Error description if `has_error` is `true`, otherwise `null` |
+
+**Example:**
+
+```bash
+POST /api/v1/scope
+Content-Type: application/json
+
+{
+  "expression": "{tC_01.00, r0010, c0010} = {tC_01.00, r0020, c0010}",
+  "release_id": 1
+}
+```
+
+```json
+{
+  "total_scopes": 1,
+  "is_cross_module": false,
+  "module_versions": [42],
+  "has_error": false,
+  "error_message": null
+}
+```
+
+## 11. Health Endpoint
+
+A lightweight liveness probe. Does not require a database connection.
+
+```
+GET /api/v1/health
+```
+
+**Response body:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | Always `"ok"` when the server is running |
+
+**Example:**
+
+```bash
+GET /api/v1/health
+```
+
+```json
+{
+  "status": "ok"
+}
+```
