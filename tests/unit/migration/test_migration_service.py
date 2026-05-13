@@ -957,9 +957,9 @@ class TestLoadTableIdentityInsert:
 
         on_sql = str(conn.execute.call_args_list[0].args[0])
         # MSSQL preparer brackets table names always, schema only when
-        # needed; the qualified name still resolves to the right table.
-        assert "myschema" in on_sql
-        assert "[T1]" in on_sql
+        # needed. Asserting the fully-qualified ``schema.[table]`` form
+        # guards both the dot separator and the table-name quoting.
+        assert "myschema.[T1]" in on_sql
 
     def test_identity_insert_without_schema_uses_unqualified_bracket_name(
         self,
@@ -977,11 +977,22 @@ class TestLoadTableIdentityInsert:
         assert "[None]" not in on_sql
 
     def test_identity_insert_brackets_reserved_table_name(self):
-        """Reserved words are bracketed by the MSSQL preparer."""
+        """``_load_table`` must route reserved-word table names through
+        the preparer so the emitted ``SET IDENTITY_INSERT`` is valid
+        T-SQL. ``Order`` is a reserved keyword and not present in
+        ``Base.metadata`` so the column-filtering path is skipped.
+        """
         engine = _mssql_engine_mock()
-        preparer = engine.dialect.identifier_preparer
-        # Sanity-check: the preparer brackets reserved words.
-        assert preparer.quote("Order") == "[Order]"
+        conn = engine.begin.return_value.__enter__.return_value
+        df = pd.DataFrame({"MyID": [1]})
+
+        service = MigrationService(engine, schema="dbo")
+        with patch.object(df, "to_sql"):
+            service._load_table("Order", df, [], {"Order": "MyID"})
+
+        on_sql = str(conn.execute.call_args_list[0].args[0])
+        assert "[Order]" in on_sql
+        assert "dbo.[Order]" in on_sql
 
     def test_identity_column_not_in_df_uses_direct_to_sql(self):
         engine = _mssql_engine_mock()
