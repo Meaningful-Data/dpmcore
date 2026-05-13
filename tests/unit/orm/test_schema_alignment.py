@@ -2,8 +2,8 @@
 
 Requires ``mdb-schema`` from the mdbtools package to be available on PATH.
 The path to the reference Access database is configurable via the
-``DPM_ACCDB_PATH`` environment variable (defaults to the conventional
-location on the mounted Windows drive).
+``DPM_ACCDB_PATH`` environment variable; otherwise the first ``*.accdb``
+file found in the project root is used.
 
 Run with::
 
@@ -16,11 +16,21 @@ import os
 import re
 import shutil
 import subprocess
-from typing import Dict, Set
+from pathlib import Path
+from typing import Dict, Optional, Set
 
 import pytest
 
 from dpmcore.orm import Base
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _default_accdb_path() -> Optional[str]:
+    """Return the first ``*.accdb`` at the project root, or ``None``."""
+    matches = sorted(PROJECT_ROOT.glob("*.accdb"))
+    return str(matches[0]) if matches else None
+
 
 # ------------------------------------------------------------------ #
 # Helpers
@@ -93,12 +103,12 @@ def accdb_schema() -> Dict[str, Set[str]]:
     if not shutil.which("mdb-schema"):
         pytest.skip("mdb-schema (mdbtools) not available on PATH")
 
-    accdb_path = os.environ.get(
-        "DPM_ACCDB_PATH",
-        "/mnt/c/Pap/DPM2 Database_v 4_2_1.accdb",
-    )
-    if not os.path.isfile(accdb_path):
-        pytest.skip(f"Access database not found at {accdb_path}")
+    accdb_path = os.environ.get("DPM_ACCDB_PATH") or _default_accdb_path()
+    if not accdb_path or not os.path.isfile(accdb_path):
+        pytest.skip(
+            "Access database not found "
+            "(set DPM_ACCDB_PATH or place a .accdb at the project root)"
+        )
 
     result = subprocess.run(
         ["mdb-schema", accdb_path],
