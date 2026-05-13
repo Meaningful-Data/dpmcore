@@ -442,7 +442,8 @@ POST /api/v1/validate/semantic
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `expression` | string | yes | DPM-XL expression to validate |
-| `release_id` | int \| null | no | Restrict lookup to a specific release |
+| `release_id` | int \| null | no | Restrict lookup to a specific release (by database ID) |
+| `release_code` | string \| null | no | Restrict lookup to a specific release (by code, e.g. `"3.4"`) |
 
 **Response body:**
 
