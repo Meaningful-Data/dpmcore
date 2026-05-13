@@ -106,6 +106,10 @@ def create_app(
                     "Engine-ready DPM-XL validations script generation."
                 ),
             },
+            {
+                "name": "Scope",
+                "description": ("DPM-XL expression scope calculation."),
+            },
         ],
     )
 
@@ -180,6 +184,13 @@ def create_app(
 
     scripts_router = create_scripts_router(get_session)
     router.include_router(scripts_router)
+
+    # -- scope calculation -----------------------------------------------
+
+    from dpmcore.server.routers.scope import create_scope_router
+
+    scope_router = create_scope_router(get_session)
+    router.include_router(scope_router)
 
     app.include_router(router)
     return app

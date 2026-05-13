@@ -722,10 +722,12 @@ class MigrationService:
             identity_column = identity_columns.get(table_name)
 
             if identity_column is not None and identity_column in df.columns:
+                preparer = self._engine.dialect.identifier_preparer
                 qualified_table = (
-                    f"[{self._schema}].[{table_name}]"
+                    f"{preparer.quote_schema(self._schema)}."
+                    f"{preparer.quote(table_name)}"
                     if self._schema is not None
-                    else f"[{table_name}]"
+                    else preparer.quote(table_name)
                 )
 
                 with self._engine.begin() as conn:
