@@ -325,11 +325,11 @@ def check_operator(
     if return_type is None or op_check_type is None:
         return True
 
-    op_check_type_implicities = implicit_type_promotion_dict[
-        op_check_type.__class__
+    return_type_implicities = implicit_type_promotion_dict[
+        return_type.__class__
     ]
 
-    return bool(return_type.is_included(op_check_type_implicities))
+    return bool(op_check_type.is_included(return_type_implicities))
 
 
 def unary_check_interval(
