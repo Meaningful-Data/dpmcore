@@ -124,6 +124,36 @@ def _has_range_syntax(values: Any) -> bool:
     return any("-" in str(v) for v in values if v and v != "*")
 
 
+def _drop_one_sided_all_na_columns(
+    left: pd.DataFrame, right: pd.DataFrame
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Drop columns that are all-NA in one frame but populated in the other.
+
+    pandas >=2.1 emits a FutureWarning when concatenating frames where
+    a column is all-NA in some inputs because the result-dtype
+    inference will stop ignoring those entries. Dropping the all-NA
+    column from the side that has no values preserves today's output
+    (missing columns are filled with NaN by ``pd.concat``) and silences
+    the warning.
+
+    A column that is all-NA in *both* frames is left in place so it
+    survives the concat.
+    """
+    left_all_na = (
+        set(left.columns[left.isna().all()]) if not left.empty else set()
+    )
+    right_all_na = (
+        set(right.columns[right.isna().all()]) if not right.empty else set()
+    )
+    drop_left = left_all_na - right_all_na
+    drop_right = right_all_na - left_all_na
+    if drop_left:
+        left = left.drop(columns=list(drop_left))
+    if drop_right:
+        right = right.drop(columns=list(drop_right))
+    return left, right
+
+
 def _expand_ranges_from_data(node: VarID, node_data: pd.DataFrame) -> None:
     """Expand range-type values in VarID node's rows/cols/sheets to actual codes from the database.
 
@@ -516,13 +546,25 @@ class OperandsChecking(ASTTemplate, ABC):
                 # This ensures adam-engine receives scalar values, not list-type ranges
                 _expand_ranges_from_data(node, node_data)
 
-            # Adding data to self.data
+            # Adding data to self.data. Drop columns that are all-NA in
+            # one frame but populated in the other before concat:
+            # pandas otherwise emits a FutureWarning about all-NA
+            # columns no longer being excluded from result-dtype
+            # inference. After concat, missing columns are filled with
+            # NaN, yielding the same values we'd get today.
             if self.data is None:
                 self.data = df_table
+            elif df_table.empty:
+                pass
+            elif self.data.empty:
+                self.data = df_table
             else:
-                self.data = pd.concat(
-                    [self.data, df_table], axis=0
-                ).reset_index(drop=True)
+                left, right = _drop_one_sided_all_na_columns(
+                    self.data, df_table
+                )
+                self.data = pd.concat([left, right], axis=0).reset_index(
+                    drop=True
+                )
 
             self.key_components[table] = ViewKeyComponentsQuery.get_by_table(
                 self.session, table, self.release_id
