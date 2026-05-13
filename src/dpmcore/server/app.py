@@ -107,9 +107,7 @@ def create_app(
             },
             {
                 "name": "Scope",
-                "description": (
-                    "DPM-XL expression scope calculation."
-                ),
+                "description": ("DPM-XL expression scope calculation."),
             },
         ],
     )

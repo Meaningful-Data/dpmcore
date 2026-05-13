@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Generator, List, Optional
+from typing import Callable, Generator, List, Optional
 
 from fastapi import Depends
 from fastapi.routing import APIRouter
