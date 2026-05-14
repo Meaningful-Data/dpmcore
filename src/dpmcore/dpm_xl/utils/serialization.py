@@ -503,26 +503,36 @@ class ASTToJSONVisitor(NodeVisitor):
         return result
 
     def visit_SubOp(self, node: Any) -> NodeDict:
-        """Visit SubOp nodes and serialize as SubClauseOp."""
-        # Create a Dimension node for the property_code
-        dimension: NodeDict = {
-            "class_name": "Dimension",
-            "dimension_code": node.property_code,
-        }
-
-        # Create a BinOp with "=" operator
-        condition: NodeDict = {
-            "class_name": "BinOp",
-            "op": "=",
-            "left": dimension,
-            "right": self.visit(node.value),
-        }
-
-        return {
+        """Visit SubOp nodes and serialize as chained SubClauseOp nodes."""
+        subs = node.substitutions
+        result: NodeDict = {
             "class_name": "SubClauseOp",
             "operand": self.visit(node.operand),
-            "condition": condition,
+            "condition": {
+                "class_name": "BinOp",
+                "op": "=",
+                "left": {
+                    "class_name": "Dimension",
+                    "dimension_code": subs[0].property_code,
+                },
+                "right": self.visit(subs[0].value),
+            },
         }
+        for sub in subs[1:]:
+            result = {
+                "class_name": "SubClauseOp",
+                "operand": result,
+                "condition": {
+                    "class_name": "BinOp",
+                    "op": "=",
+                    "left": {
+                        "class_name": "Dimension",
+                        "dimension_code": sub.property_code,
+                    },
+                    "right": self.visit(sub.value),
+                },
+            }
+        return result
 
     def visit_WhereClauseOp(self, node: Any) -> NodeDict:
         """Visit WhereClauseOp nodes."""

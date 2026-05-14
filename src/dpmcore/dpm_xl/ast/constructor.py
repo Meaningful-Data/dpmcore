@@ -35,6 +35,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     Scalar,
     Set,
     Start,
+    SubAssignment,
     SubOp,
     TemporaryAssignment,
     TemporaryIdentifier,
@@ -335,10 +336,8 @@ class ASTVisitor(dpm_xlParserVisitor):
             rename_nodes = self.visitRenameExpr(ctx_list[2])
             return RenameOp(operand=operand, rename_nodes=rename_nodes)
         elif isinstance(ctx_list[2], dpm_xlParser.SubExprContext):
-            property_code, value = self.visitSubExpr(ctx_list[2])
-            return SubOp(
-                operand=operand, property_code=property_code, value=value
-            )
+            substitutions = self.visitSubExpr(ctx_list[2])
+            return SubOp(operand=operand, substitutions=substitutions)
         return None
 
     def visitWhereExpr(self, ctx: dpm_xlParser.WhereExprContext) -> AST:
@@ -367,15 +366,20 @@ class ASTVisitor(dpm_xlParserVisitor):
 
     def visitSubExpr(
         self, ctx: dpm_xlParser.SubExprContext
-    ) -> tuple[str, AST]:
-        # SUB propertyCode EQ (literal | select | itemReference)
+    ) -> list[SubAssignment]:
+        substitutions: list[SubAssignment] = []
+        for child in ctx.getChildren():
+            if isinstance(child, dpm_xlParser.SubAssignmentContext):
+                substitutions.append(self._visit(child))
+        return substitutions
+
+    def visitSubAssignment(
+        self, ctx: dpm_xlParser.SubAssignmentContext
+    ) -> SubAssignment:
         ctx_list = list(ctx.getChildren())
-        property_code: str = self._visit(ctx_list[1])  # propertyCode
-        # ctx_list[2] is EQ
-        value: AST = self._visit(
-            ctx_list[3]
-        )  # literal, select, or itemReference
-        return property_code, value
+        property_code: str = self._visit(ctx_list[0])
+        value: AST = self._visit(ctx_list[2])
+        return SubAssignment(property_code=property_code, value=value)
 
     def create_bin_op(self, ctx: dpm_xlParser.ExpressionContext) -> BinOp:
         ctx_list = list(ctx.getChildren())
