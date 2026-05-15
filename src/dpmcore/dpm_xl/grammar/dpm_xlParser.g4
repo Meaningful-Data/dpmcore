@@ -178,7 +178,6 @@ selectOperand:
     cellRef
     | varRef
     | operationRef
-    | preconditionElem
     ;
 
 varID:
@@ -187,10 +186,6 @@ varID:
 
 cellRef:
     address=cellAddress
-    ;
-
-preconditionElem:
-    PRECONDITION_ELEMENT
     ;
 
 varRef:
