@@ -190,7 +190,9 @@ class ASTVisitor(dpm_xlParserVisitor):
     def visitNotExpr(self, ctx: dpm_xlParser.NotExprContext) -> UnaryOp:
         ctx_list = list(ctx.getChildren())
         op = self._symbol_text(ctx_list[0])
-        operand: AST = self._visit(ctx_list[2])
+        operand: AST = self._visit(ctx_list[1])
+        if isinstance(operand, ParExpr):
+            operand = operand.expression
         return UnaryOp(op=op, operand=operand)
 
     def visitCommonAggrOp(
