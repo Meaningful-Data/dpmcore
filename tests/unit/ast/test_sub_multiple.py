@@ -20,6 +20,13 @@ MULTIPLE_SUB_EXPRESSIONS = [
     '{tT, r010}[sub c0010 = "ES", c0020 = "FR", c0030 = "DE"]',
 ]
 
+INVALID_SUB_EXPRESSIONS = [
+    "{tT, r010}[sub]",
+    "{tT, r010}[sub c0010 = ]",
+    '{tT, r010}[sub , c0010 = "ES"]',
+    '{tT, r010}[sub c0010 = "ES", ]',
+]
+
 
 @pytest.mark.parametrize("expr", SINGLE_SUB_EXPRESSIONS)
 def test_single_sub_is_valid(expr):
@@ -31,6 +38,12 @@ def test_single_sub_is_valid(expr):
 def test_multiple_sub_is_valid(expr):
     """Multiple comma-separated substitutions are accepted."""
     assert SyntaxService().is_valid(expr)
+
+
+@pytest.mark.parametrize("expr", INVALID_SUB_EXPRESSIONS)
+def test_malformed_sub_is_invalid(expr):
+    """Malformed sub expressions are rejected by the parser."""
+    assert not SyntaxService().is_valid(expr)
 
 
 def test_single_sub_produces_one_substitution():
