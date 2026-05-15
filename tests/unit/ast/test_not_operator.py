@@ -35,12 +35,12 @@ EXPLICIT_PARENS_FORMS = [
 
 
 @pytest.mark.parametrize("source", VALID_NOT_FORMS)
-def test_all_three_forms_are_valid(source):
+def test_all_valid_forms_are_valid(source):
     assert SyntaxService().is_valid(source)
 
 
 @pytest.mark.parametrize("source", VALID_NOT_FORMS)
-def test_all_three_forms_produce_unary_not_of_true(source):
+def test_all_valid_forms_produce_unary_not_of_true(source):
     start = SyntaxService().parse(source)
     expr = start.children[0]
     assert isinstance(expr, UnaryOp)
