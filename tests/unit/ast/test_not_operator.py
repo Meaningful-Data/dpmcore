@@ -50,6 +50,11 @@ def test_all_valid_forms_produce_unary_not_of_true(source):
     assert expr.operand.value is True
 
 
+@pytest.mark.parametrize(("source", "_operator"), NOT_BINARY_FORMS)
+def test_all_not_binary_forms_are_valid(source, _operator):
+    assert SyntaxService().is_valid(source)
+
+
 @pytest.mark.parametrize(("source", "operator"), NOT_BINARY_FORMS)
 def test_not_has_higher_precedence_than_binary_ops(source, operator):
     start = SyntaxService().parse(source)
@@ -62,6 +67,11 @@ def test_not_has_higher_precedence_than_binary_ops(source, operator):
     assert expr.left.operand.value is True
     assert isinstance(expr.right, Constant)
     assert expr.right.value is False
+
+
+@pytest.mark.parametrize(("source", "_operator"), EXPLICIT_PARENS_FORMS)
+def test_all_explicit_parens_forms_are_valid(source, _operator):
+    assert SyntaxService().is_valid(source)
 
 
 @pytest.mark.parametrize(("source", "operator"), EXPLICIT_PARENS_FORMS)
