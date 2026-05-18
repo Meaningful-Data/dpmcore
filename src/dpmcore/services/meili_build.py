@@ -65,7 +65,9 @@ class MeiliBuildService:
             migration_service = MigrationService(engine)
 
             try:
-                migration_service.migrate_from_csv_dir(str(csv_dir))
+                migration_service.migrate_from_csv_dir(
+                    str(csv_dir), output_path=db_path
+                )
                 if ecb_validations_file:
                     EcbValidationsImportService(engine).import_csv(
                         ecb_validations_file
