@@ -554,9 +554,20 @@ class PropertyCategory(Base):
 class Context(Base):
     """Reusable signature grouping Properties for CompoundItems.
 
+    Signatures are computed by importers as a deduplication aid but are
+    no longer guaranteed unique at the database level. The
+    ``UNIQUE`` constraint that earlier dpmcore versions placed on
+    ``Signature`` was removed because real DPM source data contains
+    duplicates and the importer now treats signatures as
+    non-persistent. Databases created by older dpmcore releases may
+    still carry the legacy ``UNIQUE`` index — drop it manually with
+    ``DROP INDEX`` (or recreate the schema via ``dpmcore migrate``)
+    after upgrading. Newly created schemas via ``Base.metadata.create_all``
+    no longer include the constraint.
+
     Attributes:
         context_id: Primary key.
-        signature: Unique context signature.
+        signature: Context signature (not unique).
         row_guid: FK to Concept.
     """
 

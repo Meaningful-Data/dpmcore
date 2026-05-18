@@ -18,8 +18,10 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 # Three 6-digit slots per version segment → can hold 999999.999999.999999.
-# Requires BIGINT (64-bit) — the ORM column uses BigInteger for PostgreSQL/
-# SQL Server compatibility. SQLite INTEGER is always 64-bit so it was silent.
+# The packed value is computed in Python at query time and held as a
+# plain ``int`` — there is no persisted SQL column. Python ints are
+# arbitrary-precision so the >32-bit packed value needs no special
+# column type; if this ever moves to a stored column it must be BIGINT.
 _SEGMENT_BITS = 1_000_000
 
 
