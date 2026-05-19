@@ -184,6 +184,7 @@ TIME_INTERVAL_LITERAL:  '#' DATE_FORMAT '/' DATE_FORMAT '#';
 TIME_PERIOD_LITERAL:    '#' TIME_PERIOD_FORMAT '#';
 
 CODE:                   [A-Za-z]([A-Za-z0-9_.]*[A-Za-z0-9])*;
+ESCAPED_IDENTIFIER:     '`' [A-Za-z0-9_.+]+ '`';
 
 WS:                     [ \t\r\n\u000C]+ -> channel(2);
 
@@ -394,6 +395,7 @@ CLAUSE_TIME_PERIOD_LITERAL:    '#' TIME_PERIOD_FORMAT '#' -> type(TIME_PERIOD_LI
 
 ITEM_SIGNATURE:             [A-Za-z]([A-Za-z0-9_-]*[:][A-Za-z0-9._-]*[A-Za-z0-9])+;
 PROPERTY_CODE:              CODE;
+CLAUSE_ESCAPED_IDENTIFIER: '`' [A-Za-z0-9_.+]+ '`' -> type(ESCAPED_IDENTIFIER);
 
 CLAUSE_WS:                     [ \t\r\n\u000C]+ -> channel(2);
 
@@ -407,6 +409,7 @@ GROUPING_ROW_COMPONENT:            'r'  -> type(ROW_COMPONENT);
 GROUPING_COL_COMPONENT:            'c'  -> type(COL_COMPONENT);
 GROUPING_SHEET_COMPONENT:          's' -> type(SHEET_COMPONENT);
 GROUPING_PROPERTY_CODE:            CODE -> type(PROPERTY_CODE);
+GROUPING_ESCAPED_IDENTIFIER: '`' [A-Za-z0-9_.+]+ '`' -> type(ESCAPED_IDENTIFIER);
 
 GROUPING_WS:                     [ \t\r\n\u000C]+ -> channel(2);
 
