@@ -5,8 +5,8 @@ Only property codes are valid in rename clauses.
 """
 
 import pytest
-from dpmcore.services.syntax import SyntaxService
 
+from dpmcore.services.syntax import SyntaxService
 
 VALID_RENAME_FORMS = [
     "{tT_00.01, c0010}[rename myProp to otherProp]",
