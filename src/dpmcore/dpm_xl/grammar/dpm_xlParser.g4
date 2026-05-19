@@ -202,8 +202,9 @@ operationRef:
     ;
 
 cellAddress:
-    tableReference (COMMA argument)*               #tableRef
-    | argument (COMMA argument)*                   #compRef;
+    tableReference (COMMA argument)*                        #tableRef
+    | operationRef COMMA argument (COMMA argument)*         #opRef
+    | argument (COMMA argument)*                            #compRef;
 
 tableReference:
     TABLE_REFERENCE

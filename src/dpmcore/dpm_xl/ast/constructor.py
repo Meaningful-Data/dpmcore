@@ -525,9 +525,19 @@ class ASTVisitor(dpm_xlParserVisitor):
         child = ctx_list[0]
         if isinstance(child, dpm_xlParser.TableRefContext):
             return self.visitTableRef(child)
+        elif isinstance(child, dpm_xlParser.OpRefContext):
+            return self.visitOpRef(child)
         elif isinstance(child, dpm_xlParser.CompRefContext):
             return self.visitCompRef(child)
         return None
+
+    def visitOpRef(self, ctx: dpm_xlParser.OpRefContext) -> VarID:
+        ctx_list = list(ctx.getChildren())
+        operation_ref: OperationRef = self._visit(ctx_list[0])
+        return self.create_var_id(
+            ctx_list=ctx_list,
+            operation=operation_ref.operation_code,
+        )
 
     def visitPreconditionElem(
         self, ctx: dpm_xlParser.PreconditionElemContext
@@ -550,6 +560,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         ctx_list: list[Any],
         table: str | None = None,
         is_table_group: bool = False,
+        operation: str | None = None,
     ) -> VarID:
         rows: list[str] | None = None
         cols: list[str] | None = None
@@ -586,6 +597,7 @@ class ASTVisitor(dpm_xlParserVisitor):
             interval=interval,
             default=default,
             is_table_group=is_table_group,
+            operation=operation,
         )
 
     def visitTableRef(self, ctx: dpm_xlParser.TableRefContext) -> VarID:
