@@ -219,6 +219,7 @@ class VarID(AST):
         interval: bool | None,
         default: Any,
         is_table_group: bool = False,
+        operation: str | None = None,
     ) -> None:
         super().__init__()
         self.table = table
@@ -228,6 +229,7 @@ class VarID(AST):
         self.interval = interval
         self.default = default
         self.is_table_group = is_table_group
+        self.operation = operation
 
     def __str__(self) -> str:
         return (
