@@ -47,6 +47,7 @@ from dpmcore.dpm_xl.symbols import (
     Structure,
 )
 from dpmcore.dpm_xl.types.scalar import (
+    Integer,
     Item,
     Mixed,
     Null,
@@ -491,15 +492,21 @@ class InputAnalyzer(ASTTemplate, ABC):
     def visit_TimeShiftOp(  # type: ignore[override]
         self, node: TimeShiftOp
     ) -> Operand:
+        shift_operand = self.visit(node.shift_number)
+        if not isinstance(shift_operand, Scalar) or not isinstance(
+            shift_operand.type, Integer
+        ):
+            raise errors.SemanticError("4-7-4")
+
         operand = self.visit(node.operand)
         if not isinstance(operand, (RecordSet, Scalar, ConstantOperand)):
             raise errors.SemanticError("4-7-1", op=TIME_SHIFT)
-        # TimeShift.validate expects ``component_name: str`` and
-        # ``shift_number: int`` but the AST carries ``str | None`` and ``str``
-        # respectively; narrow at the call site. Runtime semantics remain the
-        # same because TimeShift also rejects None/non-ints internally.
         component_name = cast(str, node.component)
-        shift_number = int(node.shift_number)
+        shift_number = (
+            node.shift_number.value
+            if isinstance(node.shift_number, Constant)
+            else 0
+        )
         result = TIME_OPERATORS[TIME_SHIFT].validate(
             operand=operand,
             component_name=component_name,

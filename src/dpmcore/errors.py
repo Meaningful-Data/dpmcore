@@ -261,6 +261,10 @@ centralised_messages: Dict[str, str] = {
         "For time_shift operator, var component must"
         " be specified when operand is a recordset"
     ),
+    "4-7-4": (
+        "For time_shift operator,"
+        " shift_number must evaluate to an integer scalar"
+    ),
     # Generation of validations
     "5-0-1": ("This expression doesn't generate any correct validation."),
     "5-0-2": ("This expression can't be used for the generation of children."),
