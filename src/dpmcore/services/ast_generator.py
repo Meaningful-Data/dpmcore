@@ -1014,13 +1014,19 @@ class ASTGeneratorService:
 
         class _Extractor(ASTTemplate):
             def visit_TimeShiftOp(self, node: Any) -> None:
+                from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
+
                 prev = current_period[0]
                 pi = node.period_indicator
                 sn = node.shift_number
-                if "-" in str(sn):
-                    current_period[0] = f"t+{pi}{sn}"
+                if isinstance(sn, Constant):
+                    current_period[0] = f"t-{pi}{sn.value}"
+                elif isinstance(sn, UnaryOp) and sn.op == "-":
+                    inner = sn.operand
+                    sn_str = f"-{inner.value}" if isinstance(inner, Constant) else "n"
+                    current_period[0] = f"t+{pi}{sn_str}"
                 else:
-                    current_period[0] = f"t-{pi}{sn}"
+                    current_period[0] = f"t-{pi}n"
                 self.visit(node.operand)
                 current_period[0] = prev
 

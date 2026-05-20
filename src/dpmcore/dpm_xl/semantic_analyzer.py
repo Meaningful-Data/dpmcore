@@ -47,9 +47,11 @@ from dpmcore.dpm_xl.symbols import (
     Structure,
 )
 from dpmcore.dpm_xl.types.scalar import (
+    Integer,
     Item,
     Mixed,
     Null,
+    Number,
     ScalarFactory,
     ScalarType,
 )
@@ -491,6 +493,12 @@ class InputAnalyzer(ASTTemplate, ABC):
     def visit_TimeShiftOp(  # type: ignore[override]
         self, node: TimeShiftOp
     ) -> Operand:
+        shift_operand = self.visit(node.shift_number)
+        if not isinstance(shift_operand, Scalar) or not isinstance(
+            shift_operand.type, (Integer, Number)
+        ):
+            raise errors.SemanticError("4-7-4")
+
         operand = self.visit(node.operand)
         if not isinstance(operand, (RecordSet, Scalar, ConstantOperand)):
             raise errors.SemanticError("4-7-1", op=TIME_SHIFT)

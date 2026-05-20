@@ -635,7 +635,7 @@ class TimeShiftOp(AST):
             "operand": self.operand,
             "period_indicator": self.period_indicator,
             "component": self.component,
-            "shift_number": self.shift_number,
+            "shift_number": self.shift_number.toJSON(),
         }
 
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from dpmcore.dpm_xl.ast.nodes import Constant, TimeShiftOp
+from dpmcore.dpm_xl.ast.nodes import Constant, TimeShiftOp, UnaryOp
 from dpmcore.services.syntax import SyntaxService
 
 VALID_LITERAL_FORMS = [
@@ -43,7 +43,10 @@ def test_negative_shift_produces_unary_ast_node():
     ast = SyntaxService().parse("time_shift({tT1}, Q, -5)")
     node = ast.children[0]
     assert isinstance(node, TimeShiftOp)
-    assert node.shift_number is not None
+    assert isinstance(node.shift_number, UnaryOp)
+    assert node.shift_number.op == "-"
+    assert isinstance(node.shift_number.operand, Constant)
+    assert node.shift_number.operand.value == 5
 
 
 def test_arithmetic_shift_produces_ast_node():
@@ -52,3 +55,21 @@ def test_arithmetic_shift_produces_ast_node():
     assert isinstance(node, TimeShiftOp)
     assert node.shift_number is not None
     assert not isinstance(node.shift_number, str)
+
+
+def test_tojson_shift_number_is_serializable():
+    ast = SyntaxService().parse("time_shift({tT1}, Q, 5 * 12)")
+    node = ast.children[0]
+    assert isinstance(node, TimeShiftOp)
+    result = node.toJSON()
+    assert isinstance(result["shift_number"], dict)
+    assert "class_name" in result["shift_number"]
+
+
+def test_serializer_shift_number_is_dict():
+    from dpmcore.dpm_xl.utils.serialization import ASTToJSONVisitor
+    ast = SyntaxService().parse("time_shift({tT1}, Q, 5 * 12)")
+    result = ASTToJSONVisitor().visit(ast)
+    time_shift = result["children"][0]
+    assert isinstance(time_shift["shift_number"], dict)
+    assert "class_name" in time_shift["shift_number"]
