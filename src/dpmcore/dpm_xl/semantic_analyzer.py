@@ -51,7 +51,6 @@ from dpmcore.dpm_xl.types.scalar import (
     Item,
     Mixed,
     Null,
-    Number,
     ScalarFactory,
     ScalarType,
 )
