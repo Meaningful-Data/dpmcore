@@ -494,12 +494,12 @@ class InputAnalyzer(ASTTemplate, ABC):
         operand = self.visit(node.operand)
         if not isinstance(operand, (RecordSet, Scalar, ConstantOperand)):
             raise errors.SemanticError("4-7-1", op=TIME_SHIFT)
-        # TimeShift.validate expects ``component_name: str`` and
-        # ``shift_number: int`` but the AST carries ``str | None`` and ``str``
-        # respectively; narrow at the call site. Runtime semantics remain the
-        # same because TimeShift also rejects None/non-ints internally.
         component_name = cast(str, node.component)
-        shift_number = int(node.shift_number)
+        shift_number = (
+            node.shift_number.value
+            if isinstance(node.shift_number, Constant)
+            else 0
+        )
         result = TIME_OPERATORS[TIME_SHIFT].validate(
             operand=operand,
             component_name=component_name,
