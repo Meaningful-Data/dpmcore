@@ -633,7 +633,7 @@ class OperandsChecking(ASTTemplate, ABC):
             sn_type = ScalarFactory().scalar_factory(
                 code=node.shift_number.type  # type: ignore[arg-type]
             )
-            if not isinstance(sn_type, (Integer, Number)):
+            if not isinstance(sn_type, Integer):
                 raise errors.SemanticError("4-7-4")
         else:
             self.visit(node.shift_number)

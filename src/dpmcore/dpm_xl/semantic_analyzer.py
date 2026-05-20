@@ -495,7 +495,7 @@ class InputAnalyzer(ASTTemplate, ABC):
     ) -> Operand:
         shift_operand = self.visit(node.shift_number)
         if not isinstance(shift_operand, Scalar) or not isinstance(
-            shift_operand.type, (Integer, Number)
+            shift_operand.type, Integer
         ):
             raise errors.SemanticError("4-7-4")
 

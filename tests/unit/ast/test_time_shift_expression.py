@@ -74,3 +74,12 @@ def test_serializer_shift_number_is_dict():
     time_shift = result["children"][0]
     assert isinstance(time_shift["shift_number"], dict)
     assert "class_name" in time_shift["shift_number"]
+
+
+def test_float_shift_has_number_type_constant():
+    ast = SyntaxService().parse("time_shift({tT1}, Q, 5.5)")
+    node = ast.children[0]
+    assert isinstance(node, TimeShiftOp)
+    assert isinstance(node.shift_number, Constant)
+    assert node.shift_number.type == "Number"
+    assert node.shift_number.type != "Integer"

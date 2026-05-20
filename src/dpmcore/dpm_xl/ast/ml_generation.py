@@ -382,11 +382,9 @@ class MLGeneration(ASTTemplate):
         self.create_operation_node(period_indicator_node, is_leaf=True)
 
         # shift number
-        shift_number_node = AST()
-        shift_number_node.parent = get_node
-        shift_number_node.argument = "shift_number"
-        shift_number_node.scalar = getattr(node, "shift_number", None)
-        self.create_operation_node(shift_number_node, is_leaf=True)
+        node.shift_number.parent = get_node
+        node.shift_number.argument = "shift_number"
+        self.visit(node.shift_number)
 
         # component
         ast_element = AST()
