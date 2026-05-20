@@ -68,6 +68,7 @@ def test_tojson_shift_number_is_serializable():
 
 def test_serializer_shift_number_is_dict():
     from dpmcore.dpm_xl.utils.serialization import ASTToJSONVisitor
+
     ast = SyntaxService().parse("time_shift({tT1}, Q, 5 * 12)")
     result = ASTToJSONVisitor().visit(ast)
     time_shift = result["children"][0]
