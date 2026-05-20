@@ -24,7 +24,8 @@ class TestMeiliBuildService:
         ):
             result = MeiliBuildService().build(output_file=str(output_file))
 
-        migrate_csv.assert_called_once_with(str(Path("data/DPM")))
+        call = migrate_csv.call_args
+        assert call.args[0] == str(Path("data/DPM"))
         assert result.operations_written == 12
         assert result.used_access_file is False
         assert result.ecb_validations_imported is False
@@ -159,7 +160,8 @@ class TestMeiliBuildService:
                 source_dir=str(custom_dir),
             )
 
-        migrate_csv.assert_called_once_with(str(custom_dir))
+        call = migrate_csv.call_args
+        assert call.args[0] == str(custom_dir)
         assert result.used_access_file is False
         assert result.source_dir == Path(str(custom_dir))
 
@@ -181,3 +183,34 @@ class TestMeiliBuildService:
             result = MeiliBuildService().build(output_file=str(output_file))
 
         assert result.source_dir == Path("data/DPM")
+
+    def test_migrate_called_with_output_path_to_prevent_relocation(
+        self, tmp_path
+    ):
+        # Regression: without output_path, MigrationService._finalize renames
+        # the temp SQLite file via _relocate_database, disposing the engine and
+        # moving the file to a date-stamped name.  Any code that runs after
+        # (ECB import, MeiliJsonService) connects through the old engine URL,
+        # SQLite silently creates a fresh empty DB there, and every ORM query
+        # fails with "no such table".
+        output_file = tmp_path / "operations.json"
+        fake_result = MagicMock()
+        fake_result.operations_written = 0
+        fake_result.output_file = output_file
+
+        with (
+            patch(
+                "dpmcore.services.meili_build.MigrationService"
+            ) as MockMigration,
+            patch(
+                "dpmcore.services.meili_build.MeiliJsonService.generate",
+                return_value=fake_result,
+            ),
+        ):
+            MeiliBuildService().build(output_file=str(output_file))
+
+        call_kwargs = (
+            MockMigration.return_value.migrate_from_csv_dir.call_args.kwargs
+        )
+        assert "output_path" in call_kwargs
+        assert call_kwargs["output_path"].name == "dpmcore_meili.db"
