@@ -41,6 +41,9 @@ class AST:
 
     __repr__ = __str__
 
+    def toJSON(self) -> dict[str, Any]:
+        return {"class_name": self.__class__.__name__}
+
 
 class Start(AST):
     """Starting point of the AST."""
