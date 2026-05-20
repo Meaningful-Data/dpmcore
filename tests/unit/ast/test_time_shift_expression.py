@@ -77,9 +77,20 @@ def test_serializer_shift_number_is_dict():
 
 
 def test_float_shift_has_number_type_constant():
+    # Grammar accepts any expression; the AST stores the type as-is.
+    # The semantic layer rejects non-Integer types (error 4-7-4).
     ast = SyntaxService().parse("time_shift({tT1}, Q, 5.5)")
     node = ast.children[0]
     assert isinstance(node, TimeShiftOp)
     assert isinstance(node.shift_number, Constant)
     assert node.shift_number.type == "Number"
-    assert node.shift_number.type != "Integer"
+
+
+def test_string_shift_has_string_type_constant():
+    # Grammar accepts any expression; the AST stores the type as-is.
+    # The semantic layer rejects non-Integer types (error 4-7-4).
+    ast = SyntaxService().parse('time_shift({tT1}, Q, "hello")')
+    node = ast.children[0]
+    assert isinstance(node, TimeShiftOp)
+    assert isinstance(node.shift_number, Constant)
+    assert node.shift_number.type == "String"
