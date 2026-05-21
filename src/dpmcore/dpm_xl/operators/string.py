@@ -28,6 +28,9 @@ class Len(Unary):
     op: ClassVar[str | None] = tokens.LENGTH
     py_op: ClassVar[PyOp | None] = operator.length_hint
     return_type: ClassVar[type[ScalarType] | None] = Integer
+    # String → Integer: return type is independent of the operand-type
+    # family, so the cross-promotion well-definedness check does not apply.
+    do_not_check_with_return_type: ClassVar[bool] = True
 
 
 class Concatenate(Binary):
