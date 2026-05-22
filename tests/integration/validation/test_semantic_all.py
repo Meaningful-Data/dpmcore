@@ -51,7 +51,7 @@ def _load_params():
     headers = [cell.value for cell in ws[1]]
     params = []
     for row in ws.iter_rows(min_row=2, values_only=True):
-        d = dict(zip(headers, row))
+        d = dict(zip(headers, row, strict=False))
         code = str(d.get("Code") or "")
         release = str(d.get("StartRelease") or "").strip()
         for col in ("Expression", "Precondition"):
@@ -82,7 +82,9 @@ def semantic_service():
     engine.dispose()
 
 
-@pytest.mark.parametrize("code,col,release,expression", _load_params())
+@pytest.mark.parametrize(
+    ("code", "col", "release", "expression"), _load_params()
+)
 def test_semantic(code, col, release, expression, semantic_service):
     result = semantic_service.validate(
         expression, release_code=release or None

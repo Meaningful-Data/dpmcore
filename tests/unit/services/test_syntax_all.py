@@ -33,7 +33,7 @@ def _load_params():
     headers = [cell.value for cell in ws[1]]
     params = []
     for row in ws.iter_rows(min_row=2, values_only=True):
-        d = dict(zip(headers, row))
+        d = dict(zip(headers, row, strict=False))
         code = str(d.get("Code") or "")
         for col in ("Expression", "Precondition"):
             val = d.get(col)
@@ -54,7 +54,7 @@ def syntax_service():
     return SyntaxService()
 
 
-@pytest.mark.parametrize("code,col,expression", _load_params())
+@pytest.mark.parametrize(("code", "col", "expression"), _load_params())
 def test_syntax(code, col, expression, syntax_service):
     result = syntax_service.validate(expression)
     assert result.is_valid, f"{code} | {col} | {result.error_message}"
