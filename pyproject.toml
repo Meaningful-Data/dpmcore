@@ -28,7 +28,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "sqlalchemy>=2.0,<3.0",
+    "sqlalchemy>=2.0.49,<3.0",
     # Runtime must match the ANTLR version used to generate the grammar
     # in src/dpmcore/dpm_xl/grammar/generated/. Regenerating with a newer
     # ANTLR is tracked separately.
@@ -48,7 +48,7 @@ documentation = "https://docs.dpmcore.meaningfuldata.eu"
 # should stay within semver compatibility.
 server = ["fastapi>=0.101", "uvicorn[standard]>=0.27"]
 django = ["django>=4.2", "mssql-django>=1.4"]
-postgres = ["psycopg2-binary>=2.9,<3.0"]
+postgres = ["psycopg2-binary>=2.9.12,<3.0"]
 sqlserver = ["pyodbc>=5.0"]
 # pandas / numpy ranges mirror vtlengine's published pins so that
 # dpmcore + vtlengine can be co-installed without resolver conflicts.
@@ -61,7 +61,7 @@ all = [
     "uvicorn[standard]>=0.27",
     "django>=4.2",
     "mssql-django>=1.4",
-    "psycopg2-binary>=2.9,<3.0",
+    "psycopg2-binary>=2.9.12,<3.0",
     "pyodbc>=5.0",
     "pandas>=2.1.4,<3.0",
     "numpy>=2.2.0,<2.3",
@@ -77,7 +77,7 @@ dpmcore = "dpmcore.cli.main:main"
 packages = [{ include = "dpmcore", from = "src" }]
 
 [tool.poetry.group.dev.dependencies]
-coverage = ">=7.6,<8.0"
+coverage = ">=7.14.0,<8.0"
 ruff = ">=0.14"
 mypy = ">=1.20.2"
 pytest = ">=8.3"
@@ -86,7 +86,7 @@ pytest-cov = ">=6.0"
 pyroma = ">=4.2"
 httpx = ">=0.28,<1.0"
 pytest-django = ">=4.9"
-django-stubs = ">=5.1"
+django-stubs = ">=6.0.4"
 pandas-stubs = ">=2.2.2,<3.0"
 
 [tool.poetry.group.docs.dependencies]

@@ -70,9 +70,14 @@ def _py_op_match(x: object, y: object) -> bool:
 class In(Binary):
     op: ClassVar[str | None] = tokens.IN
     py_op: ClassVar[PyOp | None] = _py_op_in
+    # The membership operator is the only Binary whose right-hand side is
+    # legitimately a set literal (``ScalarSet``).
+    accepts_scalar_set_rhs: ClassVar[bool] = True
 
 
 class Match(Binary):
     op: ClassVar[str | None] = tokens.MATCH
     type_to_check: ClassVar[type[ScalarType] | None] = String
     py_op: ClassVar[PyOp | None] = _py_op_match
+    # String → Boolean. Relies on ``do_not_check_with_return_type`` inherited
+    # from ``Binary`` above to opt out of the cross-promotion check.

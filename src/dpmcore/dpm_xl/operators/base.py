@@ -15,6 +15,7 @@ from dpmcore.dpm_xl.types.promotion import (
     binary_implicit_type_promotion,
     binary_implicit_type_promotion_with_mixed_types,
     check_operator,
+    implicit_type_promotion_dict,
     unary_implicit_type_promotion,
     unary_implicit_type_promotion_with_mixed_types,
 )
@@ -46,6 +47,7 @@ class Operator:
         type_to_check: Data type to be checked to comply with the operator specification
         do_not_check_with_return_type: On Comparison operators, we enforce only that operands involved have the same data type
         return_type: Data type to be checked. Operands must comply with this Data type by having it or by applying the Type Promotion.
+        accepts_scalar_set_rhs: Operator accepts a ``ScalarSet`` as the right-hand operand (membership operators only).
     """
 
     op: ClassVar[str | None] = None
@@ -55,6 +57,7 @@ class Operator:
     return_type: ClassVar[type[ScalarType] | None] = None
     propagate_attributes: ClassVar[bool] = False
     interval_allowed: ClassVar[bool] = False
+    accepts_scalar_set_rhs: ClassVar[bool] = False
 
     @staticmethod
     def _create_labeled_scalar(origin: str, result_type: ScalarType) -> Scalar:
@@ -94,7 +97,28 @@ class Operator:
 
     @classmethod
     def check_operator_well_defined(cls) -> None:
-        """ """
+        # Registration check: every declared type must be a known ScalarType
+        # registered in implicit_type_promotion_dict. Catches typos like
+        # ``return_type = SomeNonScalarClass`` regardless of the flag below.
+        for label, declared in (
+            ("return_type", cls.return_type),
+            ("type_to_check", cls.type_to_check),
+        ):
+            if declared is not None and declared not in (
+                implicit_type_promotion_dict
+            ):
+                raise Exception(
+                    f"Review this operator {cls.op}: "
+                    f"{label}={declared!r} is not a registered ScalarType"
+                )
+
+        # Type-changing operators (Len: String→Integer, Match: String→Boolean,
+        # comparisons: anything→Boolean) declare a return_type that is
+        # intentionally independent of the operand type family. They opt out
+        # of the cross-promotion check via ``do_not_check_with_return_type``.
+        if cls.do_not_check_with_return_type:
+            return
+
         return_type = (
             None
             if cls.return_type is None
@@ -135,8 +159,8 @@ class Binary(Operator):
     @classmethod
     def create_labeled_scalar(
         cls,
-        first_operand: Union[Scalar, ConstantOperand],
-        second_operand: Union[Scalar, ConstantOperand],
+        first_operand: Union[Scalar, ConstantOperand, ScalarSet],
+        second_operand: Union[Scalar, ConstantOperand, ScalarSet],
         result_type: ScalarType | None = None,
     ) -> Scalar:
         """ """
@@ -382,6 +406,11 @@ class Binary(Operator):
             return right.structure, right.records
         elif isinstance(left, RecordSet) and isinstance(right, ScalarSet):
             return left.structure, left.records
+        elif isinstance(left, Scalar) and isinstance(right, ScalarSet):
+            # Symmetric with the (Scalar, ScalarSet) branch in
+            # types_given_structures. No structure to merge; the scalar path
+            # in validate() handles type resolution.
+            return None, None
         else:
             return None, None
 
@@ -487,12 +516,25 @@ class Binary(Operator):
                 left, right, rslt_structure, rslt_type, result_dataframe
             )
             return recordset
-        # Scalar path: left/right are Scalars or ConstantOperands at this point.
-        if not isinstance(left, (Scalar, ConstantOperand)) or not isinstance(
-            right, (Scalar, ConstantOperand)
-        ):
+        # Scalar path: accept Scalar/ConstantOperand on either side. Accept
+        # ScalarSet on the RHS only for operators that opt in via
+        # ``accepts_scalar_set_rhs`` (currently only the ``in`` membership
+        # operator). Any other shape — notably a bare RecordSet leaking past
+        # validate_structures — is a real bug and gets a precise rejection.
+        if not isinstance(left, (Scalar, ConstantOperand)):
             raise Exception(
-                "Invalid operand types for scalar binary operation"
+                f"Operator {cls.op}: invalid left operand type "
+                f"{type(left).__name__} for scalar binary operation"
+            )
+        if not isinstance(right, (Scalar, ConstantOperand, ScalarSet)):
+            raise Exception(
+                f"Operator {cls.op}: invalid right operand type "
+                f"{type(right).__name__} for scalar binary operation"
+            )
+        if isinstance(right, ScalarSet) and not cls.accepts_scalar_set_rhs:
+            raise Exception(
+                f"Operator {cls.op}: set-literal right-hand side is only "
+                f"allowed for membership operators"
             )
         labeled_scalar = cls.create_labeled_scalar(
             left, right, result_type=rslt_type
