@@ -503,22 +503,17 @@ class ASTToJSONVisitor(NodeVisitor):
         return result
 
     def visit_SubOp(self, node: Any) -> NodeDict:
-        """Visit SubOp nodes and serialize as chained SubClauseOp nodes."""
-        subs = node.substitutions
-        result: NodeDict = {
-            "class_name": "SubClauseOp",
-            "operand": self.visit(node.operand),
-            "condition": {
-                "class_name": "BinOp",
-                "op": "=",
-                "left": {
-                    "class_name": "Dimension",
-                    "dimension_code": subs[0].property_code,
-                },
-                "right": self.visit(subs[0].value),
-            },
-        }
-        for sub in subs[1:]:
+        """Serialize SubOp as left-deep chained ``SubClauseOp`` nodes.
+
+        Multi-sub ``X[sub a=1, b=2]`` is semantically equivalent to chained
+        single-subs ``X[sub a=1][sub b=2]``. The adam-engine consumer
+        defines ``SubClauseOp`` with a single ``condition`` field
+        (additionalProperties: false), so chaining is the only valid wire
+        shape -- the original recordset sits at the deepest level and each
+        substitution wraps the previous result.
+        """
+        result: NodeValue = self.visit(node.operand)
+        for sub in node.substitutions:
             result = {
                 "class_name": "SubClauseOp",
                 "operand": result,
@@ -532,7 +527,9 @@ class ASTToJSONVisitor(NodeVisitor):
                     "right": self.visit(sub.value),
                 },
             }
-        return result
+        # Grammar guarantees ``substitutions`` is non-empty, so the loop
+        # rewrote ``result`` into a SubClauseOp NodeDict.
+        return cast(NodeDict, result)
 
     def visit_WhereClauseOp(self, node: Any) -> NodeDict:
         """Visit WhereClauseOp nodes."""
