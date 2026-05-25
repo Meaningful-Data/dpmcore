@@ -822,7 +822,7 @@ class SubOp(AST):
     """
 
     def __init__(
-        self, operand: AST, substitutions: list["SubAssignment"]
+        self, operand: AST, substitutions: list[SubAssignment]
     ) -> None:
         super().__init__()
         self.operand: AST = operand

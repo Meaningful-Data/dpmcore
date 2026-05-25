@@ -508,6 +508,11 @@ class MLGeneration(ASTTemplate):
         node.operand.argument = "operand"
         self.visit(node.operand)
 
+        # Every substitution value shares ``argument="value"`` against the
+        # same parent ``operand_node``. This matches ``visit_ComplexNumericOp``
+        # (which reuses ``argument="operand"`` for its children) and relies on
+        # the ``Sub`` operator's ``OperatorArgument`` row for ``value`` being
+        # used by all child OperationNodes; each child is still a distinct row.
         for sub in node.substitutions:
             sub.value.parent = operand_node
             sub.value.argument = "value"
