@@ -215,7 +215,7 @@ clauseOperators:
 // Always on grammar, not on tokens. Order is important (top ones should be the enclosing ones)
 
 renameClause:
-    keyNames TO keyNames
+    propertyCode TO propertyCode
     ;
 
 comparisonOperators:
