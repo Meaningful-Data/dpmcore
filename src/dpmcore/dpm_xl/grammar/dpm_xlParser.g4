@@ -241,6 +241,7 @@ keyNames:
     | COL_COMPONENT
     | SHEET_COMPONENT
     | PROPERTY_CODE
+    | ESCAPED_IDENTIFIER
 ;
 
 propertyReference:
@@ -249,8 +250,10 @@ propertyReference:
 propertyCode:
     PROPERTY_CODE
     | CODE
+    | ESCAPED_IDENTIFIER
     ;
 
 temporaryIdentifier:
     CODE
+    | ESCAPED_IDENTIFIER
     ;

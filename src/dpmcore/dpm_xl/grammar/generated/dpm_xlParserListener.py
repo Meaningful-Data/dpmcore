@@ -593,6 +593,15 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by dpm_xlParser#preconditionElem.
+    def enterPreconditionElem(self, ctx:dpm_xlParser.PreconditionElemContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#preconditionElem.
+    def exitPreconditionElem(self, ctx:dpm_xlParser.PreconditionElemContext):
+        pass
+
+
     # Enter a parse tree produced by dpm_xlParser#varRef.
     def enterVarRef(self, ctx:dpm_xlParser.VarRefContext):
         pass
