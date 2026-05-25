@@ -11,7 +11,7 @@ else:
 def serializedATN():
     with StringIO() as buf:
         buf.write("\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3b")
-        buf.write("\u01e5\4\2\t\2\4\3\t\3\4\4\t\4\4\5\t\5\4\6\t\6\4\7\t\7")
+        buf.write("\u01ef\4\2\t\2\4\3\t\3\4\4\t\4\4\5\t\5\4\6\t\6\4\7\t\7")
         buf.write("\4\b\t\b\4\t\t\t\4\n\t\n\4\13\t\13\4\f\t\f\4\r\t\r\4\16")
         buf.write("\t\16\4\17\t\17\4\20\t\20\4\21\t\21\4\22\t\22\4\23\t\23")
         buf.write("\4\24\t\24\4\25\t\25\4\26\t\26\4\27\t\27\4\30\t\30\4\31")
@@ -49,15 +49,16 @@ def serializedATN():
         buf.write("\3\36\3\36\3\37\3\37\3\37\3\37\3\37\3\37\5\37\u0189\n")
         buf.write("\37\3 \3 \3 \3 \3 \5 \u0190\n \3!\3!\3!\3!\3\"\3\"\3\"")
         buf.write("\3\"\5\"\u019a\n\"\3#\3#\3#\3#\3$\3$\3%\3%\3&\3&\3\'\3")
-        buf.write("\'\3(\3(\3(\7(\u01ab\n(\f(\16(\u01ae\13(\3(\3(\3(\7(\u01b3")
-        buf.write("\n(\f(\16(\u01b6\13(\5(\u01b8\n(\3)\3)\3*\3*\3*\3*\3*")
-        buf.write("\3*\3*\3*\7*\u01c4\n*\f*\16*\u01c7\13*\3*\3*\3*\3*\3*")
-        buf.write("\3*\5*\u01cf\n*\5*\u01d1\n*\3+\3+\3+\3+\3,\3,\3-\3-\3")
-        buf.write(".\3.\3/\3/\3/\3/\3\60\3\60\3\61\3\61\3\61\2\3\22\62\2")
-        buf.write("\4\6\b\n\f\16\20\22\24\26\30\32\34\36 \"$&(*,.\60\62\64")
-        buf.write("\668:<>@BDFHJLNPRTVXZ\\^`\2\21\3\2\22\23\3\2\24\25\3\2")
-        buf.write("\5\6\4\2\35\35\37!\3\2\"#\3\2$%\3\2\26\33\3\2LN\3\2OQ")
-        buf.write("\3\2RT\3\2UV\3\2\n\17\5\2\3\3?ACG\4\2[]__\4\2HH__\2\u01f4")
+        buf.write("\'\3(\3(\3(\7(\u01ab\n(\f(\16(\u01ae\13(\3(\3(\3(\3(\3")
+        buf.write("(\7(\u01b5\n(\f(\16(\u01b8\13(\3(\3(\3(\7(\u01bd\n(\f")
+        buf.write("(\16(\u01c0\13(\5(\u01c2\n(\3)\3)\3*\3*\3*\3*\3*\3*\3")
+        buf.write("*\3*\7*\u01ce\n*\f*\16*\u01d1\13*\3*\3*\3*\3*\3*\3*\5")
+        buf.write("*\u01d9\n*\5*\u01db\n*\3+\3+\3+\3+\3,\3,\3-\3-\3.\3.\3")
+        buf.write("/\3/\3/\3/\3\60\3\60\3\61\3\61\3\61\2\3\22\62\2\4\6\b")
+        buf.write("\n\f\16\20\22\24\26\30\32\34\36 \"$&(*,.\60\62\64\668")
+        buf.write(":<>@BDFHJLNPRTVXZ\\^`\2\21\3\2\22\23\3\2\24\25\3\2\5\6")
+        buf.write("\4\2\35\35\37!\3\2\"#\3\2$%\3\2\26\33\3\2LN\3\2OQ\3\2")
+        buf.write("RT\3\2UV\3\2\n\17\5\2\3\3?ACG\4\2[]__\4\2HH__\2\u0200")
         buf.write("\2b\3\2\2\2\4o\3\2\2\2\6u\3\2\2\2\by\3\2\2\2\n\u0088\3")
         buf.write("\2\2\2\f\u008a\3\2\2\2\16\u008e\3\2\2\2\20\u0092\3\2\2")
         buf.write("\2\22\u00b2\3\2\2\2\24\u00d4\3\2\2\2\26\u00e8\3\2\2\2")
@@ -68,10 +69,10 @@ def serializedATN():
         buf.write("\2\2\64\u0162\3\2\2\2\66\u016f\3\2\2\28\u017c\3\2\2\2")
         buf.write(":\u017e\3\2\2\2<\u0188\3\2\2\2>\u018f\3\2\2\2@\u0191\3")
         buf.write("\2\2\2B\u0199\3\2\2\2D\u019b\3\2\2\2F\u019f\3\2\2\2H\u01a1")
-        buf.write("\3\2\2\2J\u01a3\3\2\2\2L\u01a5\3\2\2\2N\u01b7\3\2\2\2")
-        buf.write("P\u01b9\3\2\2\2R\u01d0\3\2\2\2T\u01d2\3\2\2\2V\u01d6\3")
-        buf.write("\2\2\2X\u01d8\3\2\2\2Z\u01da\3\2\2\2\\\u01dc\3\2\2\2^")
-        buf.write("\u01e0\3\2\2\2`\u01e2\3\2\2\2bh\5\6\4\2cd\7>\2\2di\5\4")
+        buf.write("\3\2\2\2J\u01a3\3\2\2\2L\u01a5\3\2\2\2N\u01c1\3\2\2\2")
+        buf.write("P\u01c3\3\2\2\2R\u01da\3\2\2\2T\u01dc\3\2\2\2V\u01e0\3")
+        buf.write("\2\2\2X\u01e2\3\2\2\2Z\u01e4\3\2\2\2\\\u01e6\3\2\2\2^")
+        buf.write("\u01ea\3\2\2\2`\u01ec\3\2\2\2bh\5\6\4\2cd\7>\2\2di\5\4")
         buf.write("\3\2eg\7>\2\2fe\3\2\2\2fg\3\2\2\2gi\3\2\2\2hc\3\2\2\2")
         buf.write("hf\3\2\2\2ij\3\2\2\2jk\7\2\2\3k\3\3\2\2\2lm\5\6\4\2mn")
         buf.write("\7>\2\2np\3\2\2\2ol\3\2\2\2pq\3\2\2\2qo\3\2\2\2qr\3\2")
@@ -203,33 +204,37 @@ def serializedATN():
         buf.write("\2\u01a3\u01a4\7W\2\2\u01a4K\3\2\2\2\u01a5\u01a6\7X\2")
         buf.write("\2\u01a6M\3\2\2\2\u01a7\u01ac\5P)\2\u01a8\u01a9\7\'\2")
         buf.write("\2\u01a9\u01ab\5> \2\u01aa\u01a8\3\2\2\2\u01ab\u01ae\3")
-        buf.write("\2\2\2\u01ac\u01aa\3\2\2\2\u01ac\u01ad\3\2\2\2\u01ad\u01b8")
-        buf.write("\3\2\2\2\u01ae\u01ac\3\2\2\2\u01af\u01b4\5> \2\u01b0\u01b1")
-        buf.write("\7\'\2\2\u01b1\u01b3\5> \2\u01b2\u01b0\3\2\2\2\u01b3\u01b6")
-        buf.write("\3\2\2\2\u01b4\u01b2\3\2\2\2\u01b4\u01b5\3\2\2\2\u01b5")
-        buf.write("\u01b8\3\2\2\2\u01b6\u01b4\3\2\2\2\u01b7\u01a7\3\2\2\2")
-        buf.write("\u01b7\u01af\3\2\2\2\u01b8O\3\2\2\2\u01b9\u01ba\t\f\2")
-        buf.write("\2\u01baQ\3\2\2\2\u01bb\u01bc\7\65\2\2\u01bc\u01d1\5\22")
-        buf.write("\n\2\u01bd\u01be\7\66\2\2\u01be\u01d1\5Z.\2\u01bf\u01c0")
-        buf.write("\7\67\2\2\u01c0\u01c5\5T+\2\u01c1\u01c2\7\'\2\2\u01c2")
-        buf.write("\u01c4\5T+\2\u01c3\u01c1\3\2\2\2\u01c4\u01c7\3\2\2\2\u01c5")
-        buf.write("\u01c3\3\2\2\2\u01c5\u01c6\3\2\2\2\u01c6\u01d1\3\2\2\2")
-        buf.write("\u01c7\u01c5\3\2\2\2\u01c8\u01c9\79\2\2\u01c9\u01ca\5")
-        buf.write("^\60\2\u01ca\u01ce\7\n\2\2\u01cb\u01cf\5X-\2\u01cc\u01cf")
-        buf.write("\5@!\2\u01cd\u01cf\5,\27\2\u01ce\u01cb\3\2\2\2\u01ce\u01cc")
-        buf.write("\3\2\2\2\u01ce\u01cd\3\2\2\2\u01cf\u01d1\3\2\2\2\u01d0")
-        buf.write("\u01bb\3\2\2\2\u01d0\u01bd\3\2\2\2\u01d0\u01bf\3\2\2\2")
-        buf.write("\u01d0\u01c8\3\2\2\2\u01d1S\3\2\2\2\u01d2\u01d3\5^\60")
-        buf.write("\2\u01d3\u01d4\78\2\2\u01d4\u01d5\5^\60\2\u01d5U\3\2\2")
-        buf.write("\2\u01d6\u01d7\t\r\2\2\u01d7W\3\2\2\2\u01d8\u01d9\t\16")
-        buf.write("\2\2\u01d9Y\3\2\2\2\u01da\u01db\t\17\2\2\u01db[\3\2\2")
-        buf.write("\2\u01dc\u01dd\7-\2\2\u01dd\u01de\5^\60\2\u01de\u01df")
-        buf.write("\7.\2\2\u01df]\3\2\2\2\u01e0\u01e1\t\20\2\2\u01e1_\3\2")
-        buf.write("\2\2\u01e2\u01e3\7H\2\2\u01e3a\3\2\2\2&fhquy\u0083\u0088")
-        buf.write("\u00a9\u00b2\u00cf\u00d1\u00dd\u00e5\u00e8\u00f1\u0106")
-        buf.write("\u010a\u0118\u012a\u013e\u0148\u015e\u0162\u016b\u016f")
-        buf.write("\u0178\u017c\u0188\u018f\u0199\u01ac\u01b4\u01b7\u01c5")
-        buf.write("\u01ce\u01d0")
+        buf.write("\2\2\2\u01ac\u01aa\3\2\2\2\u01ac\u01ad\3\2\2\2\u01ad\u01c2")
+        buf.write("\3\2\2\2\u01ae\u01ac\3\2\2\2\u01af\u01b0\5L\'\2\u01b0")
+        buf.write("\u01b1\7\'\2\2\u01b1\u01b6\5> \2\u01b2\u01b3\7\'\2\2\u01b3")
+        buf.write("\u01b5\5> \2\u01b4\u01b2\3\2\2\2\u01b5\u01b8\3\2\2\2\u01b6")
+        buf.write("\u01b4\3\2\2\2\u01b6\u01b7\3\2\2\2\u01b7\u01c2\3\2\2\2")
+        buf.write("\u01b8\u01b6\3\2\2\2\u01b9\u01be\5> \2\u01ba\u01bb\7\'")
+        buf.write("\2\2\u01bb\u01bd\5> \2\u01bc\u01ba\3\2\2\2\u01bd\u01c0")
+        buf.write("\3\2\2\2\u01be\u01bc\3\2\2\2\u01be\u01bf\3\2\2\2\u01bf")
+        buf.write("\u01c2\3\2\2\2\u01c0\u01be\3\2\2\2\u01c1\u01a7\3\2\2\2")
+        buf.write("\u01c1\u01af\3\2\2\2\u01c1\u01b9\3\2\2\2\u01c2O\3\2\2")
+        buf.write("\2\u01c3\u01c4\t\f\2\2\u01c4Q\3\2\2\2\u01c5\u01c6\7\65")
+        buf.write("\2\2\u01c6\u01db\5\22\n\2\u01c7\u01c8\7\66\2\2\u01c8\u01db")
+        buf.write("\5Z.\2\u01c9\u01ca\7\67\2\2\u01ca\u01cf\5T+\2\u01cb\u01cc")
+        buf.write("\7\'\2\2\u01cc\u01ce\5T+\2\u01cd\u01cb\3\2\2\2\u01ce\u01d1")
+        buf.write("\3\2\2\2\u01cf\u01cd\3\2\2\2\u01cf\u01d0\3\2\2\2\u01d0")
+        buf.write("\u01db\3\2\2\2\u01d1\u01cf\3\2\2\2\u01d2\u01d3\79\2\2")
+        buf.write("\u01d3\u01d4\5^\60\2\u01d4\u01d8\7\n\2\2\u01d5\u01d9\5")
+        buf.write("X-\2\u01d6\u01d9\5@!\2\u01d7\u01d9\5,\27\2\u01d8\u01d5")
+        buf.write("\3\2\2\2\u01d8\u01d6\3\2\2\2\u01d8\u01d7\3\2\2\2\u01d9")
+        buf.write("\u01db\3\2\2\2\u01da\u01c5\3\2\2\2\u01da\u01c7\3\2\2\2")
+        buf.write("\u01da\u01c9\3\2\2\2\u01da\u01d2\3\2\2\2\u01dbS\3\2\2")
+        buf.write("\2\u01dc\u01dd\5Z.\2\u01dd\u01de\78\2\2\u01de\u01df\5")
+        buf.write("Z.\2\u01dfU\3\2\2\2\u01e0\u01e1\t\r\2\2\u01e1W\3\2\2\2")
+        buf.write("\u01e2\u01e3\t\16\2\2\u01e3Y\3\2\2\2\u01e4\u01e5\t\17")
+        buf.write("\2\2\u01e5[\3\2\2\2\u01e6\u01e7\7-\2\2\u01e7\u01e8\5^")
+        buf.write("\60\2\u01e8\u01e9\7.\2\2\u01e9]\3\2\2\2\u01ea\u01eb\t")
+        buf.write("\20\2\2\u01eb_\3\2\2\2\u01ec\u01ed\7H\2\2\u01eda\3\2\2")
+        buf.write("\2\'fhquy\u0083\u0088\u00a9\u00b2\u00cf\u00d1\u00dd\u00e5")
+        buf.write("\u00e8\u00f1\u0106\u010a\u0118\u012a\u013e\u0148\u015e")
+        buf.write("\u0162\u016b\u016f\u0178\u017c\u0188\u018f\u0199\u01ac")
+        buf.write("\u01b6\u01be\u01c1\u01cf\u01d8\u01da")
         return buf.getvalue()
 
 
@@ -4153,29 +4158,31 @@ class dpm_xlParser ( Parser ):
         try:
             self.state = 407
             self._errHandler.sync(self)
-            token = self._input.LA(1)
-            if token in [dpm_xlParser.LPAREN, dpm_xlParser.INTERVAL, dpm_xlParser.DEFAULT, dpm_xlParser.ROW, dpm_xlParser.ROW_RANGE, dpm_xlParser.ROW_ALL, dpm_xlParser.COL, dpm_xlParser.COL_RANGE, dpm_xlParser.COL_ALL, dpm_xlParser.SHEET, dpm_xlParser.SHEET_RANGE, dpm_xlParser.SHEET_ALL, dpm_xlParser.TABLE_REFERENCE, dpm_xlParser.TABLE_GROUP_REFERENCE]:
+            la_ = self._interp.adaptivePredict(self._input,29,self._ctx)
+            if la_ == 1:
                 self.enterOuterAlt(localctx, 1)
                 self.state = 403
                 self.cellRef()
                 pass
-            elif token in [dpm_xlParser.VAR_REFERENCE]:
+
+            elif la_ == 2:
                 self.enterOuterAlt(localctx, 2)
                 self.state = 404
                 self.varRef()
                 pass
-            elif token in [dpm_xlParser.OPERATION_REFERENCE]:
+
+            elif la_ == 3:
                 self.enterOuterAlt(localctx, 3)
                 self.state = 405
                 self.operationRef()
                 pass
-            elif token in [dpm_xlParser.PRECONDITION_ELEMENT]:
+
+            elif la_ == 4:
                 self.enterOuterAlt(localctx, 4)
                 self.state = 406
                 self.preconditionElem()
                 pass
-            else:
-                raise NoViableAltException(self)
+
 
         except RecognitionException as re:
             localctx.exception = re
@@ -4445,6 +4452,42 @@ class dpm_xlParser ( Parser ):
 
 
 
+    class OpRefContext(CellAddressContext):
+
+        def __init__(self, parser, ctx:ParserRuleContext): # actually a dpm_xlParser.CellAddressContext
+            super().__init__(parser)
+            self.copyFrom(ctx)
+
+        def operationRef(self):
+            return self.getTypedRuleContext(dpm_xlParser.OperationRefContext,0)
+
+        def COMMA(self, i:int=None):
+            if i is None:
+                return self.getTokens(dpm_xlParser.COMMA)
+            else:
+                return self.getToken(dpm_xlParser.COMMA, i)
+        def argument(self, i:int=None):
+            if i is None:
+                return self.getTypedRuleContexts(dpm_xlParser.ArgumentContext)
+            else:
+                return self.getTypedRuleContext(dpm_xlParser.ArgumentContext,i)
+
+
+        def enterRule(self, listener:ParseTreeListener):
+            if hasattr( listener, "enterOpRef" ):
+                listener.enterOpRef(self)
+
+        def exitRule(self, listener:ParseTreeListener):
+            if hasattr( listener, "exitOpRef" ):
+                listener.exitOpRef(self)
+
+        def accept(self, visitor:ParseTreeVisitor):
+            if hasattr( visitor, "visitOpRef" ):
+                return visitor.visitOpRef(self)
+            else:
+                return visitor.visitChildren(self)
+
+
     class CompRefContext(CellAddressContext):
 
         def __init__(self, parser, ctx:ParserRuleContext): # actually a dpm_xlParser.CellAddressContext
@@ -4521,7 +4564,7 @@ class dpm_xlParser ( Parser ):
         self.enterRule(localctx, 76, self.RULE_cellAddress)
         self._la = 0 # Token type
         try:
-            self.state = 437
+            self.state = 447
             self._errHandler.sync(self)
             token = self._input.LA(1)
             if token in [dpm_xlParser.TABLE_REFERENCE, dpm_xlParser.TABLE_GROUP_REFERENCE]:
@@ -4542,20 +4585,42 @@ class dpm_xlParser ( Parser ):
                     _la = self._input.LA(1)
 
                 pass
-            elif token in [dpm_xlParser.LPAREN, dpm_xlParser.INTERVAL, dpm_xlParser.DEFAULT, dpm_xlParser.ROW, dpm_xlParser.ROW_RANGE, dpm_xlParser.ROW_ALL, dpm_xlParser.COL, dpm_xlParser.COL_RANGE, dpm_xlParser.COL_ALL, dpm_xlParser.SHEET, dpm_xlParser.SHEET_RANGE, dpm_xlParser.SHEET_ALL]:
-                localctx = dpm_xlParser.CompRefContext(self, localctx)
+            elif token in [dpm_xlParser.OPERATION_REFERENCE]:
+                localctx = dpm_xlParser.OpRefContext(self, localctx)
                 self.enterOuterAlt(localctx, 2)
                 self.state = 429
+                self.operationRef()
+                self.state = 430
+                self.match(dpm_xlParser.COMMA)
+                self.state = 431
                 self.argument()
-                self.state = 434
+                self.state = 436
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
                 while _la==dpm_xlParser.COMMA:
-                    self.state = 430
+                    self.state = 432
                     self.match(dpm_xlParser.COMMA)
-                    self.state = 431
+                    self.state = 433
                     self.argument()
-                    self.state = 436
+                    self.state = 438
+                    self._errHandler.sync(self)
+                    _la = self._input.LA(1)
+
+                pass
+            elif token in [dpm_xlParser.LPAREN, dpm_xlParser.INTERVAL, dpm_xlParser.DEFAULT, dpm_xlParser.ROW, dpm_xlParser.ROW_RANGE, dpm_xlParser.ROW_ALL, dpm_xlParser.COL, dpm_xlParser.COL_RANGE, dpm_xlParser.COL_ALL, dpm_xlParser.SHEET, dpm_xlParser.SHEET_RANGE, dpm_xlParser.SHEET_ALL]:
+                localctx = dpm_xlParser.CompRefContext(self, localctx)
+                self.enterOuterAlt(localctx, 3)
+                self.state = 439
+                self.argument()
+                self.state = 444
+                self._errHandler.sync(self)
+                _la = self._input.LA(1)
+                while _la==dpm_xlParser.COMMA:
+                    self.state = 440
+                    self.match(dpm_xlParser.COMMA)
+                    self.state = 441
+                    self.argument()
+                    self.state = 446
                     self._errHandler.sync(self)
                     _la = self._input.LA(1)
 
@@ -4611,7 +4676,7 @@ class dpm_xlParser ( Parser ):
         self._la = 0 # Token type
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 439
+            self.state = 449
             _la = self._input.LA(1)
             if not(_la==dpm_xlParser.TABLE_REFERENCE or _la==dpm_xlParser.TABLE_GROUP_REFERENCE):
                 self._errHandler.recoverInline(self)
@@ -4777,41 +4842,41 @@ class dpm_xlParser ( Parser ):
         self.enterRule(localctx, 80, self.RULE_clauseOperators)
         self._la = 0 # Token type
         try:
-            self.state = 462
+            self.state = 472
             self._errHandler.sync(self)
             token = self._input.LA(1)
             if token in [dpm_xlParser.WHERE]:
                 localctx = dpm_xlParser.WhereExprContext(self, localctx)
                 self.enterOuterAlt(localctx, 1)
-                self.state = 441
+                self.state = 451
                 self.match(dpm_xlParser.WHERE)
-                self.state = 442
+                self.state = 452
                 self.expression(0)
                 pass
             elif token in [dpm_xlParser.GET]:
                 localctx = dpm_xlParser.GetExprContext(self, localctx)
                 self.enterOuterAlt(localctx, 2)
-                self.state = 443
+                self.state = 453
                 self.match(dpm_xlParser.GET)
-                self.state = 444
+                self.state = 454
                 self.keyNames()
                 pass
             elif token in [dpm_xlParser.RENAME]:
                 localctx = dpm_xlParser.RenameExprContext(self, localctx)
                 self.enterOuterAlt(localctx, 3)
-                self.state = 445
+                self.state = 455
                 self.match(dpm_xlParser.RENAME)
-                self.state = 446
+                self.state = 456
                 self.renameClause()
-                self.state = 451
+                self.state = 461
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
                 while _la==dpm_xlParser.COMMA:
-                    self.state = 447
+                    self.state = 457
                     self.match(dpm_xlParser.COMMA)
-                    self.state = 448
+                    self.state = 458
                     self.renameClause()
-                    self.state = 453
+                    self.state = 463
                     self._errHandler.sync(self)
                     _la = self._input.LA(1)
 
@@ -4819,25 +4884,25 @@ class dpm_xlParser ( Parser ):
             elif token in [dpm_xlParser.SUB]:
                 localctx = dpm_xlParser.SubExprContext(self, localctx)
                 self.enterOuterAlt(localctx, 4)
-                self.state = 454
+                self.state = 464
                 self.match(dpm_xlParser.SUB)
-                self.state = 455
+                self.state = 465
                 self.propertyCode()
-                self.state = 456
+                self.state = 466
                 self.match(dpm_xlParser.EQ)
-                self.state = 460
+                self.state = 470
                 self._errHandler.sync(self)
                 token = self._input.LA(1)
                 if token in [dpm_xlParser.BOOLEAN_LITERAL, dpm_xlParser.INTEGER_LITERAL, dpm_xlParser.DECIMAL_LITERAL, dpm_xlParser.PERCENT_LITERAL, dpm_xlParser.STRING_LITERAL, dpm_xlParser.EMPTY_LITERAL, dpm_xlParser.DATE_LITERAL, dpm_xlParser.TIME_INTERVAL_LITERAL, dpm_xlParser.TIME_PERIOD_LITERAL]:
-                    self.state = 457
+                    self.state = 467
                     self.literal()
                     pass
                 elif token in [dpm_xlParser.CURLY_BRACKET_LEFT]:
-                    self.state = 458
+                    self.state = 468
                     self.select()
                     pass
                 elif token in [dpm_xlParser.SQUARE_BRACKET_LEFT]:
-                    self.state = 459
+                    self.state = 469
                     self.itemReference()
                     pass
                 else:
@@ -4862,11 +4927,11 @@ class dpm_xlParser ( Parser ):
             super().__init__(parent, invokingState)
             self.parser = parser
 
-        def propertyCode(self, i:int=None):
+        def keyNames(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(dpm_xlParser.PropertyCodeContext)
+                return self.getTypedRuleContexts(dpm_xlParser.KeyNamesContext)
             else:
-                return self.getTypedRuleContext(dpm_xlParser.PropertyCodeContext,i)
+                return self.getTypedRuleContext(dpm_xlParser.KeyNamesContext,i)
 
 
         def TO(self):
@@ -4898,12 +4963,12 @@ class dpm_xlParser ( Parser ):
         self.enterRule(localctx, 82, self.RULE_renameClause)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 464
-            self.propertyCode()
-            self.state = 465
+            self.state = 474
+            self.keyNames()
+            self.state = 475
             self.match(dpm_xlParser.TO)
-            self.state = 466
-            self.propertyCode()
+            self.state = 476
+            self.keyNames()
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -4964,7 +5029,7 @@ class dpm_xlParser ( Parser ):
         self._la = 0 # Token type
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 468
+            self.state = 478
             _la = self._input.LA(1)
             if not((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << dpm_xlParser.EQ) | (1 << dpm_xlParser.NE) | (1 << dpm_xlParser.LT) | (1 << dpm_xlParser.LE) | (1 << dpm_xlParser.GT) | (1 << dpm_xlParser.GE))) != 0)):
                 self._errHandler.recoverInline(self)
@@ -5040,7 +5105,7 @@ class dpm_xlParser ( Parser ):
         self._la = 0 # Token type
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 470
+            self.state = 480
             _la = self._input.LA(1)
             if not((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << dpm_xlParser.BOOLEAN_LITERAL) | (1 << dpm_xlParser.INTEGER_LITERAL) | (1 << dpm_xlParser.DECIMAL_LITERAL) | (1 << dpm_xlParser.PERCENT_LITERAL))) != 0) or ((((_la - 65)) & ~0x3f) == 0 and ((1 << (_la - 65)) & ((1 << (dpm_xlParser.STRING_LITERAL - 65)) | (1 << (dpm_xlParser.EMPTY_LITERAL - 65)) | (1 << (dpm_xlParser.DATE_LITERAL - 65)) | (1 << (dpm_xlParser.TIME_INTERVAL_LITERAL - 65)) | (1 << (dpm_xlParser.TIME_PERIOD_LITERAL - 65)))) != 0)):
                 self._errHandler.recoverInline(self)
@@ -5101,7 +5166,7 @@ class dpm_xlParser ( Parser ):
         self._la = 0 # Token type
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 472
+            self.state = 482
             _la = self._input.LA(1)
             if not(((((_la - 89)) & ~0x3f) == 0 and ((1 << (_la - 89)) & ((1 << (dpm_xlParser.ROW_COMPONENT - 89)) | (1 << (dpm_xlParser.COL_COMPONENT - 89)) | (1 << (dpm_xlParser.SHEET_COMPONENT - 89)) | (1 << (dpm_xlParser.PROPERTY_CODE - 89)))) != 0)):
                 self._errHandler.recoverInline(self)
@@ -5159,11 +5224,11 @@ class dpm_xlParser ( Parser ):
         self.enterRule(localctx, 90, self.RULE_propertyReference)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 474
+            self.state = 484
             self.match(dpm_xlParser.SQUARE_BRACKET_LEFT)
-            self.state = 475
+            self.state = 485
             self.propertyCode()
-            self.state = 476
+            self.state = 486
             self.match(dpm_xlParser.SQUARE_BRACKET_RIGHT)
         except RecognitionException as re:
             localctx.exception = re
@@ -5213,7 +5278,7 @@ class dpm_xlParser ( Parser ):
         self._la = 0 # Token type
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 478
+            self.state = 488
             _la = self._input.LA(1)
             if not(_la==dpm_xlParser.CODE or _la==dpm_xlParser.PROPERTY_CODE):
                 self._errHandler.recoverInline(self)
@@ -5264,7 +5329,7 @@ class dpm_xlParser ( Parser ):
         self.enterRule(localctx, 94, self.RULE_temporaryIdentifier)
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 480
+            self.state = 490
             self.match(dpm_xlParser.CODE)
         except RecognitionException as re:
             localctx.exception = re

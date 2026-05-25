@@ -629,6 +629,15 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by dpm_xlParser#opRef.
+    def enterOpRef(self, ctx:dpm_xlParser.OpRefContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#opRef.
+    def exitOpRef(self, ctx:dpm_xlParser.OpRefContext):
+        pass
+
+
     # Enter a parse tree produced by dpm_xlParser#compRef.
     def enterCompRef(self, ctx:dpm_xlParser.CompRefContext):
         pass

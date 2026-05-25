@@ -227,17 +227,11 @@ class ASTVisitor(dpm_xlParserVisitor):
 
     def visitKeyNames(self, ctx: dpm_xlParser.KeyNamesContext) -> str:
         child = ctx.getChild(0)
-        text = cast(str, child.symbol.text)
-        if text.startswith("`"):  # strip backtick escaping (`sum` to sum)
-            return text[1:-1]
-        return text
+        return cast(str, child.symbol.text)
 
     def visitPropertyCode(self, ctx: dpm_xlParser.PropertyCodeContext) -> str:
         child = ctx.getChild(0)
-        text = cast(str, child.symbol.text)
-        if text.startswith("`"):  # strip backtick escaping (`sum` to sum)
-            return text[1:-1]
-        return text
+        return cast(str, child.symbol.text)
 
     def visitUnaryNumericFunctions(
         self, ctx: dpm_xlParser.UnaryNumericFunctionsContext
@@ -508,6 +502,10 @@ class ASTVisitor(dpm_xlParserVisitor):
             return Constant(type_="Boolean", value=constant_value)
         elif type_ == dpm_xlParser.DATE_LITERAL:
             return Constant(type_="Date", value=value.replace("#", ""))
+        elif type_ == dpm_xlParser.TIME_PERIOD_LITERAL:
+            return Constant(type_="TimePeriod", value=value.replace("#", ""))
+        elif type_ == dpm_xlParser.TIME_INTERVAL_LITERAL:
+            return Constant(type_="TimeInterval", value=value.replace("#", ""))
         elif type_ == dpm_xlParser.EMPTY_LITERAL:
             value = value[1:-1]
             return Constant(type_="String", value=value)
@@ -516,15 +514,10 @@ class ASTVisitor(dpm_xlParserVisitor):
         else:
             raise NotImplementedError
 
-    def visitVarRef(
-        self, ctx: dpm_xlParser.VarRefContext
-    ) -> VarRef | PreconditionItem:
+    def visitVarRef(self, ctx: dpm_xlParser.VarRefContext) -> VarRef:
         child = ctx.getChild(0)
-        text = child.symbol.text
-        if text.startswith("v_"):
-            code = text[2:]
-            return PreconditionItem(variable_id=code, variable_code=code)
-        return VarRef(variable=text[1:])
+        variable = child.symbol.text[1:]
+        return VarRef(variable=variable)
 
     def visitCellRef(self, ctx: dpm_xlParser.CellRefContext) -> VarID | None:
         ctx_list = list(ctx.getChildren())
@@ -532,9 +525,28 @@ class ASTVisitor(dpm_xlParserVisitor):
         child = ctx_list[0]
         if isinstance(child, dpm_xlParser.TableRefContext):
             return self.visitTableRef(child)
+        elif isinstance(child, dpm_xlParser.OpRefContext):
+            return self.visitOpRef(child)
         elif isinstance(child, dpm_xlParser.CompRefContext):
             return self.visitCompRef(child)
         return None
+
+    def visitOpRef(self, ctx: dpm_xlParser.OpRefContext) -> VarID:
+        ctx_list = list(ctx.getChildren())
+        operation_ref: OperationRef = self._visit(ctx_list[0])
+        return self.create_var_id(
+            ctx_list=ctx_list,
+            operation=operation_ref.operation_code,
+        )
+
+    def visitPreconditionElem(
+        self, ctx: dpm_xlParser.PreconditionElemContext
+    ) -> PreconditionItem:
+        child = ctx.getChild(0)
+        precondition = child.symbol.text[2:]
+        return PreconditionItem(
+            variable_id=precondition, variable_code=precondition
+        )  # This is not the variable_id but we keep the name for later
 
     def visitOperationRef(
         self, ctx: dpm_xlParser.OperationRefContext
@@ -548,6 +560,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         ctx_list: list[Any],
         table: str | None = None,
         is_table_group: bool = False,
+        operation: str | None = None,
     ) -> VarID:
         rows: list[str] | None = None
         cols: list[str] | None = None
@@ -584,6 +597,7 @@ class ASTVisitor(dpm_xlParserVisitor):
             interval=interval,
             default=default,
             is_table_group=is_table_group,
+            operation=operation,
         )
 
     def visitTableRef(self, ctx: dpm_xlParser.TableRefContext) -> VarID:
@@ -696,8 +710,6 @@ class ASTVisitor(dpm_xlParserVisitor):
     ) -> TemporaryIdentifier:
         child = ctx.getChild(0)
         value = child.symbol.text
-        if value.startswith("`"):  # strip backtick escaping (`sum` to sum)
-            value = value[1:-1]
         return TemporaryIdentifier(value=value)
 
     @staticmethod
