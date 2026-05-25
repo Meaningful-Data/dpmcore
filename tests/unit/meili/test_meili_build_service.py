@@ -24,6 +24,7 @@ class TestMeiliBuildService:
         ):
             result = MeiliBuildService().build(output_file=str(output_file))
 
+        migrate_csv.assert_called_once()
         call = migrate_csv.call_args
         assert call.args[0] == str(Path("data/DPM"))
         assert result.operations_written == 12
@@ -160,6 +161,7 @@ class TestMeiliBuildService:
                 source_dir=str(custom_dir),
             )
 
+        migrate_csv.assert_called_once()
         call = migrate_csv.call_args
         assert call.args[0] == str(custom_dir)
         assert result.used_access_file is False
