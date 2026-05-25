@@ -178,7 +178,6 @@ selectOperand:
     cellRef
     | varRef
     | operationRef
-    | preconditionElem
     ;
 
 varID:
@@ -187,10 +186,6 @@ varID:
 
 cellRef:
     address=cellAddress
-    ;
-
-preconditionElem:
-    PRECONDITION_ELEMENT
     ;
 
 varRef:
@@ -202,8 +197,9 @@ operationRef:
     ;
 
 cellAddress:
-    tableReference (COMMA argument)*               #tableRef
-    | argument (COMMA argument)*                   #compRef;
+    tableReference (COMMA argument)*                        #tableRef
+    | operationRef COMMA argument (COMMA argument)*         #opRef
+    | argument (COMMA argument)*                            #compRef;
 
 tableReference:
     TABLE_REFERENCE
@@ -224,7 +220,7 @@ subAssignment:
     ;
 
 renameClause:
-    keyNames TO keyNames
+    propertyCode TO propertyCode
     ;
 
 comparisonOperators:
@@ -250,6 +246,7 @@ keyNames:
     | COL_COMPONENT
     | SHEET_COMPONENT
     | PROPERTY_CODE
+    | ESCAPED_IDENTIFIER
 ;
 
 propertyReference:
@@ -258,8 +255,10 @@ propertyReference:
 propertyCode:
     PROPERTY_CODE
     | CODE
+    | ESCAPED_IDENTIFIER
     ;
 
 temporaryIdentifier:
     CODE
+    | ESCAPED_IDENTIFIER
     ;

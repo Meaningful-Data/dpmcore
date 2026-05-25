@@ -54,6 +54,12 @@ from dpmcore.dpm_xl.utils.tokens import TABLE_GROUP_PREFIX
 from dpmcore.errors import SemanticError
 
 
+def _strip_backticks(text: str) -> str:
+    if len(text) >= 2 and text.startswith("`") and text.endswith("`"):
+        return text[1:-1]
+    return text
+
+
 class ASTVisitor(dpm_xlParserVisitor):
     """Class to walk to generate an AST which nodes are defined at AST.ASTObjects.
 
@@ -228,11 +234,11 @@ class ASTVisitor(dpm_xlParserVisitor):
 
     def visitKeyNames(self, ctx: dpm_xlParser.KeyNamesContext) -> str:
         child = ctx.getChild(0)
-        return cast(str, child.symbol.text)
+        return _strip_backticks(cast(str, child.symbol.text))
 
     def visitPropertyCode(self, ctx: dpm_xlParser.PropertyCodeContext) -> str:
         child = ctx.getChild(0)
-        return cast(str, child.symbol.text)
+        return _strip_backticks(cast(str, child.symbol.text))
 
     def visitUnaryNumericFunctions(
         self, ctx: dpm_xlParser.UnaryNumericFunctionsContext
@@ -514,10 +520,15 @@ class ASTVisitor(dpm_xlParserVisitor):
         else:
             raise NotImplementedError
 
-    def visitVarRef(self, ctx: dpm_xlParser.VarRefContext) -> VarRef:
+    def visitVarRef(
+        self, ctx: dpm_xlParser.VarRefContext
+    ) -> VarRef | PreconditionItem:
         child = ctx.getChild(0)
-        variable = child.symbol.text[1:]
-        return VarRef(variable=variable)
+        text = child.symbol.text
+        if text.startswith("v_"):
+            code = text[2:]
+            return PreconditionItem(variable_id=code, variable_code=code)
+        return VarRef(variable=text[1:])
 
     def visitCellRef(self, ctx: dpm_xlParser.CellRefContext) -> VarID | None:
         ctx_list = list(ctx.getChildren())
@@ -525,18 +536,19 @@ class ASTVisitor(dpm_xlParserVisitor):
         child = ctx_list[0]
         if isinstance(child, dpm_xlParser.TableRefContext):
             return self.visitTableRef(child)
+        elif isinstance(child, dpm_xlParser.OpRefContext):
+            return self.visitOpRef(child)
         elif isinstance(child, dpm_xlParser.CompRefContext):
             return self.visitCompRef(child)
         return None
 
-    def visitPreconditionElem(
-        self, ctx: dpm_xlParser.PreconditionElemContext
-    ) -> PreconditionItem:
-        child = ctx.getChild(0)
-        precondition = child.symbol.text[2:]
-        return PreconditionItem(
-            variable_id=precondition, variable_code=precondition
-        )  # This is not the variable_id but we keep the name for later
+    def visitOpRef(self, ctx: dpm_xlParser.OpRefContext) -> VarID:
+        ctx_list = list(ctx.getChildren())
+        operation_ref: OperationRef = self._visit(ctx_list[0])
+        return self.create_var_id(
+            ctx_list=ctx_list,
+            operation=operation_ref.operation_code,
+        )
 
     def visitOperationRef(
         self, ctx: dpm_xlParser.OperationRefContext
@@ -550,6 +562,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         ctx_list: list[Any],
         table: str | None = None,
         is_table_group: bool = False,
+        operation: str | None = None,
     ) -> VarID:
         rows: list[str] | None = None
         cols: list[str] | None = None
@@ -586,6 +599,7 @@ class ASTVisitor(dpm_xlParserVisitor):
             interval=interval,
             default=default,
             is_table_group=is_table_group,
+            operation=operation,
         )
 
     def visitTableRef(self, ctx: dpm_xlParser.TableRefContext) -> VarID:
@@ -697,7 +711,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         self, ctx: dpm_xlParser.TemporaryIdentifierContext
     ) -> TemporaryIdentifier:
         child = ctx.getChild(0)
-        value = child.symbol.text
+        value = _strip_backticks(child.symbol.text)
         return TemporaryIdentifier(value=value)
 
     @staticmethod
