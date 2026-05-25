@@ -510,10 +510,15 @@ class ASTVisitor(dpm_xlParserVisitor):
         else:
             raise NotImplementedError
 
-    def visitVarRef(self, ctx: dpm_xlParser.VarRefContext) -> VarRef:
+    def visitVarRef(
+        self, ctx: dpm_xlParser.VarRefContext
+    ) -> VarRef | PreconditionItem:
         child = ctx.getChild(0)
-        variable = child.symbol.text[1:]
-        return VarRef(variable=variable)
+        text = child.symbol.text
+        if text.startswith("v_"):
+            code = text[2:]
+            return PreconditionItem(variable_id=code, variable_code=code)
+        return VarRef(variable=text[1:])
 
     def visitCellRef(self, ctx: dpm_xlParser.CellRefContext) -> VarID | None:
         ctx_list = list(ctx.getChildren())
@@ -524,15 +529,6 @@ class ASTVisitor(dpm_xlParserVisitor):
         elif isinstance(child, dpm_xlParser.CompRefContext):
             return self.visitCompRef(child)
         return None
-
-    def visitPreconditionElem(
-        self, ctx: dpm_xlParser.PreconditionElemContext
-    ) -> PreconditionItem:
-        child = ctx.getChild(0)
-        precondition = child.symbol.text[2:]
-        return PreconditionItem(
-            variable_id=precondition, variable_code=precondition
-        )  # This is not the variable_id but we keep the name for later
 
     def visitOperationRef(
         self, ctx: dpm_xlParser.OperationRefContext

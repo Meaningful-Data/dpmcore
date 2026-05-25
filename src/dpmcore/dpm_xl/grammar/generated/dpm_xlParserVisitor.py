@@ -334,11 +334,6 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by dpm_xlParser#preconditionElem.
-    def visitPreconditionElem(self, ctx:dpm_xlParser.PreconditionElemContext):
-        return self.visitChildren(ctx)
-
-
     # Visit a parse tree produced by dpm_xlParser#varRef.
     def visitVarRef(self, ctx:dpm_xlParser.VarRefContext):
         return self.visitChildren(ctx)
