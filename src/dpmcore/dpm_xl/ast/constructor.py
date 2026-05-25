@@ -508,10 +508,6 @@ class ASTVisitor(dpm_xlParserVisitor):
             return Constant(type_="Boolean", value=constant_value)
         elif type_ == dpm_xlParser.DATE_LITERAL:
             return Constant(type_="Date", value=value.replace("#", ""))
-        elif type_ == dpm_xlParser.TIME_PERIOD_LITERAL:
-            return Constant(type_="TimePeriod", value=value.replace("#", ""))
-        elif type_ == dpm_xlParser.TIME_INTERVAL_LITERAL:
-            return Constant(type_="TimeInterval", value=value.replace("#", ""))
         elif type_ == dpm_xlParser.EMPTY_LITERAL:
             value = value[1:-1]
             return Constant(type_="String", value=value)
