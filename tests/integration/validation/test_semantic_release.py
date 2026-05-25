@@ -287,3 +287,22 @@ with {tF_40.01}:
     assert result.is_valid, (
         f"Expected valid for release_id=5, but got error: {result.error_message}"
     )
+
+
+def test_sub_duplicate_property_code_rejected(fixture_session):
+    """Duplicate property codes in a single sub clause are rejected end-to-end.
+
+    The duplicate-key guard in InputAnalyzer.visit_SubOp fires before the
+    chained validate loop, surfacing a clear 4-5-3-1 error instead of the
+    misleading 2-8 "key not on recordset" that would otherwise come from
+    the second iteration.
+    """
+    expression = '{tC_09.02, r0030, c0080}[sub qEBB = "x", qEBB = "y"]'
+    svc = SemanticService(fixture_session)
+    result = svc.validate(expression, release_id=5)
+    assert not result.is_valid
+    assert result.error_code == "4-5-3-1", (
+        f"Expected error code 4-5-3-1, got {result.error_code}: "
+        f"{result.error_message}"
+    )
+    assert "qEBB" in (result.error_message or "")

@@ -556,6 +556,17 @@ class InputAnalyzer(ASTTemplate, ABC):
         # operators/clause.py). Call it directly so mypy sees the correct
         # signature; the mapping lookup would yield the erased base type.
         _ = CLAUSE_OP_MAPPING[SUB]
+        # Reject duplicate property codes up-front. Otherwise the chain
+        # below would drop the component on the first iteration and the
+        # second would fail with a misleading "key not on recordset" error
+        # (code 2-8) from operators/clause.py.
+        seen: set[str] = set()
+        for sub in node.substitutions:
+            if sub.property_code in seen:
+                raise errors.SemanticError(
+                    "4-5-3-1", property_code=sub.property_code
+                )
+            seen.add(sub.property_code)
         result = self.visit(node.operand)
         for sub in node.substitutions:
             value = self.visit(sub.value)
