@@ -227,11 +227,17 @@ class ASTVisitor(dpm_xlParserVisitor):
 
     def visitKeyNames(self, ctx: dpm_xlParser.KeyNamesContext) -> str:
         child = ctx.getChild(0)
-        return cast(str, child.symbol.text)
+        text = cast(str, child.symbol.text)
+        if text.startswith("`"):  # strip backtick escaping (`sum` to sum)
+            return text[1:-1]
+        return text
 
     def visitPropertyCode(self, ctx: dpm_xlParser.PropertyCodeContext) -> str:
         child = ctx.getChild(0)
-        return cast(str, child.symbol.text)
+        text = cast(str, child.symbol.text)
+        if text.startswith("`"):  # strip backtick escaping (`sum` to sum)
+            return text[1:-1]
+        return text
 
     def visitUnaryNumericFunctions(
         self, ctx: dpm_xlParser.UnaryNumericFunctionsContext
@@ -710,6 +716,8 @@ class ASTVisitor(dpm_xlParserVisitor):
     ) -> TemporaryIdentifier:
         child = ctx.getChild(0)
         value = child.symbol.text
+        if value.startswith("`"):  # strip backtick escaping (`sum` to sum)
+            value = value[1:-1]
         return TemporaryIdentifier(value=value)
 
     @staticmethod
