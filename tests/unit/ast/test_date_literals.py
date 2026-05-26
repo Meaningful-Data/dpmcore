@@ -9,7 +9,6 @@ import pytest
 from dpmcore.dpm_xl.ast.nodes import Constant
 from dpmcore.services.syntax import SyntaxService
 
-
 VALID_DATE_LITERALS = [
     "#2023-01-01#",
     "#2023-12-31#",
@@ -18,12 +17,12 @@ VALID_DATE_LITERALS = [
 
 INVALID_HASH_LITERALS = [
     "#2023-01-01/2023-12-31#",  # interval: DATE/DATE
-    "#2023A#",                  # time period: annual
-    "#2023Q3#",                 # time period: quarterly
-    "#2023M06#",                # time period: monthly
-    "#2023W12#",                # time period: weekly
-    "#2023D045#",               # time period: daily
-    "#not-a-date#",             # completely invalid
+    "#2023A#",  # time period: annual
+    "#2023Q3#",  # time period: quarterly
+    "#2023M06#",  # time period: monthly
+    "#2023W12#",  # time period: weekly
+    "#2023D045#",  # time period: daily
+    "#not-a-date#",  # completely invalid
 ]
 
 

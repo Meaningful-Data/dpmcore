@@ -215,10 +215,14 @@ clauseOperators:
     WHERE expression                                             #whereExpr
     | GET keyNames                                               #getExpr
     | RENAME renameClause (COMMA renameClause)*                  #renameExpr
-    | SUB propertyCode EQ (literal | select | itemReference)     #subExpr
+    | SUB subAssignment (COMMA subAssignment)*                   #subExpr
     ;
 
 // Always on grammar, not on tokens. Order is important (top ones should be the enclosing ones)
+
+subAssignment:
+    propertyCode EQ (literal | select | itemReference)
+    ;
 
 renameClause:
     propertyCode TO propertyCode

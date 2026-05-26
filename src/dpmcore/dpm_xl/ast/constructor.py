@@ -35,6 +35,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     Scalar,
     Set,
     Start,
+    SubAssignment,
     SubOp,
     TemporaryAssignment,
     TemporaryIdentifier,
@@ -51,6 +52,12 @@ from dpmcore.dpm_xl.grammar.generated.dpm_xlParserVisitor import (
 )
 from dpmcore.dpm_xl.utils.tokens import TABLE_GROUP_PREFIX
 from dpmcore.errors import SemanticError
+
+
+def _strip_backticks(text: str) -> str:
+    if len(text) >= 2 and text.startswith("`") and text.endswith("`"):
+        return text[1:-1]
+    return text
 
 
 class ASTVisitor(dpm_xlParserVisitor):
@@ -341,10 +348,8 @@ class ASTVisitor(dpm_xlParserVisitor):
             rename_nodes = self.visitRenameExpr(ctx_list[2])
             return RenameOp(operand=operand, rename_nodes=rename_nodes)
         elif isinstance(ctx_list[2], dpm_xlParser.SubExprContext):
-            property_code, value = self.visitSubExpr(ctx_list[2])
-            return SubOp(
-                operand=operand, property_code=property_code, value=value
-            )
+            substitutions = self.visitSubExpr(ctx_list[2])
+            return SubOp(operand=operand, substitutions=substitutions)
         return None
 
     def visitWhereExpr(self, ctx: dpm_xlParser.WhereExprContext) -> AST:
@@ -373,15 +378,20 @@ class ASTVisitor(dpm_xlParserVisitor):
 
     def visitSubExpr(
         self, ctx: dpm_xlParser.SubExprContext
-    ) -> tuple[str, AST]:
-        # SUB propertyCode EQ (literal | select | itemReference)
+    ) -> list[SubAssignment]:
+        substitutions: list[SubAssignment] = []
+        for child in ctx.getChildren():
+            if isinstance(child, dpm_xlParser.SubAssignmentContext):
+                substitutions.append(self._visit(child))
+        return substitutions
+
+    def visitSubAssignment(
+        self, ctx: dpm_xlParser.SubAssignmentContext
+    ) -> SubAssignment:
         ctx_list = list(ctx.getChildren())
-        property_code: str = self._visit(ctx_list[1])  # propertyCode
-        # ctx_list[2] is EQ
-        value: AST = self._visit(
-            ctx_list[3]
-        )  # literal, select, or itemReference
-        return property_code, value
+        property_code: str = self._visit(ctx_list[0])
+        value: AST = self._visit(ctx_list[2])
+        return SubAssignment(property_code=property_code, value=value)
 
     def create_bin_op(self, ctx: dpm_xlParser.ExpressionContext) -> BinOp:
         ctx_list = list(ctx.getChildren())
@@ -516,10 +526,15 @@ class ASTVisitor(dpm_xlParserVisitor):
         else:
             raise NotImplementedError
 
-    def visitVarRef(self, ctx: dpm_xlParser.VarRefContext) -> VarRef:
+    def visitVarRef(
+        self, ctx: dpm_xlParser.VarRefContext
+    ) -> VarRef | PreconditionItem:
         child = ctx.getChild(0)
-        variable = child.symbol.text[1:]
-        return VarRef(variable=variable)
+        text = child.symbol.text
+        if text.startswith("v_"):
+            code = text[2:]
+            return PreconditionItem(variable_id=code, variable_code=code)
+        return VarRef(variable=text[1:])
 
     def visitCellRef(self, ctx: dpm_xlParser.CellRefContext) -> VarID | None:
         ctx_list = list(ctx.getChildren())
@@ -540,15 +555,6 @@ class ASTVisitor(dpm_xlParserVisitor):
             ctx_list=ctx_list,
             operation=operation_ref.operation_code,
         )
-
-    def visitPreconditionElem(
-        self, ctx: dpm_xlParser.PreconditionElemContext
-    ) -> PreconditionItem:
-        child = ctx.getChild(0)
-        precondition = child.symbol.text[2:]
-        return PreconditionItem(
-            variable_id=precondition, variable_code=precondition
-        )  # This is not the variable_id but we keep the name for later
 
     def visitOperationRef(
         self, ctx: dpm_xlParser.OperationRefContext

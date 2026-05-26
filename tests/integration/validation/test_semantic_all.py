@@ -11,7 +11,9 @@ from sqlalchemy.orm import sessionmaker
 
 from dpmcore.services.semantic import SemanticService
 
-_DB = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "test_data.db"
+_DB = (
+    Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "test_data.db"
+)
 
 
 def _missing_reason() -> str | None:
@@ -25,7 +27,9 @@ _MISSING = _missing_reason()
 
 def _load_params():
     if _MISSING:
-        return [pytest.param("", "", "", marks=pytest.mark.skip(reason=_MISSING))]
+        return [
+            pytest.param("", "", "", marks=pytest.mark.skip(reason=_MISSING))
+        ]
 
     from sqlalchemy import text
 
@@ -75,7 +79,9 @@ def semantic_service():
     engine.dispose()
 
 
-@pytest.mark.parametrize("code,release,expression", _load_params())
+@pytest.mark.parametrize(("code", "release", "expression"), _load_params())
 def test_semantic(code, release, expression, semantic_service):
-    result = semantic_service.validate(expression, release_code=release or None)
+    result = semantic_service.validate(
+        expression, release_code=release or None
+    )
     assert result.is_valid, f"{code} | {result.error_message}"
