@@ -224,6 +224,12 @@ centralised_messages: Dict[str, str] = {
         " structure or condition must be a subset"
         " of selection."
     ),
+    # -- Sub
+    "4-5-3-1": (
+        "For sub operator, property code"
+        " {property_code} appears more than once"
+        " in the same sub clause."
+    ),
     # - Conditional Operators
     "4-6-0-1": (
         "For Conditional operators DPM components"

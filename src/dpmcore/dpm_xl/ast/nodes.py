@@ -222,6 +222,7 @@ class VarID(AST):
         interval: bool | None,
         default: Any,
         is_table_group: bool = False,
+        operation: str | None = None,
     ) -> None:
         super().__init__()
         self.table = table
@@ -231,6 +232,7 @@ class VarID(AST):
         self.interval = interval
         self.default = default
         self.is_table_group = is_table_group
+        self.operation = operation
 
     def __str__(self) -> str:
         return (
@@ -788,24 +790,21 @@ class RenameNode(AST):
         }
 
 
-class SubOp(AST):
-    """AST Object for the Sub operator. Filters a recordset based on a property substitution.
+class SubAssignment(AST):
+    """A single property substitution within a sub clause.
 
-    :parameter operand: Recordset to be filtered
     :parameter property_code: Property code to substitute
     :parameter value: Value to substitute (can be a literal, select, or itemReference)
     """
 
-    def __init__(self, operand: AST, property_code: str, value: AST) -> None:
+    def __init__(self, property_code: str, value: AST) -> None:
         super().__init__()
-        self.operand: AST = operand
         self.property_code = property_code
         self.value = value
 
     def __str__(self) -> str:
-        return "<AST(name='{name}', operand={operand}, property_code='{property_code}', value={value})>".format(
+        return "<AST(name='{name}', property_code='{property_code}', value={value})>".format(
             name=self.__class__.__name__,
-            operand=self.operand,
             property_code=self.property_code,
             value=self.value,
         )
@@ -815,9 +814,39 @@ class SubOp(AST):
     def toJSON(self) -> dict[str, Any]:
         return {
             "class_name": self.__class__.__name__,
-            "operand": self.operand,
             "property_code": self.property_code,
             "value": self.value,
+        }
+
+
+class SubOp(AST):
+    """AST Object for the Sub operator. Filters a recordset based on one or more property substitutions.
+
+    :parameter operand: Recordset to be filtered
+    :parameter substitutions: List of SubAssignment nodes (property_code = value)
+    """
+
+    def __init__(
+        self, operand: AST, substitutions: list[SubAssignment]
+    ) -> None:
+        super().__init__()
+        self.operand: AST = operand
+        self.substitutions = substitutions
+
+    def __str__(self) -> str:
+        return "<AST(name='{name}', operand={operand}, substitutions={substitutions})>".format(
+            name=self.__class__.__name__,
+            operand=self.operand,
+            substitutions=self.substitutions,
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "operand": self.operand,
+            "substitutions": self.substitutions,
         }
 
 
