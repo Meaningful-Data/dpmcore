@@ -224,6 +224,12 @@ centralised_messages: Dict[str, str] = {
         " structure or condition must be a subset"
         " of selection."
     ),
+    # -- Sub
+    "4-5-3-1": (
+        "For sub operator, property code"
+        " {property_code} appears more than once"
+        " in the same sub clause."
+    ),
     # - Conditional Operators
     "4-6-0-1": (
         "For Conditional operators DPM components"
@@ -260,6 +266,10 @@ centralised_messages: Dict[str, str] = {
     "4-7-3": (
         "For time_shift operator, var component must"
         " be specified when operand is a recordset"
+    ),
+    "4-7-4": (
+        "For time_shift operator,"
+        " shift_number must evaluate to an integer scalar"
     ),
     # Generation of validations
     "5-0-1": ("This expression doesn't generate any correct validation."),

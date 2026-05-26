@@ -287,3 +287,42 @@ with {tF_40.01}:
     assert result.is_valid, (
         f"Expected valid for release_id=5, but got error: {result.error_message}"
     )
+
+
+def test_time_shift_string_shift_number_rejected(fixture_session):
+    """time_shift shift_number must be an integer — string literal is rejected."""
+    svc = SemanticService(fixture_session)
+    result = svc.validate('time_shift({tC_09.02}, Q, "hello")', release_id=5)
+    assert not result.is_valid
+    assert result.error_code == "4-7-4"
+
+
+def test_time_shift_integer_expression_shift_number_valid(fixture_session):
+    """time_shift with an integer arithmetic shift_number is semantically valid."""
+    svc = SemanticService(fixture_session)
+    expression = (
+        "with {tC_14.00}: "
+        "if {c0075} = true and {c0120} >= time_shift({c0120}, A, 1 * 1, refPeriod) "
+        "then {c0181, default:0} < 0.05 endif"
+    )
+    result = svc.validate(expression, release_code="4.1")
+    assert result.is_valid, f"Expected valid but got: {result.error_message}"
+
+
+def test_sub_duplicate_property_code_rejected(fixture_session):
+    """Duplicate property codes in a single sub clause are rejected end-to-end.
+
+    The duplicate-key guard in InputAnalyzer.visit_SubOp fires before the
+    chained validate loop, surfacing a clear 4-5-3-1 error instead of the
+    misleading 2-8 "key not on recordset" that would otherwise come from
+    the second iteration.
+    """
+    expression = '{tC_09.02, r0030, c0080}[sub qEBB = "x", qEBB = "y"]'
+    svc = SemanticService(fixture_session)
+    result = svc.validate(expression, release_id=5)
+    assert not result.is_valid
+    assert result.error_code == "4-5-3-1", (
+        f"Expected error code 4-5-3-1, got {result.error_code}: "
+        f"{result.error_message}"
+    )
+    assert "qEBB" in (result.error_message or "")

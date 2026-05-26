@@ -503,26 +503,33 @@ class ASTToJSONVisitor(NodeVisitor):
         return result
 
     def visit_SubOp(self, node: Any) -> NodeDict:
-        """Visit SubOp nodes and serialize as SubClauseOp."""
-        # Create a Dimension node for the property_code
-        dimension: NodeDict = {
-            "class_name": "Dimension",
-            "dimension_code": node.property_code,
-        }
+        """Serialize SubOp as left-deep chained ``SubClauseOp`` nodes.
 
-        # Create a BinOp with "=" operator
-        condition: NodeDict = {
-            "class_name": "BinOp",
-            "op": "=",
-            "left": dimension,
-            "right": self.visit(node.value),
-        }
-
-        return {
-            "class_name": "SubClauseOp",
-            "operand": self.visit(node.operand),
-            "condition": condition,
-        }
+        Multi-sub ``X[sub a=1, b=2]`` is semantically equivalent to chained
+        single-subs ``X[sub a=1][sub b=2]``. The adam-engine consumer
+        defines ``SubClauseOp`` with a single ``condition`` field
+        (additionalProperties: false), so chaining is the only valid wire
+        shape -- the original recordset sits at the deepest level and each
+        substitution wraps the previous result.
+        """
+        result: NodeValue = self.visit(node.operand)
+        for sub in node.substitutions:
+            result = {
+                "class_name": "SubClauseOp",
+                "operand": result,
+                "condition": {
+                    "class_name": "BinOp",
+                    "op": "=",
+                    "left": {
+                        "class_name": "Dimension",
+                        "dimension_code": sub.property_code,
+                    },
+                    "right": self.visit(sub.value),
+                },
+            }
+        # Grammar guarantees ``substitutions`` is non-empty, so the loop
+        # rewrote ``result`` into a SubClauseOp NodeDict.
+        return cast(NodeDict, result)
 
     def visit_WhereClauseOp(self, node: Any) -> NodeDict:
         """Visit WhereClauseOp nodes."""
@@ -554,7 +561,7 @@ class ASTToJSONVisitor(NodeVisitor):
             "operand": self.visit(node.operand),
             "component": node.component,
             "period_indicator": node.period_indicator,
-            "shift_number": node.shift_number,
+            "shift_number": self.visit(node.shift_number),
         }
 
     def visit_RenameOp(self, node: Any) -> NodeDict:

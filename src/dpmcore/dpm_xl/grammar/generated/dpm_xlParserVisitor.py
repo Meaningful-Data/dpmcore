@@ -354,6 +354,11 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by dpm_xlParser#opRef.
+    def visitOpRef(self, ctx:dpm_xlParser.OpRefContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by dpm_xlParser#compRef.
     def visitCompRef(self, ctx:dpm_xlParser.CompRefContext):
         return self.visitChildren(ctx)
@@ -381,6 +386,11 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by dpm_xlParser#subExpr.
     def visitSubExpr(self, ctx:dpm_xlParser.SubExprContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#subAssignment.
+    def visitSubAssignment(self, ctx:dpm_xlParser.SubAssignmentContext):
         return self.visitChildren(ctx)
 
 

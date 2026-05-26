@@ -382,11 +382,9 @@ class MLGeneration(ASTTemplate):
         self.create_operation_node(period_indicator_node, is_leaf=True)
 
         # shift number
-        shift_number_node = AST()
-        shift_number_node.parent = get_node
-        shift_number_node.argument = "shift_number"
-        shift_number_node.scalar = getattr(node, "shift_number", None)
-        self.create_operation_node(shift_number_node, is_leaf=True)
+        node.shift_number.parent = get_node
+        node.shift_number.argument = "shift_number"
+        self.visit(node.shift_number)
 
         # component
         ast_element = AST()
@@ -508,10 +506,15 @@ class MLGeneration(ASTTemplate):
         node.operand.argument = "operand"
         self.visit(node.operand)
 
-        # Visit the value (can be literal, select, or itemReference)
-        node.value.parent = operand_node
-        node.value.argument = "value"
-        self.visit(node.value)
+        # Every substitution value shares ``argument="value"`` against the
+        # same parent ``operand_node``. This matches ``visit_ComplexNumericOp``
+        # (which reuses ``argument="operand"`` for its children) and relies on
+        # the ``Sub`` operator's ``OperatorArgument`` row for ``value`` being
+        # used by all child OperationNodes; each child is still a distinct row.
+        for sub in node.substitutions:
+            sub.value.parent = operand_node
+            sub.value.argument = "value"
+            self.visit(sub.value)
 
     def visit_PreconditionItem(self, node: PreconditionItem) -> None:
         operand_node = self.create_operation_node(node, is_leaf=True)
