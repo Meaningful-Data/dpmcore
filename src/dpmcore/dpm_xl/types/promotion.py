@@ -43,6 +43,7 @@ implicit_type_promotion_dict: dict[type[ScalarType], set[type[ScalarType]]] = {
         Item,
         Subcategory,
         Null,
+        Mixed,
     },
 }
 
