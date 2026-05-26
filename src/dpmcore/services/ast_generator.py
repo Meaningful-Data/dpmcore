@@ -1001,6 +1001,20 @@ class ASTGeneratorService:
                 )
 
     @staticmethod
+    def _to_ref_period(internal: str) -> str:
+        if internal.startswith("t+"):
+            ind = internal[2]
+            num = internal[3:]
+            if num.startswith("-"):
+                return f"T{num}{ind}"
+            return f"T+{num}{ind}"
+        if internal.startswith("t-"):
+            ind = internal[2]
+            num = internal[3:]
+            return f"T-{num}{ind}"
+        return "T"
+
+    @staticmethod
     def _extract_time_shifts(ast: Any) -> Dict[str, str]:
         """Extract per-table time shifts from an AST.
 
@@ -1014,13 +1028,23 @@ class ASTGeneratorService:
 
         class _Extractor(ASTTemplate):
             def visit_TimeShiftOp(self, node: Any) -> None:
+                from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
+
                 prev = current_period[0]
                 pi = node.period_indicator
                 sn = node.shift_number
-                if "-" in str(sn):
-                    current_period[0] = f"t+{pi}{sn}"
+                if isinstance(sn, Constant):
+                    current_period[0] = f"t-{pi}{sn.value}"
+                elif isinstance(sn, UnaryOp) and sn.op == "-":
+                    inner = sn.operand
+                    sn_str = (
+                        f"-{inner.value}"
+                        if isinstance(inner, Constant)
+                        else "n"
+                    )
+                    current_period[0] = f"t+{pi}{sn_str}"
                 else:
-                    current_period[0] = f"t-{pi}{sn}"
+                    current_period[0] = f"t-{pi}n"
                 self.visit(node.operand)
                 current_period[0] = prev
 
@@ -1028,22 +1052,12 @@ class ASTGeneratorService:
                 if node.table and current_period[0] != "t":
                     time_shifts[node.table] = current_period[0]
 
-        def _to_ref_period(internal: str) -> str:
-            if internal.startswith("t+"):
-                ind = internal[2]
-                num = internal[3:]
-                if num.startswith("-"):
-                    return f"T{num}{ind}"
-                return f"T+{num}{ind}"
-            if internal.startswith("t-"):
-                ind = internal[2]
-                num = internal[3:]
-                return f"T-{num}{ind}"
-            return "T"
-
         try:
             _Extractor().visit(ast)
-            return {t: _to_ref_period(p) for t, p in time_shifts.items()}
+            return {
+                t: ASTGeneratorService._to_ref_period(p)
+                for t, p in time_shifts.items()
+            }
         except Exception:
             logger.exception(
                 "Failed to extract time shifts; returning an empty mapping.",

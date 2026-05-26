@@ -15,6 +15,7 @@ warnings.filterwarnings(
 from dpmcore import errors
 from dpmcore.dpm_xl.ast.nodes import (
     AST,
+    Constant,
     Dimension,
     GetOp,
     OperationRef,
@@ -22,6 +23,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     PreconditionItem,
     Scalar,
     TemporaryAssignment,
+    TimeShiftOp,
     VarID,
     VarRef,
     WhereClauseOp,
@@ -625,6 +627,17 @@ class OperandsChecking(ASTTemplate, ABC):
         if node.item and node.scalar_type == "Item":
             if node.item not in self.items:
                 self.items.append(node.item)
+
+    def visit_TimeShiftOp(self, node: TimeShiftOp) -> None:
+        if isinstance(node.shift_number, Constant):
+            sn_type = ScalarFactory().scalar_factory(
+                code=node.shift_number.type  # type: ignore[arg-type]
+            )
+            if not isinstance(sn_type, Integer):
+                raise errors.SemanticError("4-7-4")
+        else:
+            self.visit(node.shift_number)
+        self.visit(node.operand)
 
     def visit_WhereClauseOp(self, node: WhereClauseOp) -> None:
         self.visit(node.operand)

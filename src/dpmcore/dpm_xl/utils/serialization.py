@@ -561,7 +561,7 @@ class ASTToJSONVisitor(NodeVisitor):
             "operand": self.visit(node.operand),
             "component": node.component,
             "period_indicator": node.period_indicator,
-            "shift_number": node.shift_number,
+            "shift_number": self.visit(node.shift_number),
         }
 
     def visit_RenameOp(self, node: Any) -> NodeDict:

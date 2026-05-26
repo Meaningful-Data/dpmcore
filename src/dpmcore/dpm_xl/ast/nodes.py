@@ -41,6 +41,9 @@ class AST:
 
     __repr__ = __str__
 
+    def toJSON(self) -> dict[str, Any]:
+        return {"class_name": self.__class__.__name__}
+
 
 class Start(AST):
     """Starting point of the AST."""
@@ -609,13 +612,13 @@ class TimeShiftOp(AST):
         operand: AST,
         period_indicator: str,
         component: str | None,
-        shift_number: str,
+        shift_number: "AST",
     ) -> None:
         super().__init__()
         self.operand: AST = operand
         self.component = component
         self.period_indicator = period_indicator
-        self.shift_number = shift_number
+        self.shift_number: AST = shift_number
 
     def __str__(self) -> str:
         return (
@@ -637,7 +640,7 @@ class TimeShiftOp(AST):
             "operand": self.operand,
             "period_indicator": self.period_indicator,
             "component": self.component,
-            "shift_number": self.shift_number,
+            "shift_number": self.shift_number.toJSON(),
         }
 
 

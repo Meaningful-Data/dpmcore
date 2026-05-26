@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from dpmcore import errors
 from dpmcore.dpm_xl.ast.nodes import (
     AST,
+    Constant,
     Dimension,
     OperationRef,
     PersistentAssignment,
@@ -16,6 +17,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     Scalar,
     TemporaryAssignment,
     TimeShiftOp,
+    UnaryOp,
     VarID,
     VarRef,
     WhereClauseOp,
@@ -242,10 +244,15 @@ class ModuleDependencies(ASTTemplate, ABC):
         # compute new time period
         if period_indicator not in ("A", "Q", "M", "W", "D"):
             raise ValueError("Period indicator is not valid")
-        if "-" in shift_number:
-            new_time_period = f"t+{period_indicator}{shift_number}"
+        if isinstance(shift_number, Constant):
+            sn_str = str(shift_number.value)
+            new_time_period = f"t-{period_indicator}{sn_str}"
+        elif isinstance(shift_number, UnaryOp) and shift_number.op == "-":
+            inner = shift_number.operand
+            sn_str = f"-{inner.value}" if isinstance(inner, Constant) else "n"
+            new_time_period = f"t+{period_indicator}{sn_str}"
         else:
-            new_time_period = f"t-{period_indicator}{shift_number}"
+            new_time_period = f"t-{period_indicator}n"
 
         self.time_period = new_time_period
         self.visit(node.operand)

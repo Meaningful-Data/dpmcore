@@ -96,7 +96,7 @@ filterOperators:
     ;
 
 timeOperators:
-    TIME_SHIFT LPAREN expression COMMA TIME_PERIOD COMMA INTEGER_LITERAL (COMMA propertyCode)? RPAREN #timeShiftFunction
+    TIME_SHIFT LPAREN expression COMMA TIME_PERIOD COMMA expression (COMMA propertyCode)? RPAREN #timeShiftFunction
     ;
 
 conditionalOperators:

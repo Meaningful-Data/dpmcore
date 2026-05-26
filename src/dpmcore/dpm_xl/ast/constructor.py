@@ -315,7 +315,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         operand: AST = self._visit(ctx_list[2])
         component: str | None = None
         period_indicator = self._symbol_text(ctx_list[4])
-        shift_number = self._symbol_text(ctx_list[6])
+        shift_number = self._visit(ctx_list[6])
         if len(ctx_list) > 8:
             component = self._visit(ctx_list[8])
         return TimeShiftOp(
