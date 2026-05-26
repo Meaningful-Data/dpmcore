@@ -45,7 +45,7 @@ expression:
     | functions                                                                                         #funcExpr
     | expression SQUARE_BRACKET_LEFT clauseOperators SQUARE_BRACKET_RIGHT                               #clauseExpr
     | op=(PLUS|MINUS) expression                                                                        #unaryExpr
-    | op=NOT LPAREN expression RPAREN                                                                   #notExpr
+    | op=NOT expression                                                                                 #notExpr
     | left=expression op=(MULT|DIV) right=expression                                                    #numericExpr
     | left=expression op=(PLUS|MINUS) right=expression                                                  #numericExpr
     | left=expression op=CONCAT right=expression                                                        #concatExpr
