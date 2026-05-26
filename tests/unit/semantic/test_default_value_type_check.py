@@ -12,6 +12,7 @@ from dpmcore.dpm_xl.types.scalar import (
     Boolean,
     Integer,
     Item,
+    Mixed,
     Number,
     String,
 )
@@ -229,6 +230,15 @@ class TestCheckDefaultValue:
         """Null default for Number operand should be valid."""
         default_value = self._create_constant("Null", None)
         expected_type = Number()
+
+        InputAnalyzer._InputAnalyzer__check_default_value(
+            default_value, expected_type
+        )
+
+    def test_null_default_for_mixed_is_valid(self):
+        """Null default for Mixed operand should be valid."""
+        default_value = self._create_constant("Null", None)
+        expected_type = Mixed()
 
         InputAnalyzer._InputAnalyzer__check_default_value(
             default_value, expected_type
