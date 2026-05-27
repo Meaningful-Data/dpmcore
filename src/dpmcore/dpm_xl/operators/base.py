@@ -350,7 +350,8 @@ class Binary(Operator):
             )
             if left.records is not None and right.records is not None:
                 if (
-                    len(left.records) != len(right.records)
+                    not cls.do_not_check_with_return_type
+                    and len(left.records) != len(right.records)
                     and len(left.records) != 0
                     and len(right.records) != 0
                 ):
