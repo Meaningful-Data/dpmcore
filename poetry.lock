@@ -337,15 +337,15 @@ files = [
 
 [[package]]
 name = "click"
-version = "8.1.8"
+version = "8.4.1"
 description = "Composable command line interface toolkit"
 optional = true
-python-versions = ">=3.7"
+python-versions = ">=3.10"
 groups = ["main"]
 markers = "extra == \"all\" or extra == \"server\" or extra == \"cli\""
 files = [
-    {file = "click-8.1.8-py3-none-any.whl", hash = "sha256:63c132bbbed01578a06712a2d1f497bb62d9c1c0d329b7903a866228027263b2"},
-    {file = "click-8.1.8.tar.gz", hash = "sha256:ed53c9d8990d83c2a27deae68e4ee337473f6330c040a31d4225c9574d16096a"},
+    {file = "click-8.4.1-py3-none-any.whl", hash = "sha256:482be17c6991b8c19c5429a1e995d9b0efdbb63172824c41f99965dc0ade8ec2"},
+    {file = "click-8.4.1.tar.gz", hash = "sha256:918b5633eddf6b41c32d4f454bf0de810065c74e3f7dbf8ee5452f8be88d3e96"},
 ]
 
 [package.dependencies]
@@ -3139,4 +3139,4 @@ sqlserver = ["pyodbc"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<4.0"
-content-hash = "ae3f4696ab58dada3005fc00b49e3bcaa4ddcff9494f0d3b3ff24b0a18998d3f"
+content-hash = "95c38e6da9a7745bd28ec9292e6f3bb8873e3e6197bb5e21327e0f6f104caa96"
