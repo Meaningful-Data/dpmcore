@@ -10,11 +10,11 @@ from dpmcore.dpm_xl.ast.nodes import Constant
 from dpmcore.dpm_xl.semantic_analyzer import InputAnalyzer
 from dpmcore.dpm_xl.types.scalar import (
     Boolean,
-    Integer,
     Item,
     Mixed,
     Number,
     String,
+    TimeInterval,
 )
 from dpmcore.errors import SemanticError
 
@@ -26,48 +26,6 @@ class TestCheckDefaultValue:
     def _create_constant(type_code: str, value) -> Constant:
         """Helper to create a Constant node for testing."""
         return Constant(type_=type_code, value=value)
-
-    def test_string_default_for_boolean_raises_error(self):
-        """String default for Boolean operand should raise SemanticError 3-6."""
-        default_value = self._create_constant("String", "")
-        expected_type = Boolean()
-
-        with pytest.raises(SemanticError) as exc_info:
-            InputAnalyzer._InputAnalyzer__check_default_value(
-                default_value, expected_type
-            )
-
-        assert "Invalid default type" in str(exc_info.value)
-        assert "String" in str(exc_info.value)
-        assert "Boolean" in str(exc_info.value)
-
-    def test_string_default_for_number_raises_error(self):
-        """String default for Number operand should raise SemanticError 3-6."""
-        default_value = self._create_constant("String", "")
-        expected_type = Number()
-
-        with pytest.raises(SemanticError) as exc_info:
-            InputAnalyzer._InputAnalyzer__check_default_value(
-                default_value, expected_type
-            )
-
-        assert "Invalid default type" in str(exc_info.value)
-        assert "String" in str(exc_info.value)
-        assert "Number" in str(exc_info.value)
-
-    def test_string_default_for_integer_raises_error(self):
-        """String default for Integer operand should raise SemanticError 3-6."""
-        default_value = self._create_constant("String", "")
-        expected_type = Integer()
-
-        with pytest.raises(SemanticError) as exc_info:
-            InputAnalyzer._InputAnalyzer__check_default_value(
-                default_value, expected_type
-            )
-
-        assert "Invalid default type" in str(exc_info.value)
-        assert "String" in str(exc_info.value)
-        assert "Integer" in str(exc_info.value)
 
     def test_integer_default_for_number_is_valid(self):
         """Integer default for Number operand should be valid (Integer can be promoted to Number)."""
@@ -129,19 +87,46 @@ class TestCheckDefaultValue:
             default_value, expected_type
         )
 
-    def test_string_default_for_item_raises_error(self):
-        """String default for Item operand should raise SemanticError 3-6."""
+    def test_string_default_for_boolean_is_valid(self):
+        """String default for Boolean cell must be accepted.
+
+        Boolean is string-representable (Boolean promotes to String).
+        """
         default_value = self._create_constant("String", "")
-        expected_type = Item()
+        InputAnalyzer._InputAnalyzer__check_default_value(
+            default_value, Boolean()
+        )
 
-        with pytest.raises(SemanticError) as exc_info:
-            InputAnalyzer._InputAnalyzer__check_default_value(
-                default_value, expected_type
-            )
+    def test_string_default_for_number_is_valid(self):
+        """String default for Number cell must be accepted.
 
-        assert "Invalid default type" in str(exc_info.value)
-        assert "String" in str(exc_info.value)
-        assert "Item" in str(exc_info.value)
+        Number is string-representable (Number promotes to String).
+        """
+        default_value = self._create_constant("String", "")
+        InputAnalyzer._InputAnalyzer__check_default_value(
+            default_value, Number()
+        )
+
+    def test_string_default_for_item_is_valid(self):
+        """String default for Item cell must be accepted.
+
+        Item columns are string-representable (Item promotes to String),
+        so ``default: ""`` is a valid sentinel for a missing enumeration value.
+        """
+        default_value = self._create_constant("String", "")
+        InputAnalyzer._InputAnalyzer__check_default_value(
+            default_value, Item()
+        )
+
+    def test_string_default_for_timeinterval_is_valid(self):
+        """String default for TimeInterval cell must be accepted.
+
+        TimeInterval is string-representable (TimeInterval promotes to String).
+        """
+        default_value = self._create_constant("String", "")
+        InputAnalyzer._InputAnalyzer__check_default_value(
+            default_value, TimeInterval()
+        )
 
     def test_item_default_for_string_is_valid(self):
         """Item default for String operand should be valid (Item can be promoted to String)."""
