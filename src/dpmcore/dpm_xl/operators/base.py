@@ -297,9 +297,12 @@ class Binary(Operator):
         interval_allowed = getattr(cls, "interval_allowed", False)
         if isinstance(left_type, Mixed) or isinstance(right_type, Mixed):
             if result_dataframe is None:
-                raise Exception(
-                    "Mixed type promotion requires a result dataframe"
-                )
+                # Semantic-only mode: no row data available for per-row type
+                # resolution.  Return the operator's fixed return type when
+                # known; otherwise Mixed (the column stays unresolved).
+                return (
+                    return_type if return_type is not None else Mixed()
+                ), None
             final_type, result_dataframe = (
                 binary_implicit_type_promotion_with_mixed_types(
                     result_dataframe=result_dataframe,

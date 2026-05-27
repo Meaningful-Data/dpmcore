@@ -32,8 +32,11 @@ from dpmcore.dpm_xl.symbols import (  # noqa: E402
     ScalarSet,
 )
 from dpmcore.dpm_xl.types.scalar import (  # noqa: E402
+    Boolean,
     Integer,
     Item,
+    Mixed,
+    Number,
     ScalarFactory,
     ScalarType,
     String,
@@ -174,3 +177,45 @@ def test_in_declares_accepts_scalar_set_rhs() -> None:
 
 def test_equal_does_not_accept_scalar_set_rhs() -> None:
     assert Equal.accepts_scalar_set_rhs is False
+
+
+class TestMixedTypeOperands:
+    """Mixed-type cells must not crash or raise 3-1 in Boolean operators."""
+
+    def test_in_mixed_scalar_vs_item_set_returns_boolean(self) -> None:
+        """In operator: Mixed LHS + Item ScalarSet must return Boolean, not crash.
+
+        Regression: ``validate_types`` raised ``Exception("Mixed type promotion
+        requires a result dataframe")`` when result_dataframe was None (the
+        Scalar+ScalarSet path in validate_structures always returns None).
+        """
+        left = _make_scalar(Mixed, "mixed_cell")
+        right = _make_scalar_set(Item)
+        result = In.validate(left, right)
+        assert isinstance(result, Scalar)
+        assert isinstance(result.type, Boolean)
+
+    def test_equal_mixed_scalar_vs_item_returns_boolean(self) -> None:
+        """Equal operator: Mixed LHS + Item Scalar must return Boolean, not raise 3-1.
+
+        Regression: ``binary_implicit_type_promotion_with_mixed_types`` iterated
+        over rows; when a row had Number type, comparing Number to Item raised
+        SemanticError("3-1") even though the operator return type is Boolean.
+        """
+        import pandas as pd
+
+        from dpmcore.dpm_xl.types.promotion import (
+            binary_implicit_type_promotion_with_mixed_types,
+        )
+
+        df = pd.DataFrame({"data_type": [Number(), Item()]})
+        final_type, _result_df = (
+            binary_implicit_type_promotion_with_mixed_types(
+                result_dataframe=df,
+                left_type=Mixed(),
+                right_type=Item(),
+                op_type_to_check=None,
+                return_type=Boolean(),
+            )
+        )
+        assert isinstance(final_type, Boolean)
