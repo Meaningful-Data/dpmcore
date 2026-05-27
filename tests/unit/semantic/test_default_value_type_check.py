@@ -128,6 +128,30 @@ class TestCheckDefaultValue:
             default_value, TimeInterval()
         )
 
+    def test_integer_default_for_item_is_valid(self):
+        """Integer default for Item cell must be accepted.
+
+        Both Integer and Item are string-representable, so integer 0 is a valid
+        numeric sentinel for a missing enumeration value.
+        Regression: 5 operations raised 3-6 with this pattern.
+        """
+        default_value = self._create_constant("Integer", 0)
+        InputAnalyzer._InputAnalyzer__check_default_value(
+            default_value, Item()
+        )
+
+    def test_integer_default_for_timeinterval_is_valid(self):
+        """Integer default for TimeInterval cell must be accepted.
+
+        Both Integer and TimeInterval are string-representable, so integer 0 is
+        a valid numeric sentinel for a missing time-interval value.
+        Regression: 1 operation raised 3-6 with this pattern.
+        """
+        default_value = self._create_constant("Integer", 0)
+        InputAnalyzer._InputAnalyzer__check_default_value(
+            default_value, TimeInterval()
+        )
+
     def test_item_default_for_string_is_valid(self):
         """Item default for String operand should be valid (Item can be promoted to String)."""
         default_value = self._create_constant("Item", "[x1]")

@@ -47,6 +47,7 @@ from dpmcore.dpm_xl.symbols import (
     Structure,
 )
 from dpmcore.dpm_xl.types.scalar import (
+    Boolean,
     Integer,
     Item,
     Mixed,
@@ -210,11 +211,16 @@ class InputAnalyzer(ASTTemplate, ABC):
         cell_implicities = implicit_type_promotion_dict.get(
             type_.__class__, set()
         )
-        # Accept bidirectionally: D->C or C->D. Mixed has no dict entry; empty
-        # cell_implicities short-circuits the check (any default is valid).
+        # Accept: D→C, C→D, or shared promotion target (excl. Boolean crossings).
+        # Mixed has no dict entry; empty cell_implicities skips the check.
         if cell_implicities and not (
             type_.is_included(default_implicities)
             or default_type.is_included(cell_implicities)
+            or (
+                not isinstance(default_type, Boolean)
+                and not isinstance(type_, Boolean)
+                and default_implicities & cell_implicities
+            )
         ):
             raise errors.SemanticError(
                 "3-6", expected_type=type_, default_type=default_type
