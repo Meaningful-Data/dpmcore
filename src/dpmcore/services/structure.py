@@ -51,6 +51,7 @@ from dpmcore.orm.packaging import (
     ModuleVersion,
     ModuleVersionComposition,
 )
+from dpmcore.orm.release_sort_order import compute_sort_order
 from dpmcore.orm.rendering import (
     Cell,
     Header,
@@ -161,6 +162,7 @@ class StructureService:
     def __init__(self, session: "Session") -> None:  # noqa: D107
         self.session = session
         self._releases_cache: Optional[List[Release]] = None
+        self._sort_orders_cache: Optional[Dict[int, Optional[int]]] = None
         self._owner_cache: Dict[int, Optional[str]] = {}
 
     # ------------------------------------------------------------------ #
@@ -168,23 +170,85 @@ class StructureService:
     # ------------------------------------------------------------------ #
 
     def _get_all_releases(self) -> List[Release]:
-        """Return all releases sorted by date ascending, NULLs LAST.
+        """Return all releases ordered by semver-parsed sort order.
 
-        ``NULLS LAST`` matters for real-world data: releases like
-        ``26.0.10`` exist in the EBA DB with a null date but a
-        very high release_id; if they appear FIRST in the iteration
-        order, the ``_version_at_release`` walk hits one in the
-        first step and breaks out (release_id 1010000004 > any
-        normal target). Placing null-date releases last keeps the
-        date-monotonic prefix usable.
+        Releases are ordered ascending by ``compute_sort_order(code)``
+        (NOT the opaque ``release_id`` FK, which is non-monotonic from
+        DPM 4.2.1 onwards — e.g. ``4.2.1`` is ``ReleaseID 1010000003`` —
+        nor by ``date``). This keeps the version walks in
+        ``_compute_*_versions`` / ``_version_at_release`` monotonic and
+        places a chronological backport (e.g. ``4.0.1`` published after
+        ``4.2.1``) inside its own lineage.
+
+        Releases whose ``code`` is unparseable (``sort_order`` is
+        ``None`` — e.g. a ``3.5-draft`` pre-release) cannot be placed in
+        semver space, so they sort *first* and are skipped by the
+        version walks. ``sort_order`` is computed from the same query
+        that loads the releases, so this adds no extra round-trip.
         """
         if self._releases_cache is None:
-            self._releases_cache = (
-                self.session.query(Release)
-                .order_by(Release.date.asc().nullslast())
-                .all()
+            releases = self.session.query(Release).all()
+            self._sort_orders_cache = {
+                r.release_id: compute_sort_order(r.code) for r in releases
+            }
+            sort_orders = self._sort_orders_cache
+            releases.sort(
+                key=lambda r: (
+                    sort_orders[r.release_id] is not None,
+                    sort_orders[r.release_id] or 0,
+                )
             )
+            self._releases_cache = releases
         return self._releases_cache
+
+    def _release_sort_orders(self) -> Dict[int, Optional[int]]:
+        """Cached ``{release_id: sort_order}`` map (semver-parsed)."""
+        self._get_all_releases()  # populates _sort_orders_cache
+        return self._sort_orders_cache or {}
+
+    def _sort_order(self, release_id: int) -> Optional[int]:
+        """Semver sort order of a release_id, or ``None`` if unrankable."""
+        return self._release_sort_orders().get(release_id)
+
+    def _window_alive(
+        self,
+        start_release_id: int,
+        end_release_id: Optional[int],
+        target_release_id: int,
+    ) -> bool:
+        """Whether a ``[start, end]`` release window covers the target.
+
+        Comparisons use the semver-parsed sort order rather than the
+        opaque ``release_id`` FK. The end bound is **inclusive** — the
+        convention the category/context virtual-versioning walks have
+        always used (this intentionally differs from
+        ``filter_by_release``'s exclusive end). Returns ``False`` for
+        any release whose code is unrankable.
+        """
+        target_so = self._sort_order(target_release_id)
+        start_so = self._sort_order(start_release_id)
+        if target_so is None or start_so is None or start_so > target_so:
+            return False
+        if end_release_id is None:
+            return True
+        end_so = self._sort_order(end_release_id)
+        return end_so is None or end_so >= target_so
+
+    def _lookup_in_windows(
+        self,
+        windows: List[Tuple[int, Optional[int], Any]],
+        target_release_id: int,
+    ) -> Any:
+        """Pick the value alive at *target_release_id* from windows.
+
+        A window ``(start, end, value)`` is alive per the inclusive
+        ``_window_alive`` convention. Returns ``None`` when no window
+        covers the release.
+        """
+        for start, end, value in windows:
+            if self._window_alive(start, end, target_release_id):
+                return value
+        return None
 
     def query_releases(
         self,
@@ -379,19 +443,18 @@ class StructureService:
         prev_fingerprint = None
 
         for rel in releases:
-            if (
-                category.created_release is not None
-                and rel.release_id < category.created_release
+            if self._sort_order(rel.release_id) is None:
+                continue
+            if category.created_release is not None and not self._window_alive(
+                category.created_release, None, rel.release_id
             ):
                 continue
 
             alive_ics = [
                 ic
                 for ic in ics
-                if ic.start_release_id <= rel.release_id
-                and (
-                    ic.end_release_id is None
-                    or ic.end_release_id >= rel.release_id
+                if self._window_alive(
+                    ic.start_release_id, ic.end_release_id, rel.release_id
                 )
             ]
 
@@ -430,18 +493,27 @@ class StructureService:
 
         return versions
 
-    @staticmethod
     def _version_at_release(
+        self,
         versions: List[Tuple[Release, Dict[str, Any]]],
         target_release: Release,
     ) -> Optional[Dict[str, Any]]:
         """Find the version active at *target_release*.
 
-        Returns the last version whose release_id <= target's.
+        Returns the last version whose semver sort order does not
+        exceed the target's. ``versions`` is produced in ascending
+        sort order, so the walk stops at the first version that
+        overshoots.
         """
+        target_so = self._sort_order(target_release.release_id)
         active: Optional[Dict[str, Any]] = None
         for rel, version_dict in versions:
-            if rel.release_id <= target_release.release_id:
+            rel_so = self._sort_order(rel.release_id)
+            if (
+                target_so is not None
+                and rel_so is not None
+                and (rel_so <= target_so)
+            ):
                 active = version_dict
             else:
                 break
@@ -2311,7 +2383,7 @@ class StructureService:
         for rel in releases:
             pairs: List[Tuple[str, Optional[str]]] = []
             for cc in compositions:
-                prop_code = _lookup_in_windows(
+                prop_code = self._lookup_in_windows(
                     property_code_windows.get(cc.property_id, []),
                     rel.release_id,
                 )
@@ -2319,12 +2391,12 @@ class StructureService:
                     continue
                 item_code: Optional[str] = None
                 if cc.item_id is not None:
-                    cat_id = _lookup_in_windows(
+                    cat_id = self._lookup_in_windows(
                         property_category_windows.get(cc.property_id, []),
                         rel.release_id,
                     )
                     if cat_id is not None:
-                        item_code = _lookup_in_windows(
+                        item_code = self._lookup_in_windows(
                             item_code_windows.get((cc.item_id, cat_id), []),
                             rel.release_id,
                         )
@@ -2434,17 +2506,6 @@ class StructureService:
         if not paginated:
             return [], total
 
-        # Effective release per row drives enumeration windowing.
-        # Each row's window is the ItemCategory's own release window
-        # when target_release is None (release=*), else the target.
-        effective_release_by_pid: Dict[int, Optional[int]] = {}
-        for ic, _item, prop, _cat, _dt in paginated:
-            effective_release_by_pid[prop.property_id] = (
-                target_release.release_id
-                if target_release is not None
-                else ic.start_release_id
-            )
-
         if detail == "allstubs":
             return [
                 _property_stub_to_dict(
@@ -2461,13 +2522,20 @@ class StructureService:
             ], total
 
         # Bulk-load enumeration links grouped by effective release.
+        # The effective release is keyed per ItemCategory row (the
+        # target when pinned, else the row's own start release) — NOT
+        # per property_id, which would collide across a property's
+        # versions at release=* and apply one version's window to all.
         property_ids_by_release: Dict[Optional[int], set[int]] = defaultdict(
             set
         )
-        for _ic, _item, prop, _cat, _dt in paginated:
-            property_ids_by_release[
-                effective_release_by_pid[prop.property_id]
-            ].add(prop.property_id)
+        for ic, _item, prop, _cat, _dt in paginated:
+            effective = (
+                target_release.release_id
+                if target_release is not None
+                else ic.start_release_id
+            )
+            property_ids_by_release[effective].add(prop.property_id)
         enums_by_release: Dict[Optional[int], Dict[int, Dict[str, Any]]] = {
             rid: self._load_property_enumerations(pids, release_id=rid)
             for rid, pids in property_ids_by_release.items()
@@ -2481,9 +2549,14 @@ class StructureService:
                 if target_release is not None
                 else self._resolve_release_code(ic.start_release_id)
             )
-            enumeration = enums_by_release.get(
-                effective_release_by_pid[prop.property_id], {}
-            ).get(prop.property_id)
+            effective = (
+                target_release.release_id
+                if target_release is not None
+                else ic.start_release_id
+            )
+            enumeration = enums_by_release.get(effective, {}).get(
+                prop.property_id
+            )
             results.append(
                 _property_to_dict(
                     ic,
@@ -3226,28 +3299,6 @@ def _variable_version_to_dict(
 # ------------------------------------------------------------------ #
 # Context dict shape helpers
 # ------------------------------------------------------------------ #
-
-
-def _lookup_in_windows(
-    windows: List[Tuple[int, Optional[int], Any]],
-    release_id: int,
-) -> Any:
-    """Pick the value alive at *release_id* from a list of release windows.
-
-    Matches the same convention used elsewhere in dpmcore: a window
-    ``(start, end, value)`` is alive at ``release_id`` when
-    ``start <= release_id`` and ``end is None or end >= release_id``.
-    Returns ``None`` when no window covers the release. (Note the
-    ``>= end`` convention here mirrors the category handler's
-    virtual-versioning logic, not the strict ``> end`` rule used by
-    ``filter_by_release`` — both are consistent within their own
-    callers; contexts are emitted from the same release-walking
-    fingerprint loop that the category handler uses.)
-    """
-    for start, end, value in windows:
-        if start <= release_id and (end is None or end >= release_id):
-            return value
-    return None
 
 
 def _context_to_dict(
