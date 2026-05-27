@@ -161,10 +161,7 @@ def binary_implicit_type_promotion(
                 add_semantic_warning(
                     f"Implicit promotion between {left} and {right}."
                 )
-        if return_type and (
-            left.is_included(right_implicities)
-            or right.is_included(left_implicities)
-        ):
+        if return_type:
             return return_type
         elif left.is_included(right_implicities):
             return left
