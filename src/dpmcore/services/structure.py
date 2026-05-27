@@ -3,7 +3,16 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    cast,
+)
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload
@@ -1579,9 +1588,7 @@ class StructureService:
             else:
                 q = q.filter(Operator.name.in_(params.ids))
 
-        total = (
-            q.with_entities(func.count(Operator.operator_id)).scalar() or 0
-        )
+        total = q.with_entities(func.count(Operator.operator_id)).scalar() or 0
         if total == 0:
             return [], 0
 
@@ -1589,9 +1596,7 @@ class StructureService:
         rows = q.offset(offset).limit(limit).all()
 
         if detail == "allstubs":
-            return [
-                _operator_stub_to_dict(op) for op in rows
-            ], total
+            return [_operator_stub_to_dict(op) for op in rows], total
 
         operator_ids = [op.operator_id for op in rows]
         args_by_operator = self._bulk_load_operator_arguments(operator_ids)
@@ -1624,7 +1629,7 @@ class StructureService:
         )
         out: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
         for a in rows:
-            out[a.operator_id].append(
+            out[cast(int, a.operator_id)].append(
                 {
                     "id": a.argument_id,
                     "order": a.order,
@@ -1832,7 +1837,7 @@ class StructureService:
         )
         out: Dict[int, List[OperationVersion]] = defaultdict(list)
         for v in q.all():
-            out[v.operation_id].append(v)
+            out[cast(int, v.operation_id)].append(v)
         return dict(out)
 
     def _bulk_load_operation_nodes(
@@ -1850,7 +1855,7 @@ class StructureService:
         )
         out: Dict[int, List[OperationNode]] = defaultdict(list)
         for n in rows:
-            out[n.operation_vid].append(n)
+            out[cast(int, n.operation_vid)].append(n)
         return dict(out)
 
     def _bulk_load_operand_references(
@@ -1871,7 +1876,7 @@ class StructureService:
         )
         out: Dict[int, List[OperandReference]] = defaultdict(list)
         for r in rows:
-            out[r.node_id].append(r)
+            out[cast(int, r.node_id)].append(r)
         return dict(out)
 
     def _bulk_load_reference_locations(
@@ -2013,7 +2018,9 @@ class StructureService:
         )
         out: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
         for dt in rows:
-            out[dt.parent_data_type_id].append(_datatype_stub_to_dict(dt))
+            out[cast(int, dt.parent_data_type_id)].append(
+                _datatype_stub_to_dict(dt)
+            )
         return dict(out)
 
     # ------------------------------------------------------------------ #
@@ -2766,7 +2773,7 @@ class StructureService:
             .filter(CompoundKey.key_id.in_(key_ids))
             .all()
         )
-        return dict(rows)
+        return dict(row._tuple() for row in rows)
 
     # ------------------------------------------------------------------ #
     # Frameworks
@@ -3056,9 +3063,9 @@ def _collect_subcategory_vids_per_variable(
         for hid in (cell.column_id, cell.row_id, cell.sheet_id):
             if hid is None:
                 continue
-            hv = header_version_by_id.get(hid)
-            if hv and hv.subcategory_vid:
-                out[tvc.variable_vid].add(hv.subcategory_vid)
+            matched = header_version_by_id.get(hid)
+            if matched and matched.subcategory_vid:
+                out[tvc.variable_vid].add(matched.subcategory_vid)
 
     return out
 

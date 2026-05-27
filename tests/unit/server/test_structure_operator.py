@@ -32,7 +32,9 @@ def seeded_engine(engine):
             Operator(
                 operator_id=1, name="Equals", symbol="=", type="comparison"
             ),
-            Operator(operator_id=2, name="Plus", symbol="+", type="arithmetic"),
+            Operator(
+                operator_id=2, name="Plus", symbol="+", type="arithmetic"
+            ),
             Operator(operator_id=3, name="And", symbol="AND", type="logical"),
         ]
     )

@@ -141,9 +141,7 @@ class TestFiltering:
         ):
             resp = client.get(path)
             assert resp.status_code == 200
-            assert (
-                resp.json()["data"]["organisations"][0]["acronym"] == "EBA"
-            )
+            assert resp.json()["data"]["organisations"][0]["acronym"] == "EBA"
 
     def test_owner_and_id_combined(self, client):
         # Owner=EBA AND id=EBA → matches EBA only.
@@ -158,9 +156,7 @@ class TestFiltering:
 
     def test_comma_separated_ids(self, client):
         resp = client.get("/api/v1/structure/organisation/*/EBA,BIS/*")
-        acronyms = {
-            o["acronym"] for o in resp.json()["data"]["organisations"]
-        }
+        acronyms = {o["acronym"] for o in resp.json()["data"]["organisations"]}
         assert acronyms == {"EBA", "BIS"}
 
 
