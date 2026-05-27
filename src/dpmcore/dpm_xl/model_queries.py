@@ -173,35 +173,6 @@ def _filter_elements(
     return query.filter(or_(*dynamic_filter))
 
 
-def _check_ranges_values_are_present(
-    data: pd.DataFrame,
-    data_column: str,
-    values: Sequence[str] | None,
-) -> pd.DataFrame:
-    """Validate range boundaries exist in returned data.
-
-    Args:
-        data: DataFrame from the query.
-        data_column: Column name to validate.
-        values: Filter values (may contain ranges).
-
-    Returns:
-        Original data if valid, empty DataFrame otherwise.
-    """
-    if values is None or len(values) == 0:
-        return data
-    actual_values = list(data[data_column].values)
-    for value in values:
-        if "-" in value:
-            limits = value.split("-")
-            if (
-                limits[0] not in actual_values
-                or limits[1] not in actual_values
-            ):
-                return pd.DataFrame(columns=data.columns)
-    return data
-
-
 # ------------------------------------------------------------------ #
 # ItemCategory queries
 # ------------------------------------------------------------------ #
@@ -1317,10 +1288,6 @@ class ViewDatapointsQuery:
         if len(data) > 0:
             data = data.sort_values("variable_id", na_position="last")
             data = data.drop_duplicates(subset=["cell_code"], keep="first")
-
-        data = _check_ranges_values_are_present(data, "row_code", rows)
-        data = _check_ranges_values_are_present(data, "column_code", cols)
-        data = _check_ranges_values_are_present(data, "sheet_code", sheets)
 
         cls._TABLE_DATA_CACHE[cache_key] = data
         return data

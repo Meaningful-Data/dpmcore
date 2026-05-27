@@ -1,7 +1,10 @@
+from unittest.mock import MagicMock
+
 import pytest
 
 from dpmcore.dpm_xl.ast.nodes import VarID
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
+from dpmcore.dpm_xl.model_queries import _filter_elements
 from dpmcore.errors import SemanticError
 
 
@@ -89,3 +92,17 @@ class TestCheckHeaderPresentMixedSpecification:
         ]
         oc = _make_oc(nodes, partial_selection=ps)
         oc._check_header_present("SomeTable", "cols")  # must not raise
+
+
+def test_range_filter_uses_between():
+    """A range like r0090-0110 must translate to BETWEEN, not an exact match."""
+    col = MagicMock()
+    _filter_elements(MagicMock(), col, ["0090-0110"])
+    col.between.assert_called_once_with("0090", "0110")
+
+
+def test_exact_value_filter_does_not_use_between():
+    """A single exact value must use equality, not BETWEEN."""
+    col = MagicMock()
+    _filter_elements(MagicMock(), col, ["0090"])
+    col.between.assert_not_called()
