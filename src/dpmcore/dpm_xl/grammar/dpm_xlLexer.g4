@@ -101,6 +101,13 @@ SUB:                    'sub';
 
 // Reference date
 TIME_SHIFT:             'time_shift';
+YEAR_OP:                'year';
+SEMESTER_OP:            'semester';
+QUARTER_OP:             'quarter';
+MONTH_OP:               'month';
+WEEK_OP:                'week';
+DAY_OP:                 'day';
+DATE_OP:                'date';
 
 // String
 LEN:                    'len';
@@ -348,6 +355,13 @@ CLAUSE_SUB:                    'sub' -> type(SUB);
 
 // Reference date
 CLAUSE_TIME_SHIFT:             'time_shift' -> type(TIME_SHIFT);
+CLAUSE_YEAR_OP:                'year'       -> type(YEAR_OP);
+CLAUSE_SEMESTER_OP:            'semester'   -> type(SEMESTER_OP);
+CLAUSE_QUARTER_OP:             'quarter'    -> type(QUARTER_OP);
+CLAUSE_MONTH_OP:               'month'      -> type(MONTH_OP);
+CLAUSE_WEEK_OP:                'week'       -> type(WEEK_OP);
+CLAUSE_DAY_OP:                 'day'        -> type(DAY_OP);
+CLAUSE_DATE_OP:                'date'       -> type(DATE_OP);
 
 // String
 CLAUSE_LEN:                    'len' -> type(LEN);
