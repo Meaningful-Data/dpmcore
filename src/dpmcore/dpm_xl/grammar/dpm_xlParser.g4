@@ -97,8 +97,8 @@ filterOperators:
 
 timeOperators:
     TIME_SHIFT LPAREN expression COMMA TIME_PERIOD COMMA INTEGER_LITERAL (COMMA propertyCode)? RPAREN #timeShiftFunction
-    | op=(YEAR_OP|SEMESTER_OP|QUARTER_OP|MONTH_OP|WEEK_OP|DAY_OP) LPAREN expression RPAREN             #dateExtractionFunction
-    | DATE_OP LPAREN expression COMMA expression COMMA expression RPAREN                               #dateConstructorFunction
+    | op=(YEAR|SEMESTER|QUARTER|MONTH|WEEK|DAY) LPAREN expression RPAREN                        #dateExtractFunction
+    | DATE LPAREN year=expression COMMA month=expression COMMA day=expression RPAREN            #dateConstructorFunction
     ;
 
 conditionalOperators:

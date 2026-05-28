@@ -280,18 +280,18 @@ class dpm_xlParser ( Parser ):
                       "COMMA", "COLON", "LPAREN", "RPAREN", "CURLY_BRACKET_LEFT", 
                       "CURLY_BRACKET_RIGHT", "SQUARE_BRACKET_LEFT", "SQUARE_BRACKET_RIGHT", 
                       "IF", "ENDIF", "THEN", "ELSE", "NVL", "FILTER", "WHERE", 
-                      "GET", "RENAME", "TO", "SUB", "TIME_SHIFT", "YEAR_OP", 
-                      "SEMESTER_OP", "QUARTER_OP", "MONTH_OP", "WEEK_OP", 
-                      "DAY_OP", "DATE_OP", "LEN", "CONCAT", "TIME_PERIOD", 
-                      "EOL", "INTEGER_LITERAL", "DECIMAL_LITERAL", "PERCENT_LITERAL", 
-                      "NULL_LITERAL", "STRING_LITERAL", "EMPTY_LITERAL", 
-                      "DATE_LITERAL", "CODE", "WS", "INTERVAL", "DEFAULT", 
-                      "ROW", "ROW_RANGE", "ROW_ALL", "COL", "COL_RANGE", 
-                      "COL_ALL", "SHEET", "SHEET_RANGE", "SHEET_ALL", "TABLE_REFERENCE", 
-                      "TABLE_GROUP_REFERENCE", "VAR_REFERENCE", "OPERATION_REFERENCE", 
-                      "PRECONDITION_ELEMENT", "SELECTION_MODE_WS", "ROW_COMPONENT", 
-                      "COL_COMPONENT", "SHEET_COMPONENT", "ITEM_SIGNATURE", 
-                      "PROPERTY_CODE", "CLAUSE_WS", "GROUPING_WS", "SET_OPERAND_MODE_WS" ]
+                      "GET", "RENAME", "TO", "SUB", "TIME_SHIFT", "YEAR", 
+                      "SEMESTER", "QUARTER", "MONTH", "WEEK", "DAY", "DATE", 
+                      "LEN", "CONCAT", "TIME_PERIOD", "EOL", "INTEGER_LITERAL", 
+                      "DECIMAL_LITERAL", "PERCENT_LITERAL", "NULL_LITERAL", 
+                      "STRING_LITERAL", "EMPTY_LITERAL", "DATE_LITERAL", 
+                      "CODE", "WS", "INTERVAL", "DEFAULT", "ROW", "ROW_RANGE", 
+                      "ROW_ALL", "COL", "COL_RANGE", "COL_ALL", "SHEET", 
+                      "SHEET_RANGE", "SHEET_ALL", "TABLE_REFERENCE", "TABLE_GROUP_REFERENCE", 
+                      "VAR_REFERENCE", "OPERATION_REFERENCE", "PRECONDITION_ELEMENT", 
+                      "SELECTION_MODE_WS", "ROW_COMPONENT", "COL_COMPONENT", 
+                      "SHEET_COMPONENT", "ITEM_SIGNATURE", "PROPERTY_CODE", 
+                      "CLAUSE_WS", "GROUPING_WS", "SET_OPERAND_MODE_WS" ]
 
     RULE_start = 0
     RULE_statements = 1
@@ -413,13 +413,13 @@ class dpm_xlParser ( Parser ):
     TO=54
     SUB=55
     TIME_SHIFT=56
-    YEAR_OP=57
-    SEMESTER_OP=58
-    QUARTER_OP=59
-    MONTH_OP=60
-    WEEK_OP=61
-    DAY_OP=62
-    DATE_OP=63
+    YEAR=57
+    SEMESTER=58
+    QUARTER=59
+    MONTH=60
+    WEEK=61
+    DAY=62
+    DATE=63
     LEN=64
     CONCAT=65
     TIME_PERIOD=66
@@ -607,7 +607,7 @@ class dpm_xlParser ( Parser ):
                 self.state = 111 
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << dpm_xlParser.BOOLEAN_LITERAL) | (1 << dpm_xlParser.NOT) | (1 << dpm_xlParser.MATCH) | (1 << dpm_xlParser.WITH) | (1 << dpm_xlParser.PLUS) | (1 << dpm_xlParser.MINUS) | (1 << dpm_xlParser.MAX_AGGR) | (1 << dpm_xlParser.MIN_AGGR) | (1 << dpm_xlParser.SUM) | (1 << dpm_xlParser.COUNT) | (1 << dpm_xlParser.AVG) | (1 << dpm_xlParser.MEDIAN) | (1 << dpm_xlParser.ABS) | (1 << dpm_xlParser.ISNULL) | (1 << dpm_xlParser.EXP) | (1 << dpm_xlParser.LN) | (1 << dpm_xlParser.SQRT) | (1 << dpm_xlParser.POWER) | (1 << dpm_xlParser.LOG) | (1 << dpm_xlParser.MAX) | (1 << dpm_xlParser.MIN) | (1 << dpm_xlParser.LPAREN) | (1 << dpm_xlParser.CURLY_BRACKET_LEFT) | (1 << dpm_xlParser.SQUARE_BRACKET_LEFT) | (1 << dpm_xlParser.IF) | (1 << dpm_xlParser.NVL) | (1 << dpm_xlParser.FILTER) | (1 << dpm_xlParser.TIME_SHIFT) | (1 << dpm_xlParser.YEAR_OP) | (1 << dpm_xlParser.SEMESTER_OP) | (1 << dpm_xlParser.QUARTER_OP) | (1 << dpm_xlParser.MONTH_OP) | (1 << dpm_xlParser.WEEK_OP) | (1 << dpm_xlParser.DAY_OP) | (1 << dpm_xlParser.DATE_OP))) != 0) or ((((_la - 64)) & ~0x3f) == 0 and ((1 << (_la - 64)) & ((1 << (dpm_xlParser.LEN - 64)) | (1 << (dpm_xlParser.INTEGER_LITERAL - 64)) | (1 << (dpm_xlParser.DECIMAL_LITERAL - 64)) | (1 << (dpm_xlParser.PERCENT_LITERAL - 64)) | (1 << (dpm_xlParser.STRING_LITERAL - 64)) | (1 << (dpm_xlParser.EMPTY_LITERAL - 64)) | (1 << (dpm_xlParser.DATE_LITERAL - 64)) | (1 << (dpm_xlParser.CODE - 64)) | (1 << (dpm_xlParser.ROW_COMPONENT - 64)) | (1 << (dpm_xlParser.COL_COMPONENT - 64)) | (1 << (dpm_xlParser.SHEET_COMPONENT - 64)) | (1 << (dpm_xlParser.PROPERTY_CODE - 64)))) != 0)):
+                if not ((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << dpm_xlParser.BOOLEAN_LITERAL) | (1 << dpm_xlParser.NOT) | (1 << dpm_xlParser.MATCH) | (1 << dpm_xlParser.WITH) | (1 << dpm_xlParser.PLUS) | (1 << dpm_xlParser.MINUS) | (1 << dpm_xlParser.MAX_AGGR) | (1 << dpm_xlParser.MIN_AGGR) | (1 << dpm_xlParser.SUM) | (1 << dpm_xlParser.COUNT) | (1 << dpm_xlParser.AVG) | (1 << dpm_xlParser.MEDIAN) | (1 << dpm_xlParser.ABS) | (1 << dpm_xlParser.ISNULL) | (1 << dpm_xlParser.EXP) | (1 << dpm_xlParser.LN) | (1 << dpm_xlParser.SQRT) | (1 << dpm_xlParser.POWER) | (1 << dpm_xlParser.LOG) | (1 << dpm_xlParser.MAX) | (1 << dpm_xlParser.MIN) | (1 << dpm_xlParser.LPAREN) | (1 << dpm_xlParser.CURLY_BRACKET_LEFT) | (1 << dpm_xlParser.SQUARE_BRACKET_LEFT) | (1 << dpm_xlParser.IF) | (1 << dpm_xlParser.NVL) | (1 << dpm_xlParser.FILTER) | (1 << dpm_xlParser.TIME_SHIFT) | (1 << dpm_xlParser.YEAR) | (1 << dpm_xlParser.SEMESTER) | (1 << dpm_xlParser.QUARTER) | (1 << dpm_xlParser.MONTH) | (1 << dpm_xlParser.WEEK) | (1 << dpm_xlParser.DAY) | (1 << dpm_xlParser.DATE))) != 0) or ((((_la - 64)) & ~0x3f) == 0 and ((1 << (_la - 64)) & ((1 << (dpm_xlParser.LEN - 64)) | (1 << (dpm_xlParser.INTEGER_LITERAL - 64)) | (1 << (dpm_xlParser.DECIMAL_LITERAL - 64)) | (1 << (dpm_xlParser.PERCENT_LITERAL - 64)) | (1 << (dpm_xlParser.STRING_LITERAL - 64)) | (1 << (dpm_xlParser.EMPTY_LITERAL - 64)) | (1 << (dpm_xlParser.DATE_LITERAL - 64)) | (1 << (dpm_xlParser.CODE - 64)) | (1 << (dpm_xlParser.ROW_COMPONENT - 64)) | (1 << (dpm_xlParser.COL_COMPONENT - 64)) | (1 << (dpm_xlParser.SHEET_COMPONENT - 64)) | (1 << (dpm_xlParser.PROPERTY_CODE - 64)))) != 0)):
                     break
 
         except RecognitionException as re:
@@ -694,7 +694,7 @@ class dpm_xlParser ( Parser ):
             self.state = 115
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [dpm_xlParser.BOOLEAN_LITERAL, dpm_xlParser.NOT, dpm_xlParser.MATCH, dpm_xlParser.WITH, dpm_xlParser.PLUS, dpm_xlParser.MINUS, dpm_xlParser.MAX_AGGR, dpm_xlParser.MIN_AGGR, dpm_xlParser.SUM, dpm_xlParser.COUNT, dpm_xlParser.AVG, dpm_xlParser.MEDIAN, dpm_xlParser.ABS, dpm_xlParser.ISNULL, dpm_xlParser.EXP, dpm_xlParser.LN, dpm_xlParser.SQRT, dpm_xlParser.POWER, dpm_xlParser.LOG, dpm_xlParser.MAX, dpm_xlParser.MIN, dpm_xlParser.LPAREN, dpm_xlParser.CURLY_BRACKET_LEFT, dpm_xlParser.SQUARE_BRACKET_LEFT, dpm_xlParser.IF, dpm_xlParser.NVL, dpm_xlParser.FILTER, dpm_xlParser.TIME_SHIFT, dpm_xlParser.YEAR_OP, dpm_xlParser.SEMESTER_OP, dpm_xlParser.QUARTER_OP, dpm_xlParser.MONTH_OP, dpm_xlParser.WEEK_OP, dpm_xlParser.DAY_OP, dpm_xlParser.DATE_OP, dpm_xlParser.LEN, dpm_xlParser.INTEGER_LITERAL, dpm_xlParser.DECIMAL_LITERAL, dpm_xlParser.PERCENT_LITERAL, dpm_xlParser.STRING_LITERAL, dpm_xlParser.EMPTY_LITERAL, dpm_xlParser.DATE_LITERAL, dpm_xlParser.ROW_COMPONENT, dpm_xlParser.COL_COMPONENT, dpm_xlParser.SHEET_COMPONENT, dpm_xlParser.PROPERTY_CODE]:
+            if token in [dpm_xlParser.BOOLEAN_LITERAL, dpm_xlParser.NOT, dpm_xlParser.MATCH, dpm_xlParser.WITH, dpm_xlParser.PLUS, dpm_xlParser.MINUS, dpm_xlParser.MAX_AGGR, dpm_xlParser.MIN_AGGR, dpm_xlParser.SUM, dpm_xlParser.COUNT, dpm_xlParser.AVG, dpm_xlParser.MEDIAN, dpm_xlParser.ABS, dpm_xlParser.ISNULL, dpm_xlParser.EXP, dpm_xlParser.LN, dpm_xlParser.SQRT, dpm_xlParser.POWER, dpm_xlParser.LOG, dpm_xlParser.MAX, dpm_xlParser.MIN, dpm_xlParser.LPAREN, dpm_xlParser.CURLY_BRACKET_LEFT, dpm_xlParser.SQUARE_BRACKET_LEFT, dpm_xlParser.IF, dpm_xlParser.NVL, dpm_xlParser.FILTER, dpm_xlParser.TIME_SHIFT, dpm_xlParser.YEAR, dpm_xlParser.SEMESTER, dpm_xlParser.QUARTER, dpm_xlParser.MONTH, dpm_xlParser.WEEK, dpm_xlParser.DAY, dpm_xlParser.DATE, dpm_xlParser.LEN, dpm_xlParser.INTEGER_LITERAL, dpm_xlParser.DECIMAL_LITERAL, dpm_xlParser.PERCENT_LITERAL, dpm_xlParser.STRING_LITERAL, dpm_xlParser.EMPTY_LITERAL, dpm_xlParser.DATE_LITERAL, dpm_xlParser.ROW_COMPONENT, dpm_xlParser.COL_COMPONENT, dpm_xlParser.SHEET_COMPONENT, dpm_xlParser.PROPERTY_CODE]:
                 localctx = dpm_xlParser.ExprWithoutAssignmentContext(self, localctx)
                 self.enterOuterAlt(localctx, 1)
                 self.state = 113
@@ -874,7 +874,7 @@ class dpm_xlParser ( Parser ):
             self.state = 134
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [dpm_xlParser.BOOLEAN_LITERAL, dpm_xlParser.NOT, dpm_xlParser.MATCH, dpm_xlParser.PLUS, dpm_xlParser.MINUS, dpm_xlParser.MAX_AGGR, dpm_xlParser.MIN_AGGR, dpm_xlParser.SUM, dpm_xlParser.COUNT, dpm_xlParser.AVG, dpm_xlParser.MEDIAN, dpm_xlParser.ABS, dpm_xlParser.ISNULL, dpm_xlParser.EXP, dpm_xlParser.LN, dpm_xlParser.SQRT, dpm_xlParser.POWER, dpm_xlParser.LOG, dpm_xlParser.MAX, dpm_xlParser.MIN, dpm_xlParser.LPAREN, dpm_xlParser.CURLY_BRACKET_LEFT, dpm_xlParser.SQUARE_BRACKET_LEFT, dpm_xlParser.IF, dpm_xlParser.NVL, dpm_xlParser.FILTER, dpm_xlParser.TIME_SHIFT, dpm_xlParser.YEAR_OP, dpm_xlParser.SEMESTER_OP, dpm_xlParser.QUARTER_OP, dpm_xlParser.MONTH_OP, dpm_xlParser.WEEK_OP, dpm_xlParser.DAY_OP, dpm_xlParser.DATE_OP, dpm_xlParser.LEN, dpm_xlParser.INTEGER_LITERAL, dpm_xlParser.DECIMAL_LITERAL, dpm_xlParser.PERCENT_LITERAL, dpm_xlParser.STRING_LITERAL, dpm_xlParser.EMPTY_LITERAL, dpm_xlParser.DATE_LITERAL, dpm_xlParser.ROW_COMPONENT, dpm_xlParser.COL_COMPONENT, dpm_xlParser.SHEET_COMPONENT, dpm_xlParser.PROPERTY_CODE]:
+            if token in [dpm_xlParser.BOOLEAN_LITERAL, dpm_xlParser.NOT, dpm_xlParser.MATCH, dpm_xlParser.PLUS, dpm_xlParser.MINUS, dpm_xlParser.MAX_AGGR, dpm_xlParser.MIN_AGGR, dpm_xlParser.SUM, dpm_xlParser.COUNT, dpm_xlParser.AVG, dpm_xlParser.MEDIAN, dpm_xlParser.ABS, dpm_xlParser.ISNULL, dpm_xlParser.EXP, dpm_xlParser.LN, dpm_xlParser.SQRT, dpm_xlParser.POWER, dpm_xlParser.LOG, dpm_xlParser.MAX, dpm_xlParser.MIN, dpm_xlParser.LPAREN, dpm_xlParser.CURLY_BRACKET_LEFT, dpm_xlParser.SQUARE_BRACKET_LEFT, dpm_xlParser.IF, dpm_xlParser.NVL, dpm_xlParser.FILTER, dpm_xlParser.TIME_SHIFT, dpm_xlParser.YEAR, dpm_xlParser.SEMESTER, dpm_xlParser.QUARTER, dpm_xlParser.MONTH, dpm_xlParser.WEEK, dpm_xlParser.DAY, dpm_xlParser.DATE, dpm_xlParser.LEN, dpm_xlParser.INTEGER_LITERAL, dpm_xlParser.DECIMAL_LITERAL, dpm_xlParser.PERCENT_LITERAL, dpm_xlParser.STRING_LITERAL, dpm_xlParser.EMPTY_LITERAL, dpm_xlParser.DATE_LITERAL, dpm_xlParser.ROW_COMPONENT, dpm_xlParser.COL_COMPONENT, dpm_xlParser.SHEET_COMPONENT, dpm_xlParser.PROPERTY_CODE]:
                 localctx = dpm_xlParser.ExprWithoutPartialSelectionContext(self, localctx)
                 self.enterOuterAlt(localctx, 1)
                 self.state = 121
@@ -2281,7 +2281,7 @@ class dpm_xlParser ( Parser ):
                 self.state = 236
                 self.conditionalOperators()
                 pass
-            elif token in [dpm_xlParser.TIME_SHIFT, dpm_xlParser.YEAR_OP, dpm_xlParser.SEMESTER_OP, dpm_xlParser.QUARTER_OP, dpm_xlParser.MONTH_OP, dpm_xlParser.WEEK_OP, dpm_xlParser.DAY_OP, dpm_xlParser.DATE_OP]:
+            elif token in [dpm_xlParser.TIME_SHIFT, dpm_xlParser.YEAR, dpm_xlParser.SEMESTER, dpm_xlParser.QUARTER, dpm_xlParser.MONTH, dpm_xlParser.WEEK, dpm_xlParser.DAY, dpm_xlParser.DATE]:
                 localctx = dpm_xlParser.TimeFunctionsContext(self, localctx)
                 self.enterOuterAlt(localctx, 6)
                 self.state = 237
@@ -2799,46 +2799,7 @@ class dpm_xlParser ( Parser ):
                 return visitor.visitChildren(self)
 
 
-    class DateConstructorFunctionContext(TimeOperatorsContext):
-
-        def __init__(self, parser, ctx:ParserRuleContext): # actually a dpm_xlParser.TimeOperatorsContext
-            super().__init__(parser)
-            self.copyFrom(ctx)
-
-        def DATE_OP(self):
-            return self.getToken(dpm_xlParser.DATE_OP, 0)
-        def LPAREN(self):
-            return self.getToken(dpm_xlParser.LPAREN, 0)
-        def expression(self, i:int=None):
-            if i is None:
-                return self.getTypedRuleContexts(dpm_xlParser.ExpressionContext)
-            else:
-                return self.getTypedRuleContext(dpm_xlParser.ExpressionContext,i)
-
-        def COMMA(self, i:int=None):
-            if i is None:
-                return self.getTokens(dpm_xlParser.COMMA)
-            else:
-                return self.getToken(dpm_xlParser.COMMA, i)
-        def RPAREN(self):
-            return self.getToken(dpm_xlParser.RPAREN, 0)
-
-        def enterRule(self, listener:ParseTreeListener):
-            if hasattr( listener, "enterDateConstructorFunction" ):
-                listener.enterDateConstructorFunction(self)
-
-        def exitRule(self, listener:ParseTreeListener):
-            if hasattr( listener, "exitDateConstructorFunction" ):
-                listener.exitDateConstructorFunction(self)
-
-        def accept(self, visitor:ParseTreeVisitor):
-            if hasattr( visitor, "visitDateConstructorFunction" ):
-                return visitor.visitDateConstructorFunction(self)
-            else:
-                return visitor.visitChildren(self)
-
-
-    class DateExtractionFunctionContext(TimeOperatorsContext):
+    class DateExtractFunctionContext(TimeOperatorsContext):
 
         def __init__(self, parser, ctx:ParserRuleContext): # actually a dpm_xlParser.TimeOperatorsContext
             super().__init__(parser)
@@ -2852,30 +2813,72 @@ class dpm_xlParser ( Parser ):
 
         def RPAREN(self):
             return self.getToken(dpm_xlParser.RPAREN, 0)
-        def YEAR_OP(self):
-            return self.getToken(dpm_xlParser.YEAR_OP, 0)
-        def SEMESTER_OP(self):
-            return self.getToken(dpm_xlParser.SEMESTER_OP, 0)
-        def QUARTER_OP(self):
-            return self.getToken(dpm_xlParser.QUARTER_OP, 0)
-        def MONTH_OP(self):
-            return self.getToken(dpm_xlParser.MONTH_OP, 0)
-        def WEEK_OP(self):
-            return self.getToken(dpm_xlParser.WEEK_OP, 0)
-        def DAY_OP(self):
-            return self.getToken(dpm_xlParser.DAY_OP, 0)
+        def YEAR(self):
+            return self.getToken(dpm_xlParser.YEAR, 0)
+        def SEMESTER(self):
+            return self.getToken(dpm_xlParser.SEMESTER, 0)
+        def QUARTER(self):
+            return self.getToken(dpm_xlParser.QUARTER, 0)
+        def MONTH(self):
+            return self.getToken(dpm_xlParser.MONTH, 0)
+        def WEEK(self):
+            return self.getToken(dpm_xlParser.WEEK, 0)
+        def DAY(self):
+            return self.getToken(dpm_xlParser.DAY, 0)
 
         def enterRule(self, listener:ParseTreeListener):
-            if hasattr( listener, "enterDateExtractionFunction" ):
-                listener.enterDateExtractionFunction(self)
+            if hasattr( listener, "enterDateExtractFunction" ):
+                listener.enterDateExtractFunction(self)
 
         def exitRule(self, listener:ParseTreeListener):
-            if hasattr( listener, "exitDateExtractionFunction" ):
-                listener.exitDateExtractionFunction(self)
+            if hasattr( listener, "exitDateExtractFunction" ):
+                listener.exitDateExtractFunction(self)
 
         def accept(self, visitor:ParseTreeVisitor):
-            if hasattr( visitor, "visitDateExtractionFunction" ):
-                return visitor.visitDateExtractionFunction(self)
+            if hasattr( visitor, "visitDateExtractFunction" ):
+                return visitor.visitDateExtractFunction(self)
+            else:
+                return visitor.visitChildren(self)
+
+
+    class DateConstructorFunctionContext(TimeOperatorsContext):
+
+        def __init__(self, parser, ctx:ParserRuleContext): # actually a dpm_xlParser.TimeOperatorsContext
+            super().__init__(parser)
+            self.year = None # ExpressionContext
+            self.month = None # ExpressionContext
+            self.day = None # ExpressionContext
+            self.copyFrom(ctx)
+
+        def DATE(self):
+            return self.getToken(dpm_xlParser.DATE, 0)
+        def LPAREN(self):
+            return self.getToken(dpm_xlParser.LPAREN, 0)
+        def COMMA(self, i:int=None):
+            if i is None:
+                return self.getTokens(dpm_xlParser.COMMA)
+            else:
+                return self.getToken(dpm_xlParser.COMMA, i)
+        def RPAREN(self):
+            return self.getToken(dpm_xlParser.RPAREN, 0)
+        def expression(self, i:int=None):
+            if i is None:
+                return self.getTypedRuleContexts(dpm_xlParser.ExpressionContext)
+            else:
+                return self.getTypedRuleContext(dpm_xlParser.ExpressionContext,i)
+
+
+        def enterRule(self, listener:ParseTreeListener):
+            if hasattr( listener, "enterDateConstructorFunction" ):
+                listener.enterDateConstructorFunction(self)
+
+        def exitRule(self, listener:ParseTreeListener):
+            if hasattr( listener, "exitDateConstructorFunction" ):
+                listener.exitDateConstructorFunction(self)
+
+        def accept(self, visitor:ParseTreeVisitor):
+            if hasattr( visitor, "visitDateConstructorFunction" ):
+                return visitor.visitDateConstructorFunction(self)
             else:
                 return visitor.visitChildren(self)
 
@@ -2920,13 +2923,13 @@ class dpm_xlParser ( Parser ):
                 self.state = 298
                 self.match(dpm_xlParser.RPAREN)
                 pass
-            elif token in [dpm_xlParser.YEAR_OP, dpm_xlParser.SEMESTER_OP, dpm_xlParser.QUARTER_OP, dpm_xlParser.MONTH_OP, dpm_xlParser.WEEK_OP, dpm_xlParser.DAY_OP]:
-                localctx = dpm_xlParser.DateExtractionFunctionContext(self, localctx)
+            elif token in [dpm_xlParser.YEAR, dpm_xlParser.SEMESTER, dpm_xlParser.QUARTER, dpm_xlParser.MONTH, dpm_xlParser.WEEK, dpm_xlParser.DAY]:
+                localctx = dpm_xlParser.DateExtractFunctionContext(self, localctx)
                 self.enterOuterAlt(localctx, 2)
                 self.state = 300
                 localctx.op = self._input.LT(1)
                 _la = self._input.LA(1)
-                if not((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << dpm_xlParser.YEAR_OP) | (1 << dpm_xlParser.SEMESTER_OP) | (1 << dpm_xlParser.QUARTER_OP) | (1 << dpm_xlParser.MONTH_OP) | (1 << dpm_xlParser.WEEK_OP) | (1 << dpm_xlParser.DAY_OP))) != 0)):
+                if not((((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << dpm_xlParser.YEAR) | (1 << dpm_xlParser.SEMESTER) | (1 << dpm_xlParser.QUARTER) | (1 << dpm_xlParser.MONTH) | (1 << dpm_xlParser.WEEK) | (1 << dpm_xlParser.DAY))) != 0)):
                     localctx.op = self._errHandler.recoverInline(self)
                 else:
                     self._errHandler.reportMatch(self)
@@ -2938,23 +2941,23 @@ class dpm_xlParser ( Parser ):
                 self.state = 303
                 self.match(dpm_xlParser.RPAREN)
                 pass
-            elif token in [dpm_xlParser.DATE_OP]:
+            elif token in [dpm_xlParser.DATE]:
                 localctx = dpm_xlParser.DateConstructorFunctionContext(self, localctx)
                 self.enterOuterAlt(localctx, 3)
                 self.state = 305
-                self.match(dpm_xlParser.DATE_OP)
+                self.match(dpm_xlParser.DATE)
                 self.state = 306
                 self.match(dpm_xlParser.LPAREN)
                 self.state = 307
-                self.expression(0)
+                localctx.year = self.expression(0)
                 self.state = 308
                 self.match(dpm_xlParser.COMMA)
                 self.state = 309
-                self.expression(0)
+                localctx.month = self.expression(0)
                 self.state = 310
                 self.match(dpm_xlParser.COMMA)
                 self.state = 311
-                self.expression(0)
+                localctx.day = self.expression(0)
                 self.state = 312
                 self.match(dpm_xlParser.RPAREN)
                 pass

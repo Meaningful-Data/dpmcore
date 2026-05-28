@@ -111,31 +111,31 @@ class DateExtractionBase(Unary):
 
 
 class Year(DateExtractionBase):
-    op: ClassVar[str | None] = tokens.YEAR_OP
+    op: ClassVar[str | None] = tokens.YEAR
 
 
 class Semester(DateExtractionBase):
-    op: ClassVar[str | None] = tokens.SEMESTER_OP
+    op: ClassVar[str | None] = tokens.SEMESTER
 
 
 class Quarter(DateExtractionBase):
-    op: ClassVar[str | None] = tokens.QUARTER_OP
+    op: ClassVar[str | None] = tokens.QUARTER
 
 
 class Month(DateExtractionBase):
-    op: ClassVar[str | None] = tokens.MONTH_OP
+    op: ClassVar[str | None] = tokens.MONTH
 
 
 class Week(DateExtractionBase):
-    op: ClassVar[str | None] = tokens.WEEK_OP
+    op: ClassVar[str | None] = tokens.WEEK
 
 
 class Day(DateExtractionBase):
-    op: ClassVar[str | None] = tokens.DAY_OP
+    op: ClassVar[str | None] = tokens.DAY
 
 
 class DateConstructor(Operator):
-    op: ClassVar[str | None] = tokens.DATE_OP
+    op: ClassVar[str | None] = tokens.DATE
 
     @classmethod
     def validate(

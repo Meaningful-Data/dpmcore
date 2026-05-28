@@ -314,8 +314,8 @@ class ASTVisitor(dpm_xlParserVisitor):
             shift_number=shift_number,
         )
 
-    def visitDateExtractionFunction(
-        self, ctx: dpm_xlParser.DateExtractionFunctionContext
+    def visitDateExtractFunction(
+        self, ctx: dpm_xlParser.DateExtractFunctionContext
     ) -> DateExtractionOp:
         ctx_list = list(ctx.getChildren())
         op = self._symbol_text(ctx_list[0])

@@ -53,13 +53,13 @@ CONCATENATE = "&"
 
 # Time operators
 TIME_SHIFT = "time_shift"
-YEAR_OP = "year"
-SEMESTER_OP = "semester"
-QUARTER_OP = "quarter"
-MONTH_OP = "month"
-WEEK_OP = "week"
-DAY_OP = "day"
-DATE_OP = "date"
+YEAR = "year"
+SEMESTER = "semester"
+QUARTER = "quarter"
+MONTH = "month"
+WEEK = "week"
+DAY = "day"
+DATE = "date"
 
 # Conditional operators
 FILTER = "filter"

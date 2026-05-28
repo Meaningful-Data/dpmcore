@@ -219,8 +219,8 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by dpm_xlParser#dateExtractionFunction.
-    def visitDateExtractionFunction(self, ctx:dpm_xlParser.DateExtractionFunctionContext):
+    # Visit a parse tree produced by dpm_xlParser#dateExtractFunction.
+    def visitDateExtractFunction(self, ctx:dpm_xlParser.DateExtractFunctionContext):
         return self.visitChildren(ctx)
 
 

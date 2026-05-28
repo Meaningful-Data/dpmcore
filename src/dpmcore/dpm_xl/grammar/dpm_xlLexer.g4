@@ -101,13 +101,17 @@ SUB:                    'sub';
 
 // Reference date
 TIME_SHIFT:             'time_shift';
-YEAR_OP:                'year';
-SEMESTER_OP:            'semester';
-QUARTER_OP:             'quarter';
-MONTH_OP:               'month';
-WEEK_OP:                'week';
-DAY_OP:                 'day';
-DATE_OP:                'date';
+
+// Date-component extraction
+YEAR:                   'year';
+SEMESTER:               'semester';
+QUARTER:                'quarter';
+MONTH:                  'month';
+WEEK:                   'week';
+DAY:                    'day';
+
+// Date constructor
+DATE:                   'date';
 
 // String
 LEN:                    'len';
@@ -144,21 +148,21 @@ STRING_LITERAL:         '"' (~'"')+ '"' | '\'' (~'\'')+ '\'';
 EMPTY_LITERAL:          '\'\'' | '""';
 
 fragment
-YEAR:                   DIGITS0_9 DIGITS0_9 DIGITS0_9 DIGITS0_9;
+YYYY:                   DIGITS0_9 DIGITS0_9 DIGITS0_9 DIGITS0_9;
 
 fragment
-MONTH:                  '0' DIGITS1_9
+MM:                     '0' DIGITS1_9
                         | '1' [0-2]
                         ;
 
 fragment
-WEEK:                   '0' DIGITS1_9
+WW:                     '0' DIGITS1_9
                         | [1-4] DIGITS0_9
                         | '5' [0-2]
                         ;
 
 fragment
-DAY:                    [0-2] DIGITS0_9
+DD:                     [0-2] DIGITS0_9
                         | '3' [0-1];
 
 fragment
@@ -173,7 +177,7 @@ fragment
 SECONDS:                [0-5] DIGITS0_9;
 
 fragment
-DATE_FORMAT:            YEAR '-' MONTH '-' DAY ('T' HOURS COLON MINUTES COLON SECONDS)?;
+DATE_FORMAT:            YYYY '-' MM '-' DD ('T' HOURS COLON MINUTES COLON SECONDS)?;
 
 DATE_LITERAL:           '#' DATE_FORMAT '#';
 
@@ -355,13 +359,17 @@ CLAUSE_SUB:                    'sub' -> type(SUB);
 
 // Reference date
 CLAUSE_TIME_SHIFT:             'time_shift' -> type(TIME_SHIFT);
-CLAUSE_YEAR_OP:                'year'       -> type(YEAR_OP);
-CLAUSE_SEMESTER_OP:            'semester'   -> type(SEMESTER_OP);
-CLAUSE_QUARTER_OP:             'quarter'    -> type(QUARTER_OP);
-CLAUSE_MONTH_OP:               'month'      -> type(MONTH_OP);
-CLAUSE_WEEK_OP:                'week'       -> type(WEEK_OP);
-CLAUSE_DAY_OP:                 'day'        -> type(DAY_OP);
-CLAUSE_DATE_OP:                'date'       -> type(DATE_OP);
+
+// Date-component extraction
+CLAUSE_YEAR:                   'year' -> type(YEAR);
+CLAUSE_SEMESTER:               'semester' -> type(SEMESTER);
+CLAUSE_QUARTER:                'quarter' -> type(QUARTER);
+CLAUSE_MONTH:                  'month' -> type(MONTH);
+CLAUSE_WEEK:                   'week' -> type(WEEK);
+CLAUSE_DAY:                    'day' -> type(DAY);
+
+// Date constructor
+CLAUSE_DATE:                   'date' -> type(DATE);
 
 // String
 CLAUSE_LEN:                    'len' -> type(LEN);

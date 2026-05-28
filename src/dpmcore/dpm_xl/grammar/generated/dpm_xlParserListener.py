@@ -386,12 +386,12 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by dpm_xlParser#dateExtractionFunction.
-    def enterDateExtractionFunction(self, ctx:dpm_xlParser.DateExtractionFunctionContext):
+    # Enter a parse tree produced by dpm_xlParser#dateExtractFunction.
+    def enterDateExtractFunction(self, ctx:dpm_xlParser.DateExtractFunctionContext):
         pass
 
-    # Exit a parse tree produced by dpm_xlParser#dateExtractionFunction.
-    def exitDateExtractionFunction(self, ctx:dpm_xlParser.DateExtractionFunctionContext):
+    # Exit a parse tree produced by dpm_xlParser#dateExtractFunction.
+    def exitDateExtractFunction(self, ctx:dpm_xlParser.DateExtractFunctionContext):
         pass
 
 

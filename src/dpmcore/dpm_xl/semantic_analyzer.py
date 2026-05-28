@@ -67,7 +67,7 @@ from dpmcore.dpm_xl.utils.operator_mapping import (
     UNARY_OP_MAPPING,
 )
 from dpmcore.dpm_xl.utils.tokens import (
-    DATE_OP,
+    DATE,
     DPM,
     FILTER,
     GET,
@@ -526,7 +526,7 @@ class InputAnalyzer(ASTTemplate, ABC):
         year_sym = self.visit(node.year)
         month_sym = self.visit(node.month)
         day_sym = self.visit(node.day)
-        result = cast(Any, TIME_OPERATORS[DATE_OP]).validate(
+        result = cast(Any, TIME_OPERATORS[DATE]).validate(
             year_sym, month_sym, day_sym
         )
         return cast(Operand, result)

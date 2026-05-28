@@ -106,13 +106,13 @@ CLAUSE_OP_MAPPING = {WHERE: Where, RENAME: Rename, GET: Get, SUB: Sub}
 
 TIME_OPERATORS = {
     TIME_SHIFT: TimeShift,
-    YEAR_OP: Year,
-    SEMESTER_OP: Semester,
-    QUARTER_OP: Quarter,
-    MONTH_OP: Month,
-    WEEK_OP: Week,
-    DAY_OP: Day,
-    DATE_OP: DateConstructor,
+    YEAR: Year,
+    SEMESTER: Semester,
+    QUARTER: Quarter,
+    MONTH: Month,
+    WEEK: Week,
+    DAY: Day,
+    DATE: DateConstructor,
 }
 
 CONDITIONAL_OP_MAPPING = {IF: IfOperator, FILTER: Filter}
