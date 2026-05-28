@@ -11,14 +11,14 @@ class Concept(models.Model):
         max_length=38,
         primary_key=True,
     )
-    class_id = models.ForeignKey(
+    dpm_class = models.ForeignKey(
         "DpmClass",
         on_delete=models.DO_NOTHING,
         db_column="ClassID",
         null=True,
         blank=True,
     )
-    owner_id = models.ForeignKey(
+    owner = models.ForeignKey(
         "Organisation",
         on_delete=models.DO_NOTHING,
         db_column="OwnerID",
@@ -73,7 +73,7 @@ class RelatedConcept(models.Model):
         db_column="ConceptGUID",
         primary_key=True,
     )
-    concept_relation_id = models.ForeignKey(
+    concept_relation = models.ForeignKey(
         "ConceptRelation",
         on_delete=models.DO_NOTHING,
         db_column="ConceptRelationID",
@@ -94,7 +94,7 @@ class RelatedConcept(models.Model):
         managed = False
         db_table = "RelatedConcept"
         app_label = "dpmcore_django"
-        unique_together = (("concept_guid", "concept_relation_id"),)
+        unique_together = (("concept_guid", "concept_relation"),)
 
 
 class Organisation(models.Model):
@@ -167,7 +167,7 @@ class User(models.Model):
         db_column="UserID",
         primary_key=True,
     )
-    org_id = models.ForeignKey(
+    org = models.ForeignKey(
         "Organisation",
         on_delete=models.DO_NOTHING,
         db_column="OrgID",
@@ -216,13 +216,13 @@ class Role(models.Model):
 class UserRole(models.Model):
     """Many-to-many link between User and Role."""
 
-    user_id = models.ForeignKey(
+    user = models.ForeignKey(
         "User",
         on_delete=models.DO_NOTHING,
         db_column="UserID",
         primary_key=True,
     )
-    role_id = models.ForeignKey(
+    role = models.ForeignKey(
         "Role",
         on_delete=models.DO_NOTHING,
         db_column="RoleID",
@@ -232,7 +232,7 @@ class UserRole(models.Model):
         managed = False
         db_table = "UserRole"
         app_label = "dpmcore_django"
-        unique_together = (("user_id", "role_id"),)
+        unique_together = (("user", "role"),)
 
 
 class DataType(models.Model):
@@ -254,7 +254,7 @@ class DataType(models.Model):
         null=True,
         blank=True,
     )
-    parent_data_type_id = models.ForeignKey(
+    parent_data_type = models.ForeignKey(
         "self",
         on_delete=models.DO_NOTHING,
         db_column="ParentDataTypeID",
@@ -295,7 +295,7 @@ class DpmClass(models.Model):
         null=True,
         blank=True,
     )
-    owner_class_id = models.ForeignKey(
+    owner_class = models.ForeignKey(
         "self",
         on_delete=models.DO_NOTHING,
         db_column="OwnerClassID",
@@ -326,7 +326,7 @@ class DpmAttribute(models.Model):
         db_column="AttributeID",
         primary_key=True,
     )
-    class_id = models.ForeignKey(
+    dpm_class = models.ForeignKey(
         "DpmClass",
         on_delete=models.DO_NOTHING,
         db_column="ClassID",
@@ -365,12 +365,12 @@ class Translation(models.Model):
         db_column="ConceptGUID",
         primary_key=True,
     )
-    attribute_id = models.ForeignKey(
+    attribute = models.ForeignKey(
         "DpmAttribute",
         on_delete=models.DO_NOTHING,
         db_column="AttributeID",
     )
-    translator_id = models.ForeignKey(
+    translator = models.ForeignKey(
         "Organisation",
         on_delete=models.DO_NOTHING,
         db_column="TranslatorID",
@@ -399,8 +399,8 @@ class Translation(models.Model):
         unique_together = (
             (
                 "concept_guid",
-                "attribute_id",
-                "translator_id",
+                "attribute",
+                "translator",
                 "language_code",
             ),
         )
@@ -414,7 +414,7 @@ class Changelog(models.Model):
         max_length=36,
         primary_key=True,
     )
-    class_id = models.ForeignKey(
+    dpm_class = models.ForeignKey(
         "DpmClass",
         on_delete=models.DO_NOTHING,
         db_column="ClassID",
@@ -440,7 +440,7 @@ class Changelog(models.Model):
         null=True,
         blank=True,
     )
-    release_id = models.ForeignKey(
+    release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="ReleaseID",
@@ -466,7 +466,7 @@ class Changelog(models.Model):
         managed = False
         db_table = "ChangeLog"
         app_label = "dpmcore_django"
-        unique_together = (("row_guid", "class_id", "timestamp"),)
+        unique_together = (("row_guid", "dpm_class", "timestamp"),)
 
 
 class ChangelogAttribute(models.Model):
@@ -479,7 +479,7 @@ class ChangelogAttribute(models.Model):
     action_id = models.IntegerField(
         db_column="ActionID",
     )
-    attribute_id = models.ForeignKey(
+    attribute = models.ForeignKey(
         "DpmAttribute",
         on_delete=models.DO_NOTHING,
         db_column="AttributeID",
@@ -530,7 +530,7 @@ class Document(models.Model):
         null=True,
         blank=True,
     )
-    org_id = models.ForeignKey(
+    org = models.ForeignKey(
         "Organisation",
         on_delete=models.DO_NOTHING,
         db_column="OrgID",
@@ -560,7 +560,7 @@ class DocumentVersion(models.Model):
         db_column="DocumentVID",
         primary_key=True,
     )
-    document_id = models.ForeignKey(
+    document = models.ForeignKey(
         "Document",
         on_delete=models.DO_NOTHING,
         db_column="DocumentID",
@@ -607,14 +607,14 @@ class Subdivision(models.Model):
         db_column="SubdivisionID",
         primary_key=True,
     )
-    document_vid = models.ForeignKey(
+    document_version = models.ForeignKey(
         "DocumentVersion",
         on_delete=models.DO_NOTHING,
         db_column="DocumentVID",
         null=True,
         blank=True,
     )
-    subdivision_type_id = models.ForeignKey(
+    subdivision_type = models.ForeignKey(
         "SubdivisionType",
         on_delete=models.DO_NOTHING,
         db_column="SubdivisionTypeID",
@@ -627,7 +627,7 @@ class Subdivision(models.Model):
         null=True,
         blank=True,
     )
-    parent_subdivision_id = models.ForeignKey(
+    parent_subdivision = models.ForeignKey(
         "self",
         on_delete=models.DO_NOTHING,
         db_column="ParentSubdivisionID",
@@ -698,7 +698,7 @@ class SubdivisionType(models.Model):
 class Reference(models.Model):
     """Link between a Subdivision and a Concept."""
 
-    subdivision_id = models.ForeignKey(
+    subdivision = models.ForeignKey(
         "Subdivision",
         on_delete=models.DO_NOTHING,
         db_column="SubdivisionID",
@@ -720,7 +720,7 @@ class Reference(models.Model):
         managed = False
         db_table = "Reference"
         app_label = "dpmcore_django"
-        unique_together = (("subdivision_id", "concept_guid"),)
+        unique_together = (("subdivision", "concept_guid"),)
 
 
 class Release(models.Model):
@@ -819,7 +819,7 @@ class VariableGeneration(models.Model):
         null=True,
         blank=True,
     )
-    release_id = models.ForeignKey(
+    release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="ReleaseID",

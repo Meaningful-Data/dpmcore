@@ -200,7 +200,7 @@ class DpmModelAdmin(admin.ModelAdmin[models.Model]):
 
 @admin.register(Concept)
 class ConceptAdmin(DpmModelAdmin):
-    list_display = ("concept_guid", "class_id", "owner_id")
+    list_display = ("concept_guid", "dpm_class", "owner")
     search_fields = ("concept_guid",)
 
 
@@ -214,7 +214,7 @@ class ConceptRelationAdmin(DpmModelAdmin):
 class RelatedConceptAdmin(DpmModelAdmin):
     list_display = (
         "concept_guid",
-        "concept_relation_id",
+        "concept_relation",
         "is_related_concept",
     )
     list_filter = ("is_related_concept",)
@@ -234,7 +234,7 @@ class LanguageAdmin(DpmModelAdmin):
 
 @admin.register(User)
 class UserAdmin(DpmModelAdmin):
-    list_display = ("user_id", "name", "org_id")
+    list_display = ("user_id", "name", "org")
     search_fields = ("name",)
 
 
@@ -246,7 +246,7 @@ class RoleAdmin(DpmModelAdmin):
 
 @admin.register(UserRole)
 class UserRoleAdmin(DpmModelAdmin):
-    list_display = ("user_id", "role_id")
+    list_display = ("user", "role")
 
 
 @admin.register(DataType)
@@ -278,7 +278,7 @@ class DpmAttributeAdmin(DpmModelAdmin):
     list_display = (
         "attribute_id",
         "name",
-        "class_id",
+        "dpm_class",
         "has_translations",
     )
     search_fields = ("name",)
@@ -289,9 +289,9 @@ class DpmAttributeAdmin(DpmModelAdmin):
 class TranslationAdmin(DpmModelAdmin):
     list_display = (
         "concept_guid",
-        "attribute_id",
+        "attribute",
         "language_code",
-        "translator_id",
+        "translator",
     )
     search_fields = ("translation",)
 
@@ -300,7 +300,7 @@ class TranslationAdmin(DpmModelAdmin):
 class ChangelogAdmin(DpmModelAdmin):
     list_display = (
         "row_guid",
-        "class_id",
+        "dpm_class",
         "timestamp",
         "change_type",
         "status",
@@ -314,7 +314,7 @@ class ChangelogAttributeAdmin(DpmModelAdmin):
     list_display = (
         "changelog_attribute_id",
         "action_id",
-        "attribute_id",
+        "attribute",
     )
 
 
@@ -329,7 +329,7 @@ class DocumentAdmin(DpmModelAdmin):
 class DocumentVersionAdmin(DpmModelAdmin):
     list_display = (
         "document_vid",
-        "document_id",
+        "document",
         "code",
         "version",
     )
@@ -341,7 +341,7 @@ class SubdivisionAdmin(DpmModelAdmin):
     list_display = (
         "subdivision_id",
         "number",
-        "subdivision_type_id",
+        "subdivision_type",
     )
     search_fields = ("number",)
 
@@ -354,7 +354,7 @@ class SubdivisionTypeAdmin(DpmModelAdmin):
 
 @admin.register(Reference)
 class ReferenceAdmin(DpmModelAdmin):
-    list_display = ("subdivision_id", "concept_guid")
+    list_display = ("subdivision", "concept_guid")
 
 
 @admin.register(Release)
@@ -376,7 +376,7 @@ class VariableGenerationAdmin(DpmModelAdmin):
     list_display = (
         "variable_generation_id",
         "status",
-        "release_id",
+        "release",
         "start_date",
         "end_date",
     )
@@ -405,7 +405,7 @@ class SubCategoryAdmin(DpmModelAdmin):
         "subcategory_id",
         "code",
         "name",
-        "category_id",
+        "category",
     )
     search_fields = ("code", "name")
 
@@ -414,17 +414,17 @@ class SubCategoryAdmin(DpmModelAdmin):
 class SubCategoryVersionAdmin(DpmModelAdmin):
     list_display = (
         "subcategory_vid",
-        "subcategory_id",
-        "start_release_id",
-        "end_release_id",
+        "subcategory",
+        "start_release",
+        "end_release",
     )
 
 
 @admin.register(SubCategoryItem)
 class SubCategoryItemAdmin(DpmModelAdmin):
     list_display = (
-        "item_id",
-        "subcategory_vid",
+        "item",
+        "subcategory_version",
         "order",
         "label",
     )
@@ -446,9 +446,9 @@ class ItemAdmin(DpmModelAdmin):
 @admin.register(ItemCategory)
 class ItemCategoryAdmin(DpmModelAdmin):
     list_display = (
-        "item_id",
-        "start_release_id",
-        "category_id",
+        "item",
+        "start_release",
+        "category",
         "code",
     )
     search_fields = ("code",)
@@ -457,10 +457,10 @@ class ItemCategoryAdmin(DpmModelAdmin):
 @admin.register(Property)
 class PropertyAdmin(DpmModelAdmin):
     list_display = (
-        "property_id",
+        "property",
         "is_composite",
         "is_metric",
-        "data_type_id",
+        "data_type",
         "period_type",
     )
     list_filter = ("is_composite", "is_metric")
@@ -469,9 +469,9 @@ class PropertyAdmin(DpmModelAdmin):
 @admin.register(PropertyCategory)
 class PropertyCategoryAdmin(DpmModelAdmin):
     list_display = (
-        "property_id",
-        "start_release_id",
-        "category_id",
+        "property",
+        "start_release",
+        "category",
     )
 
 
@@ -483,21 +483,21 @@ class ContextAdmin(DpmModelAdmin):
 
 @admin.register(ContextComposition)
 class ContextCompositionAdmin(DpmModelAdmin):
-    list_display = ("context_id", "property_id", "item_id")
+    list_display = ("context", "property", "item")
 
 
 @admin.register(CompoundItemContext)
 class CompoundItemContextAdmin(DpmModelAdmin):
     list_display = (
-        "item_id",
-        "start_release_id",
-        "context_id",
+        "item",
+        "start_release",
+        "context",
     )
 
 
 @admin.register(SupercategoryComposition)
 class SupercategoryCompositionAdmin(DpmModelAdmin):
-    list_display = ("supercategory_id", "category_id")
+    list_display = ("supercategory", "category")
 
 
 # ── Rendering (11 models) ───────────────────────────────────────
@@ -520,8 +520,8 @@ class TableVersionAdmin(DpmModelAdmin):
         "table_vid",
         "code",
         "name",
-        "table_id",
-        "start_release_id",
+        "table",
+        "start_release",
     )
     search_fields = ("code", "name")
 
@@ -530,7 +530,7 @@ class TableVersionAdmin(DpmModelAdmin):
 class HeaderAdmin(DpmModelAdmin):
     list_display = (
         "header_id",
-        "table_id",
+        "table",
         "direction",
         "is_key",
     )
@@ -541,7 +541,7 @@ class HeaderAdmin(DpmModelAdmin):
 class HeaderVersionAdmin(DpmModelAdmin):
     list_display = (
         "header_vid",
-        "header_id",
+        "header",
         "code",
         "label",
     )
@@ -552,18 +552,18 @@ class HeaderVersionAdmin(DpmModelAdmin):
 class CellAdmin(DpmModelAdmin):
     list_display = (
         "cell_id",
-        "table_id",
-        "column_id",
-        "row_id",
-        "sheet_id",
+        "table",
+        "column",
+        "row",
+        "sheet",
     )
 
 
 @admin.register(TableVersionCell)
 class TableVersionCellAdmin(DpmModelAdmin):
     list_display = (
-        "table_vid",
-        "cell_id",
+        "table_version",
+        "cell",
         "cell_code",
         "is_nullable",
         "is_excluded",
@@ -576,9 +576,9 @@ class TableVersionCellAdmin(DpmModelAdmin):
 @admin.register(TableVersionHeader)
 class TableVersionHeaderAdmin(DpmModelAdmin):
     list_display = (
-        "table_vid",
-        "header_id",
-        "header_vid",
+        "table_version",
+        "header",
+        "header_version",
         "order",
         "is_abstract",
     )
@@ -599,7 +599,7 @@ class TableGroupAdmin(DpmModelAdmin):
 
 @admin.register(TableGroupComposition)
 class TableGroupCompositionAdmin(DpmModelAdmin):
-    list_display = ("table_group_id", "table_id", "order")
+    list_display = ("table_group", "table", "order")
 
 
 @admin.register(TableAssociation)
@@ -607,8 +607,8 @@ class TableAssociationAdmin(DpmModelAdmin):
     list_display = (
         "association_id",
         "name",
-        "child_table_vid",
-        "parent_table_vid",
+        "child_table_version",
+        "parent_table_version",
     )
     search_fields = ("name",)
     list_filter = ("is_identifying", "is_subtype")
@@ -617,9 +617,9 @@ class TableAssociationAdmin(DpmModelAdmin):
 @admin.register(KeyHeaderMapping)
 class KeyHeaderMappingAdmin(DpmModelAdmin):
     list_display = (
-        "association_id",
-        "foreign_key_header_id",
-        "primary_key_header_id",
+        "association",
+        "foreign_key_header",
+        "primary_key_header",
     )
 
 
@@ -636,7 +636,7 @@ class VariableAdmin(DpmModelAdmin):
 class VariableVersionAdmin(DpmModelAdmin):
     list_display = (
         "variable_vid",
-        "variable_id",
+        "variable",
         "code",
         "name",
     )
@@ -646,9 +646,9 @@ class VariableVersionAdmin(DpmModelAdmin):
 @admin.register(VariableCalculation)
 class VariableCalculationAdmin(DpmModelAdmin):
     list_display = (
-        "module_id",
-        "variable_id",
-        "operation_vid",
+        "module",
+        "variable",
+        "operation_version",
         "from_reference_date",
         "to_reference_date",
     )
@@ -662,7 +662,7 @@ class CompoundKeyAdmin(DpmModelAdmin):
 
 @admin.register(KeyComposition)
 class KeyCompositionAdmin(DpmModelAdmin):
-    list_display = ("key_id", "variable_vid")
+    list_display = ("key", "variable_version")
 
 
 # ── Operations (10 models) ──────────────────────────────────────
@@ -684,10 +684,10 @@ class OperationAdmin(DpmModelAdmin):
 class OperationVersionAdmin(DpmModelAdmin):
     list_display = (
         "operation_vid",
-        "operation_id",
+        "operation",
         "endorsement",
-        "start_release_id",
-        "end_release_id",
+        "start_release",
+        "end_release",
     )
     search_fields = ("description", "expression")
     list_filter = ("endorsement", "is_variant_approved")
@@ -696,7 +696,7 @@ class OperationVersionAdmin(DpmModelAdmin):
 @admin.register(OperationVersionData)
 class OperationVersionDataAdmin(DpmModelAdmin):
     list_display = (
-        "operation_vid",
+        "operation_version",
         "error_code",
         "is_applying",
         "proposing_status",
@@ -709,8 +709,8 @@ class OperationVersionDataAdmin(DpmModelAdmin):
 class OperationNodeAdmin(DpmModelAdmin):
     list_display = (
         "node_id",
-        "operation_vid",
-        "operator_id",
+        "operation_version",
+        "operator",
         "operand_type",
         "is_leaf",
     )
@@ -721,7 +721,7 @@ class OperationNodeAdmin(DpmModelAdmin):
 class OperationScopeAdmin(DpmModelAdmin):
     list_display = (
         "operation_scope_id",
-        "operation_vid",
+        "operation_version",
         "severity",
     )
     list_filter = ("severity",)
@@ -729,7 +729,7 @@ class OperationScopeAdmin(DpmModelAdmin):
 
 @admin.register(OperationScopeComposition)
 class OperationScopeCompositionAdmin(DpmModelAdmin):
-    list_display = ("operation_scope_id", "module_vid")
+    list_display = ("operation_scope", "module_version")
 
 
 @admin.register(Operator)
@@ -748,7 +748,7 @@ class OperatorAdmin(DpmModelAdmin):
 class OperatorArgumentAdmin(DpmModelAdmin):
     list_display = (
         "argument_id",
-        "operator_id",
+        "operator",
         "name",
         "order",
         "is_mandatory",
@@ -761,7 +761,7 @@ class OperatorArgumentAdmin(DpmModelAdmin):
 class OperandReferenceAdmin(DpmModelAdmin):
     list_display = (
         "operand_reference_id",
-        "node_id",
+        "node",
         "operand_reference",
     )
     search_fields = ("operand_reference",)
@@ -770,7 +770,7 @@ class OperandReferenceAdmin(DpmModelAdmin):
 @admin.register(OperandReferenceLocation)
 class OperandReferenceLocationAdmin(DpmModelAdmin):
     list_display = (
-        "operand_reference_id",
+        "operand_reference",
         "table",
         "row",
         "column",
@@ -792,7 +792,7 @@ class FrameworkAdmin(DpmModelAdmin):
 class ModuleAdmin(DpmModelAdmin):
     list_display = (
         "module_id",
-        "framework_id",
+        "framework",
         "is_document_module",
     )
     list_filter = ("is_document_module",)
@@ -802,7 +802,7 @@ class ModuleAdmin(DpmModelAdmin):
 class ModuleVersionAdmin(DpmModelAdmin):
     list_display = (
         "module_vid",
-        "module_id",
+        "module",
         "code",
         "name",
         "version_number",
@@ -814,16 +814,16 @@ class ModuleVersionAdmin(DpmModelAdmin):
 @admin.register(ModuleVersionComposition)
 class ModuleVersionCompositionAdmin(DpmModelAdmin):
     list_display = (
-        "module_vid",
-        "table_id",
-        "table_vid",
+        "module_version",
+        "table",
+        "table_version",
         "order",
     )
 
 
 @admin.register(ModuleParameters)
 class ModuleParametersAdmin(DpmModelAdmin):
-    list_display = ("module_vid", "variable_vid")
+    list_display = ("module_version", "variable_version")
 
 
 @admin.register(OperationCodePrefix)
@@ -832,7 +832,7 @@ class OperationCodePrefixAdmin(DpmModelAdmin):
         "operation_code_prefix_id",
         "code",
         "list_name",
-        "framework_id",
+        "framework",
     )
     search_fields = ("code",)
 

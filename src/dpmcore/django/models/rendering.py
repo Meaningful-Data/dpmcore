@@ -83,7 +83,7 @@ class TableVersion(models.Model):
         null=True,
         blank=True,
     )
-    table_id = models.ForeignKey(
+    table = models.ForeignKey(
         "Table",
         on_delete=models.DO_NOTHING,
         db_column="TableID",
@@ -91,7 +91,7 @@ class TableVersion(models.Model):
         null=True,
         blank=True,
     )
-    abstract_table_id = models.ForeignKey(
+    abstract_table = models.ForeignKey(
         "Table",
         on_delete=models.DO_NOTHING,
         db_column="AbstractTableID",
@@ -99,28 +99,28 @@ class TableVersion(models.Model):
         null=True,
         blank=True,
     )
-    key_id = models.ForeignKey(
+    key = models.ForeignKey(
         "CompoundKey",
         on_delete=models.DO_NOTHING,
         db_column="KeyID",
         null=True,
         blank=True,
     )
-    property_id = models.ForeignKey(
+    property = models.ForeignKey(
         "Property",
         on_delete=models.DO_NOTHING,
         db_column="PropertyID",
         null=True,
         blank=True,
     )
-    context_id = models.ForeignKey(
+    context = models.ForeignKey(
         "Context",
         on_delete=models.DO_NOTHING,
         db_column="ContextID",
         null=True,
         blank=True,
     )
-    start_release_id = models.ForeignKey(
+    start_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="StartReleaseID",
@@ -128,7 +128,7 @@ class TableVersion(models.Model):
         null=True,
         blank=True,
     )
-    end_release_id = models.ForeignKey(
+    end_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="EndReleaseID",
@@ -159,7 +159,7 @@ class Header(models.Model):
         db_column="HeaderID",
         primary_key=True,
     )
-    table_id = models.ForeignKey(
+    table = models.ForeignKey(
         "Table",
         on_delete=models.DO_NOTHING,
         db_column="TableID",
@@ -207,7 +207,7 @@ class HeaderVersion(models.Model):
         db_column="HeaderVID",
         primary_key=True,
     )
-    header_id = models.ForeignKey(
+    header = models.ForeignKey(
         "Header",
         on_delete=models.DO_NOTHING,
         db_column="HeaderID",
@@ -226,35 +226,35 @@ class HeaderVersion(models.Model):
         null=True,
         blank=True,
     )
-    property_id = models.ForeignKey(
+    property = models.ForeignKey(
         "Property",
         on_delete=models.DO_NOTHING,
         db_column="PropertyID",
         null=True,
         blank=True,
     )
-    context_id = models.ForeignKey(
+    context = models.ForeignKey(
         "Context",
         on_delete=models.DO_NOTHING,
         db_column="ContextID",
         null=True,
         blank=True,
     )
-    subcategory_vid = models.ForeignKey(
+    subcategory_version = models.ForeignKey(
         "SubCategoryVersion",
         on_delete=models.DO_NOTHING,
         db_column="SubCategoryVID",
         null=True,
         blank=True,
     )
-    key_variable_vid = models.ForeignKey(
+    key_variable_version = models.ForeignKey(
         "VariableVersion",
         on_delete=models.DO_NOTHING,
         db_column="KeyVariableVID",
         null=True,
         blank=True,
     )
-    start_release_id = models.ForeignKey(
+    start_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="StartReleaseID",
@@ -262,7 +262,7 @@ class HeaderVersion(models.Model):
         null=True,
         blank=True,
     )
-    end_release_id = models.ForeignKey(
+    end_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="EndReleaseID",
@@ -293,14 +293,14 @@ class Cell(models.Model):
         db_column="CellID",
         primary_key=True,
     )
-    table_id = models.ForeignKey(
+    table = models.ForeignKey(
         "Table",
         on_delete=models.DO_NOTHING,
         db_column="TableID",
         null=True,
         blank=True,
     )
-    column_id = models.ForeignKey(
+    column = models.ForeignKey(
         "Header",
         on_delete=models.DO_NOTHING,
         db_column="ColumnID",
@@ -308,7 +308,7 @@ class Cell(models.Model):
         null=True,
         blank=True,
     )
-    row_id = models.ForeignKey(
+    row = models.ForeignKey(
         "Header",
         on_delete=models.DO_NOTHING,
         db_column="RowID",
@@ -316,7 +316,7 @@ class Cell(models.Model):
         null=True,
         blank=True,
     )
-    sheet_id = models.ForeignKey(
+    sheet = models.ForeignKey(
         "Header",
         on_delete=models.DO_NOTHING,
         db_column="SheetID",
@@ -345,13 +345,13 @@ class Cell(models.Model):
 class TableVersionCell(models.Model):
     """Release-scoped cell configuration within a TableVersion."""
 
-    table_vid = models.ForeignKey(
+    table_version = models.ForeignKey(
         "TableVersion",
         on_delete=models.DO_NOTHING,
         db_column="TableVID",
         primary_key=True,
     )
-    cell_id = models.ForeignKey(
+    cell = models.ForeignKey(
         "Cell",
         on_delete=models.DO_NOTHING,
         db_column="CellID",
@@ -383,7 +383,7 @@ class TableVersionCell(models.Model):
         null=True,
         blank=True,
     )
-    variable_vid = models.ForeignKey(
+    variable_version = models.ForeignKey(
         "VariableVersion",
         on_delete=models.DO_NOTHING,
         db_column="VariableVID",
@@ -401,32 +401,32 @@ class TableVersionCell(models.Model):
         managed = False
         db_table = "TableVersionCell"
         app_label = "dpmcore_django"
-        unique_together = (("table_vid", "cell_id"),)
+        unique_together = (("table_version", "cell"),)
 
 
 class TableVersionHeader(models.Model):
     """Ordered header assignment within a TableVersion."""
 
-    table_vid = models.ForeignKey(
+    table_version = models.ForeignKey(
         "TableVersion",
         on_delete=models.DO_NOTHING,
         db_column="TableVID",
         primary_key=True,
     )
-    header_id = models.ForeignKey(
+    header = models.ForeignKey(
         "Header",
         on_delete=models.DO_NOTHING,
         db_column="HeaderID",
         related_name="table_version_headers",
     )
-    header_vid = models.ForeignKey(
+    header_version = models.ForeignKey(
         "HeaderVersion",
         on_delete=models.DO_NOTHING,
         db_column="HeaderVID",
         null=True,
         blank=True,
     )
-    parent_header_id = models.ForeignKey(
+    parent_header = models.ForeignKey(
         "Header",
         on_delete=models.DO_NOTHING,
         db_column="ParentHeaderID",
@@ -465,7 +465,7 @@ class TableVersionHeader(models.Model):
         managed = False
         db_table = "TableVersionHeader"
         app_label = "dpmcore_django"
-        unique_together = (("table_vid", "header_id"),)
+        unique_together = (("table_version", "header"),)
 
 
 class TableGroup(models.Model):
@@ -505,7 +505,7 @@ class TableGroup(models.Model):
         null=True,
         blank=True,
     )
-    start_release_id = models.ForeignKey(
+    start_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="StartReleaseID",
@@ -513,7 +513,7 @@ class TableGroup(models.Model):
         null=True,
         blank=True,
     )
-    end_release_id = models.ForeignKey(
+    end_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="EndReleaseID",
@@ -521,7 +521,7 @@ class TableGroup(models.Model):
         null=True,
         blank=True,
     )
-    parent_table_group_id = models.ForeignKey(
+    parent_table_group = models.ForeignKey(
         "self",
         on_delete=models.DO_NOTHING,
         db_column="ParentTableGroupID",
@@ -546,13 +546,13 @@ class TableGroup(models.Model):
 class TableGroupComposition(models.Model):
     """Links Tables to TableGroups with ordering."""
 
-    table_group_id = models.ForeignKey(
+    table_group = models.ForeignKey(
         "TableGroup",
         on_delete=models.DO_NOTHING,
         db_column="TableGroupID",
         primary_key=True,
     )
-    table_id = models.ForeignKey(
+    table = models.ForeignKey(
         "Table",
         on_delete=models.DO_NOTHING,
         db_column="TableID",
@@ -562,7 +562,7 @@ class TableGroupComposition(models.Model):
         null=True,
         blank=True,
     )
-    start_release_id = models.ForeignKey(
+    start_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="StartReleaseID",
@@ -570,7 +570,7 @@ class TableGroupComposition(models.Model):
         null=True,
         blank=True,
     )
-    end_release_id = models.ForeignKey(
+    end_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="EndReleaseID",
@@ -589,7 +589,7 @@ class TableGroupComposition(models.Model):
         managed = False
         db_table = "TableGroupComposition"
         app_label = "dpmcore_django"
-        unique_together = (("table_group_id", "table_id"),)
+        unique_together = (("table_group", "table"),)
 
 
 class TableAssociation(models.Model):
@@ -599,7 +599,7 @@ class TableAssociation(models.Model):
         db_column="AssociationID",
         primary_key=True,
     )
-    child_table_vid = models.ForeignKey(
+    child_table_version = models.ForeignKey(
         "TableVersion",
         on_delete=models.DO_NOTHING,
         db_column="ChildTableVID",
@@ -607,7 +607,7 @@ class TableAssociation(models.Model):
         null=True,
         blank=True,
     )
-    parent_table_vid = models.ForeignKey(
+    parent_table_version = models.ForeignKey(
         "TableVersion",
         on_delete=models.DO_NOTHING,
         db_column="ParentTableVID",
@@ -681,19 +681,19 @@ class TableAssociation(models.Model):
 class KeyHeaderMapping(models.Model):
     """Maps foreign-key headers to primary-key headers."""
 
-    association_id = models.ForeignKey(
+    association = models.ForeignKey(
         "TableAssociation",
         on_delete=models.DO_NOTHING,
         db_column="AssociationID",
         primary_key=True,
     )
-    foreign_key_header_id = models.ForeignKey(
+    foreign_key_header = models.ForeignKey(
         "Header",
         on_delete=models.DO_NOTHING,
         db_column="ForeignKeyHeaderID",
         related_name="fk_header_mappings",
     )
-    primary_key_header_id = models.ForeignKey(
+    primary_key_header = models.ForeignKey(
         "Header",
         on_delete=models.DO_NOTHING,
         db_column="PrimaryKeyHeaderID",
@@ -712,4 +712,4 @@ class KeyHeaderMapping(models.Model):
         managed = False
         db_table = "KeyHeaderMapping"
         app_label = "dpmcore_django"
-        unique_together = (("association_id", "foreign_key_header_id"),)
+        unique_together = (("association", "foreign_key_header"),)
