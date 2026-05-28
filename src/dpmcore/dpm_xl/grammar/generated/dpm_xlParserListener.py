@@ -386,6 +386,24 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by dpm_xlParser#dateExtractionFunction.
+    def enterDateExtractionFunction(self, ctx:dpm_xlParser.DateExtractionFunctionContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#dateExtractionFunction.
+    def exitDateExtractionFunction(self, ctx:dpm_xlParser.DateExtractionFunctionContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#dateConstructorFunction.
+    def enterDateConstructorFunction(self, ctx:dpm_xlParser.DateConstructorFunctionContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#dateConstructorFunction.
+    def exitDateConstructorFunction(self, ctx:dpm_xlParser.DateConstructorFunctionContext):
+        pass
+
+
     # Enter a parse tree produced by dpm_xlParser#nvlFunction.
     def enterNvlFunction(self, ctx:dpm_xlParser.NvlFunctionContext):
         pass
