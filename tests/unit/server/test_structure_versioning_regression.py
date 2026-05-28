@@ -116,7 +116,7 @@ def backport_engine(engine):
             is_external_ref_data=False,
             ref_data_source=None,
             row_guid=None,
-            created_release=100,
+            created_release_id=100,
             owner_id=1,
         )
     )
@@ -279,7 +279,7 @@ def enum_versions_engine(engine):
                 is_enumerated=False,
                 is_active=True,
                 is_external_ref_data=False,
-                created_release=1,
+                created_release_id=1,
                 owner_id=1,
             ),
             Category(
@@ -290,7 +290,7 @@ def enum_versions_engine(engine):
                 is_enumerated=True,
                 is_active=True,
                 is_external_ref_data=False,
-                created_release=1,
+                created_release_id=1,
                 owner_id=1,
             ),
         ]

@@ -728,6 +728,9 @@ class Subdivision(Base):
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
     )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
+    )
     references: Mapped[List["Reference"]] = relationship(
         back_populates="subdivision",
     )
@@ -842,6 +845,9 @@ class Release(Base):
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     changelogs: Mapped[List["Changelog"]] = relationship(
         back_populates="release",

@@ -20,7 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from dpmcore.orm.base import Base
-from dpmcore.orm.infrastructure import Concept, Release
+from dpmcore.orm.infrastructure import Concept, Organisation, Release
 
 if TYPE_CHECKING:
     from dpmcore.orm.glossary import (
@@ -82,6 +82,9 @@ class Table(Base):
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     headers: Mapped[List["Header"]] = relationship(
         back_populates="table",
@@ -275,6 +278,9 @@ class Header(Base):
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
     )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
+    )
     header_versions: Mapped[List["HeaderVersion"]] = relationship(
         back_populates="header",
     )
@@ -454,6 +460,9 @@ class Cell(Base):
     )
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     table_version_cells: Mapped[List["TableVersionCell"]] = relationship(
         back_populates="cell",
@@ -657,6 +666,9 @@ class TableGroup(Base):
     child_table_groups: Mapped[List["TableGroup"]] = relationship(
         back_populates="parent_table_group",
     )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
+    )
     table_group_compositions: Mapped[List["TableGroupComposition"]] = (
         relationship(
             back_populates="table_group",
@@ -802,6 +814,9 @@ class TableAssociation(Base):
     )
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     key_header_mappings: Mapped[List["KeyHeaderMapping"]] = relationship(
         back_populates="table_association",

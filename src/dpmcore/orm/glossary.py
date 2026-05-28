@@ -20,7 +20,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from dpmcore.orm.base import Base
-from dpmcore.orm.infrastructure import Concept, DataType, Release
+from dpmcore.orm.infrastructure import (
+    Concept,
+    DataType,
+    Organisation,
+    Release,
+)
 
 if TYPE_CHECKING:
     from dpmcore.orm.operations import (
@@ -76,7 +81,7 @@ class Category(Base):
         String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
-    created_release: Mapped[Optional[int]] = mapped_column(
+    created_release_id: Mapped[Optional[int]] = mapped_column(
         "CreatedRelease",
         Integer,
         ForeignKey("Release.ReleaseID"),
@@ -89,6 +94,12 @@ class Category(Base):
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
+    )
+    created_release: Mapped[Optional["Release"]] = relationship(
+        foreign_keys=[created_release_id]
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     subcategories: Mapped[List["SubCategory"]] = relationship(
         back_populates="category",
@@ -158,6 +169,9 @@ class SubCategory(Base):
     )
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     subcategory_versions: Mapped[List["SubCategoryVersion"]] = relationship(
         back_populates="subcategory",
@@ -352,6 +366,9 @@ class Item(Base):
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
     )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
+    )
     item_categories: Mapped[List["ItemCategory"]] = relationship(
         back_populates="item",
     )
@@ -491,6 +508,9 @@ class Property(Base):
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
     )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
+    )
     property_categories: Mapped[List["PropertyCategory"]] = relationship(
         back_populates="property",
     )
@@ -608,6 +628,9 @@ class Context(Base):
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     context_compositions: Mapped[List["ContextComposition"]] = relationship(
         back_populates="context",

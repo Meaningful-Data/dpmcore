@@ -129,7 +129,7 @@ def seeded_engine(engine):
                 is_enumerated=False,
                 is_active=True,
                 is_external_ref_data=False,
-                created_release=1,
+                created_release_id=1,
                 owner_id=1,
             ),
             Category(
@@ -140,7 +140,7 @@ def seeded_engine(engine):
                 is_enumerated=True,
                 is_active=True,
                 is_external_ref_data=False,
-                created_release=1,
+                created_release_id=1,
                 owner_id=1,
             ),
         ]

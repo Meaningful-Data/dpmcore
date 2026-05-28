@@ -20,7 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from dpmcore.orm.base import Base
-from dpmcore.orm.infrastructure import Concept, Release
+from dpmcore.orm.infrastructure import Concept, Organisation, Release
 
 if TYPE_CHECKING:
     from dpmcore.orm.glossary import (
@@ -70,6 +70,9 @@ class Variable(Base):
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     variable_versions: Mapped[List["VariableVersion"]] = relationship(
         back_populates="variable",
@@ -282,6 +285,9 @@ class CompoundKey(Base):
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     key_compositions: Mapped[List["KeyComposition"]] = relationship(
         back_populates="compound_key",
