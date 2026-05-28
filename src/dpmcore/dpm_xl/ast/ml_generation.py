@@ -12,6 +12,8 @@ from dpmcore.dpm_xl.ast.nodes import (
     ComplexNumericOp,
     CondExpr,
     Constant,
+    DateConstructorOp,
+    DateExtractionOp,
     Dimension,
     FilterOp,
     GetOp,
@@ -414,6 +416,24 @@ class MLGeneration(ASTTemplate):
                 PropertyID=property_id,
             )
         self.session.add(op_ref)
+
+    def visit_DateExtractionOp(self, node: DateExtractionOp) -> None:
+        op_node = self.create_operation_node(node)
+        node.operand.parent = op_node
+        node.operand.argument = "operand"
+        self.visit(node.operand)
+
+    def visit_DateConstructorOp(self, node: DateConstructorOp) -> None:
+        node.op = "date"
+        op_node = self.create_operation_node(node)
+        for field, arg_name in [
+            (node.year, "year"),
+            (node.month, "month"),
+            (node.day, "day"),
+        ]:
+            field.parent = op_node
+            field.argument = arg_name
+            self.visit(field)
 
     def visit_WhereClauseOp(self, node: WhereClauseOp) -> None:
         node.op = "where"

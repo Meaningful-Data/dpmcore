@@ -10,6 +10,8 @@ from dpmcore.dpm_xl.ast.nodes import (
     ComplexNumericOp,
     CondExpr,
     Constant,
+    DateConstructorOp,
+    DateExtractionOp,
     Dimension,
     FilterOp,
     GetOp,
@@ -65,6 +67,7 @@ from dpmcore.dpm_xl.utils.operator_mapping import (
     UNARY_OP_MAPPING,
 )
 from dpmcore.dpm_xl.utils.tokens import (
+    DATE_OP,
     DPM,
     FILTER,
     GET,
@@ -500,13 +503,33 @@ class InputAnalyzer(ASTTemplate, ABC):
         # same because TimeShift also rejects None/non-ints internally.
         component_name = cast(str, node.component)
         shift_number = int(node.shift_number)
-        result = TIME_OPERATORS[TIME_SHIFT].validate(
+        result = cast(Any, TIME_OPERATORS[TIME_SHIFT]).validate(
             operand=operand,
             component_name=component_name,
             period=node.period_indicator,
             shift_number=shift_number,
         )
         return result
+
+    def visit_DateExtractionOp(  # type: ignore[override]
+        self, node: DateExtractionOp
+    ) -> Operand:
+        operand_sym = self.visit(node.operand)
+        if not isinstance(operand_sym, (RecordSet, Scalar, ConstantOperand)):
+            raise errors.SemanticError("4-7-1", op=node.op)
+        result = cast(Any, TIME_OPERATORS[node.op]).validate_types(operand_sym)
+        return result
+
+    def visit_DateConstructorOp(  # type: ignore[override]
+        self, node: DateConstructorOp
+    ) -> Operand:
+        year_sym = self.visit(node.year)
+        month_sym = self.visit(node.month)
+        day_sym = self.visit(node.day)
+        result = cast(Any, TIME_OPERATORS[DATE_OP]).validate(
+            year_sym, month_sym, day_sym
+        )
+        return cast(Operand, result)
 
     def visit_WhereClauseOp(  # type: ignore[override]
         self, node: WhereClauseOp
