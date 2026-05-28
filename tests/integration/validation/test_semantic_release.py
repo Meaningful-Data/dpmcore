@@ -350,7 +350,7 @@ def test_sub_duplicate_property_code_rejected(fixture_session):
         ),
     ],
 )
-def test_no_spurious_2_6_on_multi_release_headers(
+def test_no_false_2_6_on_multi_release_headers(
     fixture_session, expression, release_code
 ):
     """Wildcard/range selectors on tables whose headers changed code across
