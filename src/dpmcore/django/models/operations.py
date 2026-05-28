@@ -35,13 +35,16 @@ class Operation(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
-    owner_id = models.IntegerField(
+    owner = models.ForeignKey(
+        "Organisation",
+        on_delete=models.DO_NOTHING,
         db_column="OwnerID",
         null=True,
         blank=True,
@@ -113,9 +116,10 @@ class OperationVersion(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
