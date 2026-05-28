@@ -22,6 +22,7 @@ class Concept(models.Model):
         "Organisation",
         on_delete=models.DO_NOTHING,
         db_column="OwnerID",
+        related_name="owned_concepts",
         null=True,
         blank=True,
     )
