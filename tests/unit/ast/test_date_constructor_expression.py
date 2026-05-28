@@ -1,0 +1,55 @@
+"""Syntax and AST tests for the date(year, month, day) constructor operator."""
+
+import pytest
+
+from dpmcore.dpm_xl.ast.nodes import DateConstructorOp
+from dpmcore.services.syntax import SyntaxService
+
+VALID_FORMS = [
+    "date(2025, 12, 31)",
+    "date(2022, 1, 1)",
+    "isnull(date(2025, 2, 30))",
+    "date(2025, 12, 31) = #2025-12-31#",
+]
+
+INVALID_ARITY = [
+    "date(2025, 12)",
+    "date(2025, 12, 31, 0)",
+    "date()",
+]
+
+
+@pytest.mark.parametrize("source", VALID_FORMS)
+def test_constructor_syntax_valid(source):
+    assert SyntaxService().is_valid(source)
+
+
+@pytest.mark.parametrize("source", INVALID_ARITY)
+def test_constructor_wrong_arity_invalid(source):
+    assert not SyntaxService().is_valid(source)
+
+
+def test_constructor_produces_date_constructor_op_node():
+    ast = SyntaxService().parse("date(2025, 12, 31)")
+    node = ast.children[0]
+    assert isinstance(node, DateConstructorOp)
+
+
+def test_constructor_node_has_year_month_day():
+    ast = SyntaxService().parse("date(2025, 12, 31)")
+    node = ast.children[0]
+    assert isinstance(node, DateConstructorOp)
+    assert node.year is not None
+    assert node.month is not None
+    assert node.day is not None
+
+
+def test_constructor_tojson_serializable():
+    ast = SyntaxService().parse("date(2025, 12, 31)")
+    node = ast.children[0]
+    assert isinstance(node, DateConstructorOp)
+    result = node.toJSON()
+    assert result["class_name"] == "DateConstructorOp"
+    assert "year" in result
+    assert "month" in result
+    assert "day" in result

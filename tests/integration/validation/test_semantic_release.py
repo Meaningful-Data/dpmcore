@@ -4,6 +4,8 @@ Each test validates a DPM-XL expression at a specific release ID using
 the SemanticService backed by the fixture SQLite database.
 """
 
+import pytest
+
 from dpmcore.services.semantic import SemanticService
 
 
@@ -287,3 +289,85 @@ with {tF_40.01}:
     assert result.is_valid, (
         f"Expected valid for release_id=5, but got error: {result.error_message}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Date extraction operators
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "op", ["year", "semester", "quarter", "month", "week", "day"]
+)
+def test_date_extraction_on_date_literal_valid(op, fixture_session):
+    """Each extraction operator accepts a date literal and is semantically valid."""
+    result = SemanticService(fixture_session).validate(
+        f"{op}(#2022-03-15#)", release_id=5
+    )
+    assert result.is_valid, (
+        f"{op}(#2022-03-15#) should be valid, got: {result.error_message}"
+    )
+
+
+def test_year_extraction_result_usable_in_comparison(fixture_session):
+    """Extraction result (Integer) can be compared to an integer literal."""
+    result = SemanticService(fixture_session).validate(
+        "year(#2022-03-15#) = 2022", release_id=5
+    )
+    assert result.is_valid, f"Expected valid, got: {result.error_message}"
+
+
+def test_date_extraction_non_date_type_rejected(fixture_session):
+    """Extraction operator rejects a String operand with a type error."""
+    result = SemanticService(fixture_session).validate(
+        'year("hello")', release_id=5
+    )
+    assert not result.is_valid
+    assert result.error_code == "3-3"
+
+
+# ---------------------------------------------------------------------------
+# Date constructor
+# ---------------------------------------------------------------------------
+
+
+def test_date_constructor_integer_literals_valid(fixture_session):
+    """date(y, m, d) with integer literals is semantically valid."""
+    result = SemanticService(fixture_session).validate(
+        "date(2025, 12, 31)", release_id=5
+    )
+    assert result.is_valid, f"Expected valid, got: {result.error_message}"
+
+
+def test_date_constructor_result_comparable_to_date_literal(fixture_session):
+    """date() result (Date) can be compared to a date literal."""
+    result = SemanticService(fixture_session).validate(
+        "date(2025, 12, 31) = #2025-12-31#", release_id=5
+    )
+    assert result.is_valid, f"Expected valid, got: {result.error_message}"
+
+
+def test_date_constructor_string_argument_rejected(fixture_session):
+    """date() rejects a String argument with a type error."""
+    result = SemanticService(fixture_session).validate(
+        'date(2025, "December", 31)', release_id=5
+    )
+    assert not result.is_valid
+    assert result.error_code == "3-3"
+
+
+def test_date_constructor_recordset_argument_rejected(fixture_session):
+    """date() rejects a RecordSet argument with 4-7-1."""
+    result = SemanticService(fixture_session).validate(
+        "date({tC_09.02, r0030, c0080}, 1, 1)", release_id=5
+    )
+    assert not result.is_valid
+    assert result.error_code == "4-7-1"
+
+
+def test_date_roundtrip_extraction_and_constructor(fixture_session):
+    """date(year(d), 1, 1) round-trip: extract year from date, build first-of-year date."""
+    result = SemanticService(fixture_session).validate(
+        "date(year(#2022-03-15#), 1, 1) = #2022-01-01#", release_id=5
+    )
+    assert result.is_valid, f"Expected valid, got: {result.error_message}"
