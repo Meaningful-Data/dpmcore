@@ -49,18 +49,24 @@ class Category(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
-    created_release = models.IntegerField(
+    created_release = models.ForeignKey(
+        "Release",
+        on_delete=models.DO_NOTHING,
         db_column="CreatedRelease",
+        related_name="categories_created",
         null=True,
         blank=True,
     )
-    owner_id = models.IntegerField(
+    owner = models.ForeignKey(
+        "Organisation",
+        on_delete=models.DO_NOTHING,
         db_column="OwnerID",
         null=True,
         blank=True,
@@ -108,13 +114,16 @@ class SubCategory(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
-    owner_id = models.IntegerField(
+    owner = models.ForeignKey(
+        "Organisation",
+        on_delete=models.DO_NOTHING,
         db_column="OwnerID",
         null=True,
         blank=True,
@@ -160,9 +169,10 @@ class SubCategoryVersion(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
@@ -223,9 +233,10 @@ class SubCategoryItem(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
@@ -266,13 +277,16 @@ class Item(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
-    owner_id = models.IntegerField(
+    owner = models.ForeignKey(
+        "Organisation",
+        on_delete=models.DO_NOTHING,
         db_column="OwnerID",
         null=True,
         blank=True,
@@ -386,13 +400,16 @@ class Property(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
-    owner_id = models.IntegerField(
+    owner = models.ForeignKey(
+        "Organisation",
+        on_delete=models.DO_NOTHING,
         db_column="OwnerID",
         null=True,
         blank=True,
@@ -466,13 +483,16 @@ class Context(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
-    owner_id = models.IntegerField(
+    owner = models.ForeignKey(
+        "Organisation",
+        on_delete=models.DO_NOTHING,
         db_column="OwnerID",
         null=True,
         blank=True,
@@ -508,9 +528,10 @@ class ContextComposition(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
