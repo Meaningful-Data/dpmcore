@@ -1151,37 +1151,71 @@ class ViewDatapointsQuery:
                 Cell,
                 TableVersionCell.cell_id == Cell.cell_id,
             )
-            .outerjoin(
-                hvr,
-                hvr.header_id == Cell.row_id,
-            )
+            # Join TVH first to get the release-pinned HeaderVersion (fallback: direct header_id).
             .outerjoin(
                 tvh_row,
                 and_(
                     tvh_row.table_vid == TableVersion.table_vid,
-                    tvh_row.header_vid == hvr.header_vid,
+                    tvh_row.header_id == Cell.row_id,
                 ),
             )
             .outerjoin(
-                hvc,
-                hvc.header_id == Cell.column_id,
+                hvr,
+                or_(
+                    # TVH present: use the exact HeaderVersion it references
+                    and_(
+                        tvh_row.header_vid.isnot(None),
+                        hvr.header_vid == tvh_row.header_vid,
+                    ),
+                    # TVH absent: fall back to direct join on header_id
+                    and_(
+                        tvh_row.table_vid.is_(None),
+                        hvr.header_id == Cell.row_id,
+                    ),
+                ),
             )
             .outerjoin(
                 tvh_col,
                 and_(
                     tvh_col.table_vid == TableVersion.table_vid,
-                    tvh_col.header_vid == hvc.header_vid,
+                    tvh_col.header_id == Cell.column_id,
                 ),
             )
             .outerjoin(
-                hvs,
-                hvs.header_id == Cell.sheet_id,
+                hvc,
+                or_(
+                    # TVH present: use the exact HeaderVersion it references
+                    and_(
+                        tvh_col.header_vid.isnot(None),
+                        hvc.header_vid == tvh_col.header_vid,
+                    ),
+                    # TVH absent: fall back to direct join on header_id
+                    and_(
+                        tvh_col.table_vid.is_(None),
+                        hvc.header_id == Cell.column_id,
+                    ),
+                ),
             )
             .outerjoin(
                 tvh_sheet,
                 and_(
                     tvh_sheet.table_vid == TableVersion.table_vid,
-                    tvh_sheet.header_vid == hvs.header_vid,
+                    tvh_sheet.header_id == Cell.sheet_id,
+                ),
+            )
+            .outerjoin(
+                hvs,
+                or_(
+                    # TVH present: use the exact HeaderVersion it references
+                    and_(
+                        tvh_sheet.header_vid.isnot(None),
+                        hvs.header_vid == tvh_sheet.header_vid,
+                    ),
+                    # TVH absent: fall back to direct join on header_id
+                    and_(
+                        tvh_sheet.table_vid.is_(None),
+                        hvs.header_id == Cell.sheet_id,
+                    ),
                 ),
             )
         )
