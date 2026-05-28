@@ -73,7 +73,11 @@ class Operation(Base):
         String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     group_operation: Mapped[Optional["Operation"]] = relationship(
         remote_side=[operation_id],

@@ -65,7 +65,11 @@ class Framework(Base):
         String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
@@ -112,7 +116,11 @@ class Module(Base):
     is_document_module: Mapped[Optional[bool]] = mapped_column(
         "isDocumentModule", Boolean
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     framework: Mapped[Optional["Framework"]] = relationship(
         back_populates="modules"

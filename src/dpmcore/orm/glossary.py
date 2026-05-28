@@ -77,9 +77,15 @@ class Category(Base):
         ForeignKey("Concept.ConceptGUID"),
     )
     created_release: Mapped[Optional[int]] = mapped_column(
-        "CreatedRelease", Integer
+        "CreatedRelease",
+        Integer,
+        ForeignKey("Release.ReleaseID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
@@ -141,7 +147,11 @@ class SubCategory(Base):
         String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     category: Mapped[Optional["Category"]] = relationship(
         back_populates="subcategories"
@@ -333,7 +343,11 @@ class Item(Base):
         String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
@@ -464,7 +478,11 @@ class Property(Base):
         String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     item: Mapped["Item"] = relationship(back_populates="property")
     datatype: Mapped[Optional["DataType"]] = relationship(
@@ -582,7 +600,11 @@ class Context(Base):
         String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]

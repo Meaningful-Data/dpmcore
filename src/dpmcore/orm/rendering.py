@@ -74,7 +74,11 @@ class Table(Base):
         String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
@@ -261,7 +265,11 @@ class Header(Base):
         String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     table: Mapped[Optional["Table"]] = relationship(back_populates="headers")
     concept: Mapped[Optional["Concept"]] = relationship(
@@ -425,7 +433,11 @@ class Cell(Base):
         String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     table: Mapped[Optional["Table"]] = relationship(back_populates="cells")
     column_header: Mapped[Optional["Header"]] = relationship(
@@ -623,7 +635,11 @@ class TableGroup(Base):
         Integer,
         ForeignKey("TableGroup.TableGroupID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
@@ -767,7 +783,11 @@ class TableAssociation(Base):
         String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     child_table_version: Mapped[Optional["TableVersion"]] = relationship(
         foreign_keys=[child_table_vid],
