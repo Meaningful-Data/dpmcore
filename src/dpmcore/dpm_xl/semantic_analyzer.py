@@ -47,6 +47,8 @@ from dpmcore.dpm_xl.symbols import (
     Structure,
 )
 from dpmcore.dpm_xl.types.scalar import (
+    Boolean,
+    Integer,
     Item,
     Mixed,
     Null,
@@ -201,18 +203,25 @@ class InputAnalyzer(ASTTemplate, ABC):
         if default_value is None:
             return
         default_type = ScalarFactory().scalar_factory(code=default_value.type)
-        # Import the implicit type promotion dictionary for unidirectional check
         from dpmcore.dpm_xl.types.promotion import implicit_type_promotion_dict
 
-        # Check if default_type can be promoted TO type_ (unidirectional check)
-        # Get the set of types that default_type can be promoted to
-        default_implicities = implicit_type_promotion_dict[
-            default_type.__class__
-        ]
-
-        # If expected type is not in the set of types default can be promoted to,
-        # raise a semantic error
-        if not type_.is_included(default_implicities):
+        default_implicities = implicit_type_promotion_dict.get(
+            default_type.__class__, set()
+        )
+        cell_implicities = implicit_type_promotion_dict.get(
+            type_.__class__, set()
+        )
+        # Accept: D→C, C→D, or shared promotion target (excl. Boolean crossings).
+        # Mixed has no dict entry; empty cell_implicities skips the check.
+        if cell_implicities and not (
+            type_.is_included(default_implicities)
+            or default_type.is_included(cell_implicities)
+            or (
+                not isinstance(default_type, Boolean)
+                and not isinstance(type_, Boolean)
+                and default_implicities & cell_implicities
+            )
+        ):
             raise errors.SemanticError(
                 "3-6", expected_type=type_, default_type=default_type
             )
@@ -491,15 +500,21 @@ class InputAnalyzer(ASTTemplate, ABC):
     def visit_TimeShiftOp(  # type: ignore[override]
         self, node: TimeShiftOp
     ) -> Operand:
+        shift_operand = self.visit(node.shift_number)
+        if not isinstance(shift_operand, Scalar) or not isinstance(
+            shift_operand.type, Integer
+        ):
+            raise errors.SemanticError("4-7-4")
+
         operand = self.visit(node.operand)
         if not isinstance(operand, (RecordSet, Scalar, ConstantOperand)):
             raise errors.SemanticError("4-7-1", op=TIME_SHIFT)
-        # TimeShift.validate expects ``component_name: str`` and
-        # ``shift_number: int`` but the AST carries ``str | None`` and ``str``
-        # respectively; narrow at the call site. Runtime semantics remain the
-        # same because TimeShift also rejects None/non-ints internally.
         component_name = cast(str, node.component)
-        shift_number = int(node.shift_number)
+        shift_number = (
+            node.shift_number.value
+            if isinstance(node.shift_number, Constant)
+            else 0
+        )
         result = TIME_OPERATORS[TIME_SHIFT].validate(
             operand=operand,
             component_name=component_name,
@@ -551,16 +566,28 @@ class InputAnalyzer(ASTTemplate, ABC):
     def visit_SubOp(  # type: ignore[override]
         self, node: SubOp
     ) -> RecordSet:
-        operand = self.visit(node.operand)
-        value = self.visit(node.value)
         # CLAUSE_OP_MAPPING[SUB] is the ``Sub`` subclass at runtime, whose
         # ``validate`` intentionally narrows the base signature (see
         # operators/clause.py). Call it directly so mypy sees the correct
         # signature; the mapping lookup would yield the erased base type.
         _ = CLAUSE_OP_MAPPING[SUB]
-        result = SubOperator.validate(
-            operand=operand, property_code=node.property_code, value=value
-        )
+        # Reject duplicate property codes up-front. Otherwise the chain
+        # below would drop the component on the first iteration and the
+        # second would fail with a misleading "key not on recordset" error
+        # (code 2-8) from operators/clause.py.
+        seen: set[str] = set()
+        for sub in node.substitutions:
+            if sub.property_code in seen:
+                raise errors.SemanticError(
+                    "4-5-3-1", property_code=sub.property_code
+                )
+            seen.add(sub.property_code)
+        result = self.visit(node.operand)
+        for sub in node.substitutions:
+            value = self.visit(sub.value)
+            result = SubOperator.validate(
+                operand=result, property_code=sub.property_code, value=value
+            )
         return result
 
     def visit_PreconditionItem(  # type: ignore[override]

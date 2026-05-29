@@ -8,41 +8,38 @@ keeps the upstream fix from regressing.
 
 from __future__ import annotations
 
-from typing import Iterator, Optional
+from typing import Optional
 
 import pytest
 from sqlalchemy import Integer, String, create_engine
-from sqlalchemy.orm import Mapped, Session, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from dpmcore.orm.base import Base
 
 
-@pytest.fixture
-def item_class() -> Iterator[type]:
-    """Build a transient mapped class for the test, scrubbing the
-    ``Base.metadata`` / ``Base.registry`` registration afterwards so the
-    test table doesn't leak into later schema-validation tests.
+class _IsolatedBase(DeclarativeBase):
+    """Isolated declarative base for to_dict tests.
 
-    Declaring the class lazily (inside the fixture, not at module level)
-    prevents pollution at pytest collection time — earlier test files
-    that read ``Base.metadata`` (e.g. the schema-validation integration
-    suite) never see the test table.
+    Lives on its own ``registry`` / ``MetaData`` so the test table never
+    pollutes ``Base.metadata`` — which schema-validation tests read at
+    pytest collection time. ``Base.to_dict`` is reused unchanged so the
+    test still exercises the real implementation.
     """
 
-    class _Item(Base):
-        __tablename__ = "_items_to_dict_test"
+    to_dict = Base.to_dict
 
-        id: Mapped[int] = mapped_column(Integer, primary_key=True)
-        code: Mapped[Optional[str]] = mapped_column(String(20))
-        payload: Mapped[Optional[str]] = mapped_column(
-            String(2000), deferred=True
-        )
 
-    try:
-        yield _Item
-    finally:
-        Base.metadata.remove(_Item.__table__)
-        Base.registry._dispose_cls(_Item)
+class _Item(_IsolatedBase):
+    __tablename__ = "_items_to_dict_test"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[Optional[str]] = mapped_column(String(20))
+    payload: Mapped[Optional[str]] = mapped_column(String(2000), deferred=True)
+
+
+@pytest.fixture
+def item_class() -> type:
+    return _Item
 
 
 def _seed_session(item_cls: type) -> Session:

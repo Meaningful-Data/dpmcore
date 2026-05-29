@@ -173,35 +173,6 @@ def _filter_elements(
     return query.filter(or_(*dynamic_filter))
 
 
-def _check_ranges_values_are_present(
-    data: pd.DataFrame,
-    data_column: str,
-    values: Sequence[str] | None,
-) -> pd.DataFrame:
-    """Validate range boundaries exist in returned data.
-
-    Args:
-        data: DataFrame from the query.
-        data_column: Column name to validate.
-        values: Filter values (may contain ranges).
-
-    Returns:
-        Original data if valid, empty DataFrame otherwise.
-    """
-    if values is None or len(values) == 0:
-        return data
-    actual_values = list(data[data_column].values)
-    for value in values:
-        if "-" in value:
-            limits = value.split("-")
-            if (
-                limits[0] not in actual_values
-                or limits[1] not in actual_values
-            ):
-                return pd.DataFrame(columns=data.columns)
-    return data
-
-
 # ------------------------------------------------------------------ #
 # ItemCategory queries
 # ------------------------------------------------------------------ #
@@ -1180,37 +1151,71 @@ class ViewDatapointsQuery:
                 Cell,
                 TableVersionCell.cell_id == Cell.cell_id,
             )
-            .outerjoin(
-                hvr,
-                hvr.header_id == Cell.row_id,
-            )
+            # Join TVH first to get the release-pinned HeaderVersion (fallback: direct header_id).
             .outerjoin(
                 tvh_row,
                 and_(
                     tvh_row.table_vid == TableVersion.table_vid,
-                    tvh_row.header_vid == hvr.header_vid,
+                    tvh_row.header_id == Cell.row_id,
                 ),
             )
             .outerjoin(
-                hvc,
-                hvc.header_id == Cell.column_id,
+                hvr,
+                or_(
+                    # TVH present: use the exact HeaderVersion it references
+                    and_(
+                        tvh_row.header_vid.isnot(None),
+                        hvr.header_vid == tvh_row.header_vid,
+                    ),
+                    # TVH absent: fall back to direct join on header_id
+                    and_(
+                        tvh_row.table_vid.is_(None),
+                        hvr.header_id == Cell.row_id,
+                    ),
+                ),
             )
             .outerjoin(
                 tvh_col,
                 and_(
                     tvh_col.table_vid == TableVersion.table_vid,
-                    tvh_col.header_vid == hvc.header_vid,
+                    tvh_col.header_id == Cell.column_id,
                 ),
             )
             .outerjoin(
-                hvs,
-                hvs.header_id == Cell.sheet_id,
+                hvc,
+                or_(
+                    # TVH present: use the exact HeaderVersion it references
+                    and_(
+                        tvh_col.header_vid.isnot(None),
+                        hvc.header_vid == tvh_col.header_vid,
+                    ),
+                    # TVH absent: fall back to direct join on header_id
+                    and_(
+                        tvh_col.table_vid.is_(None),
+                        hvc.header_id == Cell.column_id,
+                    ),
+                ),
             )
             .outerjoin(
                 tvh_sheet,
                 and_(
                     tvh_sheet.table_vid == TableVersion.table_vid,
-                    tvh_sheet.header_vid == hvs.header_vid,
+                    tvh_sheet.header_id == Cell.sheet_id,
+                ),
+            )
+            .outerjoin(
+                hvs,
+                or_(
+                    # TVH present: use the exact HeaderVersion it references
+                    and_(
+                        tvh_sheet.header_vid.isnot(None),
+                        hvs.header_vid == tvh_sheet.header_vid,
+                    ),
+                    # TVH absent: fall back to direct join on header_id
+                    and_(
+                        tvh_sheet.table_vid.is_(None),
+                        hvs.header_id == Cell.sheet_id,
+                    ),
                 ),
             )
         )
@@ -1317,10 +1322,6 @@ class ViewDatapointsQuery:
         if len(data) > 0:
             data = data.sort_values("variable_id", na_position="last")
             data = data.drop_duplicates(subset=["cell_code"], keep="first")
-
-        data = _check_ranges_values_are_present(data, "row_code", rows)
-        data = _check_ranges_values_are_present(data, "column_code", cols)
-        data = _check_ranges_values_are_present(data, "sheet_code", sheets)
 
         cls._TABLE_DATA_CACHE[cache_key] = data
         return data

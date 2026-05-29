@@ -171,6 +171,7 @@ DATE_FORMAT:            YEAR '-' MONTH '-' DAY ('T' HOURS COLON MINUTES COLON SE
 DATE_LITERAL:           '#' DATE_FORMAT '#';
 
 CODE:                   [A-Za-z]([A-Za-z0-9_.]*[A-Za-z0-9])*;
+ESCAPED_IDENTIFIER:     '`' [A-Za-z0-9_.+]+ '`';
 
 WS:                     [ \t\r\n\u000C]+ -> channel(2);
 
@@ -208,9 +209,6 @@ fragment
 VAR_REF_PREFIX:         'v';
 fragment
 OPERATION_REF_PREFIX:   'o';
-fragment
-PRECONDITION_PREFIX:      'v_';
-
 
 // Codes
 
@@ -242,9 +240,8 @@ SHEET_ALL:              SHEET_PREFIX [*];
 TABLE_REFERENCE:        TABLE_PREFIX TABLE_CODE;
 TABLE_GROUP_REFERENCE:  TABLE_GROUP_PREFIX TABLE_CODE;
 
-VAR_REFERENCE:                VAR_REF_PREFIX VAR_CODE;
+VAR_REFERENCE:                VAR_REF_PREFIX (VAR_CODE | '_' TABLE_CODE);
 OPERATION_REFERENCE:          OPERATION_REF_PREFIX OPERATION_CODE;
-PRECONDITION_ELEMENT:         PRECONDITION_PREFIX TABLE_CODE;
 
 SELECTION_MODE_INTEGER_LITERAL: INTEGER_LITERAL -> type(INTEGER_LITERAL);
 SELECTION_MODE_DECIMAL_LITERAL: DECIMAL_LITERAL -> type(DECIMAL_LITERAL);
@@ -375,6 +372,7 @@ CLAUSE_DATE_LITERAL:           '#' DATE_FORMAT '#' -> type(DATE_LITERAL);
 
 ITEM_SIGNATURE:             [A-Za-z]([A-Za-z0-9_-]*[:][A-Za-z0-9._-]*[A-Za-z0-9])+;
 PROPERTY_CODE:              CODE;
+CLAUSE_ESCAPED_IDENTIFIER: '`' [A-Za-z0-9_.+]+ '`' -> type(ESCAPED_IDENTIFIER);
 
 CLAUSE_WS:                     [ \t\r\n\u000C]+ -> channel(2);
 
@@ -388,6 +386,7 @@ GROUPING_ROW_COMPONENT:            'r'  -> type(ROW_COMPONENT);
 GROUPING_COL_COMPONENT:            'c'  -> type(COL_COMPONENT);
 GROUPING_SHEET_COMPONENT:          's' -> type(SHEET_COMPONENT);
 GROUPING_PROPERTY_CODE:            CODE -> type(PROPERTY_CODE);
+GROUPING_ESCAPED_IDENTIFIER: '`' [A-Za-z0-9_.+]+ '`' -> type(ESCAPED_IDENTIFIER);
 
 GROUPING_WS:                     [ \t\r\n\u000C]+ -> channel(2);
 
