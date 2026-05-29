@@ -24,7 +24,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from dpmcore.orm.base import Base
-from dpmcore.orm.infrastructure import Concept, Release
+from dpmcore.orm.infrastructure import Concept, Organisation, Release
 
 if TYPE_CHECKING:
     from dpmcore.orm.glossary import (
@@ -73,7 +73,11 @@ class Operation(Base):
         String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     group_operation: Mapped[Optional["Operation"]] = relationship(
         remote_side=[operation_id],
@@ -84,6 +88,9 @@ class Operation(Base):
     )
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     operation_versions: Mapped[List["OperationVersion"]] = relationship(
         back_populates="operation",

@@ -706,7 +706,11 @@ class Subdivision(Base):
         String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     document_version: Mapped[Optional["DocumentVersion"]] = relationship(
         back_populates="subdivisions"
@@ -723,6 +727,9 @@ class Subdivision(Base):
     )
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     references: Mapped[List["Reference"]] = relationship(
         back_populates="subdivision",
@@ -830,10 +837,17 @@ class Release(Base):
     )
     type: Mapped[Optional[str]] = mapped_column("Type", String(20))
     error: Mapped[Optional[str]] = mapped_column("Error", String(4000))
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     changelogs: Mapped[List["Changelog"]] = relationship(
         back_populates="release",

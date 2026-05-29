@@ -28,13 +28,16 @@ class Framework(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
-    owner_id = models.IntegerField(
+    owner = models.ForeignKey(
+        "Organisation",
+        on_delete=models.DO_NOTHING,
         db_column="OwnerID",
         null=True,
         blank=True,
@@ -56,16 +59,17 @@ class Module(models.Model):
         db_column="ModuleID",
         primary_key=True,
     )
-    framework_id = models.ForeignKey(
+    framework = models.ForeignKey(
         "Framework",
         on_delete=models.DO_NOTHING,
         db_column="FrameworkID",
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
@@ -74,7 +78,9 @@ class Module(models.Model):
         null=True,
         blank=True,
     )
-    owner_id = models.IntegerField(
+    owner = models.ForeignKey(
+        "Organisation",
+        on_delete=models.DO_NOTHING,
         db_column="OwnerID",
         null=True,
         blank=True,
@@ -93,21 +99,21 @@ class ModuleVersion(models.Model):
         db_column="ModuleVID",
         primary_key=True,
     )
-    module_id = models.ForeignKey(
+    module = models.ForeignKey(
         "Module",
         on_delete=models.DO_NOTHING,
         db_column="ModuleID",
         null=True,
         blank=True,
     )
-    global_key_id = models.ForeignKey(
+    global_key = models.ForeignKey(
         "CompoundKey",
         on_delete=models.DO_NOTHING,
         db_column="GlobalKeyID",
         null=True,
         blank=True,
     )
-    start_release_id = models.ForeignKey(
+    start_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="StartReleaseID",
@@ -115,7 +121,7 @@ class ModuleVersion(models.Model):
         null=True,
         blank=True,
     )
-    end_release_id = models.ForeignKey(
+    end_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="EndReleaseID",
@@ -157,9 +163,10 @@ class ModuleVersion(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
@@ -186,18 +193,18 @@ class ModuleVersion(models.Model):
 class ModuleVersionComposition(models.Model):
     """Links a ModuleVersion to its constituent Tables."""
 
-    module_vid = models.ForeignKey(
+    module_version = models.ForeignKey(
         "ModuleVersion",
         on_delete=models.DO_NOTHING,
         db_column="ModuleVID",
         primary_key=True,
     )
-    table_id = models.ForeignKey(
+    table = models.ForeignKey(
         "Table",
         on_delete=models.DO_NOTHING,
         db_column="TableID",
     )
-    table_vid = models.ForeignKey(
+    table_version = models.ForeignKey(
         "TableVersion",
         on_delete=models.DO_NOTHING,
         db_column="TableVID",
@@ -220,19 +227,19 @@ class ModuleVersionComposition(models.Model):
         managed = False
         db_table = "ModuleVersionComposition"
         app_label = "dpmcore_django"
-        unique_together = (("module_vid", "table_id"),)
+        unique_together = (("module_version", "table"),)
 
 
 class ModuleParameters(models.Model):
     """Parameter variable bound to a ModuleVersion."""
 
-    module_vid = models.ForeignKey(
+    module_version = models.ForeignKey(
         "ModuleVersion",
         on_delete=models.DO_NOTHING,
         db_column="ModuleVID",
         primary_key=True,
     )
-    variable_vid = models.ForeignKey(
+    variable_version = models.ForeignKey(
         "VariableVersion",
         on_delete=models.DO_NOTHING,
         db_column="VariableVID",
@@ -250,7 +257,7 @@ class ModuleParameters(models.Model):
         app_label = "dpmcore_django"
         verbose_name = "module parameter"
         verbose_name_plural = "module parameters"
-        unique_together = (("module_vid", "variable_vid"),)
+        unique_together = (("module_version", "variable_version"),)
 
 
 class OperationCodePrefix(models.Model):
@@ -272,7 +279,7 @@ class OperationCodePrefix(models.Model):
         null=True,
         blank=True,
     )
-    framework_id = models.ForeignKey(
+    framework = models.ForeignKey(
         "Framework",
         on_delete=models.DO_NOTHING,
         db_column="FrameworkID",

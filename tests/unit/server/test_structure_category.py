@@ -102,7 +102,7 @@ def seeded_engine(engine):
                 is_external_ref_data=False,
                 ref_data_source=None,
                 row_guid="c-cat-1",
-                created_release=1,
+                created_release_id=1,
                 owner_id=1,
             ),
             Category(
@@ -115,7 +115,7 @@ def seeded_engine(engine):
                 is_external_ref_data=False,
                 ref_data_source=None,
                 row_guid="c-cat-2",
-                created_release=2,
+                created_release_id=2,
                 owner_id=1,
             ),
         ]

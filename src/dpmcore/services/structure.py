@@ -127,7 +127,7 @@ def _category_to_dict(
         "isActive": category.is_active,
         "isExternalRefData": category.is_external_ref_data,
         "refDataSource": category.ref_data_source,
-        "createdRelease": category.created_release,
+        "createdRelease": category.created_release_id,
         "owner": owner_acronym,
         "release": release_code,
         "items": items,
@@ -445,8 +445,11 @@ class StructureService:
         for rel in releases:
             if self._sort_order(rel.release_id) is None:
                 continue
-            if category.created_release is not None and not self._window_alive(
-                category.created_release, None, rel.release_id
+            if (
+                category.created_release_id is not None
+                and not self._window_alive(
+                    category.created_release_id, None, rel.release_id
+                )
             ):
                 continue
 
