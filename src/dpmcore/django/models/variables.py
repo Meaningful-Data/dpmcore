@@ -16,13 +16,16 @@ class Variable(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
-    owner_id = models.IntegerField(
+    owner = models.ForeignKey(
+        "Organisation",
+        on_delete=models.DO_NOTHING,
         db_column="OwnerID",
         null=True,
         blank=True,
@@ -41,35 +44,35 @@ class VariableVersion(models.Model):
         db_column="VariableVID",
         primary_key=True,
     )
-    variable_id = models.ForeignKey(
+    variable = models.ForeignKey(
         "Variable",
         on_delete=models.DO_NOTHING,
         db_column="VariableID",
         null=True,
         blank=True,
     )
-    property_id = models.ForeignKey(
+    property = models.ForeignKey(
         "Property",
         on_delete=models.DO_NOTHING,
         db_column="PropertyID",
         null=True,
         blank=True,
     )
-    subcategory_vid = models.ForeignKey(
+    subcategory_version = models.ForeignKey(
         "SubCategoryVersion",
         on_delete=models.DO_NOTHING,
         db_column="SubCategoryVID",
         null=True,
         blank=True,
     )
-    context_id = models.ForeignKey(
+    context = models.ForeignKey(
         "Context",
         on_delete=models.DO_NOTHING,
         db_column="ContextID",
         null=True,
         blank=True,
     )
-    key_id = models.ForeignKey(
+    key = models.ForeignKey(
         "CompoundKey",
         on_delete=models.DO_NOTHING,
         db_column="KeyID",
@@ -93,7 +96,7 @@ class VariableVersion(models.Model):
         null=True,
         blank=True,
     )
-    start_release_id = models.ForeignKey(
+    start_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="StartReleaseID",
@@ -101,7 +104,7 @@ class VariableVersion(models.Model):
         null=True,
         blank=True,
     )
-    end_release_id = models.ForeignKey(
+    end_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="EndReleaseID",
@@ -109,9 +112,10 @@ class VariableVersion(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
@@ -128,18 +132,18 @@ class VariableVersion(models.Model):
 class VariableCalculation(models.Model):
     """Link between a Module, Variable, and OperationVersion."""
 
-    module_id = models.ForeignKey(
+    module = models.ForeignKey(
         "Module",
         on_delete=models.DO_NOTHING,
         db_column="ModuleID",
         primary_key=True,
     )
-    variable_id = models.ForeignKey(
+    variable = models.ForeignKey(
         "Variable",
         on_delete=models.DO_NOTHING,
         db_column="VariableID",
     )
-    operation_vid = models.ForeignKey(
+    operation_version = models.ForeignKey(
         "OperationVersion",
         on_delete=models.DO_NOTHING,
         db_column="OperationVID",
@@ -165,7 +169,7 @@ class VariableCalculation(models.Model):
         managed = False
         db_table = "VariableCalculation"
         app_label = "dpmcore_django"
-        unique_together = (("module_id", "variable_id", "operation_vid"),)
+        unique_together = (("module", "variable", "operation_version"),)
 
 
 class CompoundKey(models.Model):
@@ -181,13 +185,16 @@ class CompoundKey(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
-    owner_id = models.IntegerField(
+    owner = models.ForeignKey(
+        "Organisation",
+        on_delete=models.DO_NOTHING,
         db_column="OwnerID",
         null=True,
         blank=True,
@@ -205,13 +212,13 @@ class CompoundKey(models.Model):
 class KeyComposition(models.Model):
     """Association between CompoundKey and VariableVersion."""
 
-    key_id = models.ForeignKey(
+    key = models.ForeignKey(
         "CompoundKey",
         on_delete=models.DO_NOTHING,
         db_column="KeyID",
         primary_key=True,
     )
-    variable_vid = models.ForeignKey(
+    variable_version = models.ForeignKey(
         "VariableVersion",
         on_delete=models.DO_NOTHING,
         db_column="VariableVID",
@@ -227,4 +234,4 @@ class KeyComposition(models.Model):
         managed = False
         db_table = "KeyComposition"
         app_label = "dpmcore_django"
-        unique_together = (("key_id", "variable_vid"),)
+        unique_together = (("key", "variable_version"),)

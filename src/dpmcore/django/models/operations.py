@@ -28,20 +28,23 @@ class Operation(models.Model):
         null=True,
         blank=True,
     )
-    group_operation_id = models.ForeignKey(
+    group_operation = models.ForeignKey(
         "self",
         on_delete=models.DO_NOTHING,
         db_column="GroupOperID",
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
-    owner_id = models.IntegerField(
+    owner = models.ForeignKey(
+        "Organisation",
+        on_delete=models.DO_NOTHING,
         db_column="OwnerID",
         null=True,
         blank=True,
@@ -63,14 +66,14 @@ class OperationVersion(models.Model):
         db_column="OperationVID",
         primary_key=True,
     )
-    operation_id = models.ForeignKey(
+    operation = models.ForeignKey(
         "Operation",
         on_delete=models.DO_NOTHING,
         db_column="OperationID",
         null=True,
         blank=True,
     )
-    precondition_operation_vid = models.ForeignKey(
+    precondition_operation_version = models.ForeignKey(
         "self",
         on_delete=models.DO_NOTHING,
         db_column="PreconditionOperationVID",
@@ -78,7 +81,7 @@ class OperationVersion(models.Model):
         null=True,
         blank=True,
     )
-    severity_operation_vid = models.ForeignKey(
+    severity_operation_version = models.ForeignKey(
         "self",
         on_delete=models.DO_NOTHING,
         db_column="SeverityOperationVID",
@@ -86,7 +89,7 @@ class OperationVersion(models.Model):
         null=True,
         blank=True,
     )
-    start_release_id = models.ForeignKey(
+    start_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="StartReleaseID",
@@ -94,7 +97,7 @@ class OperationVersion(models.Model):
         null=True,
         blank=True,
     )
-    end_release_id = models.ForeignKey(
+    end_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="EndReleaseID",
@@ -113,9 +116,10 @@ class OperationVersion(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
@@ -140,7 +144,7 @@ class OperationVersion(models.Model):
 class OperationVersionData(models.Model):
     """Extended data for an OperationVersion."""
 
-    operation_vid = models.OneToOneField(
+    operation_version = models.OneToOneField(
         "OperationVersion",
         on_delete=models.DO_NOTHING,
         db_column="OperationVID",
@@ -183,28 +187,28 @@ class OperationNode(models.Model):
         db_column="NodeID",
         primary_key=True,
     )
-    operation_vid = models.ForeignKey(
+    operation_version = models.ForeignKey(
         "OperationVersion",
         on_delete=models.DO_NOTHING,
         db_column="OperationVID",
         null=True,
         blank=True,
     )
-    parent_node_id = models.ForeignKey(
+    parent_node = models.ForeignKey(
         "self",
         on_delete=models.DO_NOTHING,
         db_column="ParentNodeID",
         null=True,
         blank=True,
     )
-    operator_id = models.ForeignKey(
+    operator = models.ForeignKey(
         "Operator",
         on_delete=models.DO_NOTHING,
         db_column="OperatorID",
         null=True,
         blank=True,
     )
-    argument_id = models.ForeignKey(
+    argument = models.ForeignKey(
         "OperatorArgument",
         on_delete=models.DO_NOTHING,
         db_column="ArgumentID",
@@ -262,7 +266,7 @@ class OperationScope(models.Model):
         db_column="OperationScopeID",
         primary_key=True,
     )
-    operation_vid = models.ForeignKey(
+    operation_version = models.ForeignKey(
         "OperationVersion",
         on_delete=models.DO_NOTHING,
         db_column="OperationVID",
@@ -301,13 +305,13 @@ class OperationScope(models.Model):
 class OperationScopeComposition(models.Model):
     """Association between OperationScope and ModuleVersion."""
 
-    operation_scope_id = models.ForeignKey(
+    operation_scope = models.ForeignKey(
         "OperationScope",
         on_delete=models.DO_NOTHING,
         db_column="OperationScopeID",
         primary_key=True,
     )
-    module_vid = models.ForeignKey(
+    module_version = models.ForeignKey(
         "ModuleVersion",
         on_delete=models.DO_NOTHING,
         db_column="ModuleVID",
@@ -323,7 +327,7 @@ class OperationScopeComposition(models.Model):
         managed = False
         db_table = "OperationScopeComposition"
         app_label = "dpmcore_django"
-        unique_together = (("operation_scope_id", "module_vid"),)
+        unique_together = (("operation_scope", "module_version"),)
 
 
 class Operator(models.Model):
@@ -368,7 +372,7 @@ class OperatorArgument(models.Model):
         db_column="ArgumentID",
         primary_key=True,
     )
-    operator_id = models.ForeignKey(
+    operator = models.ForeignKey(
         "Operator",
         on_delete=models.DO_NOTHING,
         db_column="OperatorID",
@@ -408,7 +412,7 @@ class OperandReference(models.Model):
         db_column="OperandReferenceID",
         primary_key=True,
     )
-    node_id = models.ForeignKey(
+    node = models.ForeignKey(
         "OperationNode",
         on_delete=models.DO_NOTHING,
         db_column="NodeID",
@@ -436,28 +440,28 @@ class OperandReference(models.Model):
         null=True,
         blank=True,
     )
-    item_id = models.ForeignKey(
+    item = models.ForeignKey(
         "Item",
         on_delete=models.DO_NOTHING,
         db_column="ItemID",
         null=True,
         blank=True,
     )
-    property_id = models.ForeignKey(
+    property = models.ForeignKey(
         "Property",
         on_delete=models.DO_NOTHING,
         db_column="PropertyID",
         null=True,
         blank=True,
     )
-    variable_id = models.ForeignKey(
+    variable = models.ForeignKey(
         "Variable",
         on_delete=models.DO_NOTHING,
         db_column="VariableID",
         null=True,
         blank=True,
     )
-    subcategory_id = models.ForeignKey(
+    subcategory = models.ForeignKey(
         "SubCategory",
         on_delete=models.DO_NOTHING,
         db_column="SubCategoryID",
@@ -474,13 +478,13 @@ class OperandReference(models.Model):
 class OperandReferenceLocation(models.Model):
     """Physical location of an OperandReference in a table."""
 
-    operand_reference_id = models.OneToOneField(
+    operand_reference = models.OneToOneField(
         "OperandReference",
         on_delete=models.DO_NOTHING,
         db_column="OperandReferenceID",
         primary_key=True,
     )
-    cell_id = models.ForeignKey(
+    cell = models.ForeignKey(
         "Cell",
         on_delete=models.DO_NOTHING,
         db_column="CellID",

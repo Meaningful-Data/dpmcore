@@ -20,7 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from dpmcore.orm.base import Base
-from dpmcore.orm.infrastructure import Concept, Release
+from dpmcore.orm.infrastructure import Concept, Organisation, Release
 
 if TYPE_CHECKING:
     from dpmcore.orm.glossary import (
@@ -74,10 +74,17 @@ class Table(Base):
         String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     headers: Mapped[List["Header"]] = relationship(
         back_populates="table",
@@ -261,11 +268,18 @@ class Header(Base):
         String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     table: Mapped[Optional["Table"]] = relationship(back_populates="headers")
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     header_versions: Mapped[List["HeaderVersion"]] = relationship(
         back_populates="header",
@@ -425,7 +439,11 @@ class Cell(Base):
         String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     table: Mapped[Optional["Table"]] = relationship(back_populates="cells")
     column_header: Mapped[Optional["Header"]] = relationship(
@@ -442,6 +460,9 @@ class Cell(Base):
     )
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     table_version_cells: Mapped[List["TableVersionCell"]] = relationship(
         back_populates="cell",
@@ -623,7 +644,11 @@ class TableGroup(Base):
         Integer,
         ForeignKey("TableGroup.TableGroupID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
@@ -640,6 +665,9 @@ class TableGroup(Base):
     )
     child_table_groups: Mapped[List["TableGroup"]] = relationship(
         back_populates="parent_table_group",
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     table_group_compositions: Mapped[List["TableGroupComposition"]] = (
         relationship(
@@ -767,7 +795,11 @@ class TableAssociation(Base):
         String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     child_table_version: Mapped[Optional["TableVersion"]] = relationship(
         foreign_keys=[child_table_vid],
@@ -782,6 +814,9 @@ class TableAssociation(Base):
     )
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     key_header_mappings: Mapped[List["KeyHeaderMapping"]] = relationship(
         back_populates="table_association",

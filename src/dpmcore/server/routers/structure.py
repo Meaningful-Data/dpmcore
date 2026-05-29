@@ -36,6 +36,7 @@ class References(str, enum.Enum):
 
     NONE = "none"
     ALL = "all"
+    CHILDREN = "children"
 
 
 class ArtefactType(str, enum.Enum):
@@ -51,7 +52,6 @@ class ArtefactType(str, enum.Enum):
     ORGANISATION = "organisation"
     PROPERTY = "property"
     RELEASE = "release"
-    STRUCTURE = "structure"
     TABLE = "table"
     TABLEGROUP = "tablegroup"
     VARIABLE = "variable"
@@ -214,7 +214,8 @@ def create_structure_router(
     ) -> Any:
         type_value = artefact_type.value
 
-        # "structure" is a wildcard — not backed by a handler
+        # Safety net for future enum additions without a registered
+        # handler — every current ArtefactType value is registered.
         if type_value not in ARTEFACT_HANDLERS:
             valid = ", ".join(sorted(ARTEFACT_HANDLERS.keys()))
             return Response(
@@ -468,3 +469,588 @@ def _owner_ids_from_acronyms(
         .all()
     )
     return [o.org_id for o in orgs]
+
+
+# ------------------------------------------------------------------ #
+# Table handler
+# ------------------------------------------------------------------ #
+
+
+@register_artefact("table")
+def handle_table(
+    *,
+    session: Session,
+    params: StructureParams,
+    detail: str,
+    references: str,
+    offset: int,
+    limit: int,
+) -> Any:
+    """Handle ``/structure/table/...`` requests."""
+    from dpmcore.services.structure import StructureService
+
+    svc = StructureService(session)
+
+    results, total = svc.query_tables(
+        params=params,
+        detail=detail,
+        offset=offset,
+        limit=limit,
+    )
+
+    if not results:
+        return Response(status_code=204)
+
+    data: Dict[str, Any] = {"tables": results}
+    if references == "all":
+        acronyms: List[str] = list(
+            {
+                owner
+                for r in results
+                if isinstance((owner := r.get("owner")), str)
+            }
+        )
+        if acronyms:
+            data["organisations"] = svc.get_release_organisations(
+                _owner_ids_from_acronyms(svc, acronyms),
+            )
+
+    return envelope(
+        data,
+        total_count=total,
+        offset=offset,
+        limit=limit,
+    )
+
+
+# ------------------------------------------------------------------ #
+# Operator handler
+# ------------------------------------------------------------------ #
+
+
+@register_artefact("operator")
+def handle_operator(
+    *,
+    session: Session,
+    params: StructureParams,
+    detail: str,
+    references: str,
+    offset: int,
+    limit: int,
+) -> Any:
+    """Handle ``/structure/operator/...`` requests.
+
+    Operators are flat, unversioned, and unowned. The ``{owner}`` URL
+    segment must be ``*`` (concrete owners 204); release is ignored.
+    Arguments are always inlined at ``detail=full``. ``references``
+    is accepted but a no-op (no related artefacts to add — operators
+    have no owner).
+    """
+    from dpmcore.services.structure import StructureService
+
+    svc = StructureService(session)
+    results, total = svc.query_operators(
+        params=params,
+        detail=detail,
+        offset=offset,
+        limit=limit,
+    )
+
+    if not results:
+        return Response(status_code=204)
+
+    return envelope(
+        {"operators": results},
+        total_count=total,
+        offset=offset,
+        limit=limit,
+    )
+
+
+# ------------------------------------------------------------------ #
+# Operation handler
+# ------------------------------------------------------------------ #
+
+
+@register_artefact("operation")
+def handle_operation(
+    *,
+    session: Session,
+    params: StructureParams,
+    detail: str,
+    references: str,
+    offset: int,
+    limit: int,
+) -> Any:
+    """Handle ``/structure/operation/...`` requests.
+
+    Each Operation carries a nested ``versions`` array — and at
+    ``detail=full`` (default) each version carries its node tree,
+    operand references, and reference locations inline. The
+    ``{release}`` URL segment filters the inner ``versions`` array;
+    Operations with no matching version are dropped. ``references``
+    is accepted but only ``all`` (which adds organisations) has an
+    effect — ``children`` is a no-op because the nested payload is
+    already present by default.
+    """
+    from dpmcore.services.structure import StructureService
+
+    svc = StructureService(session)
+    results, total = svc.query_operations(
+        params=params,
+        detail=detail,
+        offset=offset,
+        limit=limit,
+    )
+
+    if not results:
+        return Response(status_code=204)
+
+    data: Dict[str, Any] = {"operations": results}
+    if references == "all":
+        acronyms: List[str] = list(
+            {
+                owner
+                for r in results
+                if isinstance((owner := r.get("owner")), str)
+            }
+        )
+        if acronyms:
+            data["organisations"] = svc.get_release_organisations(
+                _owner_ids_from_acronyms(svc, acronyms),
+            )
+
+    return envelope(
+        data,
+        total_count=total,
+        offset=offset,
+        limit=limit,
+    )
+
+
+# ------------------------------------------------------------------ #
+# DataType handler
+# ------------------------------------------------------------------ #
+
+
+@register_artefact("datatype")
+def handle_datatype(
+    *,
+    session: Session,
+    params: StructureParams,
+    detail: str,
+    references: str,
+    offset: int,
+    limit: int,
+) -> Any:
+    """Handle ``/structure/datatype/...`` requests.
+
+    DataTypes are flat, unversioned, and unowned but hierarchical.
+    The ``{owner}`` URL segment must be ``*`` (concrete owners 204);
+    the release segment is ignored. ``references=children`` expands
+    ``childDataTypes`` stubs; ``references=all`` does the same (no
+    organisations enrichment — DataTypes have no owner).
+    """
+    from dpmcore.services.structure import StructureService
+
+    svc = StructureService(session)
+    results, total = svc.query_datatypes(
+        params=params,
+        detail=detail,
+        references=references,
+        offset=offset,
+        limit=limit,
+    )
+
+    if not results:
+        return Response(status_code=204)
+
+    return envelope(
+        {"dataTypes": results},
+        total_count=total,
+        offset=offset,
+        limit=limit,
+    )
+
+
+# ------------------------------------------------------------------ #
+# Organisation handler
+# ------------------------------------------------------------------ #
+
+
+@register_artefact("organisation")
+def handle_organisation(
+    *,
+    session: Session,
+    params: StructureParams,
+    detail: str,
+    references: str,
+    offset: int,
+    limit: int,
+) -> Any:
+    """Handle ``/structure/organisation/...`` requests.
+
+    Organisations are leaves and not release-versioned. ``references``
+    is accepted but a no-op: the response is already the organisation
+    list, so neither ``children`` nor ``all`` adds anything.
+    """
+    from dpmcore.services.structure import StructureService
+
+    svc = StructureService(session)
+    results, total = svc.query_organisations(
+        params=params,
+        detail=detail,
+        offset=offset,
+        limit=limit,
+    )
+
+    if not results:
+        return Response(status_code=204)
+
+    return envelope(
+        {"organisations": results},
+        total_count=total,
+        offset=offset,
+        limit=limit,
+    )
+
+
+# ------------------------------------------------------------------ #
+# Context handler
+# ------------------------------------------------------------------ #
+
+
+@register_artefact("context")
+def handle_context(
+    *,
+    session: Session,
+    params: StructureParams,
+    detail: str,
+    references: str,
+    offset: int,
+    limit: int,
+) -> Any:
+    """Handle ``/structure/context/...`` requests.
+
+    Contexts are leaves: ``references=children`` is silently a no-op.
+    ``references=all`` enriches the response with owner organisations.
+    """
+    from dpmcore.services.structure import StructureService
+
+    svc = StructureService(session)
+    results, total = svc.query_contexts(
+        params=params,
+        detail=detail,
+        offset=offset,
+        limit=limit,
+    )
+
+    if not results:
+        return Response(status_code=204)
+
+    data: Dict[str, Any] = {"contexts": results}
+    if references == "all":
+        acronyms: List[str] = list(
+            {
+                owner
+                for r in results
+                if isinstance((owner := r.get("owner")), str)
+            }
+        )
+        if acronyms:
+            data["organisations"] = svc.get_release_organisations(
+                _owner_ids_from_acronyms(svc, acronyms),
+            )
+
+    return envelope(
+        data,
+        total_count=total,
+        offset=offset,
+        limit=limit,
+    )
+
+
+# ------------------------------------------------------------------ #
+# Property handler
+# ------------------------------------------------------------------ #
+
+
+@register_artefact("property")
+def handle_property(
+    *,
+    session: Session,
+    params: StructureParams,
+    detail: str,
+    references: str,
+    offset: int,
+    limit: int,
+) -> Any:
+    """Handle ``/structure/property/...`` requests.
+
+    Properties are leaves: ``references=children`` is silently a no-op.
+    ``references=all`` enriches the response with owner organisations.
+    """
+    from dpmcore.services.structure import StructureService
+
+    svc = StructureService(session)
+    results, total = svc.query_properties(
+        params=params,
+        detail=detail,
+        offset=offset,
+        limit=limit,
+    )
+
+    if not results:
+        return Response(status_code=204)
+
+    data: Dict[str, Any] = {"properties": results}
+    if references == "all":
+        acronyms: List[str] = list(
+            {
+                owner
+                for r in results
+                if isinstance((owner := r.get("owner")), str)
+            }
+        )
+        if acronyms:
+            data["organisations"] = svc.get_release_organisations(
+                _owner_ids_from_acronyms(svc, acronyms),
+            )
+
+    return envelope(
+        data,
+        total_count=total,
+        offset=offset,
+        limit=limit,
+    )
+
+
+# ------------------------------------------------------------------ #
+# Variable handler
+# ------------------------------------------------------------------ #
+
+
+@register_artefact("variable")
+def handle_variable(
+    *,
+    session: Session,
+    params: StructureParams,
+    detail: str,
+    references: str,
+    offset: int,
+    limit: int,
+) -> Any:
+    """Handle ``/structure/variable/...`` requests.
+
+    Variables are leaves: ``references=children`` is silently a no-op.
+    ``references=all`` enriches the response with owner organisations.
+    """
+    from dpmcore.services.structure import StructureService
+
+    svc = StructureService(session)
+    results, total = svc.query_variables(
+        params=params,
+        detail=detail,
+        offset=offset,
+        limit=limit,
+    )
+
+    if not results:
+        return Response(status_code=204)
+
+    data: Dict[str, Any] = {"variables": results}
+    if references == "all":
+        acronyms: List[str] = list(
+            {
+                owner
+                for r in results
+                if isinstance((owner := r.get("owner")), str)
+            }
+        )
+        if acronyms:
+            data["organisations"] = svc.get_release_organisations(
+                _owner_ids_from_acronyms(svc, acronyms),
+            )
+
+    return envelope(
+        data,
+        total_count=total,
+        offset=offset,
+        limit=limit,
+    )
+
+
+# ------------------------------------------------------------------ #
+# Framework handler
+# ------------------------------------------------------------------ #
+
+
+@register_artefact("framework")
+def handle_framework(
+    *,
+    session: Session,
+    params: StructureParams,
+    detail: str,
+    references: str,
+    offset: int,
+    limit: int,
+) -> Any:
+    """Handle ``/structure/framework/...`` requests.
+
+    Frameworks are not release-versioned; the release path segment
+    affects only the embedded ``modules`` children. ``references=
+    children`` embeds the ModuleVersions active at the requested
+    release; ``references=all`` adds the owner organisations.
+    """
+    from dpmcore.services.structure import StructureService
+
+    svc = StructureService(session)
+
+    results, total = svc.query_frameworks(
+        params=params,
+        detail=detail,
+        references=references,
+        offset=offset,
+        limit=limit,
+    )
+
+    if not results:
+        return Response(status_code=204)
+
+    data: Dict[str, Any] = {"frameworks": results}
+    if references == "all":
+        acronyms: List[str] = list(
+            {
+                owner
+                for r in results
+                if isinstance((owner := r.get("owner")), str)
+            }
+        )
+        if acronyms:
+            data["organisations"] = svc.get_release_organisations(
+                _owner_ids_from_acronyms(svc, acronyms),
+            )
+
+    return envelope(
+        data,
+        total_count=total,
+        offset=offset,
+        limit=limit,
+    )
+
+
+# ------------------------------------------------------------------ #
+# TableGroup handler
+# ------------------------------------------------------------------ #
+
+
+@register_artefact("tablegroup")
+def handle_tablegroup(
+    *,
+    session: Session,
+    params: StructureParams,
+    detail: str,
+    references: str,
+    offset: int,
+    limit: int,
+) -> Any:
+    """Handle ``/structure/tablegroup/...`` requests.
+
+    ``references=children`` embeds each TableGroup's tables (full
+    shape, batch-loaded) and its direct child TableGroups (stubs).
+    ``references=all`` does both and additionally adds the owner
+    organisations.
+    """
+    from dpmcore.services.structure import StructureService
+
+    svc = StructureService(session)
+    results, total = svc.query_tablegroups(
+        params=params,
+        detail=detail,
+        references=references,
+        offset=offset,
+        limit=limit,
+    )
+
+    if not results:
+        return Response(status_code=204)
+
+    data: Dict[str, Any] = {"tableGroups": results}
+    if references == "all":
+        acronyms: List[str] = list(
+            {
+                owner
+                for r in results
+                if isinstance((owner := r.get("owner")), str)
+            }
+        )
+        if acronyms:
+            data["organisations"] = svc.get_release_organisations(
+                _owner_ids_from_acronyms(svc, acronyms),
+            )
+
+    return envelope(
+        data,
+        total_count=total,
+        offset=offset,
+        limit=limit,
+    )
+
+
+# ------------------------------------------------------------------ #
+# Module handler
+# ------------------------------------------------------------------ #
+
+
+@register_artefact("module")
+def handle_module(
+    *,
+    session: Session,
+    params: StructureParams,
+    detail: str,
+    references: str,
+    offset: int,
+    limit: int,
+) -> Any:
+    """Handle ``/structure/module/...`` requests.
+
+    ``references=children`` embeds each module version's ordered tables.
+    ``references=all`` does the same and additionally enriches the
+    response with the owner organisations (mirroring the table /
+    category handlers).
+    """
+    from dpmcore.services.structure import StructureService
+
+    svc = StructureService(session)
+
+    results, total = svc.query_modules(
+        params=params,
+        detail=detail,
+        references=references,
+        offset=offset,
+        limit=limit,
+    )
+
+    if not results:
+        return Response(status_code=204)
+
+    data: Dict[str, Any] = {"modules": results}
+    if references == "all":
+        acronyms: List[str] = list(
+            {
+                owner
+                for r in results
+                if isinstance((owner := r.get("owner")), str)
+            }
+        )
+        if acronyms:
+            data["organisations"] = svc.get_release_organisations(
+                _owner_ids_from_acronyms(svc, acronyms),
+            )
+
+    return envelope(
+        data,
+        total_count=total,
+        offset=offset,
+        limit=limit,
+    )

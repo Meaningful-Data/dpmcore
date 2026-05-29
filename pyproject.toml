@@ -47,25 +47,25 @@ documentation = "https://docs.dpmcore.meaningfuldata.eu"
 # via `pip install --no-dependencies`. Version bumps above these floors
 # should stay within semver compatibility.
 server = ["fastapi>=0.101", "uvicorn[standard]>=0.27"]
-django = ["django>=4.2", "mssql-django>=1.4"]
+django = ["django>=4.2", "mssql-django>=1.7.2"]
 postgres = ["psycopg2-binary>=2.9.12,<3.0"]
 sqlserver = ["pyodbc>=5.0"]
 # pandas / numpy ranges mirror vtlengine's published pins so that
 # dpmcore + vtlengine can be co-installed without resolver conflicts.
 migration = ["pandas>=2.1.4,<3.0", "numpy>=2.2.0,<2.3"]
 data = ["pandas>=2.1.4,<3.0", "numpy>=2.2.0,<2.3"]
-cli = ["click>=8.1", "rich>=13.7"]
+cli = ["click>=8.4.1", "rich>=13.7"]
 export = ["openpyxl>=3.1"]
 all = [
     "fastapi>=0.101",
     "uvicorn[standard]>=0.27",
     "django>=4.2",
-    "mssql-django>=1.4",
+    "mssql-django>=1.7.2",
     "psycopg2-binary>=2.9.12,<3.0",
     "pyodbc>=5.0",
     "pandas>=2.1.4,<3.0",
     "numpy>=2.2.0,<2.3",
-    "click>=8.1",
+    "click>=8.4.1",
     "rich>=13.7",
     "openpyxl>=3.1",
 ]
@@ -79,7 +79,7 @@ packages = [{ include = "dpmcore", from = "src" }]
 [tool.poetry.group.dev.dependencies]
 coverage = ">=7.14.0,<8.0"
 ruff = ">=0.14"
-mypy = ">=1.20.2"
+mypy = ">=2.1.0"
 pytest = ">=8.3"
 pytest-asyncio = ">=0.24"
 pytest-cov = ">=6.0"
