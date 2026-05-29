@@ -43,6 +43,7 @@ implicit_type_promotion_dict: dict[type[ScalarType], set[type[ScalarType]]] = {
         Item,
         Subcategory,
         Null,
+        Mixed,
     },
 }
 
@@ -160,10 +161,7 @@ def binary_implicit_type_promotion(
                 add_semantic_warning(
                     f"Implicit promotion between {left} and {right}."
                 )
-        if return_type and (
-            left.is_included(right_implicities)
-            or right.is_included(left_implicities)
-        ):
+        if return_type:
             return return_type
         elif left.is_included(right_implicities):
             return left
@@ -220,30 +218,45 @@ def binary_implicit_type_promotion_with_mixed_types(
         )
 
     elif isinstance(left_type, Mixed):
-        # Series.apply stubs don't know ScalarType is a valid cell value
-        result_dataframe["data_type"] = result_dataframe["data_type"].apply(
-            lambda x: binary_implicit_type_promotion(  # type: ignore[arg-type,return-value]
-                x,
-                right_type,
-                op_type_to_check,
-                return_type,
-                interval_allowed,
-                error_info,
+        if return_type is not None:
+            # Operator has a fixed return type (e.g. Boolean for comparisons).
+            # Per-row promotion would raise 3-1 for rows whose actual type
+            # cannot be promoted to the RHS type (e.g. Number vs Item), but
+            # at runtime such comparisons simply return false/null rather than
+            # an error.  Assign the known return type directly.
+            result_dataframe["data_type"] = return_type  # type: ignore[call-overload]
+        else:
+            # Series.apply stubs don't know ScalarType is a valid cell value
+            result_dataframe["data_type"] = result_dataframe[
+                "data_type"
+            ].apply(
+                lambda x: binary_implicit_type_promotion(  # type: ignore[arg-type,return-value]
+                    x,
+                    right_type,
+                    op_type_to_check,
+                    return_type,
+                    interval_allowed,
+                    error_info,
+                )
             )
-        )
 
     elif isinstance(right_type, Mixed):
-        # Series.apply stubs don't know ScalarType is a valid cell value
-        result_dataframe["data_type"] = result_dataframe["data_type"].apply(
-            lambda x: binary_implicit_type_promotion(  # type: ignore[arg-type,return-value]
-                left_type,
-                x,
-                op_type_to_check,
-                return_type,
-                interval_allowed,
-                error_info,
+        if return_type is not None:
+            result_dataframe["data_type"] = return_type  # type: ignore[call-overload]
+        else:
+            # Series.apply stubs don't know ScalarType is a valid cell value
+            result_dataframe["data_type"] = result_dataframe[
+                "data_type"
+            ].apply(
+                lambda x: binary_implicit_type_promotion(  # type: ignore[arg-type,return-value]
+                    left_type,
+                    x,
+                    op_type_to_check,
+                    return_type,
+                    interval_allowed,
+                    error_info,
+                )
             )
-        )
 
     if return_type:
         return return_type, result_dataframe

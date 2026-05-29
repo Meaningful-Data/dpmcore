@@ -49,18 +49,24 @@ class Category(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
-    created_release = models.IntegerField(
+    created_release = models.ForeignKey(
+        "Release",
+        on_delete=models.DO_NOTHING,
         db_column="CreatedRelease",
+        related_name="categories_created",
         null=True,
         blank=True,
     )
-    owner_id = models.IntegerField(
+    owner = models.ForeignKey(
+        "Organisation",
+        on_delete=models.DO_NOTHING,
         db_column="OwnerID",
         null=True,
         blank=True,
@@ -83,7 +89,7 @@ class SubCategory(models.Model):
         db_column="SubCategoryID",
         primary_key=True,
     )
-    category_id = models.ForeignKey(
+    category = models.ForeignKey(
         "Category",
         on_delete=models.DO_NOTHING,
         db_column="CategoryID",
@@ -108,13 +114,16 @@ class SubCategory(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
-    owner_id = models.IntegerField(
+    owner = models.ForeignKey(
+        "Organisation",
+        on_delete=models.DO_NOTHING,
         db_column="OwnerID",
         null=True,
         blank=True,
@@ -137,14 +146,14 @@ class SubCategoryVersion(models.Model):
         db_column="SubCategoryVID",
         primary_key=True,
     )
-    subcategory_id = models.ForeignKey(
+    subcategory = models.ForeignKey(
         "SubCategory",
         on_delete=models.DO_NOTHING,
         db_column="SubCategoryID",
         null=True,
         blank=True,
     )
-    start_release_id = models.ForeignKey(
+    start_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="StartReleaseID",
@@ -152,7 +161,7 @@ class SubCategoryVersion(models.Model):
         null=True,
         blank=True,
     )
-    end_release_id = models.ForeignKey(
+    end_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="EndReleaseID",
@@ -160,9 +169,10 @@ class SubCategoryVersion(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
@@ -176,14 +186,14 @@ class SubCategoryVersion(models.Model):
 class SubCategoryItem(models.Model):
     """An Item within a SubCategoryVersion, with ordering."""
 
-    item_id = models.ForeignKey(
+    item = models.ForeignKey(
         "Item",
         on_delete=models.DO_NOTHING,
         db_column="ItemID",
         related_name="subcategory_items",
         primary_key=True,
     )
-    subcategory_vid = models.ForeignKey(
+    subcategory_version = models.ForeignKey(
         "SubCategoryVersion",
         on_delete=models.DO_NOTHING,
         db_column="SubCategoryVID",
@@ -199,7 +209,7 @@ class SubCategoryItem(models.Model):
         null=True,
         blank=True,
     )
-    parent_item_id = models.ForeignKey(
+    parent_item = models.ForeignKey(
         "Item",
         on_delete=models.DO_NOTHING,
         db_column="ParentItemID",
@@ -207,7 +217,7 @@ class SubCategoryItem(models.Model):
         null=True,
         blank=True,
     )
-    comparison_operator_id = models.ForeignKey(
+    comparison_operator = models.ForeignKey(
         "Operator",
         on_delete=models.DO_NOTHING,
         db_column="ComparisonOperatorID",
@@ -215,7 +225,7 @@ class SubCategoryItem(models.Model):
         null=True,
         blank=True,
     )
-    arithmetic_operator_id = models.ForeignKey(
+    arithmetic_operator = models.ForeignKey(
         "Operator",
         on_delete=models.DO_NOTHING,
         db_column="ArithmeticOperatorID",
@@ -223,9 +233,10 @@ class SubCategoryItem(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
@@ -234,7 +245,7 @@ class SubCategoryItem(models.Model):
         managed = False
         db_table = "SubCategoryItem"
         app_label = "dpmcore_django"
-        unique_together = (("item_id", "subcategory_vid"),)
+        unique_together = (("item", "subcategory_version"),)
 
 
 class Item(models.Model):
@@ -266,13 +277,16 @@ class Item(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
-    owner_id = models.IntegerField(
+    owner = models.ForeignKey(
+        "Organisation",
+        on_delete=models.DO_NOTHING,
         db_column="OwnerID",
         null=True,
         blank=True,
@@ -290,19 +304,19 @@ class Item(models.Model):
 class ItemCategory(models.Model):
     """Release-versioned link between an Item and a Category."""
 
-    item_id = models.ForeignKey(
+    item = models.ForeignKey(
         "Item",
         on_delete=models.DO_NOTHING,
         db_column="ItemID",
         primary_key=True,
     )
-    start_release_id = models.ForeignKey(
+    start_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="StartReleaseID",
         related_name="item_category_starts",
     )
-    category_id = models.ForeignKey(
+    category = models.ForeignKey(
         "Category",
         on_delete=models.DO_NOTHING,
         db_column="CategoryID",
@@ -326,7 +340,7 @@ class ItemCategory(models.Model):
         null=True,
         blank=True,
     )
-    end_release_id = models.ForeignKey(
+    end_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="EndReleaseID",
@@ -346,13 +360,13 @@ class ItemCategory(models.Model):
         db_table = "ItemCategory"
         app_label = "dpmcore_django"
         verbose_name_plural = "item categories"
-        unique_together = (("item_id", "start_release_id"),)
+        unique_together = (("item", "start_release"),)
 
 
 class Property(models.Model):
     """Aspect or characteristic linked to an Item."""
 
-    property_id = models.OneToOneField(
+    property = models.OneToOneField(
         "Item",
         on_delete=models.DO_NOTHING,
         db_column="PropertyID",
@@ -368,7 +382,7 @@ class Property(models.Model):
         null=True,
         blank=True,
     )
-    data_type_id = models.ForeignKey(
+    data_type = models.ForeignKey(
         "DataType",
         on_delete=models.DO_NOTHING,
         db_column="DataTypeID",
@@ -386,20 +400,23 @@ class Property(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
-    owner_id = models.IntegerField(
+    owner = models.ForeignKey(
+        "Organisation",
+        on_delete=models.DO_NOTHING,
         db_column="OwnerID",
         null=True,
         blank=True,
     )
 
     def __str__(self) -> str:
-        return str(self.property_id)
+        return str(self.property)
 
     class Meta:
         managed = False
@@ -411,26 +428,26 @@ class Property(models.Model):
 class PropertyCategory(models.Model):
     """Release-versioned link between a Property and a Category."""
 
-    property_id = models.ForeignKey(
+    property = models.ForeignKey(
         "Property",
         on_delete=models.DO_NOTHING,
         db_column="PropertyID",
         primary_key=True,
     )
-    start_release_id = models.ForeignKey(
+    start_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="StartReleaseID",
         related_name="property_category_starts",
     )
-    category_id = models.ForeignKey(
+    category = models.ForeignKey(
         "Category",
         on_delete=models.DO_NOTHING,
         db_column="CategoryID",
         null=True,
         blank=True,
     )
-    end_release_id = models.ForeignKey(
+    end_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="EndReleaseID",
@@ -450,7 +467,7 @@ class PropertyCategory(models.Model):
         db_table = "PropertyCategory"
         app_label = "dpmcore_django"
         verbose_name_plural = "property categories"
-        unique_together = (("property_id", "start_release_id"),)
+        unique_together = (("property", "start_release"),)
 
 
 class Context(models.Model):
@@ -466,13 +483,16 @@ class Context(models.Model):
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
-    owner_id = models.IntegerField(
+    owner = models.ForeignKey(
+        "Organisation",
+        on_delete=models.DO_NOTHING,
         db_column="OwnerID",
         null=True,
         blank=True,
@@ -490,27 +510,28 @@ class Context(models.Model):
 class ContextComposition(models.Model):
     """Maps Properties and Items within a Context."""
 
-    context_id = models.ForeignKey(
+    context = models.ForeignKey(
         "Context",
         on_delete=models.DO_NOTHING,
         db_column="ContextID",
         primary_key=True,
     )
-    property_id = models.ForeignKey(
+    property = models.ForeignKey(
         "Property",
         on_delete=models.DO_NOTHING,
         db_column="PropertyID",
     )
-    item_id = models.ForeignKey(
+    item = models.ForeignKey(
         "Item",
         on_delete=models.DO_NOTHING,
         db_column="ItemID",
         null=True,
         blank=True,
     )
-    row_guid = models.CharField(
+    concept = models.ForeignKey(
+        "Concept",
+        on_delete=models.DO_NOTHING,
         db_column="RowGUID",
-        max_length=36,
         null=True,
         blank=True,
     )
@@ -519,32 +540,32 @@ class ContextComposition(models.Model):
         managed = False
         db_table = "ContextComposition"
         app_label = "dpmcore_django"
-        unique_together = (("context_id", "property_id"),)
+        unique_together = (("context", "property"),)
 
 
 class CompoundItemContext(models.Model):
     """Release-versioned association of a compound Item."""
 
-    item_id = models.ForeignKey(
+    item = models.ForeignKey(
         "Item",
         on_delete=models.DO_NOTHING,
         db_column="ItemID",
         primary_key=True,
     )
-    start_release_id = models.ForeignKey(
+    start_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="StartReleaseID",
         related_name="compound_item_context_starts",
     )
-    context_id = models.ForeignKey(
+    context = models.ForeignKey(
         "Context",
         on_delete=models.DO_NOTHING,
         db_column="ContextID",
         null=True,
         blank=True,
     )
-    end_release_id = models.ForeignKey(
+    end_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="EndReleaseID",
@@ -563,26 +584,26 @@ class CompoundItemContext(models.Model):
         managed = False
         db_table = "CompoundItemContext"
         app_label = "dpmcore_django"
-        unique_together = (("item_id", "start_release_id"),)
+        unique_together = (("item", "start_release"),)
 
 
 class SupercategoryComposition(models.Model):
     """Composition link between a super-category and a category."""
 
-    supercategory_id = models.ForeignKey(
+    supercategory = models.ForeignKey(
         "Category",
         on_delete=models.DO_NOTHING,
         db_column="SuperCategoryID",
         related_name="supercategory_compositions",
         primary_key=True,
     )
-    category_id = models.ForeignKey(
+    category = models.ForeignKey(
         "Category",
         on_delete=models.DO_NOTHING,
         db_column="CategoryID",
         related_name="category_compositions",
     )
-    start_release_id = models.ForeignKey(
+    start_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="StartReleaseID",
@@ -590,7 +611,7 @@ class SupercategoryComposition(models.Model):
         null=True,
         blank=True,
     )
-    end_release_id = models.ForeignKey(
+    end_release = models.ForeignKey(
         "Release",
         on_delete=models.DO_NOTHING,
         db_column="EndReleaseID",
@@ -609,4 +630,4 @@ class SupercategoryComposition(models.Model):
         managed = False
         db_table = "SuperCategoryComposition"
         app_label = "dpmcore_django"
-        unique_together = (("supercategory_id", "category_id"),)
+        unique_together = (("supercategory", "category"),)

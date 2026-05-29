@@ -45,7 +45,7 @@ expression:
     | functions                                                                                         #funcExpr
     | expression SQUARE_BRACKET_LEFT clauseOperators SQUARE_BRACKET_RIGHT                               #clauseExpr
     | op=(PLUS|MINUS) expression                                                                        #unaryExpr
-    | op=NOT LPAREN expression RPAREN                                                                   #notExpr
+    | op=NOT expression                                                                                 #notExpr
     | left=expression op=(MULT|DIV) right=expression                                                    #numericExpr
     | left=expression op=(PLUS|MINUS) right=expression                                                  #numericExpr
     | left=expression op=CONCAT right=expression                                                        #concatExpr
@@ -96,7 +96,7 @@ filterOperators:
     ;
 
 timeOperators:
-    TIME_SHIFT LPAREN expression COMMA TIME_PERIOD COMMA INTEGER_LITERAL (COMMA propertyCode)? RPAREN #timeShiftFunction
+    TIME_SHIFT LPAREN expression COMMA TIME_PERIOD COMMA expression (COMMA propertyCode)? RPAREN #timeShiftFunction
     | op=(YEAR|SEMESTER|QUARTER|MONTH|WEEK|DAY) LPAREN expression RPAREN                        #dateExtractFunction
     | DATE LPAREN year=expression COMMA month=expression COMMA day=expression RPAREN            #dateConstructorFunction
     ;
@@ -180,7 +180,6 @@ selectOperand:
     cellRef
     | varRef
     | operationRef
-    | preconditionElem
     ;
 
 varID:
@@ -189,10 +188,6 @@ varID:
 
 cellRef:
     address=cellAddress
-    ;
-
-preconditionElem:
-    PRECONDITION_ELEMENT
     ;
 
 varRef:
@@ -204,8 +199,9 @@ operationRef:
     ;
 
 cellAddress:
-    tableReference (COMMA argument)*               #tableRef
-    | argument (COMMA argument)*                   #compRef;
+    tableReference (COMMA argument)*                        #tableRef
+    | operationRef COMMA argument (COMMA argument)*         #opRef
+    | argument (COMMA argument)*                            #compRef;
 
 tableReference:
     TABLE_REFERENCE
@@ -216,13 +212,17 @@ clauseOperators:
     WHERE expression                                             #whereExpr
     | GET keyNames                                               #getExpr
     | RENAME renameClause (COMMA renameClause)*                  #renameExpr
-    | SUB propertyCode EQ (literal | select | itemReference)     #subExpr
+    | SUB subAssignment (COMMA subAssignment)*                   #subExpr
     ;
 
 // Always on grammar, not on tokens. Order is important (top ones should be the enclosing ones)
 
+subAssignment:
+    propertyCode EQ (literal | select | itemReference)
+    ;
+
 renameClause:
-    keyNames TO keyNames
+    propertyCode TO propertyCode
     ;
 
 comparisonOperators:
@@ -248,6 +248,7 @@ keyNames:
     | COL_COMPONENT
     | SHEET_COMPONENT
     | PROPERTY_CODE
+    | ESCAPED_IDENTIFIER
 ;
 
 propertyReference:
@@ -256,8 +257,10 @@ propertyReference:
 propertyCode:
     PROPERTY_CODE
     | CODE
+    | ESCAPED_IDENTIFIER
     ;
 
 temporaryIdentifier:
     CODE
+    | ESCAPED_IDENTIFIER
     ;

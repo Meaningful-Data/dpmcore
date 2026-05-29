@@ -22,7 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from dpmcore.orm.base import Base
-from dpmcore.orm.infrastructure import Concept, Release
+from dpmcore.orm.infrastructure import Concept, Organisation, Release
 
 if TYPE_CHECKING:
     from dpmcore.orm.operations import OperationScopeComposition
@@ -65,10 +65,17 @@ class Framework(Base):
         String(38),
         ForeignKey("Concept.ConceptGUID"),
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     modules: Mapped[List["Module"]] = relationship(
         back_populates="framework",
@@ -112,13 +119,20 @@ class Module(Base):
     is_document_module: Mapped[Optional[bool]] = mapped_column(
         "isDocumentModule", Boolean
     )
-    owner_id: Mapped[Optional[int]] = mapped_column("OwnerID", Integer)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
 
     framework: Mapped[Optional["Framework"]] = relationship(
         back_populates="modules"
     )
     concept: Mapped[Optional["Concept"]] = relationship(
         foreign_keys=[row_guid]
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        foreign_keys=[owner_id]
     )
     module_versions: Mapped[List["ModuleVersion"]] = relationship(
         back_populates="module",

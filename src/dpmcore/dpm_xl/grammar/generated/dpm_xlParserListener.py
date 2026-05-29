@@ -611,15 +611,6 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by dpm_xlParser#preconditionElem.
-    def enterPreconditionElem(self, ctx:dpm_xlParser.PreconditionElemContext):
-        pass
-
-    # Exit a parse tree produced by dpm_xlParser#preconditionElem.
-    def exitPreconditionElem(self, ctx:dpm_xlParser.PreconditionElemContext):
-        pass
-
-
     # Enter a parse tree produced by dpm_xlParser#varRef.
     def enterVarRef(self, ctx:dpm_xlParser.VarRefContext):
         pass
@@ -644,6 +635,15 @@ class dpm_xlParserListener(ParseTreeListener):
 
     # Exit a parse tree produced by dpm_xlParser#tableRef.
     def exitTableRef(self, ctx:dpm_xlParser.TableRefContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#opRef.
+    def enterOpRef(self, ctx:dpm_xlParser.OpRefContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#opRef.
+    def exitOpRef(self, ctx:dpm_xlParser.OpRefContext):
         pass
 
 
@@ -698,6 +698,15 @@ class dpm_xlParserListener(ParseTreeListener):
 
     # Exit a parse tree produced by dpm_xlParser#subExpr.
     def exitSubExpr(self, ctx:dpm_xlParser.SubExprContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#subAssignment.
+    def enterSubAssignment(self, ctx:dpm_xlParser.SubAssignmentContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#subAssignment.
+    def exitSubAssignment(self, ctx:dpm_xlParser.SubAssignmentContext):
         pass
 
 

@@ -131,7 +131,8 @@ class ASTTemplate(NodeVisitor):
 
     def visit_SubOp(self, node: SubOp) -> None:
         self.visit(node.operand)
-        self.visit(node.value)
+        for sub in node.substitutions:
+            self.visit(sub.value)
 
     def visit_PreconditionItem(self, node: PreconditionItem) -> None:
         pass
