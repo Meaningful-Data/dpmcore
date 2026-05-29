@@ -119,7 +119,11 @@ class ASTVisitor(dpm_xlParserVisitor):
     ) -> WithExpression:
         ctx_list = list(ctx.getChildren())
         partial_selection: VarID = self._visit(ctx_list[1])
-        expression: AST = self._visit(ctx_list[3])
+        # Body expression is always the last child.  When the optional
+        # [WHERE expression] block is present the token count grows by 4,
+        # so ctx_list[3] would land on the WHERE terminal rather than the
+        # body.  ctx_list[-1] is correct in both cases.
+        expression: AST = self._visit(ctx_list[-1])
         return WithExpression(
             partial_selection=partial_selection, expression=expression
         )

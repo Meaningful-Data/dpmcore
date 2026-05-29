@@ -215,6 +215,11 @@ class OperandsChecking(ASTTemplate, ABC):
             and getattr(self.partial_selection, header) is not None
         ):
             return
+        # If ALL operands omit the header, the expression applies to every
+        # instance of that dimension ("apply to all" semantics) — valid.
+        # Only raise 1-20 when SOME operands specify the header and SOME don't.
+        if all(getattr(node, header) is None for node in self.operands[table]):
+            return
         for node in self.operands[table]:
             if getattr(node, header) is None:
                 if header == "cols":

@@ -4,6 +4,8 @@ Each test validates a DPM-XL expression at a specific release ID using
 the SemanticService backed by the fixture SQLite database.
 """
 
+import pytest
+
 from dpmcore.services.semantic import SemanticService
 
 
@@ -326,3 +328,38 @@ def test_sub_duplicate_property_code_rejected(fixture_session):
         f"{result.error_message}"
     )
     assert "qEBB" in (result.error_message or "")
+
+
+@pytest.mark.parametrize(
+    ("expression", "release_code"),
+    [
+        # tR_06.00.b 3.4: wildcard hits a header whose code changed in 4.2+
+        (
+            "with {tR_06.00.b, default: null, interval: false}: {r*, c0020-0050} >= 0",
+            "3.4",
+        ),
+        # tR_06.00.b 4.2: TVH must resolve to the updated header code
+        (
+            "{tR_06.00.b, r*, c*, default: 0, interval: false} <= 1",
+            "4.2",
+        ),
+        # tK_60.00.a 3.4: same multi-release header issue on a different table
+        (
+            "with {tK_60.00.a, default: null, interval: false}: {r0100-0290, c*} >= 0",
+            "3.4",
+        ),
+    ],
+)
+def test_no_false_2_6_on_multi_release_headers(
+    fixture_session, expression, release_code
+):
+    """Wildcard/range selectors on tables whose headers changed code across
+    releases must be valid (no errors at all).
+    """
+    svc = SemanticService(fixture_session)
+    result = svc.validate(expression, release_code=release_code)
+
+    assert result.is_valid, (
+        f"Expected valid at release {release_code!r}, got {result.error_code}: "
+        f"{result.error_message}"
+    )
