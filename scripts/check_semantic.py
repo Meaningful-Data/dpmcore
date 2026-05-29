@@ -1,10 +1,10 @@
-"""Check DPM-XL expression semantics for all OperationVersion rules in the DB."""
+"""Check DPM-XL expression semantics for all OperationVersion rules."""
 
 import argparse
 import csv
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import create_engine, text
@@ -41,7 +41,6 @@ def _fmt_duration(seconds: float) -> str:
     return f"{s}s"
 
 
-
 def _load_rows(db_path: Path):
     engine = create_engine(f"sqlite:///{db_path}")
     with engine.connect() as conn:
@@ -67,8 +66,11 @@ def _load_rows(db_path: Path):
 
 
 def main() -> int:
+    """Run semantic validation on all OperationVersion rules in the DB."""
     parser = argparse.ArgumentParser(
-        description="Check DPM-XL expression semantics for all rules in the DB.",
+        description=(
+            "Check DPM-XL expression semantics for all rules in the DB."
+        ),
     )
     parser.add_argument(
         "--db",
@@ -80,7 +82,10 @@ def main() -> int:
         "--csv",
         type=Path,
         default=None,
-        help="Path for the failures CSV output (default: <db_stem>_failures.csv next to the DB)",
+        help=(
+            "Path for the failures CSV output "
+            "(default: <db_stem>_failures.csv next to the DB)"
+        ),
     )
     args = parser.parse_args()
 
@@ -111,7 +116,10 @@ def main() -> int:
     print(f"  Size       : {_fmt_size(db_path)}")
     print(f"  Validations: {total:,}")
     print(f"  CSV output : {csv_path}")
-    print(f"  Started    : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(
+        "  Started    : "
+        + datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    )
     print(BAR)
     print()
 
@@ -127,7 +135,9 @@ def main() -> int:
 
     t_start = time.monotonic()
 
-    for i, (operation_vid, op_code, release_code, expression) in enumerate(rows, 1):
+    for i, (operation_vid, op_code, release_code, expression) in enumerate(
+        rows, 1
+    ):
         label = op_code or str(operation_vid)
         release = release_code or ""
 
@@ -143,7 +153,17 @@ def main() -> int:
         else:
             err = result.error_message or "(no message)"
             err_code = result.error_code or ""
-            failures.append((i, operation_vid, label, release, expression.strip(), err_code, err))
+            failures.append(
+                (
+                    i,
+                    operation_vid,
+                    label,
+                    release,
+                    expression.strip(),
+                    err_code,
+                    err,
+                )
+            )
             print(f"{line}  {_RED}FAIL{_RESET}")
             print(f"  {_DIM}└─{_RESET} {err}")
 
@@ -178,7 +198,15 @@ def main() -> int:
         print(BAR)
         print("  FAILURES")
         print(BAR)
-        for idx, operation_vid, label, release, expression, err_code, error in failures:
+        for (
+            idx,
+            _operation_vid,
+            label,
+            release,
+            expression,
+            _err_code,
+            error,
+        ) in failures:
             idx_str = f"[{idx:{counter_width},}/{total_str}]"
             release_info = f" | release: {release}" if release else ""
             print(f"\n{idx_str} {label}{release_info}")
@@ -189,9 +217,37 @@ def main() -> int:
 
         with csv_path.open("w", newline="", encoding="utf-8") as fh:
             writer = csv.writer(fh)
-            writer.writerow(["index", "operation_vid", "code", "release", "error_code", "error", "expression"])
-            for idx, operation_vid, label, release, expression, err_code, error in failures:
-                writer.writerow([idx, operation_vid, label, release, err_code, error, expression])
+            writer.writerow(
+                [
+                    "index",
+                    "operation_vid",
+                    "code",
+                    "release",
+                    "error_code",
+                    "error",
+                    "expression",
+                ]
+            )
+            for (
+                idx,
+                operation_vid,
+                label,
+                release,
+                expression,
+                err_code,
+                error,
+            ) in failures:
+                writer.writerow(
+                    [
+                        idx,
+                        operation_vid,
+                        label,
+                        release,
+                        err_code,
+                        error,
+                        expression,
+                    ]
+                )
         print(f"\n  CSV written: {csv_path}")
 
     return 1 if failures else 0
