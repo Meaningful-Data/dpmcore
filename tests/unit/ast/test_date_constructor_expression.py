@@ -53,3 +53,15 @@ def test_constructor_tojson_serializable():
     assert "year" in result
     assert "month" in result
     assert "day" in result
+
+
+def test_constructor_node_op_is_date():
+    """``op`` is set at construction (like ``DateExtractionOp``) so raw-AST
+    consumers — e.g. ``_resolve_root_operator_id`` — see the operator symbol
+    instead of the inherited ``None``.
+    """
+    ast = SyntaxService().parse("date(2025, 12, 31)")
+    node = ast.children[0]
+    assert isinstance(node, DateConstructorOp)
+    assert node.op == "date"
+    assert node.toJSON()["op"] == "date"

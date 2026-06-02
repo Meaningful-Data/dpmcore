@@ -422,7 +422,7 @@ class MLGeneration(ASTTemplate):
         self.visit(node.operand)
 
     def visit_DateConstructorOp(self, node: DateConstructorOp) -> None:
-        node.op = "date"
+        # ``node.op`` is "date" from construction (see DateConstructorOp).
         op_node = self.create_operation_node(node)
         for field, arg_name in [
             (node.year, "year"),

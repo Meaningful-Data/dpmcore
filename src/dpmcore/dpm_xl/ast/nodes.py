@@ -683,6 +683,7 @@ class DateConstructorOp(AST):
 
     def __init__(self, year: "AST", month: "AST", day: "AST") -> None:
         super().__init__()
+        self.op: str = "date"
         self.year: "AST" = year
         self.month: "AST" = month
         self.day: "AST" = day
@@ -700,6 +701,7 @@ class DateConstructorOp(AST):
     def toJSON(self) -> "dict[str, Any]":
         return {
             "class_name": self.__class__.__name__,
+            "op": self.op,
             "year": self.year,
             "month": self.month,
             "day": self.day,

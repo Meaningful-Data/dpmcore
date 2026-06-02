@@ -326,6 +326,17 @@ def test_date_extraction_non_date_type_rejected(fixture_session):
     assert result.error_code == "3-3"
 
 
+def test_date_extraction_on_recordset_type_checked(fixture_session):
+    """Extraction on a record set goes through the record-set path (not the
+    constant fast-path); the non-Date fact component is rejected with 3-3.
+    """
+    result = SemanticService(fixture_session).validate(
+        "year({tC_09.02, r0030, c0080})", release_id=5
+    )
+    assert not result.is_valid
+    assert result.error_code == "3-3"
+
+
 # ---------------------------------------------------------------------------
 # Date constructor
 # ---------------------------------------------------------------------------
