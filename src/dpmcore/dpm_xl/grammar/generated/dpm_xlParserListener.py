@@ -575,6 +575,24 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by dpm_xlParser#parameterRef.
+    def enterParameterRef(self, ctx:dpm_xlParser.ParameterRefContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#parameterRef.
+    def exitParameterRef(self, ctx:dpm_xlParser.ParameterRefContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#parameterType.
+    def enterParameterType(self, ctx:dpm_xlParser.ParameterTypeContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#parameterType.
+    def exitParameterType(self, ctx:dpm_xlParser.ParameterTypeContext):
+        pass
+
+
     # Enter a parse tree produced by dpm_xlParser#varID.
     def enterVarID(self, ctx:dpm_xlParser.VarIDContext):
         pass

@@ -324,6 +324,16 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by dpm_xlParser#parameterRef.
+    def visitParameterRef(self, ctx:dpm_xlParser.ParameterRefContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#parameterType.
+    def visitParameterType(self, ctx:dpm_xlParser.ParameterTypeContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by dpm_xlParser#varID.
     def visitVarID(self, ctx:dpm_xlParser.VarIDContext):
         return self.visitChildren(ctx)
