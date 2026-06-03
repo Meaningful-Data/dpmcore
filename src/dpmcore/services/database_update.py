@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote
 
-from sqlalchemy import Connection, Engine, create_engine, inspect, text
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine import Connection, Engine
 
 from dpmcore.loaders.migration import (
     MigrationError,

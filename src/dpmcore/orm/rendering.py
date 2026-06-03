@@ -17,8 +17,9 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import relationship
 
+from dpmcore.orm._compat import Mapped, mapped_column
 from dpmcore.orm.base import Base
 from dpmcore.orm.infrastructure import Concept, Organisation, Release
 
@@ -81,32 +82,38 @@ class Table(Base):
     )
 
     concept: Mapped[Optional["Concept"]] = relationship(
-        foreign_keys=[row_guid]
+        "Concept", foreign_keys=[row_guid]
     )
     owner: Mapped[Optional["Organisation"]] = relationship(
-        foreign_keys=[owner_id]
+        "Organisation", foreign_keys=[owner_id]
     )
     headers: Mapped[List["Header"]] = relationship(
+        "Header",
         back_populates="table",
     )
     cells: Mapped[List["Cell"]] = relationship(
+        "Cell",
         back_populates="table",
     )
     table_versions: Mapped[List["TableVersion"]] = relationship(
+        "TableVersion",
         foreign_keys="TableVersion.table_id",
         back_populates="table",
     )
     abstract_table_versions: Mapped[List["TableVersion"]] = relationship(
+        "TableVersion",
         foreign_keys="TableVersion.abstract_table_id",
         back_populates="abstract_table",
     )
     table_group_compositions: Mapped[List["TableGroupComposition"]] = (
         relationship(
+            "TableGroupComposition",
             back_populates="table",
         )
     )
     module_version_compositions: Mapped[List["ModuleVersionComposition"]] = (
         relationship(
+            "ModuleVersionComposition",
             back_populates="table",
         )
     )
@@ -186,49 +193,58 @@ class TableVersion(Base):
     )
 
     table: Mapped[Optional["Table"]] = relationship(
+        "Table",
         foreign_keys=[table_id],
         back_populates="table_versions",
     )
     abstract_table: Mapped[Optional["Table"]] = relationship(
+        "Table",
         foreign_keys=[abstract_table_id],
         back_populates="abstract_table_versions",
     )
-    key: Mapped[Optional["CompoundKey"]] = relationship(foreign_keys=[key_id])
+    key: Mapped[Optional["CompoundKey"]] = relationship(
+        "CompoundKey", foreign_keys=[key_id]
+    )
     property: Mapped[Optional["Property"]] = relationship(
-        foreign_keys=[property_id]
+        "Property", foreign_keys=[property_id]
     )
     context: Mapped[Optional["Context"]] = relationship(
-        foreign_keys=[context_id]
+        "Context", foreign_keys=[context_id]
     )
     start_release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[start_release_id]
+        "Release", foreign_keys=[start_release_id]
     )
     end_release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[end_release_id]
+        "Release", foreign_keys=[end_release_id]
     )
     concept: Mapped[Optional["Concept"]] = relationship(
-        foreign_keys=[row_guid]
+        "Concept", foreign_keys=[row_guid]
     )
     table_version_cells: Mapped[List["TableVersionCell"]] = relationship(
+        "TableVersionCell",
         back_populates="table_version",
     )
     table_version_headers: Mapped[List["TableVersionHeader"]] = relationship(
+        "TableVersionHeader",
         back_populates="table_version",
     )
     table_associations_as_child: Mapped[List["TableAssociation"]] = (
         relationship(
+            "TableAssociation",
             foreign_keys="TableAssociation.child_table_vid",
             back_populates="child_table_version",
         )
     )
     table_associations_as_parent: Mapped[List["TableAssociation"]] = (
         relationship(
+            "TableAssociation",
             foreign_keys="TableAssociation.parent_table_vid",
             back_populates="parent_table_version",
         )
     )
     module_version_compositions: Mapped[List["ModuleVersionComposition"]] = (
         relationship(
+            "ModuleVersionComposition",
             back_populates="table_version",
         )
     )
@@ -274,25 +290,31 @@ class Header(Base):
         ForeignKey("Organisation.OrgID"),
     )
 
-    table: Mapped[Optional["Table"]] = relationship(back_populates="headers")
+    table: Mapped[Optional["Table"]] = relationship(
+        "Table", back_populates="headers"
+    )
     concept: Mapped[Optional["Concept"]] = relationship(
-        foreign_keys=[row_guid]
+        "Concept", foreign_keys=[row_guid]
     )
     owner: Mapped[Optional["Organisation"]] = relationship(
-        foreign_keys=[owner_id]
+        "Organisation", foreign_keys=[owner_id]
     )
     header_versions: Mapped[List["HeaderVersion"]] = relationship(
+        "HeaderVersion",
         back_populates="header",
     )
     column_cells: Mapped[List["Cell"]] = relationship(
+        "Cell",
         foreign_keys="Cell.column_id",
         back_populates="column_header",
     )
     row_cells: Mapped[List["Cell"]] = relationship(
+        "Cell",
         foreign_keys="Cell.row_id",
         back_populates="row_header",
     )
     sheet_cells: Mapped[List["Cell"]] = relationship(
+        "Cell",
         foreign_keys="Cell.sheet_id",
         back_populates="sheet_header",
     )
@@ -370,28 +392,28 @@ class HeaderVersion(Base):
     )
 
     header: Mapped[Optional["Header"]] = relationship(
-        back_populates="header_versions"
+        "Header", back_populates="header_versions"
     )
     property: Mapped[Optional["Property"]] = relationship(
-        foreign_keys=[property_id]
+        "Property", foreign_keys=[property_id]
     )
     context: Mapped[Optional["Context"]] = relationship(
-        foreign_keys=[context_id]
+        "Context", foreign_keys=[context_id]
     )
     subcategory_version: Mapped[Optional["SubCategoryVersion"]] = relationship(
-        foreign_keys=[subcategory_vid]
+        "SubCategoryVersion", foreign_keys=[subcategory_vid]
     )
     key_variable_version: Mapped[Optional["VariableVersion"]] = relationship(
-        foreign_keys=[key_variable_vid]
+        "VariableVersion", foreign_keys=[key_variable_vid]
     )
     start_release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[start_release_id]
+        "Release", foreign_keys=[start_release_id]
     )
     end_release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[end_release_id]
+        "Release", foreign_keys=[end_release_id]
     )
     concept: Mapped[Optional["Concept"]] = relationship(
-        foreign_keys=[row_guid]
+        "Concept", foreign_keys=[row_guid]
     )
 
 
@@ -445,30 +467,37 @@ class Cell(Base):
         ForeignKey("Organisation.OrgID"),
     )
 
-    table: Mapped[Optional["Table"]] = relationship(back_populates="cells")
+    table: Mapped[Optional["Table"]] = relationship(
+        "Table", back_populates="cells"
+    )
     column_header: Mapped[Optional["Header"]] = relationship(
+        "Header",
         foreign_keys=[column_id],
         back_populates="column_cells",
     )
     row_header: Mapped[Optional["Header"]] = relationship(
+        "Header",
         foreign_keys=[row_id],
         back_populates="row_cells",
     )
     sheet_header: Mapped[Optional["Header"]] = relationship(
+        "Header",
         foreign_keys=[sheet_id],
         back_populates="sheet_cells",
     )
     concept: Mapped[Optional["Concept"]] = relationship(
-        foreign_keys=[row_guid]
+        "Concept", foreign_keys=[row_guid]
     )
     owner: Mapped[Optional["Organisation"]] = relationship(
-        foreign_keys=[owner_id]
+        "Organisation", foreign_keys=[owner_id]
     )
     table_version_cells: Mapped[List["TableVersionCell"]] = relationship(
+        "TableVersionCell",
         back_populates="cell",
     )
     operand_reference_locations: Mapped[List["OperandReferenceLocation"]] = (
         relationship(
+            "OperandReferenceLocation",
             back_populates="cell",
         )
     )
@@ -521,11 +550,13 @@ class TableVersionCell(Base):
     row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     table_version: Mapped["TableVersion"] = relationship(
-        back_populates="table_version_cells"
+        "TableVersion", back_populates="table_version_cells"
     )
-    cell: Mapped["Cell"] = relationship(back_populates="table_version_cells")
+    cell: Mapped["Cell"] = relationship(
+        "Cell", back_populates="table_version_cells"
+    )
     variable_version: Mapped[Optional["VariableVersion"]] = relationship(
-        foreign_keys=[variable_vid]
+        "VariableVersion", foreign_keys=[variable_vid]
     )
 
 
@@ -582,14 +613,14 @@ class TableVersionHeader(Base):
     row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     table_version: Mapped["TableVersion"] = relationship(
-        back_populates="table_version_headers"
+        "TableVersion", back_populates="table_version_headers"
     )
-    header: Mapped["Header"] = relationship(foreign_keys=[header_id])
+    header: Mapped["Header"] = relationship("Header", foreign_keys=[header_id])
     header_version: Mapped[Optional["HeaderVersion"]] = relationship(
-        foreign_keys=[header_vid]
+        "HeaderVersion", foreign_keys=[header_vid]
     )
     parent_header: Mapped[Optional["Header"]] = relationship(
-        foreign_keys=[parent_header_id]
+        "Header", foreign_keys=[parent_header_id]
     )
 
 
@@ -651,26 +682,29 @@ class TableGroup(Base):
     )
 
     concept: Mapped[Optional["Concept"]] = relationship(
-        foreign_keys=[row_guid]
+        "Concept", foreign_keys=[row_guid]
     )
     start_release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[start_release_id]
+        "Release", foreign_keys=[start_release_id]
     )
     end_release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[end_release_id]
+        "Release", foreign_keys=[end_release_id]
     )
     parent_table_group: Mapped[Optional["TableGroup"]] = relationship(
+        "TableGroup",
         remote_side=[table_group_id],
         back_populates="child_table_groups",
     )
     child_table_groups: Mapped[List["TableGroup"]] = relationship(
+        "TableGroup",
         back_populates="parent_table_group",
     )
     owner: Mapped[Optional["Organisation"]] = relationship(
-        foreign_keys=[owner_id]
+        "Organisation", foreign_keys=[owner_id]
     )
     table_group_compositions: Mapped[List["TableGroupComposition"]] = (
         relationship(
+            "TableGroupComposition",
             back_populates="table_group",
         )
     )
@@ -721,16 +755,16 @@ class TableGroupComposition(Base):
     row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     table_group: Mapped["TableGroup"] = relationship(
-        back_populates="table_group_compositions"
+        "TableGroup", back_populates="table_group_compositions"
     )
     table: Mapped["Table"] = relationship(
-        back_populates="table_group_compositions"
+        "Table", back_populates="table_group_compositions"
     )
     start_release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[start_release_id]
+        "Release", foreign_keys=[start_release_id]
     )
     end_release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[end_release_id]
+        "Release", foreign_keys=[end_release_id]
     )
 
 
@@ -802,23 +836,26 @@ class TableAssociation(Base):
     )
 
     child_table_version: Mapped[Optional["TableVersion"]] = relationship(
+        "TableVersion",
         foreign_keys=[child_table_vid],
         back_populates="table_associations_as_child",
     )
     parent_table_version: Mapped[Optional["TableVersion"]] = relationship(
+        "TableVersion",
         foreign_keys=[parent_table_vid],
         back_populates="table_associations_as_parent",
     )
     subtype_discriminator_header: Mapped[Optional["Header"]] = relationship(
-        foreign_keys=[subtype_discriminator]
+        "Header", foreign_keys=[subtype_discriminator]
     )
     concept: Mapped[Optional["Concept"]] = relationship(
-        foreign_keys=[row_guid]
+        "Concept", foreign_keys=[row_guid]
     )
     owner: Mapped[Optional["Organisation"]] = relationship(
-        foreign_keys=[owner_id]
+        "Organisation", foreign_keys=[owner_id]
     )
     key_header_mappings: Mapped[List["KeyHeaderMapping"]] = relationship(
+        "KeyHeaderMapping",
         back_populates="table_association",
     )
 
@@ -860,11 +897,11 @@ class KeyHeaderMapping(Base):
     row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     table_association: Mapped["TableAssociation"] = relationship(
-        back_populates="key_header_mappings"
+        "TableAssociation", back_populates="key_header_mappings"
     )
     foreign_key_header: Mapped["Header"] = relationship(
-        foreign_keys=[foreign_key_header_id]
+        "Header", foreign_keys=[foreign_key_header_id]
     )
     primary_key_header: Mapped[Optional["Header"]] = relationship(
-        foreign_keys=[primary_key_header_id]
+        "Header", foreign_keys=[primary_key_header_id]
     )

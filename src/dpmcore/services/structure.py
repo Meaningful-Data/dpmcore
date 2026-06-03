@@ -2849,7 +2849,7 @@ class StructureService:
             .filter(CompoundKey.key_id.in_(key_ids))
             .all()
         )
-        return dict(row._tuple() for row in rows)
+        return {row[0]: row[1] for row in rows}
 
     # ------------------------------------------------------------------ #
     # Frameworks

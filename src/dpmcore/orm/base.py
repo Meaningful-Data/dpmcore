@@ -1,22 +1,21 @@
-"""Base ORM infrastructure: DeclarativeBase, engine, and session helpers."""
+"""Base ORM infrastructure: declarative base, engine, and session helpers."""
 
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from sqlalchemy import Engine
 from sqlalchemy import create_engine as sa_create_engine
-from sqlalchemy.orm import (
-    DeclarativeBase,
-    Session,
-    sessionmaker,
-)
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from dpmcore.orm._compat import SA2
 
-class Base(DeclarativeBase):
-    """Base for all dpmcore ORM models.
 
-    Provides a ``to_dict`` helper that serialises column attributes
-    to a plain dictionary.
+class _ToDictMixin:
+    """Mixin adding ``to_dict`` to the declarative base.
+
+    Kept separate from the base class so it can be applied both by
+    subclassing (SQLAlchemy 2.0 ``DeclarativeBase``) and via the
+    ``cls=`` argument of 1.4's ``declarative_base()``.
     """
 
     def to_dict(self) -> Dict[str, Any]:
@@ -28,13 +27,28 @@ class Base(DeclarativeBase):
         Returns:
             Column-name → value mapping for every non-deferred column.
         """
-        from sqlalchemy.inspection import inspect
+        from sqlalchemy.orm import object_mapper
 
         return {
             c.key: getattr(self, c.key)
-            for c in inspect(self).mapper.column_attrs
+            for c in object_mapper(self).column_attrs
             if ("deferred", True) not in c.strategy_key
         }
+
+
+# TYPE_CHECKING is True under mypy, so the type checker always sees the
+# 2.0 ``DeclarativeBase`` subclass; at runtime the branch is chosen by
+# the installed SQLAlchemy version.
+if SA2 or TYPE_CHECKING:  # pragma: no cover
+    from sqlalchemy.orm import DeclarativeBase
+
+    class Base(_ToDictMixin, DeclarativeBase):
+        """Base for all dpmcore ORM models."""
+
+else:  # pragma: no cover
+    from sqlalchemy.orm import declarative_base
+
+    Base = declarative_base(cls=_ToDictMixin)
 
 
 def create_engine(
@@ -67,7 +81,11 @@ def create_engine(
     is_sqlite = url.startswith("sqlite")
     is_memory = ":memory:" in url or "mode=memory" in url
 
-    kwargs: Dict[str, Any] = {"echo": echo}
+    # future=True is the default on SQLAlchemy 2.0 and opts 1.4 into the
+    # same 2.0-style Engine/Connection semantics (Connection.commit(),
+    # Result.scalar_one(), no legacy autocommit), so runtime behaviour is
+    # identical across versions (see issue #104).
+    kwargs: Dict[str, Any] = {"echo": echo, "future": True}
 
     if is_sqlite and is_memory:
         kwargs["poolclass"] = StaticPool
@@ -93,7 +111,7 @@ def create_session(engine: Engine) -> Session:
     Returns:
         A new ``Session`` instance.
     """
-    return Session(bind=engine)
+    return Session(bind=engine, future=True)
 
 
 class SessionFactory:
@@ -112,7 +130,7 @@ class SessionFactory:
             engine: The SQLAlchemy engine to bind sessions to.
         """
         self.engine = engine
-        self._maker = sessionmaker(bind=engine)
+        self._maker = sessionmaker(bind=engine, future=True)
 
     def __call__(self) -> Session:
         """Create and return a new session.
