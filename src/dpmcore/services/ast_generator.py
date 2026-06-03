@@ -13,13 +13,15 @@ from typing import (
     List,
     Optional,
     Tuple,
+    cast,
 )
 
 from dpmcore.dpm_xl.utils.tokens import (
     SEVERITY_WARNING,
     VALID_SEVERITIES,
 )
-from dpmcore.services.semantic import SemanticService
+from dpmcore.errors import SemanticError
+from dpmcore.services.semantic import ParameterInfo, SemanticService
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -167,10 +169,16 @@ class ASTGeneratorService:
                 Tuple[Tuple[str, str], "ScopeResult", Dict[str, str]]
             ] = []
             referenced_table_codes: set[str] = set()
+            referenced_parameters: Dict[str, ParameterInfo] = {}
 
             for item in expressions:
                 expr, code = item[0], item[1]
-                result = self._semantic.validate(expr, release_id=release_id)
+                # check_scope=False: cross-operation parameter consistency is
+                # enforced over this whole batch by _accumulate_parameters
+                # below, so the per-expression DB scope lookup is redundant.
+                result = self._semantic.validate(
+                    expr, release_id=release_id, check_scope=False
+                )
                 if not result.is_valid:
                     return {
                         "success": False,
@@ -184,6 +192,7 @@ class ASTGeneratorService:
                 referenced_table_codes.update(
                     self._extract_referenced_tables(ast_dict)
                 )
+                self._accumulate_parameters(referenced_parameters, ast_dict)
 
                 root_operator_id = self._resolve_root_operator_id(ast, session)
 
@@ -218,6 +227,16 @@ class ASTGeneratorService:
             variables_block: Dict[str, str] = {}
             for tbl in tables_block.values():
                 variables_block.update(tbl.get("variables", {}))
+
+            # Runtime-binding contract: the declared type of every parameter
+            # this script's operations reference, keyed by code. This is the
+            # scope-wide invariant. ``is_set`` is recoverable from the ``set-``
+            # prefix and ``default`` is a per-reference fallback the engine
+            # binds per scope, so neither belongs in this registry.
+            parameters_block: Dict[str, str] = {
+                prm_code: prm.declared_type
+                for prm_code, prm in sorted(referenced_parameters.items())
+            }
 
             preconditions_block, precondition_variables_block = (
                 self._build_preconditions_block(
@@ -260,6 +279,7 @@ class ASTGeneratorService:
                 "operations": operations,
                 "variables": variables_block,
                 "tables": tables_block,
+                "parameters": parameters_block,
                 "preconditions": preconditions_block,
                 "precondition_variables": precondition_variables_block,
                 "dependency_information": dep_information,
@@ -814,6 +834,62 @@ class ASTGeneratorService:
 
         _walk(ast_dict)
         return codes
+
+    @staticmethod
+    def _extract_referenced_parameters(
+        ast_dict: Any,
+    ) -> Dict[str, ParameterInfo]:
+        """Walk a serialised AST and return referenced parameters by code."""
+        found: Dict[str, ParameterInfo] = {}
+
+        def _walk(node: Any) -> None:
+            if isinstance(node, dict):
+                if node.get("class_name") == "ParameterRef":
+                    code = node.get("code")
+                    if isinstance(code, str) and code and code not in found:
+                        found[code] = ParameterInfo(
+                            code=code,
+                            declared_type=cast(str, node.get("param_type")),
+                            is_set=bool(node.get("is_set")),
+                            default=node.get("default"),
+                        )
+                for value in node.values():
+                    if isinstance(value, (dict, list)):
+                        _walk(value)
+            elif isinstance(node, list):
+                for item in node:
+                    if isinstance(item, (dict, list)):
+                        _walk(item)
+
+        _walk(ast_dict)
+        return found
+
+    def _accumulate_parameters(
+        self,
+        accumulated: Dict[str, ParameterInfo],
+        ast_dict: Any,
+    ) -> None:
+        """Merge an expression's parameters into ``accumulated``, by code.
+
+        A parameter binds to a single value across every operation it
+        co-executes with, so its declared type is intrinsic and must stay
+        consistent script-wide — the flat registry holds one type per code.
+        Raises ``SemanticError`` ``3-8`` on a conflicting redeclaration
+        rather than silently letting one reference win.
+        """
+        for prm_code, prm in self._extract_referenced_parameters(
+            ast_dict
+        ).items():
+            prior = accumulated.get(prm_code)
+            if prior is None:
+                accumulated[prm_code] = prm
+            elif prior.declared_type != prm.declared_type:
+                raise SemanticError(
+                    "3-8",
+                    parameter=prm_code,
+                    type_1=prior.declared_type,
+                    type_2=prm.declared_type,
+                )
 
     def _build_precondition_index(
         self,
