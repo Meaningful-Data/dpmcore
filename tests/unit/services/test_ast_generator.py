@@ -1043,3 +1043,63 @@ class TestScript:
             module_version="1.0",
         )
         assert "default_module" in out["enriched_ast"]
+
+    def test_parameters_block_in_enriched_ast(self, monkeypatch):
+        # A VarID (for tables) plus a ParameterRef on the RHS — the script()
+        # flow must surface the parameter under the ``parameters`` block.
+        self._stub_serialize_ast(
+            monkeypatch,
+            {
+                "class_name": "BinOp",
+                "left": {
+                    "class_name": "VarID",
+                    "table": "C_01.00",
+                    "data": [{"datapoint": 1, "data_type": "m"}],
+                },
+                "right": {
+                    "class_name": "ParameterRef",
+                    "code": "threshold",
+                    "param_type": "number",
+                    "is_set": False,
+                    "default": 0,
+                },
+            },
+        )
+        svc, *_ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None
+        )
+        svc._semantic.ast = "AST"
+        out = svc.script(
+            expressions=[("e1", "v1"), ("e2", "v2")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+        assert out["success"] is True
+        ns = next(iter(out["enriched_ast"].values()))
+        # ParameterInfo is stubbed in this shadow harness, so assert the
+        # structure rather than the (mocked) value: the trimmed registry is a
+        # flat ``code -> declared_type`` map (no nested is_set/default object),
+        # deduplicated across both expressions to a single entry. Value
+        # correctness is covered by the real-module tests on
+        # ``_accumulate_parameters`` / ``_extract_referenced_parameters``.
+        assert list(ns["parameters"]) == ["threshold"]
+        assert not isinstance(ns["parameters"]["threshold"], dict)
+
+    def test_parameters_block_empty_when_none_referenced(self, monkeypatch):
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None
+        )
+        svc._semantic.ast = "AST"
+        out = svc.script(
+            expressions=[("e1", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+        ns = next(iter(out["enriched_ast"].values()))
+        assert ns["parameters"] == {}
