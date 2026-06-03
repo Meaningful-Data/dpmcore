@@ -56,7 +56,7 @@ def test_constructor_tojson_serializable():
 
 
 def test_constructor_node_op_is_date():
-    """``op`` is set at construction (like ``DateExtractionOp``) so raw-AST
+    """``op`` is set at construction (like ``UnaryOp``) so raw-AST
     consumers — e.g. ``_resolve_root_operator_id`` — see the operator symbol
     instead of the inherited ``None``.
     """

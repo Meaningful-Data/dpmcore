@@ -1,9 +1,10 @@
 """ASTTemplate traversal coverage for the date operator nodes.
 
-The base ``ASTTemplate`` visitors for ``DateExtractionOp`` /
-``DateConstructorOp`` simply recurse into their operands. The semantic
-analyzer and ML generator override them, so these base methods are
-exercised here directly via a minimal recording subclass.
+Date extraction operators (year, semester, quarter, month, week, day) are
+represented as ``UnaryOp`` nodes and traversed via ``visit_UnaryOp``,
+while ``DateConstructorOp`` has its own visitor. Both simply recurse into
+their operands in the base template, with overrides handling semantic
+analysis and ML generation.
 """
 
 from dpmcore.dpm_xl.ast.template import ASTTemplate

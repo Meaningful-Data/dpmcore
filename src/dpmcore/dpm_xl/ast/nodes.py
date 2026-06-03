@@ -644,35 +644,6 @@ class TimeShiftOp(AST):
         }
 
 
-class DateExtractionOp(AST):
-    """AST node for date extraction operators: year, semester, quarter, month, week, day.
-
-    :parameter op: Operator name string (e.g. "year", "quarter").
-    :parameter operand: The date/time operand.
-    """
-
-    def __init__(self, op: str, operand: "AST") -> None:
-        super().__init__()
-        self.op: str = op
-        self.operand: "AST" = operand
-
-    def __str__(self) -> str:
-        return "<AST(name='{name}', op={op}, operand={operand})>".format(
-            name=self.__class__.__name__,
-            op=self.op,
-            operand=self.operand,
-        )
-
-    __repr__ = __str__
-
-    def toJSON(self) -> "dict[str, Any]":
-        return {
-            "class_name": self.__class__.__name__,
-            "op": self.op,
-            "operand": self.operand,
-        }
-
-
 class DateConstructorOp(AST):
     """AST node for the date(year, month, day) constructor operator.
 

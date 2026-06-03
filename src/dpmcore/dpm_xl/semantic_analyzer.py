@@ -11,7 +11,6 @@ from dpmcore.dpm_xl.ast.nodes import (
     CondExpr,
     Constant,
     DateConstructorOp,
-    DateExtractionOp,
     Dimension,
     FilterOp,
     GetOp,
@@ -178,7 +177,12 @@ class InputAnalyzer(ASTTemplate, ABC):
     ) -> Operand:
         operand_symbol = self.visit(node.operand)
         op = cast(str, node.op)
-        result = UNARY_OP_MAPPING[op].validate_types(operand_symbol)
+        if op in UNARY_OP_MAPPING:
+            result = UNARY_OP_MAPPING[op].validate_types(operand_symbol)
+        else:
+            if not isinstance(operand_symbol, (RecordSet, Scalar, ConstantOperand)):
+                raise errors.SemanticError("4-7-1", op=op)
+            result = cast(Any, TIME_OPERATORS[op]).validate_types(operand_symbol)
 
         return result
 
@@ -524,15 +528,6 @@ class InputAnalyzer(ASTTemplate, ABC):
             period=node.period_indicator,
             shift_number=shift_number,
         )
-        return result
-
-    def visit_DateExtractionOp(  # type: ignore[override]
-        self, node: DateExtractionOp
-    ) -> Operand:
-        operand_sym = self.visit(node.operand)
-        if not isinstance(operand_sym, (RecordSet, Scalar, ConstantOperand)):
-            raise errors.SemanticError("4-7-1", op=node.op)
-        result = cast(Any, TIME_OPERATORS[node.op]).validate_types(operand_sym)
         return result
 
     def visit_DateConstructorOp(  # type: ignore[override]

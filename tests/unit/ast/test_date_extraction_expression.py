@@ -2,7 +2,7 @@
 
 import pytest
 
-from dpmcore.dpm_xl.ast.nodes import DateExtractionOp
+from dpmcore.dpm_xl.ast.nodes import UnaryOp
 from dpmcore.services.syntax import SyntaxService
 
 EXTRACTION_OPERATORS = ["year", "semester", "quarter", "month", "week", "day"]
@@ -40,22 +40,24 @@ def test_extraction_in_expression_syntax_valid(source):
 def test_extraction_produces_date_extraction_op_node(op):
     ast = SyntaxService().parse(f"{op}(#2022-03-15#)")
     node = ast.children[0]
-    assert isinstance(node, DateExtractionOp)
+    assert isinstance(node, UnaryOp)
     assert node.op == op
 
 
 def test_extraction_operand_is_ast_node():
     ast = SyntaxService().parse("year(#2022-03-15#)")
     node = ast.children[0]
-    assert isinstance(node, DateExtractionOp)
+    assert isinstance(node, UnaryOp)
+    assert node.op in EXTRACTION_OPERATORS
     assert node.operand is not None
 
 
 def test_extraction_tojson_serializable():
     ast = SyntaxService().parse("quarter(#2022-03-15#)")
     node = ast.children[0]
-    assert isinstance(node, DateExtractionOp)
+    assert isinstance(node, UnaryOp)
+    assert node.op in EXTRACTION_OPERATORS
     result = node.toJSON()
-    assert result["class_name"] == "DateExtractionOp"
+    assert result["class_name"] == "UnaryOp"
     assert result["op"] == "quarter"
     assert "operand" in result

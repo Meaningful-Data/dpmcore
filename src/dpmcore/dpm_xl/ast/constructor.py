@@ -22,7 +22,6 @@ from dpmcore.dpm_xl.ast.nodes import (
     CondExpr,
     Constant,
     DateConstructorOp,
-    DateExtractionOp,
     Dimension,
     FilterOp,
     GetOp,
@@ -335,11 +334,11 @@ class ASTVisitor(dpm_xlParserVisitor):
 
     def visitDateExtractFunction(
         self, ctx: dpm_xlParser.DateExtractFunctionContext
-    ) -> DateExtractionOp:
+    ) -> UnaryOp:
         ctx_list = list(ctx.getChildren())
         op = self._symbol_text(ctx_list[0])
         operand: AST = self._visit(ctx_list[2])
-        return DateExtractionOp(op=op, operand=operand)
+        return UnaryOp(op=op, operand=operand)
 
     def visitDateConstructorFunction(
         self, ctx: dpm_xlParser.DateConstructorFunctionContext

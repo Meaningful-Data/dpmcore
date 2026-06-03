@@ -13,7 +13,6 @@ from dpmcore.dpm_xl.ast.nodes import (
     CondExpr,
     Constant,
     DateConstructorOp,
-    DateExtractionOp,
     Dimension,
     FilterOp,
     GetOp,
@@ -414,12 +413,6 @@ class MLGeneration(ASTTemplate):
                 PropertyID=property_id,
             )
         self.session.add(op_ref)
-
-    def visit_DateExtractionOp(self, node: DateExtractionOp) -> None:
-        op_node = self.create_operation_node(node)
-        node.operand.parent = op_node
-        node.operand.argument = "operand"
-        self.visit(node.operand)
 
     def visit_DateConstructorOp(self, node: DateConstructorOp) -> None:
         # ``node.op`` is "date" from construction (see DateConstructorOp).
