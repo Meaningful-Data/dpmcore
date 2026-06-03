@@ -180,9 +180,13 @@ class InputAnalyzer(ASTTemplate, ABC):
         if op in UNARY_OP_MAPPING:
             result = UNARY_OP_MAPPING[op].validate_types(operand_symbol)
         else:
-            if not isinstance(operand_symbol, (RecordSet, Scalar, ConstantOperand)):
+            if not isinstance(
+                operand_symbol, (RecordSet, Scalar, ConstantOperand)
+            ):
                 raise errors.SemanticError("4-7-1", op=op)
-            result = cast(Any, TIME_OPERATORS[op]).validate_types(operand_symbol)
+            result = cast(Any, TIME_OPERATORS[op]).validate_types(
+                operand_symbol
+            )
 
         return result
 
