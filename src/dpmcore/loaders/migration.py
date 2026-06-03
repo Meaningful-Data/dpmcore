@@ -27,7 +27,8 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import Engine, inspect, select, text
+from sqlalchemy import inspect, select, text
+from sqlalchemy.engine import Engine
 
 from dpmcore.orm.base import Base
 from dpmcore.orm.infrastructure import Release

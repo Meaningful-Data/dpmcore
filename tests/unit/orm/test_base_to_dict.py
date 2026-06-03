@@ -11,22 +11,20 @@ from __future__ import annotations
 from typing import Optional
 
 import pytest
-from sqlalchemy import Integer, String, create_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from sqlalchemy import Column, Integer, String, create_engine
+from sqlalchemy.orm import Session, declarative_base, deferred
 
+from dpmcore.orm._compat import Mapped, mapped_column
 from dpmcore.orm.base import Base
 
-
-class _IsolatedBase(DeclarativeBase):
-    """Isolated declarative base for to_dict tests.
-
-    Lives on its own ``registry`` / ``MetaData`` so the test table never
-    pollutes ``Base.metadata`` — which schema-validation tests read at
-    pytest collection time. ``Base.to_dict`` is reused unchanged so the
-    test still exercises the real implementation.
-    """
-
-    to_dict = Base.to_dict
+# Isolated declarative base on its own registry / MetaData so the test
+# table never pollutes ``Base.metadata`` — which schema-validation tests
+# read at pytest collection time. ``declarative_base()`` is used (rather
+# than subclassing ``DeclarativeBase``) so the module imports on both
+# SQLAlchemy 1.4 and 2.0; ``Base.to_dict`` is reused unchanged so the test
+# still exercises the real implementation.
+_IsolatedBase = declarative_base()
+_IsolatedBase.to_dict = Base.to_dict
 
 
 class _Item(_IsolatedBase):
@@ -34,7 +32,9 @@ class _Item(_IsolatedBase):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     code: Mapped[Optional[str]] = mapped_column(String(20))
-    payload: Mapped[Optional[str]] = mapped_column(String(2000), deferred=True)
+    # deferred() wraps a classic Column so the deferred strategy resolves
+    # identically on 1.4 and 2.0 (mapped_column(deferred=True) is 2.0-only).
+    payload = deferred(Column(String(2000)))
 
 
 @pytest.fixture

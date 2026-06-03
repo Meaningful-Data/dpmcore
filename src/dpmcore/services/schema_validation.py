@@ -13,7 +13,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
-from sqlalchemy import Engine, inspect, text
+from sqlalchemy import inspect, text
+from sqlalchemy.engine import Engine
 
 from dpmcore.orm.base import Base
 

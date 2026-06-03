@@ -1,0 +1,599 @@
+TABLE Aux_CellMapping
+  COL NewCellID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL NewTableVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL OldCellID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL OldTableVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  PK NewCellID,NewTableVID
+  UNIQUE NewCellID,NewTableVID
+TABLE Aux_CellStatus
+  COL CellID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL IsNewCell pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL Status pg=VARCHAR(100) mssql=VARCHAR(100) null=True pk=False ai=auto fks=
+  COL TableVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  PK TableVID,CellID
+  UNIQUE TableVID,CellID
+TABLE Category
+  COL CategoryID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL Code pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  COL CreatedRelease pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL Description pg=VARCHAR(1000) mssql=VARCHAR(1000) null=True pk=False ai=auto fks=
+  COL IsActive pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL IsEnumerated pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL IsExternalRefData pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL Name pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL RefDataSource pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  PK CategoryID
+TABLE Cell
+  COL CellID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL ColumnID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Header.HeaderID
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL RowID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Header.HeaderID
+  COL SheetID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Header.HeaderID
+  COL TableID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Table.TableID
+  PK CellID
+  UNIQUE ColumnID,RowID,SheetID
+TABLE ChangeLog
+  COL ActionID pg=INTEGER mssql=INTEGER null=False pk=False ai=auto fks=
+  COL ChangeType pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL ClassID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=DPMClass.ClassID
+  COL EntityCode pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL EntityID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL ReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=False pk=True ai=auto fks=
+  COL Status pg=VARCHAR(1) mssql=VARCHAR(1) null=True pk=False ai=auto fks=
+  COL Timestamp pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL UserEmail pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  PK RowGUID,ClassID,Timestamp
+TABLE ChangeLogAttribute
+  COL ActionID pg=INTEGER mssql=INTEGER null=False pk=False ai=auto fks=
+  COL AttributeID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=DPMAttribute.AttributeID
+  COL ChangeLogAttributeID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL NewValue pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL OldValue pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  PK ChangeLogAttributeID
+TABLE CompoundItemContext
+  COL ContextID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Context.ContextID
+  COL EndReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL ItemID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Item.ItemID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
+  COL StartReleaseID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Release.ReleaseID
+  PK ItemID,StartReleaseID
+TABLE CompoundKey
+  COL KeyID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL Signature pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  PK KeyID
+  UNIQUE Signature
+TABLE Concept
+  COL ClassID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=DPMClass.ClassID
+  COL ConceptGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=False pk=True ai=auto fks=
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  PK ConceptGUID
+TABLE ConceptRelation
+  COL ConceptRelationID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
+  COL Type pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  PK ConceptRelationID
+TABLE Context
+  COL ContextID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL Signature pg=VARCHAR(2000) mssql=VARCHAR(2000) null=True pk=False ai=auto fks=
+  PK ContextID
+TABLE ContextComposition
+  COL ContextID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Context.ContextID
+  COL ItemID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Item.ItemID
+  COL PropertyID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Property.PropertyID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  PK ContextID,PropertyID
+TABLE DPMAttribute
+  COL AttributeID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL ClassID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=DPMClass.ClassID
+  COL HasTranslations pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL Name pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  PK AttributeID
+TABLE DPMClass
+  COL ClassID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL HasReferences pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL Name pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  COL OwnerClassID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=DPMClass.ClassID
+  COL Type pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  PK ClassID
+TABLE DataType
+  COL Code pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  COL DataTypeID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL IsActive pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL Name pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  COL ParentDataTypeID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=DataType.DataTypeID
+  PK DataTypeID
+  UNIQUE Code
+  UNIQUE Name
+TABLE Document
+  COL Code pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  COL DocumentID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL Name pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  COL OrgID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL Type pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  PK DocumentID
+TABLE DocumentVersion
+  COL Code pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  COL DocumentID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Document.DocumentID
+  COL DocumentVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL PublicationDate pg=DATE mssql=DATETIME null=True pk=False ai=auto fks=
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL Version pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  PK DocumentVID
+  UNIQUE DocumentID,PublicationDate
+TABLE Framework
+  COL Code pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL Description pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL FrameworkID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL Name pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  PK FrameworkID
+TABLE Header
+  COL Direction pg=VARCHAR(1) mssql=VARCHAR(1) null=True pk=False ai=auto fks=
+  COL HeaderID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL IsAttribute pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL IsKey pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL TableID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Table.TableID
+  PK HeaderID
+TABLE HeaderVersion
+  COL Code pg=VARCHAR(10) mssql=VARCHAR(10) null=True pk=False ai=auto fks=
+  COL ContextID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Context.ContextID
+  COL EndReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL HeaderID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Header.HeaderID
+  COL HeaderVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL KeyVariableVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=VariableVersion.VariableVID
+  COL Label pg=VARCHAR(500) mssql=VARCHAR(500) null=True pk=False ai=auto fks=
+  COL PropertyID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Property.PropertyID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL StartReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL SubCategoryVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=SubCategoryVersion.SubCategoryVID
+  PK HeaderVID
+  UNIQUE HeaderID,StartReleaseID
+TABLE Item
+  COL Description pg=VARCHAR(2000) mssql=VARCHAR(2000) null=True pk=False ai=auto fks=
+  COL IsActive pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL IsProperty pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL ItemID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL Name pg=VARCHAR(500) mssql=VARCHAR(500) null=True pk=False ai=auto fks=
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  PK ItemID
+TABLE ItemCategory
+  COL CategoryID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Category.CategoryID
+  COL Code pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  COL EndReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL IsDefaultItem pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL ItemID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Item.ItemID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
+  COL Signature pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL StartReleaseID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Release.ReleaseID
+  PK ItemID,StartReleaseID
+TABLE KeyComposition
+  COL KeyID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=CompoundKey.KeyID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
+  COL VariableVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=VariableVersion.VariableVID
+  PK KeyID,VariableVID
+TABLE KeyHeaderMapping
+  COL AssociationID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=TableAssociation.AssociationID
+  COL ForeignKeyHeaderID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Header.HeaderID
+  COL PrimaryKeyHeaderID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Header.HeaderID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
+  PK AssociationID,ForeignKeyHeaderID
+TABLE Language
+  COL LanguageCode pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL Name pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  PK LanguageCode
+TABLE ModelViolations
+  COL CategoryCode pg=VARCHAR(30) mssql=VARCHAR(30) null=True pk=False ai=auto fks=
+  COL CategoryID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL Cell2Code pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  COL Cell2ID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL CellCode pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  COL CellID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL HeaderCode pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  COL HeaderContextID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL HeaderDirection pg=VARCHAR(1) mssql=VARCHAR(1) null=True pk=False ai=auto fks=
+  COL HeaderID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL HeaderPropertyCode pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  COL HeaderPropertyID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL HeaderSubcategoryID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL HeaderSubcategoryName pg=VARCHAR(60) mssql=VARCHAR(60) null=True pk=False ai=auto fks=
+  COL HeaderVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL ItemCode pg=VARCHAR(30) mssql=VARCHAR(30) null=True pk=False ai=auto fks=
+  COL ItemID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL KeyHeader pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL NewAspect pg=VARCHAR(80) mssql=VARCHAR(80) null=True pk=False ai=auto fks=
+  COL OldHeaderVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL OldTableVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL TableCode pg=VARCHAR(40) mssql=VARCHAR(40) null=True pk=False ai=auto fks=
+  COL TableVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL VVEndReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL Violation pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL ViolationCode pg=VARCHAR(10) mssql=VARCHAR(10) null=True pk=False ai=auto fks=
+  COL id pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL isBlocking pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  PK id
+TABLE Module
+  COL FrameworkID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Framework.FrameworkID
+  COL ModuleID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL isDocumentModule pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  PK ModuleID
+TABLE ModuleParameters
+  COL ModuleVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=ModuleVersion.ModuleVID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
+  COL VariableVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=VariableVersion.VariableVID
+  PK ModuleVID,VariableVID
+TABLE ModuleVersion
+  COL Code pg=VARCHAR(30) mssql=VARCHAR(30) null=True pk=False ai=auto fks=
+  COL Description pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL EndReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL FromReferenceDate pg=DATE mssql=DATETIME null=True pk=False ai=auto fks=
+  COL GlobalKeyID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=CompoundKey.KeyID
+  COL IsCalculated pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL IsReported pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL ModuleID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Module.ModuleID
+  COL ModuleVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL Name pg=VARCHAR(100) mssql=VARCHAR(100) null=True pk=False ai=auto fks=
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL StartReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL ToReferenceDate pg=DATE mssql=DATETIME null=True pk=False ai=auto fks=
+  COL VersionNumber pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  PK ModuleVID
+  UNIQUE ModuleID,StartReleaseID
+TABLE ModuleVersionComposition
+  COL ModuleVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=ModuleVersion.ModuleVID
+  COL Order pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
+  COL TableID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Table.TableID
+  COL TableVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=TableVersion.TableVID
+  PK ModuleVID,TableID
+TABLE OperandReference
+  COL ItemID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Item.ItemID
+  COL NodeID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=OperationNode.NodeID
+  COL OperandReference pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL OperandReferenceID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL PropertyID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Property.PropertyID
+  COL SubCategoryID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=SubCategory.SubCategoryID
+  COL VariableID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Variable.VariableID
+  COL x pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL y pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL z pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  PK OperandReferenceID
+TABLE OperandReferenceLocation
+  COL CellID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Cell.CellID
+  COL Column pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL OperandReferenceID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=OperandReference.OperandReferenceID
+  COL Row pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL Sheet pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL Table pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  PK OperandReferenceID
+TABLE Operation
+  COL Code pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL GroupOperID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Operation.OperationID
+  COL OperationID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL Source pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  COL Type pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  PK OperationID
+TABLE OperationCodePrefix
+  COL Code pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  COL FrameworkID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Framework.FrameworkID
+  COL ListName pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  COL OperationCodePrefixID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  PK OperationCodePrefixID
+  UNIQUE Code
+TABLE OperationNode
+  COL AbsoluteTolerance pg=VARCHAR mssql=VARCHAR(max) null=True pk=False ai=auto fks=
+  COL ArgumentID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=OperatorArgument.ArgumentID
+  COL FallbackValue pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  COL IsLeaf pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL NodeID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL OperandType pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  COL OperationVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=OperationVersion.OperationVID
+  COL OperatorID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Operator.OperatorID
+  COL ParentNodeID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=OperationNode.NodeID
+  COL RelativeTolerance pg=VARCHAR mssql=VARCHAR(max) null=True pk=False ai=auto fks=
+  COL Scalar pg=TEXT mssql=TEXT null=True pk=False ai=auto fks=
+  COL UseIntervalArithmetics pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  PK NodeID
+TABLE OperationScope
+  COL FromSubmissionDate pg=DATE mssql=DATETIME null=True pk=False ai=auto fks=
+  COL IsActive pg=SMALLINT mssql=SMALLINT null=True pk=False ai=auto fks=
+  COL OperationScopeID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL OperationVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=OperationVersion.OperationVID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
+  COL Severity pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  PK OperationScopeID
+TABLE OperationScopeComposition
+  COL ModuleVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=ModuleVersion.ModuleVID
+  COL OperationScopeID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=OperationScope.OperationScopeID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
+  PK OperationScopeID,ModuleVID
+TABLE OperationVersion
+  COL Description pg=VARCHAR(1000) mssql=VARCHAR(1000) null=True pk=False ai=auto fks=
+  COL EndReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL Endorsement pg=VARCHAR(25) mssql=VARCHAR(25) null=True pk=False ai=auto fks=
+  COL Expression pg=TEXT mssql=TEXT null=True pk=False ai=auto fks=
+  COL IsVariantApproved pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL OperationID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Operation.OperationID
+  COL OperationVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL PreconditionOperationVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=OperationVersion.OperationVID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL SeverityOperationVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=OperationVersion.OperationVID
+  COL StartReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  PK OperationVID
+  UNIQUE OperationID,StartReleaseID
+TABLE OperationVersionData
+  COL Error pg=VARCHAR(2000) mssql=VARCHAR(2000) null=True pk=False ai=auto fks=
+  COL ErrorCode pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  COL IsApplying pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL OperationVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=OperationVersion.OperationVID
+  COL ProposingStatus pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  PK OperationVID
+TABLE Operator
+  COL Name pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  COL OperatorID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL Symbol pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  COL Type pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  PK OperatorID
+TABLE OperatorArgument
+  COL ArgumentID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL IsMandatory pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL Name pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  COL OperatorID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Operator.OperatorID
+  COL Order pg=SMALLINT mssql=SMALLINT null=True pk=False ai=auto fks=
+  PK ArgumentID
+TABLE Organisation
+  COL Acronym pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  COL IDPrefix pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL Name pg=VARCHAR(200) mssql=VARCHAR(200) null=True pk=False ai=auto fks=
+  COL OrgID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  PK OrgID
+  UNIQUE IDPrefix
+  UNIQUE Name
+TABLE Property
+  COL DataTypeID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=DataType.DataTypeID
+  COL IsComposite pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL IsMetric pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL PeriodType pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  COL PropertyID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Item.ItemID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL ValueLength pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  PK PropertyID
+TABLE PropertyCategory
+  COL CategoryID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Category.CategoryID
+  COL EndReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL PropertyID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Property.PropertyID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
+  COL StartReleaseID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Release.ReleaseID
+  PK PropertyID,StartReleaseID
+TABLE Reference
+  COL ConceptGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=False pk=True ai=auto fks=Concept.ConceptGUID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
+  COL SubdivisionID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Subdivision.SubdivisionID
+  PK SubdivisionID,ConceptGUID
+TABLE RelatedConcept
+  COL ConceptGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=False pk=True ai=auto fks=Concept.ConceptGUID
+  COL ConceptRelationID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=ConceptRelation.ConceptRelationID
+  COL IsRelatedConcept pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
+  PK ConceptGUID,ConceptRelationID
+TABLE Release
+  COL Code pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  COL Date pg=DATE mssql=DATETIME null=True pk=False ai=auto fks=
+  COL Description pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL Error pg=VARCHAR(4000) mssql=VARCHAR(4000) null=True pk=False ai=auto fks=
+  COL ErrorDate pg=TIMESTAMP WITHOUT TIME ZONE mssql=DATETIME null=True pk=False ai=auto fks=
+  COL IsCurrent pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL ReleaseID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL Status pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  COL Type pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  PK ReleaseID
+TABLE Role
+  COL Name pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  COL RoleID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  PK RoleID
+TABLE SubCategory
+  COL CategoryID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Category.CategoryID
+  COL Code pg=VARCHAR(30) mssql=VARCHAR(30) null=True pk=False ai=auto fks=
+  COL Description pg=VARCHAR(500) mssql=VARCHAR(500) null=True pk=False ai=auto fks=
+  COL Name pg=VARCHAR(500) mssql=VARCHAR(500) null=True pk=False ai=auto fks=
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL SubCategoryID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  PK SubCategoryID
+TABLE SubCategoryItem
+  COL ArithmeticOperatorID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Operator.OperatorID
+  COL ComparisonOperatorID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Operator.OperatorID
+  COL ItemID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Item.ItemID
+  COL Label pg=VARCHAR(200) mssql=VARCHAR(200) null=True pk=False ai=auto fks=
+  COL Order pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL ParentItemID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Item.ItemID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL SubCategoryVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=SubCategoryVersion.SubCategoryVID
+  PK ItemID,SubCategoryVID
+TABLE SubCategoryVersion
+  COL EndReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL StartReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL SubCategoryID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=SubCategory.SubCategoryID
+  COL SubCategoryVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  PK SubCategoryVID
+  UNIQUE SubCategoryID,StartReleaseID
+TABLE Subdivision
+  COL DocumentVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=DocumentVersion.DocumentVID
+  COL Number pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL ParentSubdivisionID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Subdivision.SubdivisionID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL StructurePath pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL SubdivisionID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL SubdivisionTypeID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=SubdivisionType.SubdivisionTypeID
+  COL TextExcerpt pg=TEXT mssql=TEXT null=True pk=False ai=auto fks=
+  PK SubdivisionID
+TABLE SubdivisionType
+  COL Description pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL Name pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  COL SubdivisionTypeID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  PK SubdivisionTypeID
+TABLE SuperCategoryComposition
+  COL CategoryID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Category.CategoryID
+  COL EndReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
+  COL StartReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL SuperCategoryID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Category.CategoryID
+  PK SuperCategoryID,CategoryID
+TABLE Table
+  COL HasOpenColumns pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL HasOpenRows pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL HasOpenSheets pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL IsAbstract pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL IsFlat pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL IsNormalised pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL TableID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  PK TableID
+TABLE TableAssociation
+  COL AssociationID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL ChildCardinalityAndOptionality pg=VARCHAR(3) mssql=VARCHAR(3) null=True pk=False ai=auto fks=
+  COL ChildTableVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=TableVersion.TableVID
+  COL Description pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL IsIdentifying pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL IsSubtype pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL Name pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL ParentCardinalityAndOptionality pg=VARCHAR(3) mssql=VARCHAR(3) null=True pk=False ai=auto fks=
+  COL ParentTableVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=TableVersion.TableVID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL SubtypeDiscriminator pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Header.HeaderID
+  PK AssociationID
+TABLE TableGroup
+  COL Code pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL Description pg=VARCHAR(2000) mssql=VARCHAR(2000) null=True pk=False ai=auto fks=
+  COL EndReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL Name pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL ParentTableGroupID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=TableGroup.TableGroupID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL StartReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL TableGroupID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL Type pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  PK TableGroupID
+TABLE TableGroupComposition
+  COL EndReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL Order pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
+  COL StartReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL TableGroupID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=TableGroup.TableGroupID
+  COL TableID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Table.TableID
+  PK TableGroupID,TableID
+TABLE TableVersion
+  COL AbstractTableID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Table.TableID
+  COL Code pg=VARCHAR(30) mssql=VARCHAR(30) null=True pk=False ai=auto fks=
+  COL ContextID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Context.ContextID
+  COL Description pg=VARCHAR(500) mssql=VARCHAR(500) null=True pk=False ai=auto fks=
+  COL EndReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL KeyID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=CompoundKey.KeyID
+  COL Name pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL PropertyID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Property.PropertyID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL StartReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL TableID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Table.TableID
+  COL TableVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  PK TableVID
+  UNIQUE TableID,StartReleaseID
+TABLE TableVersionCell
+  COL CellCode pg=VARCHAR(100) mssql=VARCHAR(100) null=True pk=False ai=auto fks=
+  COL CellID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Cell.CellID
+  COL IsExcluded pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL IsNullable pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL IsVoid pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
+  COL Sign pg=VARCHAR(8) mssql=VARCHAR(8) null=True pk=False ai=auto fks=
+  COL TableVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=TableVersion.TableVID
+  COL VariableVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=VariableVersion.VariableVID
+  PK TableVID,CellID
+TABLE TableVersionHeader
+  COL HeaderID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Header.HeaderID
+  COL HeaderVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=HeaderVersion.HeaderVID
+  COL IsAbstract pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL IsUnique pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL Order pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=
+  COL ParentFirst pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL ParentHeaderID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Header.HeaderID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
+  COL TableVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=TableVersion.TableVID
+  PK TableVID,HeaderID
+TABLE Translation
+  COL AttributeID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=DPMAttribute.AttributeID
+  COL ConceptGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=False pk=True ai=auto fks=Concept.ConceptGUID
+  COL LanguageCode pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Language.LanguageCode
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
+  COL Translation pg=TEXT mssql=TEXT null=True pk=False ai=auto fks=
+  COL TranslatorID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Organisation.OrgID
+  PK ConceptGUID,AttributeID,TranslatorID,LanguageCode
+TABLE User
+  COL Name pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  COL OrgID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL UserID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  PK UserID
+TABLE UserRole
+  COL RoleID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Role.RoleID
+  COL UserID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=User.UserID
+  PK UserID,RoleID
+TABLE Variable
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL Type pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  COL VariableID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  PK VariableID
+TABLE VariableCalculation
+  COL FromReferenceDate pg=DATE mssql=DATETIME null=True pk=False ai=auto fks=
+  COL ModuleID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Module.ModuleID
+  COL OperationVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=OperationVersion.OperationVID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
+  COL ToReferenceDate pg=DATE mssql=DATETIME null=True pk=False ai=auto fks=
+  COL VariableID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Variable.VariableID
+  PK ModuleID,VariableID,OperationVID
+TABLE VariableGeneration
+  COL EndDate pg=TIMESTAMP WITHOUT TIME ZONE mssql=DATETIME null=True pk=False ai=auto fks=
+  COL Error pg=VARCHAR(4000) mssql=VARCHAR(4000) null=True pk=False ai=auto fks=
+  COL ReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL StartDate pg=TIMESTAMP WITHOUT TIME ZONE mssql=DATETIME null=True pk=False ai=auto fks=
+  COL Status pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  COL VariableGenerationID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  PK VariableGenerationID
+TABLE VariableVersion
+  COL Code pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
+  COL ContextID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Context.ContextID
+  COL EndReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL IsMultiValued pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
+  COL KeyID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=CompoundKey.KeyID
+  COL Name pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
+  COL PropertyID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Property.PropertyID
+  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL StartReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
+  COL SubCategoryVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=SubCategoryVersion.SubCategoryVID
+  COL VariableID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Variable.VariableID
+  COL VariableVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  PK VariableVID
+  UNIQUE VariableID,StartReleaseID

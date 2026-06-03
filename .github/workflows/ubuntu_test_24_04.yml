@@ -28,6 +28,10 @@ jobs:
         # httpx 0.26 removed that kwarg, so the combo is broken out of
         # the box. Installing fastapi via pip pulls a modern starlette
         # (>=0.37) that uses httpx.ASGITransport instead.
+        #
+        # python3-sqlalchemy is Noble's 1.4.50; dpmcore is compatible with
+        # both 1.4 and 2.0, so SQLAlchemy comes from apt with no pip
+        # override (see issue #104).
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -42,19 +46,21 @@ jobs:
             python3-pyodbc \
             python3-pytest \
             python3-rich \
+            python3-sqlalchemy \
             python3-uvicorn \
             unixodbc-dev
 
       - name: Install pip-only dependencies
-        # SQLAlchemy: Noble ships 1.4; dpmcore ORM requires 2.0 APIs.
         # fastapi: see the apt step above — pip pulls a starlette that
         # is compatible with apt httpx 0.26.
         # pytest-django: Noble 4.5.2 is below the dpmcore floor (>=4.9).
         run: |
           pip install --break-system-packages \
-            "sqlalchemy>=2.0,<3.0" \
             "fastapi>=0.101" \
             "pytest-django>=4.9"
+
+      - name: Show SQLAlchemy version (apt python3-sqlalchemy)
+        run: python3 -c "import sqlalchemy; print(sqlalchemy.__version__)"
 
       - name: Install poetry
         run: |

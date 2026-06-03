@@ -30,7 +30,7 @@ def fake_migration_result():
 
 def _engine_with_tables(tmp_path, tables: dict):
     db_path = tmp_path / "test.sqlite"
-    engine = create_engine(f"sqlite:///{db_path}")
+    engine = create_engine(f"sqlite:///{db_path}", future=True)
     with engine.connect() as conn:
         for name, count in tables.items():
             conn.execute(

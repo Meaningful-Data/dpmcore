@@ -19,8 +19,9 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import relationship
 
+from dpmcore.orm._compat import Mapped, mapped_column
 from dpmcore.orm.base import Base
 from dpmcore.orm.infrastructure import Concept, Organisation, Release
 
@@ -72,16 +73,18 @@ class Framework(Base):
     )
 
     concept: Mapped[Optional["Concept"]] = relationship(
-        foreign_keys=[row_guid]
+        "Concept", foreign_keys=[row_guid]
     )
     owner: Mapped[Optional["Organisation"]] = relationship(
-        foreign_keys=[owner_id]
+        "Organisation", foreign_keys=[owner_id]
     )
     modules: Mapped[List["Module"]] = relationship(
+        "Module",
         back_populates="framework",
     )
     operation_code_prefixes: Mapped[List["OperationCodePrefix"]] = (
         relationship(
+            "OperationCodePrefix",
             back_populates="framework",
         )
     )
@@ -126,18 +129,20 @@ class Module(Base):
     )
 
     framework: Mapped[Optional["Framework"]] = relationship(
-        back_populates="modules"
+        "Framework", back_populates="modules"
     )
     concept: Mapped[Optional["Concept"]] = relationship(
-        foreign_keys=[row_guid]
+        "Concept", foreign_keys=[row_guid]
     )
     owner: Mapped[Optional["Organisation"]] = relationship(
-        foreign_keys=[owner_id]
+        "Organisation", foreign_keys=[owner_id]
     )
     module_versions: Mapped[List["ModuleVersion"]] = relationship(
+        "ModuleVersion",
         back_populates="module",
     )
     variable_calculations: Mapped[List["VariableCalculation"]] = relationship(
+        "VariableCalculation",
         back_populates="module",
     )
 
@@ -216,31 +221,34 @@ class ModuleVersion(Base):
     )
 
     module: Mapped[Optional["Module"]] = relationship(
-        back_populates="module_versions"
+        "Module", back_populates="module_versions"
     )
     global_key: Mapped[Optional["CompoundKey"]] = relationship(
-        foreign_keys=[global_key_id]
+        "CompoundKey", foreign_keys=[global_key_id]
     )
     start_release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[start_release_id]
+        "Release", foreign_keys=[start_release_id]
     )
     end_release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[end_release_id]
+        "Release", foreign_keys=[end_release_id]
     )
     concept: Mapped[Optional["Concept"]] = relationship(
-        foreign_keys=[row_guid]
+        "Concept", foreign_keys=[row_guid]
     )
     module_version_compositions: Mapped[List["ModuleVersionComposition"]] = (
         relationship(
+            "ModuleVersionComposition",
             back_populates="module_version",
         )
     )
     operation_scope_compositions: Mapped[List["OperationScopeComposition"]] = (
         relationship(
+            "OperationScopeComposition",
             back_populates="module_version",
         )
     )
     module_parameters: Mapped[List["ModuleParameters"]] = relationship(
+        "ModuleParameters",
         back_populates="module_version",
     )
 
@@ -284,11 +292,11 @@ class ModuleVersionComposition(Base):
     row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     module_version: Mapped["ModuleVersion"] = relationship(
-        back_populates="module_version_compositions"
+        "ModuleVersion", back_populates="module_version_compositions"
     )
-    table: Mapped["Table"] = relationship(foreign_keys=[table_id])
+    table: Mapped["Table"] = relationship("Table", foreign_keys=[table_id])
     table_version: Mapped[Optional["TableVersion"]] = relationship(
-        foreign_keys=[table_vid]
+        "TableVersion", foreign_keys=[table_vid]
     )
 
 
@@ -323,10 +331,10 @@ class ModuleParameters(Base):
     row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     module_version: Mapped["ModuleVersion"] = relationship(
-        back_populates="module_parameters"
+        "ModuleVersion", back_populates="module_parameters"
     )
     variable_version: Mapped["VariableVersion"] = relationship(
-        foreign_keys=[variable_vid]
+        "VariableVersion", foreign_keys=[variable_vid]
     )
 
 
@@ -361,5 +369,5 @@ class OperationCodePrefix(Base):
     )
 
     framework: Mapped[Optional["Framework"]] = relationship(
-        back_populates="operation_code_prefixes"
+        "Framework", back_populates="operation_code_prefixes"
     )

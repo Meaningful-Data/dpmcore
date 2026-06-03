@@ -17,8 +17,9 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import relationship
 
+from dpmcore.orm._compat import Mapped, mapped_column
 from dpmcore.orm.base import Base
 from dpmcore.orm.infrastructure import (
     Concept,
@@ -93,28 +94,32 @@ class Category(Base):
     )
 
     concept: Mapped[Optional["Concept"]] = relationship(
-        foreign_keys=[row_guid]
+        "Concept", foreign_keys=[row_guid]
     )
     created_release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[created_release_id]
+        "Release", foreign_keys=[created_release_id]
     )
     owner: Mapped[Optional["Organisation"]] = relationship(
-        foreign_keys=[owner_id]
+        "Organisation", foreign_keys=[owner_id]
     )
     subcategories: Mapped[List["SubCategory"]] = relationship(
+        "SubCategory",
         back_populates="category",
     )
     property_categories: Mapped[List["PropertyCategory"]] = relationship(
+        "PropertyCategory",
         back_populates="category",
     )
     supercategory_compositions: Mapped[List["SupercategoryComposition"]] = (
         relationship(
+            "SupercategoryComposition",
             foreign_keys=("SupercategoryComposition.supercategory_id"),
             back_populates="supercategory",
         )
     )
     category_compositions: Mapped[List["SupercategoryComposition"]] = (
         relationship(
+            "SupercategoryComposition",
             foreign_keys=("SupercategoryComposition.category_id"),
             back_populates="category",
         )
@@ -165,18 +170,20 @@ class SubCategory(Base):
     )
 
     category: Mapped[Optional["Category"]] = relationship(
-        back_populates="subcategories"
+        "Category", back_populates="subcategories"
     )
     concept: Mapped[Optional["Concept"]] = relationship(
-        foreign_keys=[row_guid]
+        "Concept", foreign_keys=[row_guid]
     )
     owner: Mapped[Optional["Organisation"]] = relationship(
-        foreign_keys=[owner_id]
+        "Organisation", foreign_keys=[owner_id]
     )
     subcategory_versions: Mapped[List["SubCategoryVersion"]] = relationship(
+        "SubCategoryVersion",
         back_populates="subcategory",
     )
     operand_references: Mapped[List["OperandReference"]] = relationship(
+        "OperandReference",
         back_populates="subcategory",
     )
 
@@ -225,24 +232,27 @@ class SubCategoryVersion(Base):
     )
 
     subcategory: Mapped[Optional["SubCategory"]] = relationship(
-        back_populates="subcategory_versions"
+        "SubCategory", back_populates="subcategory_versions"
     )
     start_release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[start_release_id]
+        "Release", foreign_keys=[start_release_id]
     )
     end_release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[end_release_id]
+        "Release", foreign_keys=[end_release_id]
     )
     concept: Mapped[Optional["Concept"]] = relationship(
-        foreign_keys=[row_guid]
+        "Concept", foreign_keys=[row_guid]
     )
     subcategory_items: Mapped[List["SubCategoryItem"]] = relationship(
+        "SubCategoryItem",
         back_populates="subcategory_version",
     )
     header_versions: Mapped[List["HeaderVersion"]] = relationship(
+        "HeaderVersion",
         back_populates="subcategory_version",
     )
     variable_versions: Mapped[List["VariableVersion"]] = relationship(
+        "VariableVersion",
         back_populates="subcategory_version",
     )
 
@@ -304,25 +314,28 @@ class SubCategoryItem(Base):
     )
 
     item: Mapped["Item"] = relationship(
+        "Item",
         foreign_keys=[item_id],
         back_populates="subcategory_items",
     )
     subcategory_version: Mapped[Optional["SubCategoryVersion"]] = relationship(
-        back_populates="subcategory_items"
+        "SubCategoryVersion", back_populates="subcategory_items"
     )
     parent_item: Mapped[Optional["Item"]] = relationship(
-        foreign_keys=[parent_item_id]
+        "Item", foreign_keys=[parent_item_id]
     )
     comparison_operator: Mapped[Optional["Operator"]] = relationship(
+        "Operator",
         foreign_keys=[comparison_operator_id],
         back_populates="comparison_subcategory_items",
     )
     arithmetic_operator: Mapped[Optional["Operator"]] = relationship(
+        "Operator",
         foreign_keys=[arithmetic_operator_id],
         back_populates="arithmetic_subcategory_items",
     )
     concept: Mapped[Optional["Concept"]] = relationship(
-        foreign_keys=[row_guid]
+        "Concept", foreign_keys=[row_guid]
     )
 
 
@@ -364,29 +377,35 @@ class Item(Base):
     )
 
     concept: Mapped[Optional["Concept"]] = relationship(
-        foreign_keys=[row_guid]
+        "Concept", foreign_keys=[row_guid]
     )
     owner: Mapped[Optional["Organisation"]] = relationship(
-        foreign_keys=[owner_id]
+        "Organisation", foreign_keys=[owner_id]
     )
     item_categories: Mapped[List["ItemCategory"]] = relationship(
+        "ItemCategory",
         back_populates="item",
     )
     property: Mapped[Optional["Property"]] = relationship(
+        "Property",
         back_populates="item",
         uselist=False,
     )
     operand_references: Mapped[List["OperandReference"]] = relationship(
+        "OperandReference",
         back_populates="item",
     )
     context_compositions: Mapped[List["ContextComposition"]] = relationship(
+        "ContextComposition",
         back_populates="item",
     )
     subcategory_items: Mapped[List["SubCategoryItem"]] = relationship(
+        "SubCategoryItem",
         foreign_keys="SubCategoryItem.item_id",
         back_populates="item",
     )
     compound_item_contexts: Mapped[List["CompoundItemContext"]] = relationship(
+        "CompoundItemContext",
         back_populates="item",
     )
 
@@ -441,14 +460,16 @@ class ItemCategory(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
-    item: Mapped["Item"] = relationship(back_populates="item_categories")
+    item: Mapped["Item"] = relationship(
+        "Item", back_populates="item_categories"
+    )
     start_release: Mapped["Release"] = relationship(
-        foreign_keys=[start_release_id]
+        "Release", foreign_keys=[start_release_id]
     )
     end_release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[end_release_id]
+        "Release", foreign_keys=[end_release_id]
     )
-    category: Mapped[Optional["Category"]] = relationship()
+    category: Mapped[Optional["Category"]] = relationship("Category")
 
 
 # ------------------------------------------------------------------
@@ -501,29 +522,34 @@ class Property(Base):
         ForeignKey("Organisation.OrgID"),
     )
 
-    item: Mapped["Item"] = relationship(back_populates="property")
+    item: Mapped["Item"] = relationship("Item", back_populates="property")
     datatype: Mapped[Optional["DataType"]] = relationship(
-        back_populates="properties"
+        "DataType", back_populates="properties"
     )
     concept: Mapped[Optional["Concept"]] = relationship(
-        foreign_keys=[row_guid]
+        "Concept", foreign_keys=[row_guid]
     )
     owner: Mapped[Optional["Organisation"]] = relationship(
-        foreign_keys=[owner_id]
+        "Organisation", foreign_keys=[owner_id]
     )
     property_categories: Mapped[List["PropertyCategory"]] = relationship(
+        "PropertyCategory",
         back_populates="property",
     )
     context_compositions: Mapped[List["ContextComposition"]] = relationship(
+        "ContextComposition",
         back_populates="property",
     )
     variable_versions: Mapped[List["VariableVersion"]] = relationship(
+        "VariableVersion",
         back_populates="property",
     )
     header_versions: Mapped[List["HeaderVersion"]] = relationship(
+        "HeaderVersion",
         back_populates="property",
     )
     table_versions: Mapped[List["TableVersion"]] = relationship(
+        "TableVersion",
         back_populates="property",
     )
 
@@ -571,16 +597,16 @@ class PropertyCategory(Base):
     row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     property: Mapped["Property"] = relationship(
-        back_populates="property_categories"
+        "Property", back_populates="property_categories"
     )
     start_release: Mapped["Release"] = relationship(
-        foreign_keys=[start_release_id]
+        "Release", foreign_keys=[start_release_id]
     )
     end_release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[end_release_id]
+        "Release", foreign_keys=[end_release_id]
     )
     category: Mapped[Optional["Category"]] = relationship(
-        back_populates="property_categories"
+        "Category", back_populates="property_categories"
     )
 
 
@@ -627,24 +653,29 @@ class Context(Base):
     )
 
     concept: Mapped[Optional["Concept"]] = relationship(
-        foreign_keys=[row_guid]
+        "Concept", foreign_keys=[row_guid]
     )
     owner: Mapped[Optional["Organisation"]] = relationship(
-        foreign_keys=[owner_id]
+        "Organisation", foreign_keys=[owner_id]
     )
     context_compositions: Mapped[List["ContextComposition"]] = relationship(
+        "ContextComposition",
         back_populates="context",
     )
     variable_versions: Mapped[List["VariableVersion"]] = relationship(
+        "VariableVersion",
         back_populates="context",
     )
     header_versions: Mapped[List["HeaderVersion"]] = relationship(
+        "HeaderVersion",
         back_populates="context",
     )
     table_versions: Mapped[List["TableVersion"]] = relationship(
+        "TableVersion",
         back_populates="context",
     )
     compound_item_contexts: Mapped[List["CompoundItemContext"]] = relationship(
+        "CompoundItemContext",
         back_populates="context",
     )
 
@@ -690,16 +721,16 @@ class ContextComposition(Base):
     )
 
     context: Mapped["Context"] = relationship(
-        back_populates="context_compositions"
+        "Context", back_populates="context_compositions"
     )
     property: Mapped["Property"] = relationship(
-        back_populates="context_compositions"
+        "Property", back_populates="context_compositions"
     )
     item: Mapped[Optional["Item"]] = relationship(
-        back_populates="context_compositions"
+        "Item", back_populates="context_compositions"
     )
     concept: Mapped[Optional["Concept"]] = relationship(
-        back_populates="context_compositions"
+        "Concept", back_populates="context_compositions"
     )
 
 
@@ -746,16 +777,16 @@ class CompoundItemContext(Base):
     row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     item: Mapped["Item"] = relationship(
-        back_populates="compound_item_contexts"
+        "Item", back_populates="compound_item_contexts"
     )
     start_release: Mapped["Release"] = relationship(
-        foreign_keys=[start_release_id]
+        "Release", foreign_keys=[start_release_id]
     )
     end_release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[end_release_id]
+        "Release", foreign_keys=[end_release_id]
     )
     context: Mapped[Optional["Context"]] = relationship(
-        back_populates="compound_item_contexts"
+        "Context", back_populates="compound_item_contexts"
     )
 
 
@@ -802,16 +833,18 @@ class SupercategoryComposition(Base):
     row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     supercategory: Mapped["Category"] = relationship(
+        "Category",
         foreign_keys=[supercategory_id],
         back_populates="supercategory_compositions",
     )
     category: Mapped["Category"] = relationship(
+        "Category",
         foreign_keys=[category_id],
         back_populates="category_compositions",
     )
     start_release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[start_release_id]
+        "Release", foreign_keys=[start_release_id]
     )
     end_release: Mapped[Optional["Release"]] = relationship(
-        foreign_keys=[end_release_id]
+        "Release", foreign_keys=[end_release_id]
     )
