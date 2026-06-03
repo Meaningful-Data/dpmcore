@@ -954,3 +954,75 @@ class TemporaryIdentifier(AST):
 
     def toJSON(self) -> dict[str, Any]:
         return {"class_name": self.__class__.__name__, "value": self.value}
+
+
+class ParameterRef(AST):
+    """AST object for a Parameter Selection (``{p_code, type [, default]}``).
+
+    A parameter is an execution-time input supplied to an Operation at runtime;
+    it is not a DPM entity, so its data type is declared inline rather than
+    resolved from the database.
+
+    :parameter code: Parameter code (the ``p``/``p_``/backtick prefix stripped).
+    :parameter param_type: Declared type keyword, e.g. ``"number"`` or
+        ``"set-item"`` (the full keyword, including the ``set-`` prefix).
+    :parameter is_set: ``True`` for the ``set-*`` variants.
+    :parameter default: Declared default as an AST node (``Constant``/``Scalar``/
+        ``Set``) or ``None`` when omitted (implicit ``null``).
+    """
+
+    def __init__(
+        self,
+        code: str,
+        param_type: str,
+        is_set: bool,
+        default: "AST | None" = None,
+    ) -> None:
+        super().__init__()
+        self.code = code
+        self.param_type = param_type
+        self.is_set = is_set
+        self.default = default
+
+    def __str__(self) -> str:
+        return (
+            "<AST(name='{name}', code='{code}', param_type='{param_type}', "
+            "is_set={is_set}, default={default})>".format(
+                name=self.__class__.__name__,
+                code=self.code,
+                param_type=self.param_type,
+                is_set=self.is_set,
+                default=self.default,
+            )
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "code": self.code,
+            "param_type": self.param_type,
+            "is_set": self.is_set,
+            "default": parameter_default_value(self.default),
+        }
+
+
+def parameter_default_value(default: "AST | None") -> Any:
+    """Reduce a parameter ``default`` AST node to a JSON-friendly value.
+
+    Used by both the serialization layer and the service surface so the
+    reported default is a single, consistent representation:
+    ``None`` for an omitted/``null`` default, the literal value for a
+    ``Constant``, the item signature for an item ``Scalar``, and a list of the
+    above for a ``Set``.
+    """
+    if default is None:
+        return None
+    if isinstance(default, Constant):
+        return None if default.type == "Null" else default.value
+    if isinstance(default, Scalar):
+        return default.item
+    if isinstance(default, Set):
+        return [parameter_default_value(child) for child in default.children]
+    return None

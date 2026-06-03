@@ -14,6 +14,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     FilterOp,
     GetOp,
     OperationRef,
+    ParameterRef,
     ParExpr,
     PersistentAssignment,
     PreconditionItem,
@@ -79,6 +80,18 @@ from dpmcore.dpm_xl.utils.tokens import (
 )
 from dpmcore.dpm_xl.warning_collector import add_semantic_warning
 from dpmcore.errors import SemanticError
+
+# Maps a (scalar) parameter type keyword to its ScalarFactory type name. The
+# ``set-*`` variants reuse these via their element keyword (``set-item`` ->
+# ``item``). The grammar restricts parameter types to exactly these keywords.
+_PARAMETER_SCALAR_TYPES: dict[str, str] = {
+    "number": "Number",
+    "integer": "Integer",
+    "string": "String",
+    "date": "Date",
+    "boolean": "Boolean",
+    "item": "Item",
+}
 
 
 class InputAnalyzer(ASTTemplate, ABC):
@@ -476,6 +489,63 @@ class InputAnalyzer(ASTTemplate, ABC):
     ) -> Scalar:
         type_ = ScalarFactory().scalar_factory(node.scalar_type)
         return Scalar(type_=type_, origin=node.item, name=None)
+
+    def visit_ParameterRef(  # type: ignore[override]
+        self, node: ParameterRef
+    ) -> Operand:
+        element_keyword = (
+            node.param_type[len("set-") :] if node.is_set else node.param_type
+        )
+        element_type = ScalarFactory().scalar_factory(
+            code=_PARAMETER_SCALAR_TYPES[element_keyword]
+        )
+        self.__check_parameter_default(node, element_keyword, element_type)
+        if node.is_set:
+            return ScalarSet(type_=element_type, name=None, origin=node.code)
+        return Scalar(type_=element_type, name=None, origin=node.code)
+
+    def __check_parameter_default(
+        self,
+        node: ParameterRef,
+        element_keyword: str,
+        element_type: ScalarType,
+    ) -> None:
+        default = node.default
+        if default is None:
+            return
+        # Explicit null is always accepted (the implicit default is null too).
+        if isinstance(default, Constant) and default.type == "Null":
+            return
+        if node.is_set:
+            if not isinstance(default, Set):
+                raise SemanticError("3-7", declared_type=node.param_type)
+            for child in default.children:
+                self.__check_scalar_parameter_default(
+                    child, element_keyword, element_type, node.param_type
+                )
+            return
+        self.__check_scalar_parameter_default(
+            default, element_keyword, element_type, node.param_type
+        )
+
+    def __check_scalar_parameter_default(
+        self,
+        default: Any,
+        element_keyword: str,
+        element_type: ScalarType,
+        declared_type: str,
+    ) -> None:
+        if element_keyword == "item":
+            if not (
+                isinstance(default, ScalarNode)
+                and default.scalar_type == "Item"
+            ):
+                raise SemanticError("3-7", declared_type=declared_type)
+            return
+        # number / integer / string / date / boolean: a compatible literal.
+        if not isinstance(default, Constant):
+            raise SemanticError("3-7", declared_type=declared_type)
+        self.__check_default_value(default, element_type)
 
     def visit_ComplexNumericOp(  # type: ignore[override]
         self, node: ComplexNumericOp

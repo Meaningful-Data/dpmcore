@@ -636,6 +636,18 @@ class ASTToJSONVisitor(NodeVisitor):
 
         return result
 
+    def visit_ParameterRef(self, node: Any) -> NodeDict:
+        """Visit a ParameterRef, emitting its declared metadata + default."""
+        from dpmcore.dpm_xl.ast.nodes import parameter_default_value
+
+        return {
+            "class_name": "ParameterRef",
+            "code": node.code,
+            "param_type": node.param_type,
+            "is_set": node.is_set,
+            "default": parameter_default_value(node.default),
+        }
+
     def generic_visit(self, node: Any) -> NodeDict:
         """Generic visit method for nodes without specific visitors."""
         result: NodeDict = {"class_name": node.__class__.__name__}
