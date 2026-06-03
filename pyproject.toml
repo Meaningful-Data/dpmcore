@@ -28,7 +28,10 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "sqlalchemy>=2.0.49,<3.0",
+    # Floor is 1.4.50 to match the python3-sqlalchemy apt package on
+    # Ubuntu 24.04 (Noble); the ORM is compatible with both 1.4 and 2.0
+    # (see issue #104). 2.0 remains the canonical target for dev/wheel.
+    "sqlalchemy>=1.4.50,<3.0",
     # Runtime must match the ANTLR version used to generate the grammar
     # in src/dpmcore/dpm_xl/grammar/generated/. Regenerating with a newer
     # ANTLR is tracked separately.

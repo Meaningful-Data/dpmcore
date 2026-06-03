@@ -17,7 +17,7 @@ FIXED_TOKEN = "20260512"  # noqa: S105
 
 @pytest.fixture
 def sqlite_engine():
-    return create_engine("sqlite:///:memory:")
+    return create_engine("sqlite:///:memory:", future=True)
 
 
 @pytest.fixture
@@ -297,7 +297,7 @@ class TestRenameWithMetadata:
 
     def test_renames_sqlite_file_with_release_and_date(self, tmp_path):
         db_path = tmp_path / "dpm.db"
-        engine = create_engine(f"sqlite:///{db_path}")
+        engine = create_engine(f"sqlite:///{db_path}", future=True)
         service = MigrationService(engine)
 
         csv_dir = tmp_path / "csv"
@@ -313,7 +313,7 @@ class TestRenameWithMetadata:
 
     def test_renames_without_release_token_when_no_release(self, tmp_path):
         db_path = tmp_path / "dpm.db"
-        engine = create_engine(f"sqlite:///{db_path}")
+        engine = create_engine(f"sqlite:///{db_path}", future=True)
         service = MigrationService(engine)
 
         csv_dir = tmp_path / "csv"
@@ -331,7 +331,7 @@ class TestRenameWithMetadata:
 
     def test_falls_back_to_any_release_when_none_is_current(self, tmp_path):
         db_path = tmp_path / "dpm.db"
-        engine = create_engine(f"sqlite:///{db_path}")
+        engine = create_engine(f"sqlite:///{db_path}", future=True)
         service = MigrationService(engine)
 
         csv_dir = tmp_path / "csv"
@@ -345,7 +345,7 @@ class TestRenameWithMetadata:
 
     def test_sanitises_unsafe_characters_in_release_code(self, tmp_path):
         db_path = tmp_path / "dpm.db"
-        engine = create_engine(f"sqlite:///{db_path}")
+        engine = create_engine(f"sqlite:///{db_path}", future=True)
         service = MigrationService(engine)
 
         csv_dir = tmp_path / "csv"
@@ -377,7 +377,7 @@ class TestRenameWithMetadata:
 
     def test_sqlite_file_path_returns_none_when_file_missing(self, tmp_path):
         missing = tmp_path / "nope.db"
-        engine = create_engine(f"sqlite:///{missing}")
+        engine = create_engine(f"sqlite:///{missing}", future=True)
         service = MigrationService(engine)
         assert service._sqlite_file_path() is None
 
@@ -390,7 +390,7 @@ class TestRenameWithMetadata:
 
     def test_release_code_sanitises_to_none_when_only_unsafe(self, tmp_path):
         db_path = tmp_path / "dpm.db"
-        engine = create_engine(f"sqlite:///{db_path}")
+        engine = create_engine(f"sqlite:///{db_path}", future=True)
         service = MigrationService(engine)
 
         csv_dir = tmp_path / "csv"
@@ -413,7 +413,7 @@ class TestOutputPathOverride:
 
     def test_output_path_overrides_convention(self, tmp_path):
         db_path = tmp_path / "dpm.db"
-        engine = create_engine(f"sqlite:///{db_path}")
+        engine = create_engine(f"sqlite:///{db_path}", future=True)
         service = MigrationService(engine)
 
         csv_dir = tmp_path / "csv"
@@ -432,7 +432,7 @@ class TestOutputPathOverride:
 
     def test_output_path_creates_parent_dirs(self, tmp_path):
         db_path = tmp_path / "dpm.db"
-        engine = create_engine(f"sqlite:///{db_path}")
+        engine = create_engine(f"sqlite:///{db_path}", future=True)
         service = MigrationService(engine)
 
         csv_dir = tmp_path / "csv"
@@ -465,7 +465,7 @@ class TestOutputPathOverride:
 
     def test_output_path_noop_when_same_as_current(self, tmp_path):
         db_path = tmp_path / "dpm.db"
-        engine = create_engine(f"sqlite:///{db_path}")
+        engine = create_engine(f"sqlite:///{db_path}", future=True)
         service = MigrationService(engine)
 
         csv_dir = tmp_path / "csv"
@@ -484,7 +484,7 @@ class TestOutputPathOverride:
 
     def test_migrate_from_access_accepts_output_path(self, tmp_path):
         db_path = tmp_path / "dpm.db"
-        engine = create_engine(f"sqlite:///{db_path}")
+        engine = create_engine(f"sqlite:///{db_path}", future=True)
         service = MigrationService(engine)
 
         with patch("subprocess.check_output") as mock_sub:

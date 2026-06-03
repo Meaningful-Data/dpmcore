@@ -10,7 +10,8 @@ from hashlib import md5
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from sqlalchemy import Engine, func
+from sqlalchemy import func
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
