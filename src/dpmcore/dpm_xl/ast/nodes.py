@@ -966,23 +966,28 @@ class ParameterRef(AST):
     :parameter code: Parameter code (the ``p``/``p_``/backtick prefix stripped).
     :parameter param_type: Declared type keyword, e.g. ``"number"`` or
         ``"set-item"`` (the full keyword, including the ``set-`` prefix).
-    :parameter is_set: ``True`` for the ``set-*`` variants.
     :parameter default: Declared default as an AST node (``Constant``/``Scalar``/
         ``Set``) or ``None`` when omitted (implicit ``null``).
+
+    ``is_set`` is a derived property (``set-*`` prefix of ``param_type``), not a
+    stored field, so there is one source of truth for set-ness.
     """
 
     def __init__(
         self,
         code: str,
         param_type: str,
-        is_set: bool,
         default: "AST | None" = None,
     ) -> None:
         super().__init__()
         self.code = code
         self.param_type = param_type
-        self.is_set = is_set
         self.default = default
+
+    @property
+    def is_set(self) -> bool:
+        """``True`` for the ``set-*`` variants (derived from ``param_type``)."""
+        return self.param_type.startswith("set-")
 
     def __str__(self) -> str:
         return (
@@ -999,12 +1004,14 @@ class ParameterRef(AST):
     __repr__ = __str__
 
     def toJSON(self) -> dict[str, Any]:
+        # Only ``code`` + ``param_type`` are serialised. ``is_set`` is derivable
+        # from the ``set-`` prefix of ``param_type``, and ``default`` is already
+        # carried verbatim in the operation's ``expression`` string — neither is
+        # duplicated into the AST node.
         return {
             "class_name": self.__class__.__name__,
             "code": self.code,
             "param_type": self.param_type,
-            "is_set": self.is_set,
-            "default": parameter_default_value(self.default),
         }
 
 

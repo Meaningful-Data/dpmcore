@@ -438,8 +438,8 @@ class ASTVisitor(dpm_xlParserVisitor):
         code = _parameter_code(self._symbol_text(ctx_list[0]))
         # parameterType holds a single keyword terminal (e.g. ``number`` or
         # ``set-item``); the grammar restricts it to the 12 supported types.
+        # ``is_set`` is derived from this keyword on the node itself.
         param_type = self._symbol_text(ctx_list[2].getChild(0))
-        is_set = param_type.startswith("set-")
         default: AST | None = None
         for child in ctx_list:
             if isinstance(child, dpm_xlParser.DefaultContext):
@@ -447,7 +447,6 @@ class ASTVisitor(dpm_xlParserVisitor):
         return ParameterRef(
             code=code,
             param_type=param_type,
-            is_set=is_set,
             default=default,
         )
 
