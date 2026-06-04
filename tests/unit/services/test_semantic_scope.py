@@ -44,8 +44,9 @@ class TestWalkAndDeclarations:
         assert _walk_parameter_refs(ast) == []
 
     def test_declarations_extracts_code_to_type(self):
+        # Canonical PascalCase, matching ParameterInfo.declared_type.
         assert _svc()._declarations("1 in {p_ccys, set-item}") == {
-            "ccys": "set-item"
+            "ccys": "SetItem"
         }
 
     def test_declarations_returns_empty_on_parse_failure(self, monkeypatch):
@@ -105,7 +106,7 @@ class TestCheckPersistedScope:
             lambda mvids: called.append(mvids) or [],
         )
         # No table codes -> no module versions -> the DB query is never run.
-        svc._check_persisted_scope({"a": "number"}, [], release_id=1)
+        svc._check_persisted_scope({"a": "Number"}, [], release_id=1)
         assert called == []
 
     def test_conflict_raises_3_8(self, monkeypatch):
@@ -117,7 +118,7 @@ class TestCheckPersistedScope:
             lambda _mvids: ["{p_a, integer}"],
         )
         with pytest.raises(SemanticError) as exc:
-            svc._check_persisted_scope({"a": "number"}, ["X"], release_id=1)
+            svc._check_persisted_scope({"a": "Number"}, ["X"], release_id=1)
         assert exc.value.code == "3-8"
 
     def test_same_type_does_not_conflict(self, monkeypatch):
@@ -128,7 +129,7 @@ class TestCheckPersistedScope:
             "_co_scoped_parameter_expressions",
             lambda _mvids: ["{p_a, number}"],
         )
-        svc._check_persisted_scope({"a": "number"}, ["X"], release_id=1)
+        svc._check_persisted_scope({"a": "Number"}, ["X"], release_id=1)
 
     def test_unknown_code_does_not_conflict(self, monkeypatch):
         svc = _svc()
@@ -139,4 +140,4 @@ class TestCheckPersistedScope:
             "_co_scoped_parameter_expressions",
             lambda _mvids: ["{p_b, number}"],
         )
-        svc._check_persisted_scope({"a": "number"}, ["X"], release_id=1)
+        svc._check_persisted_scope({"a": "Number"}, ["X"], release_id=1)

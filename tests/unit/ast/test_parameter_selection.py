@@ -19,6 +19,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     Scalar,
     Set,
     VarRef,
+    canonical_param_type,
     parameter_default_value,
 )
 from dpmcore.dpm_xl.ast.template import ASTTemplate
@@ -209,13 +210,14 @@ class TestSetDefaultControl:
 
 class TestNodeSerialization:
     def test_to_json(self):
-        # Only code + param_type are serialised: is_set is derivable and the
-        # default is already carried in the expression string.
+        # is_set is derivable (not serialised); default stays on the node;
+        # param_type is the engine's canonical PascalCase name.
         node = ParameterRef("x", "number", Constant("Integer", 0))
         assert node.toJSON() == {
             "class_name": "ParameterRef",
             "code": "x",
-            "param_type": "number",
+            "param_type": "Number",
+            "default": 0,
         }
 
     def test_repr(self):
@@ -225,7 +227,6 @@ class TestNodeSerialization:
         assert "set-item" in text
 
     def test_serialize_ast_emits_parameter_ref(self):
-        # The default in the expression is NOT duplicated into the node.
         ast = SyntaxService().parse(
             "{tF_00.01, r010, c010} > {p_threshold, number, default: 0}"
         )
@@ -233,7 +234,8 @@ class TestNodeSerialization:
         assert right == {
             "class_name": "ParameterRef",
             "code": "threshold",
-            "param_type": "number",
+            "param_type": "Number",
+            "default": 0,
         }
 
 
@@ -298,6 +300,30 @@ class TestSemantics:
 # ------------------------------------------------------------------ #
 
 
+class TestCanonicalParamType:
+    @pytest.mark.parametrize(
+        ("keyword", "expected"),
+        [
+            ("number", "Number"),
+            ("integer", "Integer"),
+            ("string", "String"),
+            ("date", "Date"),
+            ("boolean", "Boolean"),
+            ("item", "Item"),
+            ("set-number", "SetNumber"),
+            ("set-item", "SetItem"),
+            ("set-date", "SetDate"),
+        ],
+    )
+    def test_keyword_maps_to_canonical(self, keyword, expected):
+        assert canonical_param_type(keyword) == expected
+
+    def test_idempotent(self):
+        # Applying it to an already-canonical value is a no-op.
+        assert canonical_param_type("Number") == "Number"
+        assert canonical_param_type("SetNumber") == "SetNumber"
+
+
 class TestHelpers:
     def test_base_template_visit_is_noop(self):
         assert ASTTemplate().visit(ParameterRef("x", "number")) is None
@@ -311,9 +337,10 @@ class TestHelpers:
             ]
         )
         infos = _parameters_from_oc(oc)
+        # declared_type is surfaced in the engine's canonical PascalCase.
         assert infos == (
-            ParameterInfo("x", "number", 0),
-            ParameterInfo("y", "set-item", None),
+            ParameterInfo("x", "Number", 0),
+            ParameterInfo("y", "SetItem", None),
         )
 
     def test_parameters_from_oc_raises_on_conflicting_type(self):
@@ -338,7 +365,7 @@ class TestHelpers:
                 ParameterRef("x", "number", Constant("Integer", 5)),
             ]
         )
-        assert _parameters_from_oc(oc) == (ParameterInfo("x", "number", 0),)
+        assert _parameters_from_oc(oc) == (ParameterInfo("x", "Number", 0),)
 
     def test_get_parameters_without_session_raises(self):
         with pytest.raises(RuntimeError):
@@ -359,11 +386,11 @@ class TestHelpers:
         svc = ASTGeneratorService.__new__(ASTGeneratorService)
         accumulated: dict = {}
         svc._accumulate_parameters(
-            accumulated, [self._param_info("x", "number")]
+            accumulated, [self._param_info("x", "Number")]
         )
         with pytest.raises(SemanticError) as exc:
             svc._accumulate_parameters(
-                accumulated, [self._param_info("x", "string")]
+                accumulated, [self._param_info("x", "String")]
             )
         assert exc.value.code == "3-8"
 
@@ -371,15 +398,15 @@ class TestHelpers:
         svc = ASTGeneratorService.__new__(ASTGeneratorService)
         accumulated: dict = {}
         svc._accumulate_parameters(
-            accumulated, [self._param_info("x", "number")]
+            accumulated, [self._param_info("x", "Number")]
         )
         svc._accumulate_parameters(
-            accumulated, [self._param_info("y", "set-item")]
+            accumulated, [self._param_info("y", "SetItem")]
         )
         # Same code + same type across expressions is fine (no conflict).
         svc._accumulate_parameters(
-            accumulated, [self._param_info("x", "number")]
+            accumulated, [self._param_info("x", "Number")]
         )
         assert set(accumulated) == {"x", "y"}
-        assert accumulated["x"].declared_type == "number"
-        assert accumulated["y"].declared_type == "set-item"
+        assert accumulated["x"].declared_type == "Number"
+        assert accumulated["y"].declared_type == "SetItem"

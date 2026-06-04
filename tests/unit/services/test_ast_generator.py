@@ -1060,6 +1060,7 @@ class TestScript:
                     "class_name": "ParameterRef",
                     "code": "threshold",
                     "param_type": "number",
+                    "default": 0,
                 },
             },
         )
@@ -1071,7 +1072,7 @@ class TestScript:
             is_valid=True,
             error_message=None,
             parameters=(
-                SimpleNamespace(code="threshold", declared_type="number"),
+                SimpleNamespace(code="threshold", declared_type="Number"),
             ),
         )
         svc._semantic.ast = "AST"
@@ -1087,7 +1088,7 @@ class TestScript:
         # to a single entry. Value correctness is covered by the real-module
         # tests on ``_accumulate_parameters``.
         assert list(ns["parameters"]) == ["threshold"]
-        assert ns["parameters"]["threshold"] == "number"
+        assert ns["parameters"]["threshold"] == "Number"
         assert not isinstance(ns["parameters"]["threshold"], dict)
 
     def test_parameters_block_empty_when_none_referenced(self, monkeypatch):
