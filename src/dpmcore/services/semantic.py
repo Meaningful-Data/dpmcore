@@ -10,6 +10,7 @@ from sqlalchemy import func
 from dpmcore.dpm_xl.ast.nodes import (
     AST,
     ParameterRef,
+    canonical_param_type,
     parameter_default_value,
 )
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
@@ -38,8 +39,9 @@ class ParameterInfo:
     expression needs (and their declared types/defaults); the downstream engine
     resolves and binds their values.
 
-    ``is_set`` is a derived property (``set-*`` prefix of ``declared_type``),
-    not a stored field, so there is one source of truth for set-ness.
+    ``is_set`` is a derived property (``Set`` prefix of the canonical
+    ``declared_type``), not a stored field, so there is one source of truth for
+    set-ness.
     """
 
     code: str
@@ -48,8 +50,12 @@ class ParameterInfo:
 
     @property
     def is_set(self) -> bool:
-        """``True`` for the ``set-*`` variants (derived from the type)."""
-        return self.declared_type.startswith("set-")
+        """``True`` for the set variants.
+
+        The canonical ``declared_type`` is ``SetNumber``/``SetItem``/…; no
+        scalar type name starts with ``Set``, so the prefix is unambiguous.
+        """
+        return self.declared_type.startswith("Set")
 
 
 @dataclass(frozen=True)
@@ -79,19 +85,21 @@ def _parameters_from_oc(
     """
     seen: dict[str, ParameterInfo] = {}
     for node in oc.parameters:
+        # Surface the engine's canonical type name (``number`` -> ``Number``).
+        declared = canonical_param_type(node.param_type)
         existing = seen.get(node.code)
         if existing is None:
             seen[node.code] = ParameterInfo(
                 code=node.code,
-                declared_type=node.param_type,
+                declared_type=declared,
                 default=parameter_default_value(node.default),
             )
-        elif existing.declared_type != node.param_type:
+        elif existing.declared_type != declared:
             raise SemanticError(
                 "3-8",
                 parameter=node.code,
                 type_1=existing.declared_type,
-                type_2=node.param_type,
+                type_2=declared,
             )
     return tuple(seen.values())
 
@@ -375,5 +383,6 @@ class SemanticService:
             return {}
         decls: dict[str, str] = {}
         for ref in _walk_parameter_refs(ast):
-            decls.setdefault(ref.code, ref.param_type)
+            # Canonical names so the comparison matches ParameterInfo.
+            decls.setdefault(ref.code, canonical_param_type(ref.param_type))
         return decls

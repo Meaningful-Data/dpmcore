@@ -1039,15 +1039,43 @@ class ParameterRef(AST):
     __repr__ = __str__
 
     def toJSON(self) -> dict[str, Any]:
-        # Only ``code`` + ``param_type`` are serialised. ``is_set`` is derivable
-        # from the ``set-`` prefix of ``param_type``, and ``default`` is already
-        # carried verbatim in the operation's ``expression`` string — neither is
-        # duplicated into the AST node.
+        # ``is_set`` is not serialised (derivable from the ``set-`` prefix).
+        # ``param_type`` is emitted in the engine's canonical PascalCase
+        # (``number`` -> ``Number``). ``default`` IS serialised: it is the
+        # per-reference fallback carried on the node (it has no home in the flat
+        # ``{code: type}`` parameters meta-dictionary, which stays type-only).
         return {
             "class_name": self.__class__.__name__,
             "code": self.code,
-            "param_type": self.param_type,
+            "param_type": canonical_param_type(self.param_type),
+            "default": parameter_default_value(self.default),
         }
+
+
+# Grammar parameter-type keyword -> engine canonical (PascalCase) scalar name.
+_CANONICAL_PARAM_SCALAR = {
+    "number": "Number",
+    "integer": "Integer",
+    "string": "String",
+    "date": "Date",
+    "boolean": "Boolean",
+    "item": "Item",
+}
+
+
+def canonical_param_type(param_type: str) -> str:
+    """Map a grammar parameter-type keyword to the engine's canonical name.
+
+    The engine names scalar types in PascalCase (``Number``, ``Integer``, …),
+    so a parameter's declared type is surfaced that way: ``number`` -> ``Number``.
+    Set variants become ``Set`` + the PascalCase element, with no separator:
+    ``set-number`` -> ``SetNumber``. Idempotent — applying it to an
+    already-canonical value is a no-op.
+    """
+    if param_type.startswith("set-"):
+        element = param_type[len("set-") :]
+        return "Set" + _CANONICAL_PARAM_SCALAR.get(element, element)
+    return _CANONICAL_PARAM_SCALAR.get(param_type, param_type)
 
 
 def parameter_default_value(default: "AST | None") -> Any:
