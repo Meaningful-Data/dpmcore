@@ -164,28 +164,68 @@ class TestDefaults:
 
 
 # ------------------------------------------------------------------ #
+# Set-typed default control (semantic, not grammar)
+# ------------------------------------------------------------------ #
+
+
+class TestSetDefaultControl:
+    """Set-typed parameter defaults parse but are gated by the semantic pass.
+
+    Set defaults are not supported (and may never be). They parse only because
+    they share the grammar's ``default`` rule with item defaults; a non-null
+    set default is then rejected by the semantic pass with ``3-9``. ``item``
+    defaults and an explicit ``null`` stay valid.
+    """
+
+    @pytest.mark.parametrize(
+        "expression",
+        [
+            "{p_x, set-number, default: {1, 2}}",
+            "{p_x, set-item, default: {[eba_CU:EUR]}}",
+            "{p_x, set-item, default: 5}",  # set declared, scalar default
+            "{p_x, set-number, default: {[eba_CU:EUR]}}",  # wrong element
+        ],
+    )
+    def test_set_default_parses_but_is_rejected_semantically(self, expression):
+        # Parses only because it shares the grammar's default rule with item...
+        assert SyntaxService().validate(expression).is_valid is True
+        # ...but the semantic pass rejects any non-null set default.
+        with pytest.raises(SemanticError) as exc:
+            _analyze(expression)
+        assert exc.value.code == "3-9"
+
+    def test_null_default_on_set_parameter_is_allowed(self):
+        # An explicit null is always accepted (it is the implicit default too).
+        assert _analyze("{p_x, set-number, default: null}") is not None
+
+    def test_item_default_is_accepted(self):
+        assert _analyze("{p_x, item, default: [eba_CU:EUR]}") is not None
+
+
+# ------------------------------------------------------------------ #
 # Node + serialization
 # ------------------------------------------------------------------ #
 
 
 class TestNodeSerialization:
     def test_to_json(self):
-        node = ParameterRef("x", "number", False, Constant("Integer", 0))
+        # Only code + param_type are serialised: is_set is derivable and the
+        # default is already carried in the expression string.
+        node = ParameterRef("x", "number", Constant("Integer", 0))
         assert node.toJSON() == {
             "class_name": "ParameterRef",
             "code": "x",
             "param_type": "number",
-            "is_set": False,
-            "default": 0,
         }
 
     def test_repr(self):
-        node = ParameterRef("x", "set-item", True, None)
+        node = ParameterRef("x", "set-item", None)
         text = repr(node)
         assert "ParameterRef" in text
         assert "set-item" in text
 
     def test_serialize_ast_emits_parameter_ref(self):
+        # The default in the expression is NOT duplicated into the node.
         ast = SyntaxService().parse(
             "{tF_00.01, r010, c010} > {p_threshold, number, default: 0}"
         )
@@ -194,8 +234,6 @@ class TestNodeSerialization:
             "class_name": "ParameterRef",
             "code": "threshold",
             "param_type": "number",
-            "is_set": False,
-            "default": 0,
         }
 
 
@@ -230,8 +268,6 @@ class TestSemantics:
             "{p_x, date, default: #2024-01-01#}",
             "{p_x, item, default: [eba_CU:EUR]}",
             "{p_x, number, default: null}",
-            "{p_x, set-item, default: {[eba_CU:EUR]}}",
-            "{p_x, set-number, default: {1, 2}}",
         ],
     )
     def test_compatible_defaults_pass(self, expression):
@@ -246,11 +282,12 @@ class TestSemantics:
         "expression",
         [
             "{p_x, item, default: 5}",  # item declared, literal default
-            "{p_x, set-item, default: 5}",  # set declared, scalar default
-            "{p_x, set-number, default: {[eba_CU:EUR]}}",  # wrong element
+            "{p_x, number, default: [eba_CU:EUR]}",  # scalar, non-literal
         ],
     )
-    def test_incompatible_parameter_default_raises_3_7(self, expression):
+    def test_incompatible_scalar_parameter_default_raises_3_7(
+        self, expression
+    ):
         with pytest.raises(SemanticError) as exc:
             _analyze(expression)
         assert exc.value.code == "3-7"
@@ -263,20 +300,20 @@ class TestSemantics:
 
 class TestHelpers:
     def test_base_template_visit_is_noop(self):
-        assert ASTTemplate().visit(ParameterRef("x", "number", False)) is None
+        assert ASTTemplate().visit(ParameterRef("x", "number")) is None
 
     def test_parameters_from_oc_dedupes_by_code(self):
         oc = SimpleNamespace(
             parameters=[
-                ParameterRef("x", "number", False, Constant("Integer", 0)),
-                ParameterRef("x", "number", False, None),  # duplicate code
-                ParameterRef("y", "set-item", True, None),
+                ParameterRef("x", "number", Constant("Integer", 0)),
+                ParameterRef("x", "number", None),  # duplicate code
+                ParameterRef("y", "set-item", None),
             ]
         )
         infos = _parameters_from_oc(oc)
         assert infos == (
-            ParameterInfo("x", "number", False, 0),
-            ParameterInfo("y", "set-item", True, None),
+            ParameterInfo("x", "number", 0),
+            ParameterInfo("y", "set-item", None),
         )
 
     def test_parameters_from_oc_raises_on_conflicting_type(self):
@@ -284,8 +321,8 @@ class TestHelpers:
         # parameter; one bound value cannot satisfy two types).
         oc = SimpleNamespace(
             parameters=[
-                ParameterRef("x", "number", False, None),
-                ParameterRef("x", "set-number", True, None),
+                ParameterRef("x", "number", None),
+                ParameterRef("x", "set-number", None),
             ]
         )
         with pytest.raises(SemanticError) as exc:
@@ -297,82 +334,36 @@ class TestHelpers:
         # long as the declared type matches; first-seen default is kept.
         oc = SimpleNamespace(
             parameters=[
-                ParameterRef("x", "number", False, Constant("Integer", 0)),
-                ParameterRef("x", "number", False, Constant("Integer", 5)),
+                ParameterRef("x", "number", Constant("Integer", 0)),
+                ParameterRef("x", "number", Constant("Integer", 5)),
             ]
         )
-        assert _parameters_from_oc(oc) == (
-            ParameterInfo("x", "number", False, 0),
-        )
-
-    def test_extract_referenced_parameters_from_serialised_ast(self):
-        ast_dict = {
-            "class_name": "BinOp",
-            "left": {"class_name": "VarID", "table": "C_01.00"},
-            "right": {
-                "class_name": "ParameterRef",
-                "code": "threshold",
-                "param_type": "number",
-                "is_set": False,
-                "default": 0,
-            },
-        }
-        found = ASTGeneratorService._extract_referenced_parameters(ast_dict)
-        assert found == {
-            "threshold": ParameterInfo("threshold", "number", False, 0)
-        }
-
-    def test_extract_referenced_parameters_ignores_other_nodes(self):
-        assert (
-            ASTGeneratorService._extract_referenced_parameters(
-                {"class_name": "Constant", "value": 0}
-            )
-            == {}
-        )
-
-    def test_extract_referenced_parameters_recurses_into_lists(self):
-        # ParameterRef nested inside a list-valued field (e.g. Set children).
-        ast_dict = {
-            "class_name": "Set",
-            "children": [
-                {"class_name": "Constant", "value": 1},
-                {
-                    "class_name": "ParameterRef",
-                    "code": "x",
-                    "param_type": "set-number",
-                    "is_set": True,
-                    "default": None,
-                },
-            ],
-        }
-        found = ASTGeneratorService._extract_referenced_parameters(ast_dict)
-        assert found == {"x": ParameterInfo("x", "set-number", True, None)}
+        assert _parameters_from_oc(oc) == (ParameterInfo("x", "number", 0),)
 
     def test_get_parameters_without_session_raises(self):
         with pytest.raises(RuntimeError):
             DpmXlService().get_parameters("{p_x, number}")
 
     @staticmethod
-    def _param_node(code: str, param_type: str) -> dict:
-        return {
-            "class_name": "ParameterRef",
-            "code": code,
-            "param_type": param_type,
-            "is_set": param_type.startswith("set-"),
-            "default": None,
-        }
+    def _param_info(code: str, param_type: str) -> ParameterInfo:
+        return ParameterInfo(
+            code=code,
+            declared_type=param_type,
+            default=None,
+        )
 
     def test_accumulate_parameters_raises_on_cross_expression_conflict(self):
-        # script() merges parameters across operations: the same code with a
-        # different declared type cannot live in the flat registry -> 3-8.
+        # script() merges the per-expression SemanticResult.parameters across
+        # operations: the same code with a different declared type cannot live
+        # in the flat registry -> 3-8.
         svc = ASTGeneratorService.__new__(ASTGeneratorService)
         accumulated: dict = {}
         svc._accumulate_parameters(
-            accumulated, self._param_node("x", "number")
+            accumulated, [self._param_info("x", "number")]
         )
         with pytest.raises(SemanticError) as exc:
             svc._accumulate_parameters(
-                accumulated, self._param_node("x", "string")
+                accumulated, [self._param_info("x", "string")]
             )
         assert exc.value.code == "3-8"
 
@@ -380,14 +371,14 @@ class TestHelpers:
         svc = ASTGeneratorService.__new__(ASTGeneratorService)
         accumulated: dict = {}
         svc._accumulate_parameters(
-            accumulated, self._param_node("x", "number")
+            accumulated, [self._param_info("x", "number")]
         )
         svc._accumulate_parameters(
-            accumulated, self._param_node("y", "set-item")
+            accumulated, [self._param_info("y", "set-item")]
         )
         # Same code + same type across expressions is fine (no conflict).
         svc._accumulate_parameters(
-            accumulated, self._param_node("x", "number")
+            accumulated, [self._param_info("x", "number")]
         )
         assert set(accumulated) == {"x", "y"}
         assert accumulated["x"].declared_type == "number"

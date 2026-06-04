@@ -973,7 +973,7 @@ class TestScript:
         )
         svc, mv, rr, _ = self._build_svc()
         svc._semantic.validate.return_value = SimpleNamespace(
-            is_valid=True, error_message=None
+            is_valid=True, error_message=None, parameters=()
         )
         svc._semantic.ast = "AST"
         out = svc.script(
@@ -1014,7 +1014,7 @@ class TestScript:
         )
         svc, *_ = self._build_svc()
         svc._semantic.validate.return_value = SimpleNamespace(
-            is_valid=True, error_message=None
+            is_valid=True, error_message=None, parameters=()
         )
         svc._semantic.ast = "AST"
         out = svc.script(
@@ -1033,7 +1033,7 @@ class TestScript:
         )
         svc, *_ = self._build_svc()
         svc._semantic.validate.return_value = SimpleNamespace(
-            is_valid=True, error_message=None
+            is_valid=True, error_message=None, parameters=()
         )
         svc._semantic.ast = "AST"
         svc._scope_calc._get_module_uri.return_value = None
@@ -1060,14 +1060,19 @@ class TestScript:
                     "class_name": "ParameterRef",
                     "code": "threshold",
                     "param_type": "number",
-                    "is_set": False,
-                    "default": 0,
                 },
             },
         )
         svc, *_ = self._build_svc()
+        # Parameters now come from SemanticResult.parameters (not a re-walk of
+        # the serialised AST). A SimpleNamespace stand-in exposing
+        # .code/.declared_type is all _accumulate_parameters reads.
         svc._semantic.validate.return_value = SimpleNamespace(
-            is_valid=True, error_message=None
+            is_valid=True,
+            error_message=None,
+            parameters=(
+                SimpleNamespace(code="threshold", declared_type="number"),
+            ),
         )
         svc._semantic.ast = "AST"
         out = svc.script(
@@ -1077,13 +1082,12 @@ class TestScript:
         )
         assert out["success"] is True
         ns = next(iter(out["enriched_ast"].values()))
-        # ParameterInfo is stubbed in this shadow harness, so assert the
-        # structure rather than the (mocked) value: the trimmed registry is a
-        # flat ``code -> declared_type`` map (no nested is_set/default object),
-        # deduplicated across both expressions to a single entry. Value
-        # correctness is covered by the real-module tests on
-        # ``_accumulate_parameters`` / ``_extract_referenced_parameters``.
+        # The trimmed registry is a flat ``code -> declared_type`` map (no
+        # nested is_set/default object), deduplicated across both expressions
+        # to a single entry. Value correctness is covered by the real-module
+        # tests on ``_accumulate_parameters``.
         assert list(ns["parameters"]) == ["threshold"]
+        assert ns["parameters"]["threshold"] == "number"
         assert not isinstance(ns["parameters"]["threshold"], dict)
 
     def test_parameters_block_empty_when_none_referenced(self, monkeypatch):
@@ -1093,7 +1097,7 @@ class TestScript:
         )
         svc, *_ = self._build_svc()
         svc._semantic.validate.return_value = SimpleNamespace(
-            is_valid=True, error_message=None
+            is_valid=True, error_message=None, parameters=()
         )
         svc._semantic.ast = "AST"
         out = svc.script(
@@ -1103,3 +1107,29 @@ class TestScript:
         )
         ns = next(iter(out["enriched_ast"].values()))
         assert ns["parameters"] == {}
+
+    def test_script_validates_without_scope_opt_out(self, monkeypatch):
+        # Regression: script() must validate each expression through the plain
+        # validate() path with no scope opt-out. The opt-out was removed (the
+        # scope lookup only runs when an expression references a parameter, so
+        # it costs nothing on a parameter-free database), so no call may pass a
+        # ``check_scope`` argument. A parameter clash with a co-scoped
+        # *persisted* operation is thus always caught; the batch-wide
+        # _accumulate_parameters check only sees this script's own expressions.
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+        svc.script(
+            expressions=[("e1", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+        assert svc._semantic.validate.called
+        for call in svc._semantic.validate.call_args_list:
+            assert "check_scope" not in call.kwargs
