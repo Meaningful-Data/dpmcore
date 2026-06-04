@@ -246,6 +246,14 @@ class InputAnalyzer(ASTTemplate, ABC):
         # node.type is ScalarType | None on AST base but ``visit_VarID`` is only
         # reached after operand checks populate it; same for label/table.
         node_type = cast(ScalarType, node.type)
+        # A cell reference shares the grammar's ``default`` rule with parameter
+        # references, so a set default (``default: {...}``) parses here too.
+        # Set defaults are not supported on any selection: reject with the same
+        # meaningful 3-9. Item/literal/null defaults stay valid below.
+        if isinstance(node.default, Set):
+            raise errors.SemanticError(
+                "3-9", reference=f"cell selection {node.table or node.label}"
+            )
         self.__check_default_value(node.default, node_type)
 
         table_code = cast(str, node.table)
@@ -517,13 +525,11 @@ class InputAnalyzer(ASTTemplate, ABC):
         if isinstance(default, Constant) and default.type == "Null":
             return
         if node.is_set:
-            if not isinstance(default, Set):
-                raise SemanticError("3-7", declared_type=node.param_type)
-            for child in default.children:
-                self.__check_scalar_parameter_default(
-                    child, element_keyword, element_type, node.param_type
-                )
-            return
+            # Set-typed parameter defaults are not supported (and may never
+            # be). They parse only because they share the grammar's ``default``
+            # rule with item defaults; the semantic pass rejects any non-null
+            # set default here. An explicit ``null`` is accepted above.
+            raise SemanticError("3-9", reference=f"parameter {node.code}")
         self.__check_scalar_parameter_default(
             default, element_keyword, element_type, node.param_type
         )

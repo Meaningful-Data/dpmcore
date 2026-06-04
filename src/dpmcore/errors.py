@@ -184,6 +184,10 @@ centralised_messages: Dict[str, str] = {
         " {type_1} and {type_2}; every reference to a parameter must"
         " declare the same type."
     ),
+    "3-9": (
+        "Set-typed defaults are not supported ({reference})."
+        " Use a scalar/item default or null."
+    ),
     # Operators
     # - Aggregate Operators
     "4-4-0-1": (
