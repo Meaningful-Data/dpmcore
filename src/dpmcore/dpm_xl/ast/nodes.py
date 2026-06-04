@@ -644,6 +644,41 @@ class TimeShiftOp(AST):
         }
 
 
+class DateConstructorOp(AST):
+    """AST node for the date(year, month, day) constructor operator.
+
+    :parameter year: Integer expression for the year.
+    :parameter month: Integer expression for the month.
+    :parameter day: Integer expression for the day.
+    """
+
+    def __init__(self, year: "AST", month: "AST", day: "AST") -> None:
+        super().__init__()
+        self.op: str = "date"
+        self.year: "AST" = year
+        self.month: "AST" = month
+        self.day: "AST" = day
+
+    def __str__(self) -> str:
+        return "<AST(name='{name}', year={year}, month={month}, day={day})>".format(
+            name=self.__class__.__name__,
+            year=self.year,
+            month=self.month,
+            day=self.day,
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> "dict[str, Any]":
+        return {
+            "class_name": self.__class__.__name__,
+            "op": self.op,
+            "year": self.year,
+            "month": self.month,
+            "day": self.day,
+        }
+
+
 class WhereClauseOp(AST):
     """AST object for the Where clause.
 

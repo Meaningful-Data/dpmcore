@@ -8,7 +8,8 @@ from typing import AsyncIterator, Dict, Generator, Optional
 from fastapi import Depends, FastAPI
 from fastapi.routing import APIRouter
 from pydantic import BaseModel
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 import dpmcore.orm  # noqa: F401  — ensure all models are loaded

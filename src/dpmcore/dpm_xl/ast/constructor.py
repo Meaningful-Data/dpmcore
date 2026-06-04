@@ -21,6 +21,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     ComplexNumericOp,
     CondExpr,
     Constant,
+    DateConstructorOp,
     Dimension,
     FilterOp,
     GetOp,
@@ -346,6 +347,26 @@ class ASTVisitor(dpm_xlParserVisitor):
             component=component,
             period_indicator=period_indicator,
             shift_number=shift_number,
+        )
+
+    def visitDateExtractFunction(
+        self, ctx: dpm_xlParser.DateExtractFunctionContext
+    ) -> UnaryOp:
+        ctx_list = list(ctx.getChildren())
+        op = self._symbol_text(ctx_list[0])
+        operand: AST = self._visit(ctx_list[2])
+        return UnaryOp(op=op, operand=operand)
+
+    def visitDateConstructorFunction(
+        self, ctx: dpm_xlParser.DateConstructorFunctionContext
+    ) -> DateConstructorOp:
+        ctx_list = list(ctx.getChildren())
+        # DATE ( year , month , day )
+        #  0   1  2  3   4   5  6  7
+        return DateConstructorOp(
+            year=self._visit(ctx_list[2]),
+            month=self._visit(ctx_list[4]),
+            day=self._visit(ctx_list[6]),
         )
 
     def visitUnaryStringFunction(

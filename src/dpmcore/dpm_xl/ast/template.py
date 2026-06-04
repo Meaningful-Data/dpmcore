@@ -6,6 +6,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     ComplexNumericOp,
     CondExpr,
     Constant,
+    DateConstructorOp,
     Dimension,
     FilterOp,
     GetOp,
@@ -98,6 +99,11 @@ class ASTTemplate(NodeVisitor):
 
     def visit_TimeShiftOp(self, node: TimeShiftOp) -> None:
         self.visit(node.operand)
+
+    def visit_DateConstructorOp(self, node: DateConstructorOp) -> None:
+        self.visit(node.year)
+        self.visit(node.month)
+        self.visit(node.day)
 
     def visit_FilterOp(self, node: FilterOp) -> None:
         self.visit(node.selection)

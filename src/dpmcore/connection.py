@@ -19,7 +19,8 @@ from __future__ import annotations
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 # Ensure all ORM modules are imported so relationships resolve.
@@ -210,12 +211,17 @@ class DpmConnection:
         pool_config: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Build a connection for ``url`` with optional ``pool_config``."""
-        engine_kwargs: Dict[str, Any] = {"pool_pre_ping": True}
+        # future=True is the 2.0 default and opts SQLAlchemy 1.4 into the
+        # same 2.0-style Engine/Session semantics (see issue #104).
+        engine_kwargs: Dict[str, Any] = {
+            "pool_pre_ping": True,
+            "future": True,
+        }
         if pool_config:
             engine_kwargs.update(pool_config)
 
         self.engine = create_engine(url, **engine_kwargs)
-        self._session_factory = sessionmaker(bind=self.engine)
+        self._session_factory = sessionmaker(bind=self.engine, future=True)
         self.session: Session = self._session_factory()
         self.services = _ServiceAccessor(self.session, self.engine)
 
