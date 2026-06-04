@@ -15,6 +15,7 @@ warnings.filterwarnings(
 from dpmcore import errors
 from dpmcore.dpm_xl.ast.nodes import (
     AST,
+    AnnualiseOp,
     Constant,
     Dimension,
     GetOp,
@@ -642,6 +643,17 @@ class OperandsChecking(ASTTemplate, ABC):
                 raise errors.SemanticError("4-7-4")
         else:
             self.visit(node.shift_number)
+        self.visit(node.operand)
+
+    def visit_AnnualiseOp(self, node: AnnualiseOp) -> None:
+        if isinstance(node.fy_end, Constant):
+            fy_type = ScalarFactory().scalar_factory(
+                code=node.fy_end.type  # type: ignore[arg-type]
+            )
+            if not isinstance(fy_type, Integer):
+                raise errors.SemanticError("4-7-4")
+        else:
+            self.visit(node.fy_end)
         self.visit(node.operand)
 
     def visit_WhereClauseOp(self, node: WhereClauseOp) -> None:

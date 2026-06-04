@@ -1027,6 +1027,9 @@ class ASTGeneratorService:
         current_period = ["t"]
 
         class _Extractor(ASTTemplate):
+            def visit_AnnualiseOp(self, node: Any) -> None:
+                self.visit(node.operand)
+
             def visit_TimeShiftOp(self, node: Any) -> None:
                 from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
 

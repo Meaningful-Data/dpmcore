@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dpmcore.dpm_xl.ast.nodes import (
     AggregationOp,
+    AnnualiseOp,
     BinOp,
     ComplexNumericOp,
     CondExpr,
@@ -98,6 +99,10 @@ class ASTTemplate(NodeVisitor):
 
     def visit_TimeShiftOp(self, node: TimeShiftOp) -> None:
         self.visit(node.operand)
+
+    def visit_AnnualiseOp(self, node: AnnualiseOp) -> None:
+        self.visit(node.operand)
+        self.visit(node.fy_end)
 
     def visit_DateConstructorOp(self, node: DateConstructorOp) -> None:
         self.visit(node.year)
