@@ -10,10 +10,10 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
+    Iterable,
     List,
     Optional,
     Tuple,
-    cast,
 )
 
 from dpmcore.dpm_xl.utils.tokens import (
@@ -173,12 +173,12 @@ class ASTGeneratorService:
 
             for item in expressions:
                 expr, code = item[0], item[1]
-                # check_scope=False: cross-operation parameter consistency is
-                # enforced over this whole batch by _accumulate_parameters
-                # below, so the per-expression DB scope lookup is redundant.
-                result = self._semantic.validate(
-                    expr, release_id=release_id, check_scope=False
-                )
+                # validate() runs the per-expression scope check: a parameter
+                # referenced here must not clash with the declared type of a
+                # co-scoped operation already persisted in the DB (raises 3-8).
+                # _accumulate_parameters below is complementary — it catches
+                # conflicts between two expressions in this same script.
+                result = self._semantic.validate(expr, release_id=release_id)
                 if not result.is_valid:
                     return {
                         "success": False,
@@ -192,7 +192,9 @@ class ASTGeneratorService:
                 referenced_table_codes.update(
                     self._extract_referenced_tables(ast_dict)
                 )
-                self._accumulate_parameters(referenced_parameters, ast_dict)
+                self._accumulate_parameters(
+                    referenced_parameters, result.parameters
+                )
 
                 root_operator_id = self._resolve_root_operator_id(ast, session)
 
@@ -835,58 +837,30 @@ class ASTGeneratorService:
         _walk(ast_dict)
         return codes
 
-    @staticmethod
-    def _extract_referenced_parameters(
-        ast_dict: Any,
-    ) -> Dict[str, ParameterInfo]:
-        """Walk a serialised AST and return referenced parameters by code."""
-        found: Dict[str, ParameterInfo] = {}
-
-        def _walk(node: Any) -> None:
-            if isinstance(node, dict):
-                if node.get("class_name") == "ParameterRef":
-                    code = node.get("code")
-                    if isinstance(code, str) and code and code not in found:
-                        found[code] = ParameterInfo(
-                            code=code,
-                            declared_type=cast(str, node.get("param_type")),
-                            is_set=bool(node.get("is_set")),
-                            default=node.get("default"),
-                        )
-                for value in node.values():
-                    if isinstance(value, (dict, list)):
-                        _walk(value)
-            elif isinstance(node, list):
-                for item in node:
-                    if isinstance(item, (dict, list)):
-                        _walk(item)
-
-        _walk(ast_dict)
-        return found
-
     def _accumulate_parameters(
         self,
         accumulated: Dict[str, ParameterInfo],
-        ast_dict: Any,
+        parameters: Iterable[ParameterInfo],
     ) -> None:
-        """Merge an expression's parameters into ``accumulated``, by code.
+        """Merge one expression's parameters into ``accumulated``, by code.
 
-        A parameter binds to a single value across every operation it
-        co-executes with, so its declared type is intrinsic and must stay
+        Consumes the already-deduped ``SemanticResult.parameters`` produced by
+        the semantic pass rather than re-walking the serialised AST, so there
+        is a single source of truth for which parameters an expression
+        references. A parameter binds to a single value across every operation
+        it co-executes with, so its declared type is intrinsic and must stay
         consistent script-wide — the flat registry holds one type per code.
-        Raises ``SemanticError`` ``3-8`` on a conflicting redeclaration
-        rather than silently letting one reference win.
+        Raises ``SemanticError`` ``3-8`` on a conflicting redeclaration rather
+        than silently letting one reference win.
         """
-        for prm_code, prm in self._extract_referenced_parameters(
-            ast_dict
-        ).items():
-            prior = accumulated.get(prm_code)
+        for prm in parameters:
+            prior = accumulated.get(prm.code)
             if prior is None:
-                accumulated[prm_code] = prm
+                accumulated[prm.code] = prm
             elif prior.declared_type != prm.declared_type:
                 raise SemanticError(
                     "3-8",
-                    parameter=prm_code,
+                    parameter=prm.code,
                     type_1=prior.declared_type,
                     type_2=prm.declared_type,
                 )
