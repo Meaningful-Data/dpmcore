@@ -12,11 +12,13 @@ from dpmcore.dpm_xl.ast.nodes import (
     ComplexNumericOp,
     CondExpr,
     Constant,
+    CountSetOp,
     DateConstructorOp,
     Dimension,
     FilterOp,
     GetOp,
     GroupingClause,
+    IntersectSetOp,
     OperationRef,
     ParExpr,
     PersistentAssignment,
@@ -25,21 +27,19 @@ from dpmcore.dpm_xl.ast.nodes import (
     RenameOp,
     Scalar,
     Set,
+    SetdiffOp,
+    SetOfOp,
     Start,
     SubOp,
+    SymdiffOp,
     TemporaryAssignment,
     TimeShiftOp,
     UnaryOp,
+    UnionSetOp,
     VarID,
     VarRef,
     WhereClauseOp,
     WithExpression,
-    CountSetOp,
-    IntersectSetOp,
-    SetdiffOp,
-    SetOfOp,
-    SymdiffOp,
-    UnionSetOp,
 )
 from dpmcore.dpm_xl.ast.template import ASTTemplate
 from dpmcore.dpm_xl.model_queries import (
@@ -715,22 +715,34 @@ class MLGeneration(ASTTemplate):
         self.session.add(operand_ref)
 
     def visit_SetOfOp(self, node: SetOfOp) -> None:
-        raise NotImplementedError("ML generation for set_of is not yet supported")
+        raise NotImplementedError(
+            "ML generation for set_of is not yet supported"
+        )
 
     def visit_UnionSetOp(self, node: UnionSetOp) -> None:
-        raise NotImplementedError("ML generation for union is not yet supported")
+        raise NotImplementedError(
+            "ML generation for union is not yet supported"
+        )
 
     def visit_IntersectSetOp(self, node: IntersectSetOp) -> None:
-        raise NotImplementedError("ML generation for intersect is not yet supported")
+        raise NotImplementedError(
+            "ML generation for intersect is not yet supported"
+        )
 
     def visit_SetdiffOp(self, node: SetdiffOp) -> None:
-        raise NotImplementedError("ML generation for setdiff is not yet supported")
+        raise NotImplementedError(
+            "ML generation for setdiff is not yet supported"
+        )
 
     def visit_SymdiffOp(self, node: SymdiffOp) -> None:
-        raise NotImplementedError("ML generation for symdiff is not yet supported")
+        raise NotImplementedError(
+            "ML generation for symdiff is not yet supported"
+        )
 
     def visit_CountSetOp(self, node: CountSetOp) -> None:
-        raise NotImplementedError("ML generation for count(setExpression) is not yet supported")
+        raise NotImplementedError(
+            "ML generation for count(setExpression) is not yet supported"
+        )
 
     def _get_op_version_id(self, operation_code: str) -> int:
         if self.operations_data is None:

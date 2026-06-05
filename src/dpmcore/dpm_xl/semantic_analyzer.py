@@ -661,9 +661,7 @@ class InputAnalyzer(ASTTemplate, ABC):
         for op in operands:
             result = self.visit(op)
             if not isinstance(result, ScalarSet):
-                raise errors.SemanticError(
-                    "11", types=type(result).__name__
-                )
+                raise errors.SemanticError("11", types=type(result).__name__)
             symbols.append(result)
         types = {sym.type.__class__ for sym in symbols}
         if len(types) > 1:
@@ -696,7 +694,5 @@ class InputAnalyzer(ASTTemplate, ABC):
     ) -> Scalar:
         operand = self.visit(node.operand)
         if not isinstance(operand, ScalarSet):
-            raise errors.SemanticError(
-                "11", types=type(operand).__name__
-            )
+            raise errors.SemanticError("11", types=type(operand).__name__)
         return Scalar(type_=Integer(), name=None, origin="count")

@@ -21,11 +21,13 @@ from dpmcore.dpm_xl.ast.nodes import (
     ComplexNumericOp,
     CondExpr,
     Constant,
+    CountSetOp,
     DateConstructorOp,
     Dimension,
     FilterOp,
     GetOp,
     GroupingClause,
+    IntersectSetOp,
     OperationRef,
     ParExpr,
     PersistentAssignment,
@@ -35,23 +37,21 @@ from dpmcore.dpm_xl.ast.nodes import (
     RenameOp,
     Scalar,
     Set,
+    SetdiffOp,
+    SetOfOp,
     Start,
     SubAssignment,
     SubOp,
+    SymdiffOp,
     TemporaryAssignment,
     TemporaryIdentifier,
     TimeShiftOp,
     UnaryOp,
+    UnionSetOp,
     VarID,
     VarRef,
     WhereClauseOp,
     WithExpression,
-    CountSetOp,
-    IntersectSetOp,
-    SetdiffOp,
-    SetOfOp,
-    SymdiffOp,
-    UnionSetOp,
 )
 from dpmcore.dpm_xl.grammar.generated.dpm_xlParser import dpm_xlParser
 from dpmcore.dpm_xl.grammar.generated.dpm_xlParserVisitor import (
@@ -490,9 +490,7 @@ class ASTVisitor(dpm_xlParserVisitor):
     ) -> AST:
         return cast(AST, self._visit(ctx.getChild(0)))
 
-    def visitSetOfExpr(
-        self, ctx: dpm_xlParser.SetOfExprContext
-    ) -> SetOfOp:
+    def visitSetOfExpr(self, ctx: dpm_xlParser.SetOfExprContext) -> SetOfOp:
         return SetOfOp(operand=self._visit(ctx.getChild(2)))
 
     def visitUnionSetExpr(

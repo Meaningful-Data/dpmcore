@@ -322,8 +322,7 @@ centralised_messages: Dict[str, str] = {
     "7-2": ("Found a Variable Reference, please check expression"),
     # Set operators
     "11": (
-        "Set elements must all have the same type."
-        " Found mixed types: {types}."
+        "Set elements must all have the same type. Found mixed types: {types}."
     ),
 }
 

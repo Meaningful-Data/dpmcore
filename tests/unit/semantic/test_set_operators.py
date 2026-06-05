@@ -57,7 +57,9 @@ def _make_recordset() -> RecordSet:
         ]
     )
     rs = RecordSet(structure, "test", "test")
-    rs.records = pd.DataFrame({"r": ["1", "2"], "data_type": [Number(), Number()]})
+    rs.records = pd.DataFrame(
+        {"r": ["1", "2"], "data_type": [Number(), Number()]}
+    )
     return rs
 
 
@@ -77,7 +79,11 @@ def test_visit_set_of_op_returns_scalar_set_from_recordset():
         pass
 
     analyzer = _analyzer()
-    analyzer.visit = lambda node: _make_recordset() if isinstance(node, _RecordSetNode) else InputAnalyzer.visit(analyzer, node)  # type: ignore[method-assign]
+    analyzer.visit = lambda node: (
+        _make_recordset()
+        if isinstance(node, _RecordSetNode)
+        else InputAnalyzer.visit(analyzer, node)
+    )  # type: ignore[method-assign]
 
     node = SetOfOp(operand=_RecordSetNode())
     result = analyzer.visit(node)

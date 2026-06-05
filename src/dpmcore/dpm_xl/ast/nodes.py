@@ -992,7 +992,7 @@ class TemporaryIdentifier(AST):
 
 
 class SetOfOp(AST):
-    """AST node for set_of(expression) — projects a Recordset's fact values to a ScalarSet."""
+    """AST node for set_of(expression), projects a Recordset's fact values to a ScalarSet."""
 
     def __init__(self, operand: AST) -> None:
         super().__init__()
@@ -1015,7 +1015,7 @@ class SetOfOp(AST):
 
 
 class UnionSetOp(AST):
-    """AST node for union(s1, s2, …) — variadic set union."""
+    """AST node for union(s1, s2, …), variadic set union."""
 
     def __init__(self, operands: list[AST]) -> None:
         super().__init__()
@@ -1038,7 +1038,7 @@ class UnionSetOp(AST):
 
 
 class IntersectSetOp(AST):
-    """AST node for intersect(s1, s2, …) — variadic set intersection."""
+    """AST node for intersect(s1, s2, …), variadic set intersection."""
 
     def __init__(self, operands: list[AST]) -> None:
         super().__init__()
@@ -1061,7 +1061,7 @@ class IntersectSetOp(AST):
 
 
 class SetdiffOp(AST):
-    """AST node for setdiff(left, right) — elements in left that are not in right."""
+    """AST node for setdiff(left, right), elements in left that are not in right."""
 
     def __init__(self, left: AST, right: AST) -> None:
         super().__init__()
@@ -1071,7 +1071,10 @@ class SetdiffOp(AST):
 
     def __str__(self) -> str:
         return "<AST(name='{name}', op='{op}', left={left}, right={right})>".format(
-            name=self.__class__.__name__, op=self.op, left=self.left, right=self.right
+            name=self.__class__.__name__,
+            op=self.op,
+            left=self.left,
+            right=self.right,
         )
 
     __repr__ = __str__
@@ -1086,7 +1089,7 @@ class SetdiffOp(AST):
 
 
 class SymdiffOp(AST):
-    """AST node for symdiff(left, right) — elements in exactly one of left or right."""
+    """AST node for symdiff(left, right), elements in exactly one of left or right."""
 
     def __init__(self, left: AST, right: AST) -> None:
         super().__init__()
@@ -1096,7 +1099,10 @@ class SymdiffOp(AST):
 
     def __str__(self) -> str:
         return "<AST(name='{name}', op='{op}', left={left}, right={right})>".format(
-            name=self.__class__.__name__, op=self.op, left=self.left, right=self.right
+            name=self.__class__.__name__,
+            op=self.op,
+            left=self.left,
+            right=self.right,
         )
 
     __repr__ = __str__
@@ -1111,7 +1117,7 @@ class SymdiffOp(AST):
 
 
 class CountSetOp(AST):
-    """AST node for count(setExpression) — cardinality of a ScalarSet."""
+    """AST node for count(setExpression), cardinality of a ScalarSet."""
 
     def __init__(self, operand: AST) -> None:
         super().__init__()

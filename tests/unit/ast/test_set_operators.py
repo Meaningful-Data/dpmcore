@@ -67,7 +67,8 @@ def test_setdiff_op_node():
     assert node.right is s2
     j = node.toJSON()
     assert j["class_name"] == "SetdiffOp"
-    assert "left" in j and "right" in j
+    assert "left" in j
+    assert "right" in j
 
 
 def test_symdiff_op_node():
@@ -94,6 +95,7 @@ def test_count_set_op_node():
 # ---------------------------------------------------------------------------
 
 import pytest
+
 from dpmcore.services.syntax import SyntaxService
 
 VALID_IN_EXPRESSIONS = [
@@ -158,7 +160,9 @@ def test_in_union_produces_bin_op_with_union_set_op():
 
 
 def test_in_intersect_produces_bin_op_with_intersect_set_op():
-    ast = SyntaxService().parse("{tT1, r001} in intersect({1, 2, 3}, {2, 3, 4})")
+    ast = SyntaxService().parse(
+        "{tT1, r001} in intersect({1, 2, 3}, {2, 3, 4})"
+    )
     node = ast.children[0]
     assert isinstance(node, BinOp)
     assert isinstance(node.right, IntersectSetOp)
@@ -193,7 +197,9 @@ def test_union_with_three_operands():
 
 
 def test_nested_set_expression():
-    ast = SyntaxService().parse("{tT1, r001} in union(setdiff({1, 2, 3}, {3}), {4, 5})")
+    ast = SyntaxService().parse(
+        "{tT1, r001} in union(setdiff({1, 2, 3}, {3}), {4, 5})"
+    )
     node = ast.children[0]
     assert isinstance(node.right, UnionSetOp)
     assert isinstance(node.right.operands[0], SetdiffOp)
