@@ -46,6 +46,7 @@ SUM = "sum"
 COUNT = "count"
 AVG = "avg"
 MEDIAN = "median"
+RANK = "rank"
 
 # String operators
 LENGTH = "len"

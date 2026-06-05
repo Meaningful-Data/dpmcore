@@ -4,6 +4,7 @@ from dpmcore.dpm_xl.operators.aggregate import (
     MaxAggr,
     Median,
     MinAggr,
+    Rank,
     Sum,
 )
 from dpmcore.dpm_xl.operators.arithmetic import (
@@ -100,6 +101,10 @@ AGGR_OP_MAPPING = {
     COUNT: Count,
     AVG: Avg,
     MEDIAN: Median,
+}
+
+RANK_OP_MAPPING = {
+    RANK: Rank,
 }
 
 CLAUSE_OP_MAPPING = {WHERE: Where, RENAME: Rename, GET: Get, SUB: Sub}

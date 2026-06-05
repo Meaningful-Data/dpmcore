@@ -3,6 +3,7 @@ from typing import ClassVar
 import pandas as pd
 
 from dpmcore import errors
+from dpmcore.dpm_xl.ast.nodes import AnalyticClause
 from dpmcore.dpm_xl.operators.base import Unary
 from dpmcore.dpm_xl.symbols import RecordSet, Scalar, Structure
 from dpmcore.dpm_xl.types.promotion import unary_implicit_type_promotion
@@ -171,6 +172,76 @@ class AggregateOperator(Unary):
         else:
             return f"{cls.op}({operand_name})"
 
+    @classmethod
+    def validate_analytic(
+        cls,
+        operand: RecordSet,
+        analytic_clause: AnalyticClause,
+    ) -> RecordSet:
+        """Validate an analytical (windowing) invocation.
+
+        Returns a RecordSet with the same structure as the operand — analytic
+        invocation never reduces Records.
+        """
+        cls.check_operator_well_defined()
+        return_type = (
+            None
+            if cls.return_type is None
+            else ScalarFactory().scalar_factory(cls.return_type.__name__)
+        )
+        op_type_to_check = (
+            None
+            if cls.type_to_check is None
+            else ScalarFactory().scalar_factory(cls.type_to_check.__name__)
+        )
+
+        error_info = {"operand_name": operand.name, "op": cls.op}
+        fact_component_type = operand.structure.components["f"].type
+
+        final_type = unary_implicit_type_promotion(
+            fact_component_type,
+            op_type_to_check,
+            return_type=return_type,
+            interval_allowed=cls.interval_allowed,
+            error_info=error_info,
+        )
+
+        # §7.8.5: window clause requires order by.
+        if analytic_clause.window is not None and not analytic_clause.order_by:
+            raise errors.SemanticError("4-4-0-5")
+
+        # Validate partition_by and order_by components exist in the operand.
+        key_components = operand.get_key_components_names()
+        analytic_components = list(analytic_clause.partition_by) + [
+            item.key_name for item in analytic_clause.order_by
+        ]
+        missing = [c for c in analytic_components if c not in key_components]
+        if missing:
+            raise errors.SemanticError("4-4-0-2", not_present=missing)
+
+        if operand.records is not None:
+            operand.records["data_type"] = final_type  # type: ignore[call-overload]
+
+        parts: list[str] = []
+        if analytic_clause.partition_by:
+            parts.append(
+                f"partition by {', '.join(analytic_clause.partition_by)}"
+            )
+        if analytic_clause.order_by:
+            order_strs = [
+                f"{item.key_name} {item.direction}"
+                for item in analytic_clause.order_by
+            ]
+            parts.append(f"order by {', '.join(order_strs)}")
+        origin = f"{cls.op}({operand.name} over({' '.join(parts)}))"
+
+        return cls._create_labeled_recordset(
+            origin=origin,
+            rslt_type=final_type,
+            rslt_structure=operand.structure,
+            result_dataframe=operand.records,
+        )
+
 
 class MaxAggr(AggregateOperator):
     op: ClassVar[str | None] = tokens.MAX_AGGR
@@ -201,3 +272,53 @@ class Median(AggregateOperator):
     op: ClassVar[str | None] = tokens.MEDIAN
     type_to_check: ClassVar[type[ScalarType] | None] = Number
     return_type: ClassVar[type[ScalarType] | None] = Number
+
+
+class Rank(AggregateOperator):
+    op: ClassVar[str | None] = tokens.RANK
+    type_to_check: ClassVar[type[ScalarType] | None] = None
+    return_type: ClassVar[type[ScalarType] | None] = Integer
+    interval_allowed: ClassVar[bool] = False
+
+    @classmethod
+    def validate(  # type: ignore[override]
+        cls,
+        operand: RecordSet,
+        analytic_clause: AnalyticClause,
+    ) -> RecordSet:
+        cls.check_operator_well_defined()
+        # §7.9.4: rank takes no window clause.
+        if analytic_clause.window is not None:
+            raise errors.SemanticError("4-4-0-6")
+        if not analytic_clause.order_by:
+            raise errors.SemanticError("4-4-0-4")
+
+        key_components = operand.get_key_components_names()
+        analytic_components = list(analytic_clause.partition_by) + [
+            item.key_name for item in analytic_clause.order_by
+        ]
+        missing = [c for c in analytic_components if c not in key_components]
+        if missing:
+            raise errors.SemanticError("4-4-0-2", not_present=missing)
+
+        parts: list[str] = []
+        if analytic_clause.partition_by:
+            parts.append(
+                f"partition by {', '.join(analytic_clause.partition_by)}"
+            )
+        order_strs = [
+            f"{item.key_name} {item.direction}"
+            for item in analytic_clause.order_by
+        ]
+        parts.append(f"order by {', '.join(order_strs)}")
+        origin = f"rank({operand.name} over({' '.join(parts)}))"
+
+        integer_type = ScalarFactory().scalar_factory(Integer.__name__)
+        if operand.records is not None:
+            operand.records["data_type"] = integer_type  # type: ignore[call-overload]
+        return cls._create_labeled_recordset(
+            origin=origin,
+            rslt_type=integer_type,
+            rslt_structure=operand.structure,
+            result_dataframe=operand.records,
+        )
