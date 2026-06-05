@@ -115,11 +115,41 @@ aggregateOperators:
         |SUM
         |COUNT
         |AVG
-        |MEDIAN) LPAREN expression (groupingClause)? RPAREN        #commonAggrOp
+        |MEDIAN) LPAREN expression (groupingClause | analyticClause)? RPAREN   #commonAggrOp
+    | RANK LPAREN expression analyticClause RPAREN                              #rankOp
     ;
 
 groupingClause:
     GROUP_BY keyNames (COMMA keyNames)*
+;
+
+// Analytical (windowing) invocation — mutually exclusive with groupingClause.
+analyticClause:
+    OVER LPAREN partitionClause? orderClause? windowClause? RPAREN
+;
+
+partitionClause:
+    PARTITION_BY keyNames (COMMA keyNames)*
+;
+
+orderClause:
+    ORDER_BY orderItem (COMMA orderItem)*
+;
+
+orderItem:
+    keyNames (ASC | DESC)?
+;
+
+windowClause:
+    (DATA_POINTS | RANGE) BETWEEN windowBoundary AND windowBoundary
+;
+
+windowBoundary:
+    UNBOUNDED PRECEDING
+    | UNBOUNDED FOLLOWING
+    | CURRENT_DATA_POINT
+    | INTEGER_LITERAL PRECEDING
+    | INTEGER_LITERAL FOLLOWING
 ;
 
 // Dimension management and members

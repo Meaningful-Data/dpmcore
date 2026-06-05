@@ -49,6 +49,10 @@ MEDIAN:                         'median';
 // Grouping
 GROUP_BY:               'group by' -> pushMode(GROUPING_CLAUSE_MODE);
 
+// Analytical (windowing)
+RANK:                   'rank';
+OVER:                   'over' -> pushMode(ANALYTIC_CLAUSE_MODE);
+
 // Unary
 ABS:                    'abs';
 ISNULL:                 'isnull';
@@ -304,6 +308,10 @@ CLAUSE_MEDIAN:                         'median' -> type(MEDIAN);
 // Grouping
 CLAUSE_GROUP_BY:               'group by' -> type(GROUP_BY), pushMode(GROUPING_CLAUSE_MODE);
 
+// Analytical (windowing)
+CLAUSE_RANK:                   'rank' -> type(RANK);
+CLAUSE_OVER:                   'over' -> type(OVER), pushMode(ANALYTIC_CLAUSE_MODE);
+
 // Unary
 CLAUSE_ABS:                    'abs' -> type(ABS);
 CLAUSE_ISNULL:                 'isnull' -> type(ISNULL);
@@ -411,6 +419,40 @@ GROUPING_PROPERTY_CODE:            CODE -> type(PROPERTY_CODE);
 GROUPING_ESCAPED_IDENTIFIER: '`' [A-Za-z0-9_.+]+ '`' -> type(ESCAPED_IDENTIFIER);
 
 GROUPING_WS:                     [ \t\r\n\u000C]+ -> channel(2);
+
+
+
+mode ANALYTIC_CLAUSE_MODE;
+
+// Parenthesis — the closing ')' of the over(...) pops the mode.
+ANALYTIC_LPAREN:                    '(' -> type(LPAREN);
+ANALYTIC_RPAREN:                    ')' -> type(RPAREN), popMode;
+ANALYTIC_COMMA:                     ',' -> type(COMMA);
+
+// Multi-word keywords must appear before single-word ones and before CODE.
+PARTITION_BY:                       'partition by';
+ORDER_BY:                           'order by';
+DATA_POINTS:                        'data points';
+CURRENT_DATA_POINT:                 'current data point';
+RANGE:                              'range';
+BETWEEN:                            'between';
+ANALYTIC_AND:                       'and' -> type(AND);
+PRECEDING:                          'preceding';
+FOLLOWING:                          'following';
+UNBOUNDED:                          'unbounded';
+ASC:                                'asc';
+DESC:                               'desc';
+
+// Component / property identifiers (mirrors GROUPING_CLAUSE_MODE).
+ANALYTIC_ROW_COMPONENT:             'r' -> type(ROW_COMPONENT);
+ANALYTIC_COL_COMPONENT:             'c' -> type(COL_COMPONENT);
+ANALYTIC_SHEET_COMPONENT:           's' -> type(SHEET_COMPONENT);
+ANALYTIC_PROPERTY_CODE:             CODE -> type(PROPERTY_CODE);
+ANALYTIC_ESCAPED_IDENTIFIER:        '`' [A-Za-z0-9_.+]+ '`' -> type(ESCAPED_IDENTIFIER);
+
+ANALYTIC_INTEGER_LITERAL:           INTEGER_LITERAL -> type(INTEGER_LITERAL);
+
+ANALYTIC_WS:                        [ \t\r\n\u000C]+ -> channel(2);
 
 
 mode SET_OPERAND_MODE;
