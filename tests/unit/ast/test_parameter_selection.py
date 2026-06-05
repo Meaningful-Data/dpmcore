@@ -170,12 +170,13 @@ class TestDefaults:
 
 
 class TestSetDefaultControl:
-    """Set-typed parameter defaults parse but are gated by the semantic pass.
+    """Set-typed parameter defaults are accepted and element-type-checked.
 
-    Set defaults are not supported (and may never be). They parse only because
-    they share the grammar's ``default`` rule with item defaults; a non-null
-    set default is then rejected by the semantic pass with ``3-9``. ``item``
-    defaults and an explicit ``null`` stay valid.
+    Per the DPM-XL spec a ``set-*`` parameter takes a set default
+    (``default: {...}``) whose elements each match the declared element type.
+    A default of the wrong shape (a scalar) or wrong element type is rejected
+    with ``3-7``. (A set default on a *cell* selection is a different rule and
+    is rejected with ``3-9`` — see the integration tests.)
     """
 
     @pytest.mark.parametrize(
@@ -183,21 +184,30 @@ class TestSetDefaultControl:
         [
             "{p_x, set-number, default: {1, 2}}",
             "{p_x, set-item, default: {[eba_CU:EUR]}}",
-            "{p_x, set-item, default: 5}",  # set declared, scalar default
-            "{p_x, set-number, default: {[eba_CU:EUR]}}",  # wrong element
+            "{p_x, set-number, default: null}",  # explicit null
+            "{p_x, set-number}",  # implicit null
         ],
     )
-    def test_set_default_parses_but_is_rejected_semantically(self, expression):
-        # Parses only because it shares the grammar's default rule with item...
+    def test_set_default_accepted(self, expression):
         assert SyntaxService().validate(expression).is_valid is True
-        # ...but the semantic pass rejects any non-null set default.
+        assert _analyze(expression) is not None
+
+    @pytest.mark.parametrize(
+        "expression",
+        [
+            "{p_x, set-item, default: 5}",  # set declared, scalar default
+            "{p_x, set-number, default: 5}",  # set declared, scalar default
+            "{p_x, set-number, default: {[eba_CU:EUR]}}",  # wrong element
+            "{p_x, set-item, default: {1, 2}}",  # wrong element
+        ],
+    )
+    def test_incompatible_set_default_rejected(self, expression):
+        # Parses (shared grammar default rule)...
+        assert SyntaxService().validate(expression).is_valid is True
+        # ...but the semantic pass rejects an incompatible default.
         with pytest.raises(SemanticError) as exc:
             _analyze(expression)
-        assert exc.value.code == "3-9"
-
-    def test_null_default_on_set_parameter_is_allowed(self):
-        # An explicit null is always accepted (it is the implicit default too).
-        assert _analyze("{p_x, set-number, default: null}") is not None
+        assert exc.value.code == "3-7"
 
     def test_item_default_is_accepted(self):
         assert _analyze("{p_x, item, default: [eba_CU:EUR]}") is not None

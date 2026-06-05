@@ -261,7 +261,9 @@ class InputAnalyzer(ASTTemplate, ABC):
         # references, so a set default (``default: {...}``) parses here too.
         # Set defaults are not supported on any selection: reject with the same
         # meaningful 3-9. Item/literal/null defaults stay valid below.
-        if isinstance(node.default, Set):
+        # A single-element set default (``default: {p_x, number}``) is unwrapped
+        # to a bare ``ParameterRef`` by ``visitSetElements``, so guard both shapes.
+        if isinstance(node.default, (Set, ParameterRef)):
             raise errors.SemanticError(
                 "3-9", reference=f"cell selection {node.table or node.label}"
             )
@@ -536,14 +538,36 @@ class InputAnalyzer(ASTTemplate, ABC):
         if isinstance(default, Constant) and default.type == "Null":
             return
         if node.is_set:
-            # Set-typed parameter defaults are not supported (and may never
-            # be). They parse only because they share the grammar's ``default``
-            # rule with item defaults; the semantic pass rejects any non-null
-            # set default here. An explicit ``null`` is accepted above.
-            raise SemanticError("3-9", reference=f"parameter {node.code}")
+            # A set-typed parameter takes a set default (``default: {...}``)
+            # whose elements each match the declared element type, per the
+            # DPM-XL spec. (A set default on a *cell* selection is a different
+            # rule and stays rejected with 3-9 in ``visit_VarID``.)
+            self.__check_set_parameter_default(
+                default, element_keyword, element_type, node.param_type
+            )
+            return
         self.__check_scalar_parameter_default(
             default, element_keyword, element_type, node.param_type
         )
+
+    def __check_set_parameter_default(
+        self,
+        default: Any,
+        element_keyword: str,
+        element_type: ScalarType,
+        declared_type: str,
+    ) -> None:
+        # A set-typed default must be a literal set; each element is then
+        # validated like a scalar default of the element type. A single
+        # parameter ref (``default: {p_x, number}``) is unwrapped to a bare
+        # ``ParameterRef`` by the constructor, so it is not a ``Set`` and is
+        # rejected here as incompatible with the declared type.
+        if not isinstance(default, Set):
+            raise SemanticError("3-7", declared_type=declared_type)
+        for element in default.children:
+            self.__check_scalar_parameter_default(
+                element, element_keyword, element_type, declared_type
+            )
 
     def __check_scalar_parameter_default(
         self,

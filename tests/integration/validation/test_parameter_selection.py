@@ -73,17 +73,35 @@ def test_invalid_expression_surfaces_no_parameters(memory_session):
     assert svc.oc_parameters is None
 
 
-def test_set_default_rejected_semantically(memory_session):
-    """A non-null set-typed default is gated by the semantic pass (3-9).
+def test_set_parameter_with_set_default_accepted(memory_session):
+    """A set-typed parameter accepts a set default (spec #103).
 
-    Set defaults are not supported; they parse only because they share the
-    grammar's ``default`` rule with item defaults, and the semantic pass
-    rejects them.
+    Each element is type-checked against the declared element type, and the
+    parameter is surfaced with its set default. (A set default on a *cell*
+    selection is a different rule and stays rejected with 3-9.)
     """
     svc = SemanticService(memory_session)
     result = svc.validate("{p_ccys, set-number, default: {1, 2}}")
+    assert result.is_valid, result.error_message
+    assert result.parameters == (ParameterInfo("ccys", "SetNumber", [1, 2]),)
+
+
+def test_set_item_parameter_with_set_default_accepted(memory_session):
+    """The spec's ``{p_ccys, set-item, default: {[eba_CU:EUR]}}`` example."""
+    svc = SemanticService(memory_session)
+    result = svc.validate("{p_ccys, set-item, default: {[eba_CU:EUR]}}")
+    assert result.is_valid, result.error_message
+    assert result.parameters == (
+        ParameterInfo("ccys", "SetItem", ["eba_CU:EUR"]),
+    )
+
+
+def test_incompatible_set_default_rejected_semantically(memory_session):
+    """A set default whose element type clashes is rejected (3-7)."""
+    svc = SemanticService(memory_session)
+    result = svc.validate("{p_ccys, set-number, default: {[eba_CU:EUR]}}")
     assert result.is_valid is False
-    assert result.error_code == "3-9"
+    assert result.error_code == "3-7"
     assert result.parameters == ()
 
 
@@ -120,14 +138,31 @@ def test_validate_defaults_to_latest_release(fixture_session):
 
 
 def test_cell_set_default_rejected_semantically(fixture_session):
-    """A set default on a *cell* reference is rejected (3-9), like a parameter.
+    """A set default on a *cell* reference is rejected (3-9).
 
     Cell references share the grammar's ``default`` rule with parameters, so a
-    set default parses; the semantic pass rejects it with a meaningful error.
+    set default parses; unlike a set-typed *parameter* (where a set default is
+    valid), a cell resolves to a scalar fact, so the semantic pass rejects it.
     """
     svc = SemanticService(fixture_session)
     result = svc.validate(
         "{tC_09.02, r0030, c0080, default: {1, 2}}",
+        release_code="4.2.1",
+    )
+    assert result.is_valid is False
+    assert result.error_code == "3-9"
+
+
+def test_cell_single_parameter_set_default_rejected(fixture_session):
+    """A single-parameter set default on a *cell* reference is also 3-9.
+
+    ``default: {p_x, number}`` is a one-element set, which ``visitSetElements``
+    unwraps to a bare ``ParameterRef`` rather than a ``Set``; the cell guard
+    rejects both shapes so it does not slip through and get silently accepted.
+    """
+    svc = SemanticService(fixture_session)
+    result = svc.validate(
+        "{tC_09.02, r0030, c0080, default: {p_x, number}}",
         release_code="4.2.1",
     )
     assert result.is_valid is False
