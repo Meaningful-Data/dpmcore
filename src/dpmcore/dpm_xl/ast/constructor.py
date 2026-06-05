@@ -563,12 +563,9 @@ class ASTVisitor(dpm_xlParserVisitor):
 
     def visitVarRef(
         self, ctx: dpm_xlParser.VarRefContext
-    ) -> VarRef | PreconditionItem:
+    ) -> VarRef:
         child = ctx.getChild(0)
         text = child.symbol.text
-        if text.startswith("v_"):
-            code = text[2:]
-            return PreconditionItem(variable_id=code, variable_code=code)
         return VarRef(variable=self._strip_ref_code(text[1:]))
 
     def visitCellRef(self, ctx: dpm_xlParser.CellRefContext) -> VarID | None:

@@ -71,7 +71,7 @@ _HEADERS_CACHE: Dict[
 ] = {}
 
 
-def _create_operand_label(node: VarID | PreconditionItem) -> None:
+def _create_operand_label(node: VarID | PreconditionItem | VarRef) -> None:
     label = generate_new_label()
     node.label = label
 
@@ -602,10 +602,20 @@ class OperandsChecking(ASTTemplate, ABC):
         self.visit(node.operand)
 
     def visit_VarRef(self, node: VarRef) -> None:
+        if self.is_scripting:
+            raise errors.SemanticError("6-3", precondition=node.variable)
+
         if not VariableVersionQuery.check_variable_exists(
             self.session, node.variable, self.release_id
         ):
             raise errors.SemanticError("1-3", variable=node.variable)
+
+        self.preconditions = True
+        _create_operand_label(node)
+        label = node.label
+        if label is None:
+            raise RuntimeError("VarRef label not created")
+        set_operand_label(label, node)
 
     def visit_PreconditionItem(self, node: PreconditionItem) -> None:
 
