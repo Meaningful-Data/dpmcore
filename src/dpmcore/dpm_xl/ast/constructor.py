@@ -553,6 +553,14 @@ class ASTVisitor(dpm_xlParserVisitor):
         else:
             raise NotImplementedError
 
+    @staticmethod
+    def _strip_ref_code(raw: str) -> str:
+        if raw.startswith("_"):
+            raw = raw[1:]
+        if raw.startswith("`") and raw.endswith("`"):
+            raw = raw[1:-1]
+        return raw
+
     def visitVarRef(
         self, ctx: dpm_xlParser.VarRefContext
     ) -> VarRef | PreconditionItem:
@@ -561,7 +569,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         if text.startswith("v_"):
             code = text[2:]
             return PreconditionItem(variable_id=code, variable_code=code)
-        return VarRef(variable=text[1:])
+        return VarRef(variable=self._strip_ref_code(text[1:]))
 
     def visitCellRef(self, ctx: dpm_xlParser.CellRefContext) -> VarID | None:
         ctx_list = list(ctx.getChildren())
@@ -587,7 +595,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         self, ctx: dpm_xlParser.OperationRefContext
     ) -> OperationRef:
         child = ctx.getChild(0)
-        operation_code = child.symbol.text[1:]
+        operation_code = self._strip_ref_code(child.symbol.text[1:])
         return OperationRef(operation_code=operation_code)
 
     def create_var_id(
@@ -643,7 +651,7 @@ class ASTVisitor(dpm_xlParserVisitor):
             is_group = True
         return self.create_var_id(
             ctx_list=ctx_list,
-            table=table_reference[1:],
+            table=self._strip_ref_code(table_reference[1:]),
             is_table_group=is_group,
         )
 
