@@ -28,6 +28,12 @@ from dpmcore.dpm_xl.ast.nodes import (
     VarRef,
     WhereClauseOp,
     WithExpression,
+    CountSetOp,
+    IntersectSetOp,
+    SetdiffOp,
+    SetOfOp,
+    SymdiffOp,
+    UnionSetOp,
 )
 from dpmcore.dpm_xl.ast.visitor import NodeVisitor
 
@@ -145,3 +151,25 @@ class ASTTemplate(NodeVisitor):
 
     def visit_TemporaryAssignment(self, node: TemporaryAssignment) -> None:
         self.visit(node.right)
+
+    def visit_SetOfOp(self, node: SetOfOp) -> None:
+        self.visit(node.operand)
+
+    def visit_UnionSetOp(self, node: UnionSetOp) -> None:
+        for operand in node.operands:
+            self.visit(operand)
+
+    def visit_IntersectSetOp(self, node: IntersectSetOp) -> None:
+        for operand in node.operands:
+            self.visit(operand)
+
+    def visit_SetdiffOp(self, node: SetdiffOp) -> None:
+        self.visit(node.left)
+        self.visit(node.right)
+
+    def visit_SymdiffOp(self, node: SymdiffOp) -> None:
+        self.visit(node.left)
+        self.visit(node.right)
+
+    def visit_CountSetOp(self, node: CountSetOp) -> None:
+        self.visit(node.operand)
