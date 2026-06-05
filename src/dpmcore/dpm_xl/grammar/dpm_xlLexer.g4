@@ -64,7 +64,14 @@ MAX:                            'max';
 MIN:                            'min';
 
 // Belonging
-IN:                     'in' -> pushMode(SET_OPERAND_MODE);
+IN:                     'in';
+
+// Set operators
+SET_OF:                 'set_of';
+UNION:                  'union';
+INTERSECT:              'intersect';
+SETDIFF:                'setdiff';
+SYMDIFF:                'symdiff';
 
 // Punctuation elements
 COMMA:                  ',';
@@ -195,6 +202,8 @@ SELECTION_MODE_COLON:        COLON -> type(COLON);
 SELECTION_MODE_LPAREN:                 LPAREN -> type(LPAREN);
 SELECTION_MODE_RPAREN:                 RPAREN -> type(RPAREN);
 
+SELECTION_MODE_SQUARE_BRACKET_LEFT:    SQUARE_BRACKET_LEFT -> type(SQUARE_BRACKET_LEFT), pushMode(CLAUSE_MODE);
+
 SELECTION_MODE_CURLY_BRACKET_RIGHT:    CURLY_BRACKET_RIGHT -> popMode, type(CURLY_BRACKET_RIGHT);
 
 INTERVAL: 'interval';
@@ -319,7 +328,7 @@ CLAUSE_MAX:                            'max' -> type(MAX);
 CLAUSE_MIN:                            'min' -> type(MIN);
 
 // Belonging
-CLAUSE_IN:                     'in' -> pushMode(SET_OPERAND_MODE), type(IN);
+CLAUSE_IN:                     'in' -> type(IN);
 
 // Punctuation elements
 CLAUSE_COMMA:                  ',' -> type(COMMA);
@@ -367,6 +376,13 @@ CLAUSE_DAY:                    'day' -> type(DAY);
 
 // Date constructor
 CLAUSE_DATE:                   'date' -> type(DATE);
+
+// Set operators
+CLAUSE_SET_OF:                 'set_of'    -> type(SET_OF);
+CLAUSE_UNION:                  'union'     -> type(UNION);
+CLAUSE_INTERSECT:              'intersect' -> type(INTERSECT);
+CLAUSE_SETDIFF:                'setdiff'   -> type(SETDIFF);
+CLAUSE_SYMDIFF:                'symdiff'   -> type(SYMDIFF);
 
 // String
 CLAUSE_LEN:                    'len' -> type(LEN);
