@@ -7,8 +7,8 @@ Backtick-escape lets codes contain characters that would otherwise conflict
 with the lexer (e.g. a code that starts with an underscore):
   t`_meta`  o`Op.1`  g`grp-1`
 
-VAR_REFERENCE (`v_`) retains its existing PreconditionItem semantics — only
-backtick support is added here.
+VAR_REFERENCE: `v_foo` and `vfoo` are equivalent (cosmetic underscore).
+Backtick escaping is also supported for all reference types.
 """
 
 import pytest
@@ -189,3 +189,26 @@ def test_var_backtick_produces_varref_with_stripped_code():
     node = svc.parse("{v`foo`}").children[0]
     assert isinstance(node, VarRef)
     assert node.variable == "foo"
+
+
+def test_operation_backtick_produces_same_varid_as_plain():
+    svc = SyntaxService()
+    plain = svc.parse("{oOp1, r010}")
+    backtick = svc.parse("{o`Op1`, r010}")
+
+    plain_node = plain.children[0]
+    backtick_node = backtick.children[0]
+
+    assert isinstance(plain_node, VarID)
+    assert isinstance(backtick_node, VarID)
+    assert plain_node.operation == backtick_node.operation
+
+
+def test_var_underscore_produces_same_varref_as_plain():
+    svc = SyntaxService()
+    plain = svc.parse("{vZ101}")
+    with_underscore = svc.parse("{v_Z101}")
+
+    assert isinstance(plain.children[0], VarRef)
+    assert isinstance(with_underscore.children[0], VarRef)
+    assert plain.children[0].variable == with_underscore.children[0].variable

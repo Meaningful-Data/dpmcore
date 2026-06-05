@@ -1,58 +1,45 @@
-"""Tests for precondition element parsing via the varRef grammar rule.
+"""Tests for variable references used as precondition elements.
 
-Precondition elements use the ``v_`` prefix (e.g. ``{v_Z101}``) and must
-produce a ``PreconditionItem`` AST node, while regular variable references
-(``{vMyVar}``) must continue to produce a ``VarRef`` node.
+Per spec, the ``v_`` underscore is purely cosmetic: ``{vZ101}`` and
+``{v_Z101}`` are identical and both produce a ``VarRef`` node.
+Codes with a leading underscore or a dash must use backtick-escaping.
 """
 
 import pytest
 
-from dpmcore.dpm_xl.ast.nodes import PreconditionItem, VarRef
+from dpmcore.dpm_xl.ast.nodes import VarRef
 from dpmcore.services.syntax import SyntaxService
 
-VALID_PRECONDITION_ELEMS = [
+VALID_VAR_REF_FORMS = [
     ("{v_Z101}", "Z101"),
     ("{v_SomeTable}", "SomeTable"),
-    ("{v_A}", "A"),  # single-letter code
-    (
-        "{v_Some-Table}",
-        "Some-Table",
-    ),  # dash in code (TABLE_CODE allows '-', VAR_CODE does not)
+    ("{v_A}", "A"),
+    ("{vZ101}", "Z101"),
+    ("{vSomeTable}", "SomeTable"),
 ]
 
-INVALID_PRECONDITION_FORMS = [
+INVALID_VAR_REF_FORMS = [
     "{v_}",  # bare prefix, no code
-    "{v_123}",  # code starts with digit, not a letter
-    "with {v_Z101}: {tT1, c0010}",  # v_ is not a valid cell ref for with-clause
-    "{v_Z101} <- 1",  # v_ cannot be the LHS of a persistent assignment
+    "{v_123}",  # code starts with digit
+    "{v_Some-Table}",  # dash not allowed in VAR_CODE — use backtick: v`Some-Table`
+    "with {v_Z101}: {tT1, c0010}",  # v not valid as cell ref in with-clause
+    "{v_Z101} <- 1",  # v cannot be LHS of persistent assignment
 ]
 
 
-@pytest.mark.parametrize(("expression", "code"), VALID_PRECONDITION_ELEMS)
-def test_valid_precondition_elem(expression, code):
-    """A v_ expression is accepted by the parser."""
+@pytest.mark.parametrize(("expression", "code"), VALID_VAR_REF_FORMS)
+def test_valid_var_ref_forms_accepted(expression, code):
     assert SyntaxService().is_valid(expression)
 
 
-@pytest.mark.parametrize(("expression", "code"), VALID_PRECONDITION_ELEMS)
-def test_precondition_elem_produces_precondition_item(expression, code):
-    """A v_ expression produces a PreconditionItem node with the correct code."""
+@pytest.mark.parametrize(("expression", "code"), VALID_VAR_REF_FORMS)
+def test_var_ref_produces_varref_node(expression, code):
     start = SyntaxService().parse(expression)
     node = start.children[0]
-    assert isinstance(node, PreconditionItem)
-    assert node.variable_id == code
-    assert node.variable_code == code
-
-
-def test_regular_var_ref():
-    """{vMyVar} parses to a VarRef node (not PreconditionItem)."""
-    start = SyntaxService().parse("{vMyVar}")
-    node = start.children[0]
     assert isinstance(node, VarRef)
-    assert node.variable == "MyVar"
+    assert node.variable == code
 
 
-@pytest.mark.parametrize("expression", INVALID_PRECONDITION_FORMS)
-def test_invalid_precondition_forms_are_rejected(expression):
-    """Malformed or context-invalid v_ expressions are rejected by the parser."""
+@pytest.mark.parametrize("expression", INVALID_VAR_REF_FORMS)
+def test_invalid_var_ref_forms_rejected(expression):
     assert not SyntaxService().is_valid(expression)
