@@ -203,7 +203,9 @@ class InputAnalyzer(ASTTemplate, ABC):
         )
         return cast(Operand, result)
 
-    def visit_VarRef(self, node: VarRef) -> Scalar:
+    def visit_VarRef(  # type: ignore[override]
+        self, node: VarRef
+    ) -> Scalar:
         type_ = ScalarFactory().scalar_factory(code="Boolean")
         label = cast(str, node.label)
         return Scalar(type_=type_, name=label, origin=label)

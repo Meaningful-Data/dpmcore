@@ -189,4 +189,3 @@ def test_var_backtick_produces_varref_with_stripped_code():
     node = svc.parse("{v`foo`}").children[0]
     assert isinstance(node, VarRef)
     assert node.variable == "foo"
-

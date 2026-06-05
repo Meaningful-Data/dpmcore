@@ -555,15 +555,12 @@ class ASTVisitor(dpm_xlParserVisitor):
 
     @staticmethod
     def _strip_ref_code(raw: str) -> str:
-        if raw.startswith("_"):
-            raw = raw[1:]
+        raw = raw.removeprefix("_")
         if raw.startswith("`") and raw.endswith("`"):
             raw = raw[1:-1]
         return raw
 
-    def visitVarRef(
-        self, ctx: dpm_xlParser.VarRefContext
-    ) -> VarRef:
+    def visitVarRef(self, ctx: dpm_xlParser.VarRefContext) -> VarRef:
         child = ctx.getChild(0)
         text = child.symbol.text
         return VarRef(variable=self._strip_ref_code(text[1:]))
