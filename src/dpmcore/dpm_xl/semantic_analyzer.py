@@ -649,9 +649,11 @@ class InputAnalyzer(ASTTemplate, ABC):
     def visit_SetOfOp(  # type: ignore[override]
         self, node: SetOfOp
     ) -> ScalarSet:
-        raise NotImplementedError(
-            "set_of semantic evaluation is not yet supported"
-        )
+        operand = self.visit(node.operand)
+        if not isinstance(operand, RecordSet):
+            raise errors.SemanticError("4-7-1", op="set_of")
+        fact_type = operand.get_fact_component().type
+        return ScalarSet(type_=fact_type, name=None, origin="set_of")
 
     def _visit_set_operands(self, operands: list[Any]) -> ScalarSet:
         """Validate that all operands are ScalarSet with a common type and return one."""
