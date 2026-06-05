@@ -32,8 +32,8 @@ def test_parameters_surfaced_on_result(memory_session):
     result = svc.validate("{p_a, number} > {p_b, number, default: 0}")
     assert result.is_valid, result.error_message
     assert result.parameters == (
-        ParameterInfo("a", "number", None),
-        ParameterInfo("b", "number", 0),
+        ParameterInfo("a", "Number", None),
+        ParameterInfo("b", "Number", 0),
     )
     # Also exposed on the service for downstream consumers.
     assert svc.oc_parameters == result.parameters
@@ -43,14 +43,14 @@ def test_duplicate_parameter_deduped(memory_session):
     svc = SemanticService(memory_session)
     result = svc.validate("{p_x, number} > {p_x, number}")
     assert result.is_valid, result.error_message
-    assert result.parameters == (ParameterInfo("x", "number", None),)
+    assert result.parameters == (ParameterInfo("x", "Number", None),)
 
 
 def test_set_parameter_in_membership(memory_session):
     svc = SemanticService(memory_session)
     result = svc.validate("1 in {p_ccys, set-number}")
     assert result.is_valid, result.error_message
-    assert result.parameters == (ParameterInfo("ccys", "set-number", None),)
+    assert result.parameters == (ParameterInfo("ccys", "SetNumber", None),)
 
 
 def test_conflicting_parameter_types_in_one_expression_invalid(memory_session):
@@ -92,8 +92,8 @@ def test_get_parameters_facade(memory_session):
         "{p_a, integer, default: 0} > {p_b, number}"
     )
     assert params == (
-        ParameterInfo("a", "integer", 0),
-        ParameterInfo("b", "number", None),
+        ParameterInfo("a", "Integer", 0),
+        ParameterInfo("b", "Number", None),
     )
 
 
@@ -105,7 +105,7 @@ def test_parameter_alongside_real_table(fixture_session):
         release_code="4.2.1",
     )
     assert result.is_valid, result.error_message
-    assert ParameterInfo("threshold", "number", 0) in result.parameters
+    assert ParameterInfo("threshold", "Number", 0) in result.parameters
 
 
 def test_validate_defaults_to_latest_release(fixture_session):
