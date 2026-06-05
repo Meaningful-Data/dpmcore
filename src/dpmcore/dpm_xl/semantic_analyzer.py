@@ -470,7 +470,12 @@ class InputAnalyzer(ASTTemplate, ABC):
                 cast(str, child.type) for child in constant_children
             }
             if len(types) > 1:
-                raise errors.SemanticError("11", types=", ".join(types))
+                raise errors.SemanticError(
+                    "3-3",
+                    type_1=", ".join(types),
+                    type_op="homogeneous scalar type",
+                    origin="set literal",
+                )
             common_type_code = types.pop()
             origin_elements = [str(child.value) for child in constant_children]
         else:
@@ -661,12 +666,22 @@ class InputAnalyzer(ASTTemplate, ABC):
         for op in operands:
             result = self.visit(op)
             if not isinstance(result, ScalarSet):
-                raise errors.SemanticError("11", types=type(result).__name__)
+                raise errors.SemanticError(
+                    "3-3",
+                    type_1=type(result).__name__,
+                    type_op="ScalarSet",
+                    origin="set operator",
+                )
             symbols.append(result)
         types = {sym.type.__class__ for sym in symbols}
         if len(types) > 1:
             type_names = ", ".join(t.__name__ for t in types)
-            raise errors.SemanticError("11", types=type_names)
+            raise errors.SemanticError(
+                "3-3",
+                type_1=type_names,
+                type_op="homogeneous scalar type",
+                origin="set operator",
+            )
         return symbols[0]
 
     def visit_UnionSetOp(  # type: ignore[override]
@@ -694,5 +709,10 @@ class InputAnalyzer(ASTTemplate, ABC):
     ) -> Scalar:
         operand = self.visit(node.operand)
         if not isinstance(operand, ScalarSet):
-            raise errors.SemanticError("11", types=type(operand).__name__)
+            raise errors.SemanticError(
+                "3-3",
+                type_1=type(operand).__name__,
+                type_op="ScalarSet",
+                origin="count",
+            )
         return Scalar(type_=Integer(), name=None, origin="count")
