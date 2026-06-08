@@ -18,33 +18,40 @@ from dpmcore.dpm_xl.ast.nodes import (
     AST,
     AggregationOp,
     AnalyticClause,
+    AnnualiseOp,
     BinOp,
     ComplexNumericOp,
     CondExpr,
     Constant,
+    CountSetOp,
     DateConstructorOp,
     Dimension,
     FilterOp,
     GetOp,
     GroupingClause,
+    IntersectSetOp,
     OperationRef,
     OrderItem,
+    ParameterRef,
     ParExpr,
     PersistentAssignment,
-    PreconditionItem,
     PropertyReference,
     RankOp,
     RenameNode,
     RenameOp,
     Scalar,
     Set,
+    SetdiffOp,
+    SetOfOp,
     Start,
     SubAssignment,
     SubOp,
+    SymdiffOp,
     TemporaryAssignment,
     TemporaryIdentifier,
     TimeShiftOp,
     UnaryOp,
+    UnionSetOp,
     VarID,
     VarRef,
     WhereClauseOp,
@@ -64,6 +71,22 @@ def _strip_backticks(text: str) -> str:
     if len(text) >= 2 and text.startswith("`") and text.endswith("`"):
         return text[1:-1]
     return text
+
+
+def _parameter_code(text: str) -> str:
+    """Strip the parameter prefix from a ``PARAMETER_REFERENCE`` token.
+
+    The leading ``p`` is always dropped. A single following ``_`` is a cosmetic
+    separator (``p_threshold`` -> ``threshold``, ``pthreshold`` -> ``threshold``);
+    a backtick-escaped code keeps its inner text verbatim
+    (``p`_legacy``` -> ``_legacy``).
+    """
+    remainder = text[1:]
+    if remainder.startswith("`"):
+        return _strip_backticks(remainder)
+    if remainder.startswith("_"):
+        return remainder[1:]
+    return remainder
 
 
 class ASTVisitor(dpm_xlParserVisitor):
@@ -451,6 +474,17 @@ class ASTVisitor(dpm_xlParserVisitor):
             shift_number=shift_number,
         )
 
+    def visitAnnualiseFunction(
+        self, ctx: dpm_xlParser.AnnualiseFunctionContext
+    ) -> AnnualiseOp:
+        ctx_list = list(ctx.getChildren())
+        # ANNUALISE ( op , fyEnd , var )
+        #     0     1  2 3   4   5  6  7
+        operand: AST = self._visit(ctx_list[2])
+        fy_end: AST = self._visit(ctx_list[4])
+        component: str = self._visit(ctx_list[6])
+        return AnnualiseOp(operand=operand, fy_end=fy_end, component=component)
+
     def visitDateExtractFunction(
         self, ctx: dpm_xlParser.DateExtractFunctionContext
     ) -> UnaryOp:
@@ -554,6 +588,25 @@ class ASTVisitor(dpm_xlParserVisitor):
     def visitSelect(self, ctx: dpm_xlParser.SelectContext) -> AST:
         return cast(AST, self._visit(ctx.getChild(1)))
 
+    def visitParameterRef(
+        self, ctx: dpm_xlParser.ParameterRefContext
+    ) -> ParameterRef:
+        ctx_list = list(ctx.getChildren())
+        code = _parameter_code(self._symbol_text(ctx_list[0]))
+        # parameterType holds a single keyword terminal (e.g. ``number`` or
+        # ``set-item``); the grammar restricts it to the 12 supported types.
+        # ``is_set`` is derived from this keyword on the node itself.
+        param_type = self._symbol_text(ctx_list[2].getChild(0))
+        default: AST | None = None
+        for child in ctx_list:
+            if isinstance(child, dpm_xlParser.DefaultContext):
+                default = self.visitDefault(child)
+        return ParameterRef(
+            code=code,
+            param_type=param_type,
+            default=default,
+        )
+
     def visitComparisonOperators(
         self, ctx: dpm_xlParser.ComparisonOperatorsContext
     ) -> str:
@@ -590,13 +643,84 @@ class ASTVisitor(dpm_xlParserVisitor):
     def visitSetOperand(self, ctx: dpm_xlParser.SetOperandContext) -> AST:
         return cast(AST, self._visit(ctx.getChild(1)))
 
-    def visitSetElements(self, ctx: dpm_xlParser.SetElementsContext) -> Set:
+    def visitSetElements(
+        self, ctx: dpm_xlParser.SetElementsContext
+    ) -> Set | ParameterRef:
         ctx_list = list(ctx.getChildren())
         set_elements: list[AST] = []
         for child in ctx_list:
             if not isinstance(child, TerminalNodeImpl):
                 set_elements.append(self._visit(child))
+        # A set parameter used as the RHS of ``in`` is a single ParameterRef,
+        # not a literal/item set — return it bare so the semantic pass turns it
+        # into a ScalarSet (visit_Set only handles Constant/Scalar children).
+        if len(set_elements) == 1 and isinstance(
+            set_elements[0], ParameterRef
+        ):
+            return set_elements[0]
         return Set(children=set_elements)
+
+    def visitSetLiteralExpr(
+        self, ctx: dpm_xlParser.SetLiteralExprContext
+    ) -> AST:
+        return cast(AST, self._visit(ctx.getChild(0)))
+
+    def visitSetOfExpr(self, ctx: dpm_xlParser.SetOfExprContext) -> SetOfOp:
+        return SetOfOp(operand=self._visit(ctx.getChild(2)))
+
+    def visitUnionSetExpr(
+        self, ctx: dpm_xlParser.UnionSetExprContext
+    ) -> UnionSetOp:
+        operands = [
+            self._visit(child)
+            for child in ctx.getChildren()
+            if isinstance(child, dpm_xlParser.SetExpressionContext)
+        ]
+        return UnionSetOp(operands=operands)
+
+    def visitIntersectSetExpr(
+        self, ctx: dpm_xlParser.IntersectSetExprContext
+    ) -> IntersectSetOp:
+        operands = [
+            self._visit(child)
+            for child in ctx.getChildren()
+            if isinstance(child, dpm_xlParser.SetExpressionContext)
+        ]
+        return IntersectSetOp(operands=operands)
+
+    def visitSetdiffSetExpr(
+        self, ctx: dpm_xlParser.SetdiffSetExprContext
+    ) -> SetdiffOp:
+        set_exprs = [
+            child
+            for child in ctx.getChildren()
+            if isinstance(child, dpm_xlParser.SetExpressionContext)
+        ]
+        return SetdiffOp(
+            left=self._visit(set_exprs[0]), right=self._visit(set_exprs[1])
+        )
+
+    def visitSymdiffSetExpr(
+        self, ctx: dpm_xlParser.SymdiffSetExprContext
+    ) -> SymdiffOp:
+        set_exprs = [
+            child
+            for child in ctx.getChildren()
+            if isinstance(child, dpm_xlParser.SetExpressionContext)
+        ]
+        return SymdiffOp(
+            left=self._visit(set_exprs[0]), right=self._visit(set_exprs[1])
+        )
+
+    def visitSubcategorySelectExpr(
+        self, ctx: dpm_xlParser.SubcategorySelectExprContext
+    ) -> AST:
+        return cast(AST, self._visit(ctx.getChild(0)))
+
+    def visitCountSetOp(
+        self, ctx: dpm_xlParser.CountSetOpContext
+    ) -> CountSetOp:
+        return CountSetOp(operand=self._visit(ctx.getChild(2)))
 
     def visitItemReference(
         self, ctx: dpm_xlParser.ItemReferenceContext
@@ -672,15 +796,17 @@ class ASTVisitor(dpm_xlParserVisitor):
         else:
             raise NotImplementedError
 
-    def visitVarRef(
-        self, ctx: dpm_xlParser.VarRefContext
-    ) -> VarRef | PreconditionItem:
+    @staticmethod
+    def _strip_ref_code(raw: str) -> str:
+        raw = raw.removeprefix("_")
+        if raw.startswith("`") and raw.endswith("`"):
+            raw = raw[1:-1]
+        return raw
+
+    def visitVarRef(self, ctx: dpm_xlParser.VarRefContext) -> VarRef:
         child = ctx.getChild(0)
         text = child.symbol.text
-        if text.startswith("v_"):
-            code = text[2:]
-            return PreconditionItem(variable_id=code, variable_code=code)
-        return VarRef(variable=text[1:])
+        return VarRef(variable=self._strip_ref_code(text[1:]))
 
     def visitCellRef(self, ctx: dpm_xlParser.CellRefContext) -> VarID | None:
         ctx_list = list(ctx.getChildren())
@@ -706,7 +832,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         self, ctx: dpm_xlParser.OperationRefContext
     ) -> OperationRef:
         child = ctx.getChild(0)
-        operation_code = child.symbol.text[1:]
+        operation_code = self._strip_ref_code(child.symbol.text[1:])
         return OperationRef(operation_code=operation_code)
 
     def create_var_id(
@@ -762,7 +888,7 @@ class ASTVisitor(dpm_xlParserVisitor):
             is_group = True
         return self.create_var_id(
             ctx_list=ctx_list,
-            table=table_reference[1:],
+            table=self._strip_ref_code(table_reference[1:]),
             is_table_group=is_group,
         )
 
@@ -831,14 +957,18 @@ class ASTVisitor(dpm_xlParserVisitor):
             interval = False
         return interval
 
-    def visitDefault(self, ctx: dpm_xlParser.DefaultContext) -> Constant:
+    def visitDefault(self, ctx: dpm_xlParser.DefaultContext) -> AST:
         third = ctx.getChild(2)
-        if isinstance(third, TerminalNodeImpl) and third.symbol.text == "null":
+        # DEFAULT COLON NULL_LITERAL — the only terminal at this position.
+        if isinstance(third, TerminalNodeImpl):
             return Constant(type_="Null", value=None)
-        default_value: Constant = self.visitLiteral(
-            cast(dpm_xlParser.LiteralContext, third)
-        )
-        return default_value
+        # Item-typed parameter default: ``default: [ns:code]``.
+        if isinstance(third, dpm_xlParser.ItemReferenceContext):
+            return self.visitItemReference(third)
+        # Set-typed parameter default: ``default: { ... }``.
+        if isinstance(third, dpm_xlParser.SetOperandContext):
+            return self.visitSetOperand(third)
+        return self.visitLiteral(cast(dpm_xlParser.LiteralContext, third))
 
     def visitRowElem(self, ctx: dpm_xlParser.RowElemContext) -> str:
         return self.process_cell_element(ctx)

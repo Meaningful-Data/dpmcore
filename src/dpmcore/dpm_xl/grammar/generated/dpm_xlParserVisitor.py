@@ -149,6 +149,41 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by dpm_xlParser#setLiteralExpr.
+    def visitSetLiteralExpr(self, ctx:dpm_xlParser.SetLiteralExprContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#setOfExpr.
+    def visitSetOfExpr(self, ctx:dpm_xlParser.SetOfExprContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#unionSetExpr.
+    def visitUnionSetExpr(self, ctx:dpm_xlParser.UnionSetExprContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#intersectSetExpr.
+    def visitIntersectSetExpr(self, ctx:dpm_xlParser.IntersectSetExprContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#setdiffSetExpr.
+    def visitSetdiffSetExpr(self, ctx:dpm_xlParser.SetdiffSetExprContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#symdiffSetExpr.
+    def visitSymdiffSetExpr(self, ctx:dpm_xlParser.SymdiffSetExprContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#subcategorySelectExpr.
+    def visitSubcategorySelectExpr(self, ctx:dpm_xlParser.SubcategorySelectExprContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by dpm_xlParser#aggregateFunctions.
     def visitAggregateFunctions(self, ctx:dpm_xlParser.AggregateFunctionsContext):
         return self.visitChildren(ctx)
@@ -219,6 +254,11 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by dpm_xlParser#annualiseFunction.
+    def visitAnnualiseFunction(self, ctx:dpm_xlParser.AnnualiseFunctionContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by dpm_xlParser#dateExtractFunction.
     def visitDateExtractFunction(self, ctx:dpm_xlParser.DateExtractFunctionContext):
         return self.visitChildren(ctx)
@@ -246,6 +286,11 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by dpm_xlParser#rankOp.
     def visitRankOp(self, ctx:dpm_xlParser.RankOpContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#countSetOp.
+    def visitCountSetOp(self, ctx:dpm_xlParser.CountSetOpContext):
         return self.visitChildren(ctx)
 
 
@@ -366,6 +411,16 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by dpm_xlParser#selectOperand.
     def visitSelectOperand(self, ctx:dpm_xlParser.SelectOperandContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#parameterRef.
+    def visitParameterRef(self, ctx:dpm_xlParser.ParameterRefContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#parameterType.
+    def visitParameterType(self, ctx:dpm_xlParser.ParameterTypeContext):
         return self.visitChildren(ctx)
 
 

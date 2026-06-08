@@ -52,8 +52,16 @@ RANK = "rank"
 LENGTH = "len"
 CONCATENATE = "&"
 
+# Set operators
+SET_OF = "set_of"
+UNION = "union"
+INTERSECT = "intersect"
+SETDIFF = "setdiff"
+SYMDIFF = "symdiff"
+
 # Time operators
 TIME_SHIFT = "time_shift"
+ANNUALISE = "annualise"
 YEAR = "year"
 SEMESTER = "semester"
 QUARTER = "quarter"

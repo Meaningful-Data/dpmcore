@@ -6,15 +6,19 @@ import pandas as pd
 from dpmcore import errors
 from dpmcore.dpm_xl.ast.nodes import (
     AggregationOp,
+    AnnualiseOp,
     BinOp,
     ComplexNumericOp,
     CondExpr,
     Constant,
+    CountSetOp,
     DateConstructorOp,
     Dimension,
     FilterOp,
     GetOp,
+    IntersectSetOp,
     OperationRef,
+    ParameterRef,
     ParExpr,
     PersistentAssignment,
     PreconditionItem,
@@ -22,11 +26,15 @@ from dpmcore.dpm_xl.ast.nodes import (
     RankOp,
     RenameOp,
     Set,
+    SetdiffOp,
+    SetOfOp,
     Start,
     SubOp,
+    SymdiffOp,
     TemporaryAssignment,
     TimeShiftOp,
     UnaryOp,
+    UnionSetOp,
     VarID,
     VarRef,
     WhereClauseOp,
@@ -70,6 +78,7 @@ from dpmcore.dpm_xl.utils.operator_mapping import (
     UNARY_OP_MAPPING,
 )
 from dpmcore.dpm_xl.utils.tokens import (
+    ANNUALISE,
     DATE,
     DPM,
     FILTER,
@@ -83,6 +92,18 @@ from dpmcore.dpm_xl.utils.tokens import (
 )
 from dpmcore.dpm_xl.warning_collector import add_semantic_warning
 from dpmcore.errors import SemanticError
+
+# Maps a (scalar) parameter type keyword to its ScalarFactory type name. The
+# ``set-*`` variants reuse these via their element keyword (``set-item`` ->
+# ``item``). The grammar restricts parameter types to exactly these keywords.
+_PARAMETER_SCALAR_TYPES: dict[str, str] = {
+    "number": "Number",
+    "integer": "Integer",
+    "string": "String",
+    "date": "Date",
+    "boolean": "Boolean",
+    "item": "Item",
+}
 
 
 class InputAnalyzer(ASTTemplate, ABC):
@@ -205,8 +226,12 @@ class InputAnalyzer(ASTTemplate, ABC):
         )
         return cast(Operand, result)
 
-    def visit_VarRef(self, node: VarRef) -> None:
-        raise SemanticError("7-2")
+    def visit_VarRef(  # type: ignore[override]
+        self, node: VarRef
+    ) -> Scalar:
+        type_ = ScalarFactory().scalar_factory(code="Boolean")
+        label = cast(str, node.label)
+        return Scalar(type_=type_, name=label, origin=label)
 
     def visit_PropertyReference(self, node: PropertyReference) -> None:
         raise SemanticError("7-1")
@@ -246,6 +271,16 @@ class InputAnalyzer(ASTTemplate, ABC):
         # node.type is ScalarType | None on AST base but ``visit_VarID`` is only
         # reached after operand checks populate it; same for label/table.
         node_type = cast(ScalarType, node.type)
+        # A cell reference shares the grammar's ``default`` rule with parameter
+        # references, so a set default (``default: {...}``) parses here too.
+        # Set defaults are not supported on any selection: reject with the same
+        # meaningful 3-9. Item/literal/null defaults stay valid below.
+        # A single-element set default (``default: {p_x, number}``) is unwrapped
+        # to a bare ``ParameterRef`` by ``visitSetElements``, so guard both shapes.
+        if isinstance(node.default, (Set, ParameterRef)):
+            raise errors.SemanticError(
+                "3-9", reference=f"cell selection {node.table or node.label}"
+            )
         self.__check_default_value(node.default, node_type)
 
         table_code = cast(str, node.table)
@@ -491,7 +526,12 @@ class InputAnalyzer(ASTTemplate, ABC):
                 cast(str, child.type) for child in constant_children
             }
             if len(types) > 1:
-                raise errors.SemanticError("11", types=", ".join(types))
+                raise errors.SemanticError(
+                    "3-3",
+                    type_1=", ".join(types),
+                    type_op="homogeneous scalar type",
+                    origin="set literal",
+                )
             common_type_code = types.pop()
             origin_elements = [str(child.value) for child in constant_children]
         else:
@@ -514,6 +554,83 @@ class InputAnalyzer(ASTTemplate, ABC):
     ) -> Scalar:
         type_ = ScalarFactory().scalar_factory(node.scalar_type)
         return Scalar(type_=type_, origin=node.item, name=None)
+
+    def visit_ParameterRef(  # type: ignore[override]
+        self, node: ParameterRef
+    ) -> Operand:
+        element_keyword = (
+            node.param_type[len("set-") :] if node.is_set else node.param_type
+        )
+        element_type = ScalarFactory().scalar_factory(
+            code=_PARAMETER_SCALAR_TYPES[element_keyword]
+        )
+        self.__check_parameter_default(node, element_keyword, element_type)
+        if node.is_set:
+            return ScalarSet(type_=element_type, name=None, origin=node.code)
+        return Scalar(type_=element_type, name=None, origin=node.code)
+
+    def __check_parameter_default(
+        self,
+        node: ParameterRef,
+        element_keyword: str,
+        element_type: ScalarType,
+    ) -> None:
+        default = node.default
+        if default is None:
+            return
+        # Explicit null is always accepted (the implicit default is null too).
+        if isinstance(default, Constant) and default.type == "Null":
+            return
+        if node.is_set:
+            # A set-typed parameter takes a set default (``default: {...}``)
+            # whose elements each match the declared element type, per the
+            # DPM-XL spec. (A set default on a *cell* selection is a different
+            # rule and stays rejected with 3-9 in ``visit_VarID``.)
+            self.__check_set_parameter_default(
+                default, element_keyword, element_type, node.param_type
+            )
+            return
+        self.__check_scalar_parameter_default(
+            default, element_keyword, element_type, node.param_type
+        )
+
+    def __check_set_parameter_default(
+        self,
+        default: Any,
+        element_keyword: str,
+        element_type: ScalarType,
+        declared_type: str,
+    ) -> None:
+        # A set-typed default must be a literal set; each element is then
+        # validated like a scalar default of the element type. A single
+        # parameter ref (``default: {p_x, number}``) is unwrapped to a bare
+        # ``ParameterRef`` by the constructor, so it is not a ``Set`` and is
+        # rejected here as incompatible with the declared type.
+        if not isinstance(default, Set):
+            raise SemanticError("3-7", declared_type=declared_type)
+        for element in default.children:
+            self.__check_scalar_parameter_default(
+                element, element_keyword, element_type, declared_type
+            )
+
+    def __check_scalar_parameter_default(
+        self,
+        default: Any,
+        element_keyword: str,
+        element_type: ScalarType,
+        declared_type: str,
+    ) -> None:
+        if element_keyword == "item":
+            if not (
+                isinstance(default, ScalarNode)
+                and default.scalar_type == "Item"
+            ):
+                raise SemanticError("3-7", declared_type=declared_type)
+            return
+        # number / integer / string / date / boolean: a compatible literal.
+        if not isinstance(default, Constant):
+            raise SemanticError("3-7", declared_type=declared_type)
+        self.__check_default_value(default, element_type)
 
     def visit_ComplexNumericOp(  # type: ignore[override]
         self, node: ComplexNumericOp
@@ -560,6 +677,32 @@ class InputAnalyzer(ASTTemplate, ABC):
             shift_number=shift_number,
         )
         return result
+
+    def visit_AnnualiseOp(  # type: ignore[override]
+        self, node: AnnualiseOp
+    ) -> Operand:
+        fy_end_sym = self.visit(node.fy_end)
+        if not isinstance(
+            fy_end_sym, (Scalar, ConstantOperand)
+        ) or not isinstance(fy_end_sym.type, Integer):
+            raise errors.SemanticError("4-7-4")
+
+        fy_end_value = (
+            int(node.fy_end.value)
+            if isinstance(node.fy_end, Constant)
+            else None
+        )
+
+        operand = self.visit(node.operand)
+        if not isinstance(operand, (RecordSet, Scalar, ConstantOperand)):
+            raise errors.SemanticError("4-7-1", op=ANNUALISE)
+
+        result = cast(Any, TIME_OPERATORS[ANNUALISE]).validate(
+            operand=operand,
+            component_name=node.component,
+            fy_end=fy_end_value,
+        )
+        return cast(Operand, result)
 
     def visit_DateConstructorOp(  # type: ignore[override]
         self, node: DateConstructorOp
@@ -666,3 +809,69 @@ class InputAnalyzer(ASTTemplate, ABC):
         self, node: WithExpression
     ) -> Operand:
         return cast(Operand, self.visit(node.expression))
+
+    def visit_SetOfOp(  # type: ignore[override]
+        self, node: SetOfOp
+    ) -> ScalarSet:
+        operand = self.visit(node.operand)
+        if not isinstance(operand, RecordSet):
+            raise errors.SemanticError("4-7-1", op="set_of")
+        fact_type = operand.get_fact_component().type
+        return ScalarSet(type_=fact_type, name=None, origin="set_of")
+
+    def _visit_set_operands(self, operands: list[Any]) -> ScalarSet:
+        """Validate that all operands are ScalarSet with a common type and return one."""
+        symbols: list[ScalarSet] = []
+        for op in operands:
+            result = self.visit(op)
+            if not isinstance(result, ScalarSet):
+                raise errors.SemanticError(
+                    "3-3",
+                    type_1=type(result).__name__,
+                    type_op="ScalarSet",
+                    origin="set operator",
+                )
+            symbols.append(result)
+        types = {sym.type.__class__ for sym in symbols}
+        if len(types) > 1:
+            type_names = ", ".join(t.__name__ for t in types)
+            raise errors.SemanticError(
+                "3-3",
+                type_1=type_names,
+                type_op="homogeneous scalar type",
+                origin="set operator",
+            )
+        return symbols[0]
+
+    def visit_UnionSetOp(  # type: ignore[override]
+        self, node: UnionSetOp
+    ) -> ScalarSet:
+        return self._visit_set_operands(node.operands)
+
+    def visit_IntersectSetOp(  # type: ignore[override]
+        self, node: IntersectSetOp
+    ) -> ScalarSet:
+        return self._visit_set_operands(node.operands)
+
+    def visit_SetdiffOp(  # type: ignore[override]
+        self, node: SetdiffOp
+    ) -> ScalarSet:
+        return self._visit_set_operands([node.left, node.right])
+
+    def visit_SymdiffOp(  # type: ignore[override]
+        self, node: SymdiffOp
+    ) -> ScalarSet:
+        return self._visit_set_operands([node.left, node.right])
+
+    def visit_CountSetOp(  # type: ignore[override]
+        self, node: CountSetOp
+    ) -> Scalar:
+        operand = self.visit(node.operand)
+        if not isinstance(operand, ScalarSet):
+            raise errors.SemanticError(
+                "3-3",
+                type_1=type(operand).__name__,
+                type_op="ScalarSet",
+                origin="count",
+            )
+        return Scalar(type_=Integer(), name=None, origin="count")

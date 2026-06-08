@@ -796,6 +796,41 @@ class TimeShiftOp(AST):
         }
 
 
+class AnnualiseOp(AST):
+    """AST node for the annualise(op, fyEnd, var) operator.
+
+    :parameter operand: Recordset or Scalar of numeric type to annualise.
+    :parameter fy_end: Integer expression — month code (1-12) of financial year end.
+    :parameter component: Property code of the Date-type component of op.
+    """
+
+    def __init__(self, operand: "AST", fy_end: "AST", component: str) -> None:
+        super().__init__()
+        self.op: str = "annualise"
+        self.operand: "AST" = operand
+        self.fy_end: "AST" = fy_end
+        self.component: str = component
+
+    def __str__(self) -> str:
+        return "<AST(name='{name}', operand={operand}, fy_end={fy_end}, component={component})>".format(
+            name=self.__class__.__name__,
+            operand=self.operand,
+            fy_end=self.fy_end,
+            component=self.component,
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> "dict[str, Any]":
+        return {
+            "class_name": self.__class__.__name__,
+            "op": self.op,
+            "operand": self.operand,
+            "fy_end": self.fy_end,
+            "component": self.component,
+        }
+
+
 class DateConstructorOp(AST):
     """AST node for the date(year, month, day) constructor operator.
 
@@ -1141,3 +1176,258 @@ class TemporaryIdentifier(AST):
 
     def toJSON(self) -> dict[str, Any]:
         return {"class_name": self.__class__.__name__, "value": self.value}
+
+
+class SetOfOp(AST):
+    """AST node for set_of(expression), projects a Recordset's fact values to a ScalarSet."""
+
+    def __init__(self, operand: AST) -> None:
+        super().__init__()
+        self.op: str = "set_of"
+        self.operand: AST = operand
+
+    def __str__(self) -> str:
+        return "<AST(name='{name}', operand={operand})>".format(
+            name=self.__class__.__name__, operand=self.operand
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "op": self.op,
+            "operand": self.operand,
+        }
+
+
+class UnionSetOp(AST):
+    """AST node for union(s1, s2, …), variadic set union."""
+
+    def __init__(self, operands: list[AST]) -> None:
+        super().__init__()
+        self.op: str = "union"
+        self.operands: list[AST] = operands
+
+    def __str__(self) -> str:
+        return "<AST(name='{name}', op='{op}', operands={operands})>".format(
+            name=self.__class__.__name__, op=self.op, operands=self.operands
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "op": self.op,
+            "operands": self.operands,
+        }
+
+
+class IntersectSetOp(AST):
+    """AST node for intersect(s1, s2, …), variadic set intersection."""
+
+    def __init__(self, operands: list[AST]) -> None:
+        super().__init__()
+        self.op: str = "intersect"
+        self.operands: list[AST] = operands
+
+    def __str__(self) -> str:
+        return "<AST(name='{name}', op='{op}', operands={operands})>".format(
+            name=self.__class__.__name__, op=self.op, operands=self.operands
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "op": self.op,
+            "operands": self.operands,
+        }
+
+
+class SetdiffOp(AST):
+    """AST node for setdiff(left, right), elements in left that are not in right."""
+
+    def __init__(self, left: AST, right: AST) -> None:
+        super().__init__()
+        self.op: str = "setdiff"
+        self.left: AST = left
+        self.right: AST = right
+
+    def __str__(self) -> str:
+        return "<AST(name='{name}', op='{op}', left={left}, right={right})>".format(
+            name=self.__class__.__name__,
+            op=self.op,
+            left=self.left,
+            right=self.right,
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "op": self.op,
+            "left": self.left,
+            "right": self.right,
+        }
+
+
+class SymdiffOp(AST):
+    """AST node for symdiff(left, right), elements in exactly one of left or right."""
+
+    def __init__(self, left: AST, right: AST) -> None:
+        super().__init__()
+        self.op: str = "symdiff"
+        self.left: AST = left
+        self.right: AST = right
+
+    def __str__(self) -> str:
+        return "<AST(name='{name}', op='{op}', left={left}, right={right})>".format(
+            name=self.__class__.__name__,
+            op=self.op,
+            left=self.left,
+            right=self.right,
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "op": self.op,
+            "left": self.left,
+            "right": self.right,
+        }
+
+
+class CountSetOp(AST):
+    """AST node for count(setExpression), cardinality of a ScalarSet."""
+
+    def __init__(self, operand: AST) -> None:
+        super().__init__()
+        self.op: str = "count"
+        self.operand: AST = operand
+
+    def __str__(self) -> str:
+        return "<AST(name='{name}', operand={operand})>".format(
+            name=self.__class__.__name__, operand=self.operand
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "op": self.op,
+            "operand": self.operand,
+        }
+
+
+class ParameterRef(AST):
+    """AST object for a Parameter Selection (``{p_code, type [, default]}``).
+
+    A parameter is an execution-time input supplied to an Operation at runtime;
+    it is not a DPM entity, so its data type is declared inline rather than
+    resolved from the database.
+
+    :parameter code: Parameter code (the ``p``/``p_``/backtick prefix stripped).
+    :parameter param_type: Declared type keyword, e.g. ``"number"`` or
+        ``"set-item"`` (the full keyword, including the ``set-`` prefix).
+    :parameter default: Declared default as an AST node (``Constant``/``Scalar``/
+        ``Set``) or ``None`` when omitted (implicit ``null``).
+
+    ``is_set`` is a derived property (``set-*`` prefix of ``param_type``), not a
+    stored field, so there is one source of truth for set-ness.
+    """
+
+    def __init__(
+        self,
+        code: str,
+        param_type: str,
+        default: "AST | None" = None,
+    ) -> None:
+        super().__init__()
+        self.code = code
+        self.param_type = param_type
+        self.default = default
+
+    @property
+    def is_set(self) -> bool:
+        """``True`` for the ``set-*`` variants (derived from ``param_type``)."""
+        return self.param_type.startswith("set-")
+
+    def __str__(self) -> str:
+        return (
+            "<AST(name='{name}', code='{code}', param_type='{param_type}', "
+            "is_set={is_set}, default={default})>".format(
+                name=self.__class__.__name__,
+                code=self.code,
+                param_type=self.param_type,
+                is_set=self.is_set,
+                default=self.default,
+            )
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        # ``is_set`` is not serialised (derivable from the ``set-`` prefix).
+        # ``param_type`` is emitted in the engine's canonical PascalCase
+        # (``number`` -> ``Number``). ``default`` IS serialised: it is the
+        # per-reference fallback carried on the node (it has no home in the flat
+        # ``{code: type}`` parameters meta-dictionary, which stays type-only).
+        return {
+            "class_name": self.__class__.__name__,
+            "code": self.code,
+            "param_type": canonical_param_type(self.param_type),
+            "default": parameter_default_value(self.default),
+        }
+
+
+# Grammar parameter-type keyword -> engine canonical (PascalCase) scalar name.
+_CANONICAL_PARAM_SCALAR = {
+    "number": "Number",
+    "integer": "Integer",
+    "string": "String",
+    "date": "Date",
+    "boolean": "Boolean",
+    "item": "Item",
+}
+
+
+def canonical_param_type(param_type: str) -> str:
+    """Map a grammar parameter-type keyword to the engine's canonical name.
+
+    The engine names scalar types in PascalCase (``Number``, ``Integer``, …),
+    so a parameter's declared type is surfaced that way: ``number`` -> ``Number``.
+    Set variants become ``Set`` + the PascalCase element, with no separator:
+    ``set-number`` -> ``SetNumber``. Idempotent — applying it to an
+    already-canonical value is a no-op.
+    """
+    if param_type.startswith("set-"):
+        element = param_type[len("set-") :]
+        return "Set" + _CANONICAL_PARAM_SCALAR.get(element, element)
+    return _CANONICAL_PARAM_SCALAR.get(param_type, param_type)
+
+
+def parameter_default_value(default: "AST | None") -> Any:
+    """Reduce a parameter ``default`` AST node to a JSON-friendly value.
+
+    Used by both the serialization layer and the service surface so the
+    reported default is a single, consistent representation:
+    ``None`` for an omitted/``null`` default, the literal value for a
+    ``Constant``, the item signature for an item ``Scalar``, and a list of the
+    above for a ``Set``.
+    """
+    if default is None:
+        return None
+    if isinstance(default, Constant):
+        return None if default.type == "Null" else default.value
+    if isinstance(default, Scalar):
+        return default.item
+    if isinstance(default, Set):
+        return [parameter_default_value(child) for child in default.children]
+    return None
