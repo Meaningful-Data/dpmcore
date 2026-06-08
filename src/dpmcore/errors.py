@@ -191,9 +191,6 @@ centralised_messages: Dict[str, str] = {
         "analytical invocation: a window clause requires an order by clause."
     ),
     "4-4-0-6": ("rank operator does not accept a window clause."),
-    "4-4-0-7": (
-        "window boundary offset must be a non-negative integer, got {n}."
-    ),
     # - Clause Operators
     "4-5-0-1": (
         "On recordset {recordset}: clause operators"

@@ -341,8 +341,6 @@ class ASTVisitor(dpm_xlParserVisitor):
         else:
             # INTEGER_LITERAL n preceding|following
             n = int(first)
-            if n < 0:
-                raise errors.SemanticError("4-4-0-7", n=n)
             second = self._symbol_text(ctx_list[1])
             bound_type = (
                 "n_preceding" if second == "preceding" else "n_following"

@@ -173,6 +173,18 @@ class AggregateOperator(Unary):
             return f"{cls.op}({operand_name})"
 
     @classmethod
+    def _check_analytic_components(
+        cls, operand: RecordSet, analytic_clause: AnalyticClause
+    ) -> None:
+        key_components = operand.get_key_components_names()
+        analytic_components = list(analytic_clause.partition_by) + [
+            item.key_name for item in analytic_clause.order_by
+        ]
+        missing = [c for c in analytic_components if c not in key_components]
+        if missing:
+            raise errors.SemanticError("4-4-0-2", not_present=missing)
+
+    @classmethod
     def validate_analytic(
         cls,
         operand: RecordSet,
@@ -210,14 +222,7 @@ class AggregateOperator(Unary):
         if analytic_clause.window is not None and not analytic_clause.order_by:
             raise errors.SemanticError("4-4-0-5")
 
-        # Validate partition_by and order_by components exist in the operand.
-        key_components = operand.get_key_components_names()
-        analytic_components = list(analytic_clause.partition_by) + [
-            item.key_name for item in analytic_clause.order_by
-        ]
-        missing = [c for c in analytic_components if c not in key_components]
-        if missing:
-            raise errors.SemanticError("4-4-0-2", not_present=missing)
+        cls._check_analytic_components(operand, analytic_clause)
 
         if operand.records is not None:
             operand.records["data_type"] = final_type  # type: ignore[call-overload]
@@ -281,6 +286,14 @@ class Rank(AggregateOperator):
     interval_allowed: ClassVar[bool] = False
 
     @classmethod
+    def validate_analytic(
+        cls,
+        operand: RecordSet,
+        analytic_clause: AnalyticClause,
+    ) -> RecordSet:
+        return cls.validate(operand, analytic_clause)
+
+    @classmethod
     def validate(  # type: ignore[override]
         cls,
         operand: RecordSet,
@@ -293,13 +306,7 @@ class Rank(AggregateOperator):
         if not analytic_clause.order_by:
             raise errors.SemanticError("4-4-0-4")
 
-        key_components = operand.get_key_components_names()
-        analytic_components = list(analytic_clause.partition_by) + [
-            item.key_name for item in analytic_clause.order_by
-        ]
-        missing = [c for c in analytic_components if c not in key_components]
-        if missing:
-            raise errors.SemanticError("4-4-0-2", not_present=missing)
+        cls._check_analytic_components(operand, analytic_clause)
 
         parts: list[str] = []
         if analytic_clause.partition_by:
