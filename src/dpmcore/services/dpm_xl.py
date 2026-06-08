@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Optional, TypedDict
 
 from dpmcore.services.ast_generator import ASTGeneratorService
 from dpmcore.services.scope_calculator import ScopeCalculatorService
-from dpmcore.services.semantic import SemanticService
+from dpmcore.services.semantic import ParameterInfo, SemanticService
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -86,3 +86,24 @@ class DpmXlService:
             "expression": result.expression,
             "warning": result.warning,
         }
+
+    def get_parameters(
+        self,
+        expression: str,
+        release_id: Optional[int] = None,
+        release_code: Optional[str] = None,
+    ) -> tuple[ParameterInfo, ...]:
+        """Return the parameters referenced by *expression* (requires DB).
+
+        Surfaces the runtime-binding contract: each referenced parameter with
+        its declared type, set-ness and default. Returns an empty tuple when
+        the expression references no parameters or fails validation.
+        """
+        if self.semantic is None:
+            raise RuntimeError("No database session provided.")
+        result = self.semantic.validate(
+            expression,
+            release_id=release_id,
+            release_code=release_code,
+        )
+        return result.parameters

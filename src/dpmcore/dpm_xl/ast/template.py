@@ -12,6 +12,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     GetOp,
     GroupingClause,
     OperationRef,
+    ParameterRef,
     ParExpr,
     PersistentAssignment,
     PreconditionItem,
@@ -137,6 +138,12 @@ class ASTTemplate(NodeVisitor):
         pass
 
     def visit_OperationRef(self, node: OperationRef) -> None:
+        pass
+
+    def visit_ParameterRef(self, node: ParameterRef) -> None:
+        # Leaf by default: a parameter's declared ``default`` is metadata, not a
+        # sub-expression to traverse, so the base does not recurse into it.
+        # Passes that care (operand collection, semantic typing) override this.
         pass
 
     def visit_PersistentAssignment(self, node: PersistentAssignment) -> None:
