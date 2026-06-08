@@ -40,6 +40,15 @@ def _make_integer_set() -> Set:
     )
 
 
+def _make_number_set() -> Set:
+    return Set(
+        children=[
+            Constant(type_="Number", value=1.5),
+            Constant(type_="Number", value=2.5),
+        ]
+    )
+
+
 def _make_string_set() -> Set:
     return Set(
         children=[
@@ -205,3 +214,41 @@ def test_visit_count_set_op_on_union_returns_integer_scalar():
     result = _analyzer().visit(node)
     assert isinstance(result, Scalar)
     assert isinstance(result.type, Integer)
+
+
+# ---------------------------------------------------------------------------
+# Strict type homogeneity, no implicit promotion between compatible types
+# ---------------------------------------------------------------------------
+
+
+def test_union_integer_and_number_raises_semantic_error():
+    """Integer and Number are compatible but not identical — must be rejected."""
+    from dpmcore.errors import SemanticError
+
+    node = UnionSetOp(operands=[_make_integer_set(), _make_number_set()])
+    with pytest.raises(SemanticError):
+        _analyzer().visit(node)
+
+
+def test_intersect_integer_and_number_raises_semantic_error():
+    from dpmcore.errors import SemanticError
+
+    node = IntersectSetOp(operands=[_make_integer_set(), _make_number_set()])
+    with pytest.raises(SemanticError):
+        _analyzer().visit(node)
+
+
+def test_setdiff_integer_and_number_raises_semantic_error():
+    from dpmcore.errors import SemanticError
+
+    node = SetdiffOp(left=_make_integer_set(), right=_make_number_set())
+    with pytest.raises(SemanticError):
+        _analyzer().visit(node)
+
+
+def test_symdiff_integer_and_number_raises_semantic_error():
+    from dpmcore.errors import SemanticError
+
+    node = SymdiffOp(left=_make_integer_set(), right=_make_number_set())
+    with pytest.raises(SemanticError):
+        _analyzer().visit(node)
