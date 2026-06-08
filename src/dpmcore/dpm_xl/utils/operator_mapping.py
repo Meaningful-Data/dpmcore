@@ -38,6 +38,7 @@ from dpmcore.dpm_xl.operators.comparison import (
 from dpmcore.dpm_xl.operators.conditional import Filter, IfOperator, Nvl
 from dpmcore.dpm_xl.operators.string import Concatenate, Len
 from dpmcore.dpm_xl.operators.time import (
+    Annualise,
     DateConstructor,
     Day,
     Month,
@@ -106,6 +107,7 @@ CLAUSE_OP_MAPPING = {WHERE: Where, RENAME: Rename, GET: Get, SUB: Sub}
 
 TIME_OPERATORS = {
     TIME_SHIFT: TimeShift,
+    ANNUALISE: Annualise,
     YEAR: Year,
     SEMESTER: Semester,
     QUARTER: Quarter,

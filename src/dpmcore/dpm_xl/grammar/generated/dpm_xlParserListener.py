@@ -449,6 +449,15 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by dpm_xlParser#annualiseFunction.
+    def enterAnnualiseFunction(self, ctx:dpm_xlParser.AnnualiseFunctionContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#annualiseFunction.
+    def exitAnnualiseFunction(self, ctx:dpm_xlParser.AnnualiseFunctionContext):
+        pass
+
+
     # Enter a parse tree produced by dpm_xlParser#dateExtractFunction.
     def enterDateExtractFunction(self, ctx:dpm_xlParser.DateExtractFunctionContext):
         pass
@@ -662,6 +671,24 @@ class dpm_xlParserListener(ParseTreeListener):
 
     # Exit a parse tree produced by dpm_xlParser#selectOperand.
     def exitSelectOperand(self, ctx:dpm_xlParser.SelectOperandContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#parameterRef.
+    def enterParameterRef(self, ctx:dpm_xlParser.ParameterRefContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#parameterRef.
+    def exitParameterRef(self, ctx:dpm_xlParser.ParameterRefContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#parameterType.
+    def enterParameterType(self, ctx:dpm_xlParser.ParameterTypeContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#parameterType.
+    def exitParameterType(self, ctx:dpm_xlParser.ParameterTypeContext):
         pass
 
 

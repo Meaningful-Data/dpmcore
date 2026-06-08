@@ -3,7 +3,7 @@ import string
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Union
 
-from dpmcore.dpm_xl.ast.nodes import PreconditionItem, VarID
+from dpmcore.dpm_xl.ast.nodes import PreconditionItem, VarID, VarRef
 
 if TYPE_CHECKING:
     # Import type only; used for annotation purposes.
@@ -41,7 +41,7 @@ def iter_all_strings() -> Iterator[str]:
 
 
 def set_operand_label(
-    label: str, operand: Union[str, VarID, PreconditionItem]
+    label: str, operand: Union[str, VarID, PreconditionItem, VarRef]
 ) -> None:
     if isinstance(operand, VarID):
         LabelHandler().operands_labels[label] = generate_operand_expression(
@@ -50,6 +50,9 @@ def set_operand_label(
         LabelHandler().labels_type[label] = "single"
     elif isinstance(operand, PreconditionItem):
         LabelHandler().operands_labels[label] = f"v_{operand.variable_code}"
+        LabelHandler().labels_type[label] = "single"
+    elif isinstance(operand, VarRef):
+        LabelHandler().operands_labels[label] = operand.variable
         LabelHandler().labels_type[label] = "single"
     else:
         LabelHandler().operands_labels[label] = operand

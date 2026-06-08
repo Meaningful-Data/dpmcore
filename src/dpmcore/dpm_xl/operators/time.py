@@ -7,6 +7,7 @@ from dpmcore.dpm_xl.types.promotion import unary_implicit_type_promotion
 from dpmcore.dpm_xl.types.scalar import (
     Date,
     Integer,
+    Number,
     ScalarFactory,
     ScalarType,
     TimeInterval,
@@ -81,6 +82,79 @@ class TimeShift(Operator):
 
         origin = f"{cls.op}({operand.name}, {period}, {shift_number})"
         return cls._create_labeled_scalar(origin, result_type=final_type)
+
+
+class Annualise(Operator):
+    op: ClassVar[str | None] = tokens.ANNUALISE
+    type_to_check: ClassVar[type[ScalarType] | None] = Number
+    propagate_attributes: ClassVar[bool] = True
+
+    @classmethod
+    def validate(
+        cls,
+        operand: Union[RecordSet, Scalar, ConstantOperand],
+        component_name: str,
+        fy_end: int | None,
+    ) -> RecordSet | Scalar | ConstantOperand:
+        if cls.type_to_check is None:
+            raise Exception("Annualise requires type_to_check to be set")
+
+        if fy_end is not None and not (1 <= fy_end <= 12):
+            raise errors.SemanticError(
+                "4-7-3",
+                op=cls.op,
+                component_name=component_name,
+            )
+
+        error_info = {"operand_name": operand.name, "op": cls.op}
+        type_to_check = ScalarFactory().scalar_factory(Number.__name__)
+
+        if isinstance(operand, RecordSet):
+            components = {
+                **operand.get_dpm_components(),
+                **operand.get_attributes(),
+            }
+            if not component_name or component_name not in components:
+                raise errors.SemanticError(
+                    "2-8",
+                    op=cls.op,
+                    dpm_keys=component_name,
+                    recordset=operand.name,
+                )
+
+            component = operand.structure.components[component_name]
+            date_type = ScalarFactory().scalar_factory(TimeInterval.__name__)
+            unary_implicit_type_promotion(
+                operand=component.type,
+                op_type_to_check=date_type,
+                error_info=error_info,
+            )
+
+            fact_type = operand.get_fact_component().type
+            unary_implicit_type_promotion(
+                operand=fact_type,
+                op_type_to_check=type_to_check,
+                error_info=error_info,
+            )
+
+            origin = f"{cls.op}( {operand.name}, {fy_end}, {component_name} )"
+            return cls._create_labeled_recordset(
+                origin,
+                fact_type,
+                operand.structure,
+                operand.records,
+            )
+
+        unary_implicit_type_promotion(
+            operand=operand.type,
+            op_type_to_check=type_to_check,
+            error_info=error_info,
+        )
+        if isinstance(operand, ConstantOperand):
+            return operand
+
+        origin = f"{cls.op}({operand.name}, {fy_end}, {component_name})"
+        return cls._create_labeled_scalar(origin, result_type=operand.type)
 
 
 class DateExtractionBase(Unary):

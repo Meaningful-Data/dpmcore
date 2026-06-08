@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from dpmcore.dpm_xl.ast.nodes import (
     AST,
     AggregationOp,
+    AnnualiseOp,
     BinOp,
     ComplexNumericOp,
     CondExpr,
@@ -404,6 +405,40 @@ class MLGeneration(ASTTemplate):
         component = node.component
         if component is None:
             raise RuntimeError("TimeShiftOp component is required")
+        op_ref: OperandReference
+        if property_ref_period_mangement(component):
+            op_ref = OperandReference(
+                op_node=operand_node, OperandReference="refPeriod"
+            )
+        else:
+            property_id = ItemCategoryQuery.get_property_id_from_code(
+                code=component, session=self.session_queries
+            )[0]
+            op_ref = OperandReference(
+                op_node=operand_node,
+                OperandReference=ast_element.source_reference,
+                PropertyID=property_id,
+            )
+        self.session.add(op_ref)
+
+    def visit_AnnualiseOp(self, node: AnnualiseOp) -> None:
+        node.op = "annualise"
+        get_node = self.create_operation_node(node)
+
+        node.operand.parent = get_node
+        node.operand.argument = "operand"
+        self.visit(node.operand)
+
+        node.fy_end.parent = get_node
+        node.fy_end.argument = "fy_end"
+        self.visit(node.fy_end)
+
+        ast_element = AST()
+        ast_element.parent = get_node
+        ast_element.argument = "dimension"
+        ast_element.source_reference = "property"
+        operand_node = self.create_operation_node(ast_element, is_leaf=True)
+        component = node.component
         op_ref: OperandReference
         if property_ref_period_mangement(component):
             op_ref = OperandReference(

@@ -108,6 +108,7 @@ SUB:                    'sub';
 
 // Reference date
 TIME_SHIFT:             'time_shift';
+ANNUALISE:              'annualise';
 
 // Date-component extraction
 YEAR:                   'year';
@@ -202,12 +203,31 @@ SELECTION_MODE_COLON:        COLON -> type(COLON);
 SELECTION_MODE_LPAREN:                 LPAREN -> type(LPAREN);
 SELECTION_MODE_RPAREN:                 RPAREN -> type(RPAREN);
 
-SELECTION_MODE_SQUARE_BRACKET_LEFT:    SQUARE_BRACKET_LEFT -> type(SQUARE_BRACKET_LEFT), pushMode(CLAUSE_MODE);
-
+SELECTION_MODE_CURLY_BRACKET_LEFT:     CURLY_BRACKET_LEFT -> type(CURLY_BRACKET_LEFT), pushMode(SELECTION_MODE);
 SELECTION_MODE_CURLY_BRACKET_RIGHT:    CURLY_BRACKET_RIGHT -> popMode, type(CURLY_BRACKET_RIGHT);
 
 INTERVAL: 'interval';
 DEFAULT: 'default';
+
+// Parameter Selection types ({p_code, <type>}). These keywords MUST precede
+// the SHEET/SHEET_RANGE rules below so ``string`` is not lexed as the SHEET
+// ``s`` + ``tring`` and ``set-number`` is not lexed as a sheet range. The set
+// variants come first so they win over their scalar prefixes on equal length.
+SET_NUMBER:  'set-number';
+SET_INTEGER: 'set-integer';
+SET_STRING:  'set-string';
+SET_DATE:    'set-date';
+SET_BOOLEAN: 'set-boolean';
+SET_ITEM:    'set-item';
+
+NUMBER:    'number';
+INTEGER:   'integer';
+STRING:    'string';
+// Named PARAM_DATE (not DATE) to avoid colliding with a future ``date(...)``
+// constructor token; the parser maps it to the ``date`` parameter type.
+PARAM_DATE: 'date';
+BOOLEAN:   'boolean';
+ITEM:      'item';
 
 SELECTION_MODE_NULL_LITERAL: NULL_LITERAL -> type(NULL_LITERAL);
 SELECTION_MODE_BOOLEAN_LITERAL: BOOLEAN_LITERAL -> type(BOOLEAN_LITERAL);
@@ -229,6 +249,8 @@ fragment
 VAR_REF_PREFIX:         'v';
 fragment
 OPERATION_REF_PREFIX:   'o';
+fragment
+PARAMETER_REF_PREFIX:   'p';
 
 // Codes
 
@@ -257,11 +279,23 @@ SHEET:                  SHEET_PREFIX CELL_COMPONENT_CODE;
 SHEET_RANGE:            SHEET_PREFIX CELL_COMPONENT_RANGE;
 SHEET_ALL:              SHEET_PREFIX [*];
 
-TABLE_REFERENCE:        TABLE_PREFIX TABLE_CODE;
-TABLE_GROUP_REFERENCE:  TABLE_GROUP_PREFIX TABLE_CODE;
+TABLE_REFERENCE:        TABLE_PREFIX ('_'? TABLE_CODE | ESCAPED_IDENTIFIER);
+TABLE_GROUP_REFERENCE:  TABLE_GROUP_PREFIX ('_'? TABLE_CODE | ESCAPED_IDENTIFIER);
 
-VAR_REFERENCE:                VAR_REF_PREFIX (VAR_CODE | '_' TABLE_CODE);
-OPERATION_REFERENCE:          OPERATION_REF_PREFIX OPERATION_CODE;
+VAR_REFERENCE:                VAR_REF_PREFIX ('_'? VAR_CODE | ESCAPED_IDENTIFIER);
+OPERATION_REFERENCE:          OPERATION_REF_PREFIX ('_'? OPERATION_CODE | ESCAPED_IDENTIFIER);
+
+// Parameter reference: ``{p_code, ...}``. The ``'_'?`` makes the underscore a
+// cosmetic separator (``pthreshold`` == ``p_threshold``); a code that itself
+// starts with ``_`` is reached via the backtick-escaped form (``p`_legacy```).
+PARAMETER_REFERENCE:          PARAMETER_REF_PREFIX ('_'? VAR_CODE | ESCAPED_IDENTIFIER);
+
+// Item-typed parameter defaults (``default: [ns:code]``) need item signatures.
+// ``[`` pushes CLAUSE_MODE (as the default-mode ``[`` does) so the signature is
+// lexed there and the matching ``]`` pops back. A bare ITEM_SIGNATURE token in
+// SELECTION_MODE must NOT be added: it would greedily swallow ``default:0`` (no
+// space) as a single ``default:0`` item signature.
+SELECTION_MODE_SQUARE_BRACKET_LEFT:    SQUARE_BRACKET_LEFT -> type(SQUARE_BRACKET_LEFT), pushMode(CLAUSE_MODE);
 
 SELECTION_MODE_INTEGER_LITERAL: INTEGER_LITERAL -> type(INTEGER_LITERAL);
 SELECTION_MODE_DECIMAL_LITERAL: DECIMAL_LITERAL -> type(DECIMAL_LITERAL);
@@ -365,6 +399,7 @@ CLAUSE_SUB:                    'sub' -> type(SUB);
 
 // Reference date
 CLAUSE_TIME_SHIFT:             'time_shift' -> type(TIME_SHIFT);
+CLAUSE_ANNUALISE:              'annualise' -> type(ANNUALISE);
 
 // Date-component extraction
 CLAUSE_YEAR:                   'year' -> type(YEAR);
@@ -429,25 +464,6 @@ GROUPING_ESCAPED_IDENTIFIER: '`' [A-Za-z0-9_.+]+ '`' -> type(ESCAPED_IDENTIFIER)
 GROUPING_WS:                     [ \t\r\n\u000C]+ -> channel(2);
 
 
-mode SET_OPERAND_MODE;
-
-SET_OPERAND_MODE_COMMA:        COMMA -> type(COMMA);
-
-SET_OPERAND_MODE_CURLY_BRACKET_LEFT:     CURLY_BRACKET_LEFT -> type(CURLY_BRACKET_LEFT);
-SET_OPERAND_MODE_CURLY_BRACKET_RIGHT:    CURLY_BRACKET_RIGHT -> popMode, type(CURLY_BRACKET_RIGHT);
-
-SET_OPERAND_MODE_SQUARE_BRACKET_LEFT:    SQUARE_BRACKET_LEFT -> type(SQUARE_BRACKET_LEFT);
-SET_OPERAND_MODE_SQUARE_BRACKET_RIGHT:   SQUARE_BRACKET_RIGHT -> type(SQUARE_BRACKET_RIGHT);
-
-SET_OPERAND_MODE_ITEM_SIGNATURE:             ITEM_SIGNATURE -> type(ITEM_SIGNATURE);
-
-SET_OPERAND_MODE_INTEGER_LITERAL: INTEGER_LITERAL -> type(INTEGER_LITERAL);
-SET_OPERAND_MODE_DECIMAL_LITERAL: DECIMAL_LITERAL -> type(DECIMAL_LITERAL);
-SET_OPERAND_MODE_PERCENT_LITERAL: PERCENT_LITERAL -> type(PERCENT_LITERAL);
-
-SET_OPERAND_MODE_STRING_LITERAL: STRING_LITERAL -> type(STRING_LITERAL);
-SET_OPERAND_MODE_EMPTY_LITERAL: EMPTY_LITERAL -> type(EMPTY_LITERAL);
-
-SET_OPERAND_MODE_DATE_LITERAL: DATE_LITERAL -> type(DATE_LITERAL);
-
-SET_OPERAND_MODE_WS:        WS -> channel(2);
+// SET_OPERAND_MODE removed: ``in`` no longer pushes a dedicated mode — the
+// ``{`` following it pushes SELECTION_MODE, which already lexes item
+// signatures, literals and parameter references for set operands.

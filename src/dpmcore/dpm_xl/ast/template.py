@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dpmcore.dpm_xl.ast.nodes import (
     AggregationOp,
+    AnnualiseOp,
     BinOp,
     ComplexNumericOp,
     CondExpr,
@@ -14,6 +15,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     GroupingClause,
     IntersectSetOp,
     OperationRef,
+    ParameterRef,
     ParExpr,
     PersistentAssignment,
     PreconditionItem,
@@ -105,6 +107,10 @@ class ASTTemplate(NodeVisitor):
     def visit_TimeShiftOp(self, node: TimeShiftOp) -> None:
         self.visit(node.operand)
 
+    def visit_AnnualiseOp(self, node: AnnualiseOp) -> None:
+        self.visit(node.operand)
+        self.visit(node.fy_end)
+
     def visit_DateConstructorOp(self, node: DateConstructorOp) -> None:
         self.visit(node.year)
         self.visit(node.month)
@@ -143,6 +149,12 @@ class ASTTemplate(NodeVisitor):
         pass
 
     def visit_OperationRef(self, node: OperationRef) -> None:
+        pass
+
+    def visit_ParameterRef(self, node: ParameterRef) -> None:
+        # Leaf by default: a parameter's declared ``default`` is metadata, not a
+        # sub-expression to traverse, so the base does not recurse into it.
+        # Passes that care (operand collection, semantic typing) override this.
         pass
 
     def visit_PersistentAssignment(self, node: PersistentAssignment) -> None:

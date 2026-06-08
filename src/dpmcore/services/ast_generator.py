@@ -10,6 +10,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
+    Iterable,
     List,
     Optional,
     Tuple,
@@ -19,7 +20,8 @@ from dpmcore.dpm_xl.utils.tokens import (
     SEVERITY_WARNING,
     VALID_SEVERITIES,
 )
-from dpmcore.services.semantic import SemanticService
+from dpmcore.errors import SemanticError
+from dpmcore.services.semantic import ParameterInfo, SemanticService
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -34,7 +36,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-_VAR_REF_PATTERN = re.compile(r"\{v_([^}]+)\}")
+_VAR_REF_PATTERN = re.compile(r"\{v_?([^}]+)\}")
 _TABLE_CODE_NORMALIZER = re.compile(r"^([A-Z]+)_(\d+)_(\d+)$")
 _DEFAULT_FROM_DATE = "2001-01-01"
 _DEFAULT_NAMESPACE = "default_module"
@@ -167,9 +169,15 @@ class ASTGeneratorService:
                 Tuple[Tuple[str, str], "ScopeResult", Dict[str, str]]
             ] = []
             referenced_table_codes: set[str] = set()
+            referenced_parameters: Dict[str, ParameterInfo] = {}
 
             for item in expressions:
                 expr, code = item[0], item[1]
+                # validate() runs the per-expression scope check: a parameter
+                # referenced here must not clash with the declared type of a
+                # co-scoped operation already persisted in the DB (raises 3-8).
+                # _accumulate_parameters below is complementary — it catches
+                # conflicts between two expressions in this same script.
                 result = self._semantic.validate(expr, release_id=release_id)
                 if not result.is_valid:
                     return {
@@ -183,6 +191,9 @@ class ASTGeneratorService:
                 self._clean_ast_data_entries(ast_dict)
                 referenced_table_codes.update(
                     self._extract_referenced_tables(ast_dict)
+                )
+                self._accumulate_parameters(
+                    referenced_parameters, result.parameters
                 )
 
                 root_operator_id = self._resolve_root_operator_id(ast, session)
@@ -218,6 +229,16 @@ class ASTGeneratorService:
             variables_block: Dict[str, str] = {}
             for tbl in tables_block.values():
                 variables_block.update(tbl.get("variables", {}))
+
+            # Runtime-binding contract: the declared type of every parameter
+            # this script's operations reference, keyed by code. This is the
+            # scope-wide invariant. ``is_set`` is recoverable from the ``set-``
+            # prefix and ``default`` is a per-reference fallback the engine
+            # binds per scope, so neither belongs in this registry.
+            parameters_block: Dict[str, str] = {
+                prm_code: prm.declared_type
+                for prm_code, prm in sorted(referenced_parameters.items())
+            }
 
             preconditions_block, precondition_variables_block = (
                 self._build_preconditions_block(
@@ -260,6 +281,7 @@ class ASTGeneratorService:
                 "operations": operations,
                 "variables": variables_block,
                 "tables": tables_block,
+                "parameters": parameters_block,
                 "preconditions": preconditions_block,
                 "precondition_variables": precondition_variables_block,
                 "dependency_information": dep_information,
@@ -815,6 +837,34 @@ class ASTGeneratorService:
         _walk(ast_dict)
         return codes
 
+    def _accumulate_parameters(
+        self,
+        accumulated: Dict[str, ParameterInfo],
+        parameters: Iterable[ParameterInfo],
+    ) -> None:
+        """Merge one expression's parameters into ``accumulated``, by code.
+
+        Consumes the already-deduped ``SemanticResult.parameters`` produced by
+        the semantic pass rather than re-walking the serialised AST, so there
+        is a single source of truth for which parameters an expression
+        references. A parameter binds to a single value across every operation
+        it co-executes with, so its declared type is intrinsic and must stay
+        consistent script-wide — the flat registry holds one type per code.
+        Raises ``SemanticError`` ``3-8`` on a conflicting redeclaration rather
+        than silently letting one reference win.
+        """
+        for prm in parameters:
+            prior = accumulated.get(prm.code)
+            if prior is None:
+                accumulated[prm.code] = prm
+            elif prior.declared_type != prm.declared_type:
+                raise SemanticError(
+                    "3-8",
+                    parameter=prm.code,
+                    type_1=prior.declared_type,
+                    type_2=prm.declared_type,
+                )
+
     def _build_precondition_index(
         self,
         preconditions: List[Tuple[str, List[str]]],
@@ -1027,6 +1077,9 @@ class ASTGeneratorService:
         current_period = ["t"]
 
         class _Extractor(ASTTemplate):
+            def visit_AnnualiseOp(self, node: Any) -> None:
+                self.visit(node.operand)
+
             def visit_TimeShiftOp(self, node: Any) -> None:
                 from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
 
