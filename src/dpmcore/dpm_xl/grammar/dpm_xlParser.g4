@@ -50,7 +50,7 @@ expression:
     | left=expression op=(PLUS|MINUS) right=expression                                                  #numericExpr
     | left=expression op=CONCAT right=expression                                                        #concatExpr
     | left=expression op=comparisonOperators right=expression                                           #compExpr
-    | left=expression op=IN setOperand                                                                  #inExpr
+    | left=expression op=IN setExpression                                                               #inExpr
     | left=expression op=AND right=expression                                                           #boolExpr
     | left=expression op=(OR|XOR) right=expression                                                      #boolExpr
     | IF conditionalExpr=expression THEN thenExpr=expression (ELSE elseExpr=expression)? ENDIF          #ifExpr
@@ -69,6 +69,16 @@ setElements:
     itemReference (COMMA itemReference)*
     | literal (COMMA literal)*
     | parameterRef
+    ;
+
+setExpression:
+    setOperand                                                              #setLiteralExpr
+    | SET_OF LPAREN op=expression RPAREN                                     #setOfExpr
+    | UNION LPAREN setExpression (COMMA setExpression)+ RPAREN               #unionSetExpr
+    | INTERSECT LPAREN setExpression (COMMA setExpression)+ RPAREN           #intersectSetExpr
+    | SETDIFF LPAREN left=setExpression COMMA right=setExpression RPAREN     #setdiffSetExpr
+    | SYMDIFF LPAREN left=setExpression COMMA right=setExpression RPAREN     #symdiffSetExpr
+    | select                                                                #subcategorySelectExpr
     ;
 
 functions:
@@ -118,6 +128,7 @@ aggregateOperators:
         |COUNT
         |AVG
         |MEDIAN) LPAREN expression (groupingClause)? RPAREN        #commonAggrOp
+    | COUNT LPAREN setExpression RPAREN                             #countSetOp
     ;
 
 groupingClause:

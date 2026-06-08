@@ -22,11 +22,13 @@ from dpmcore.dpm_xl.ast.nodes import (
     ComplexNumericOp,
     CondExpr,
     Constant,
+    CountSetOp,
     DateConstructorOp,
     Dimension,
     FilterOp,
     GetOp,
     GroupingClause,
+    IntersectSetOp,
     OperationRef,
     ParameterRef,
     ParExpr,
@@ -36,13 +38,17 @@ from dpmcore.dpm_xl.ast.nodes import (
     RenameOp,
     Scalar,
     Set,
+    SetdiffOp,
+    SetOfOp,
     Start,
     SubAssignment,
     SubOp,
+    SymdiffOp,
     TemporaryAssignment,
     TemporaryIdentifier,
     TimeShiftOp,
     UnaryOp,
+    UnionSetOp,
     VarID,
     VarRef,
     WhereClauseOp,
@@ -534,6 +540,68 @@ class ASTVisitor(dpm_xlParserVisitor):
         ):
             return set_elements[0]
         return Set(children=set_elements)
+
+    def visitSetLiteralExpr(
+        self, ctx: dpm_xlParser.SetLiteralExprContext
+    ) -> AST:
+        return cast(AST, self._visit(ctx.getChild(0)))
+
+    def visitSetOfExpr(self, ctx: dpm_xlParser.SetOfExprContext) -> SetOfOp:
+        return SetOfOp(operand=self._visit(ctx.getChild(2)))
+
+    def visitUnionSetExpr(
+        self, ctx: dpm_xlParser.UnionSetExprContext
+    ) -> UnionSetOp:
+        operands = [
+            self._visit(child)
+            for child in ctx.getChildren()
+            if isinstance(child, dpm_xlParser.SetExpressionContext)
+        ]
+        return UnionSetOp(operands=operands)
+
+    def visitIntersectSetExpr(
+        self, ctx: dpm_xlParser.IntersectSetExprContext
+    ) -> IntersectSetOp:
+        operands = [
+            self._visit(child)
+            for child in ctx.getChildren()
+            if isinstance(child, dpm_xlParser.SetExpressionContext)
+        ]
+        return IntersectSetOp(operands=operands)
+
+    def visitSetdiffSetExpr(
+        self, ctx: dpm_xlParser.SetdiffSetExprContext
+    ) -> SetdiffOp:
+        set_exprs = [
+            child
+            for child in ctx.getChildren()
+            if isinstance(child, dpm_xlParser.SetExpressionContext)
+        ]
+        return SetdiffOp(
+            left=self._visit(set_exprs[0]), right=self._visit(set_exprs[1])
+        )
+
+    def visitSymdiffSetExpr(
+        self, ctx: dpm_xlParser.SymdiffSetExprContext
+    ) -> SymdiffOp:
+        set_exprs = [
+            child
+            for child in ctx.getChildren()
+            if isinstance(child, dpm_xlParser.SetExpressionContext)
+        ]
+        return SymdiffOp(
+            left=self._visit(set_exprs[0]), right=self._visit(set_exprs[1])
+        )
+
+    def visitSubcategorySelectExpr(
+        self, ctx: dpm_xlParser.SubcategorySelectExprContext
+    ) -> AST:
+        return cast(AST, self._visit(ctx.getChild(0)))
+
+    def visitCountSetOp(
+        self, ctx: dpm_xlParser.CountSetOpContext
+    ) -> CountSetOp:
+        return CountSetOp(operand=self._visit(ctx.getChild(2)))
 
     def visitItemReference(
         self, ctx: dpm_xlParser.ItemReferenceContext

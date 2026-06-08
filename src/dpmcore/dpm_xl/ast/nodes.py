@@ -1026,6 +1026,154 @@ class TemporaryIdentifier(AST):
         return {"class_name": self.__class__.__name__, "value": self.value}
 
 
+class SetOfOp(AST):
+    """AST node for set_of(expression), projects a Recordset's fact values to a ScalarSet."""
+
+    def __init__(self, operand: AST) -> None:
+        super().__init__()
+        self.op: str = "set_of"
+        self.operand: AST = operand
+
+    def __str__(self) -> str:
+        return "<AST(name='{name}', operand={operand})>".format(
+            name=self.__class__.__name__, operand=self.operand
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "op": self.op,
+            "operand": self.operand,
+        }
+
+
+class UnionSetOp(AST):
+    """AST node for union(s1, s2, …), variadic set union."""
+
+    def __init__(self, operands: list[AST]) -> None:
+        super().__init__()
+        self.op: str = "union"
+        self.operands: list[AST] = operands
+
+    def __str__(self) -> str:
+        return "<AST(name='{name}', op='{op}', operands={operands})>".format(
+            name=self.__class__.__name__, op=self.op, operands=self.operands
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "op": self.op,
+            "operands": self.operands,
+        }
+
+
+class IntersectSetOp(AST):
+    """AST node for intersect(s1, s2, …), variadic set intersection."""
+
+    def __init__(self, operands: list[AST]) -> None:
+        super().__init__()
+        self.op: str = "intersect"
+        self.operands: list[AST] = operands
+
+    def __str__(self) -> str:
+        return "<AST(name='{name}', op='{op}', operands={operands})>".format(
+            name=self.__class__.__name__, op=self.op, operands=self.operands
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "op": self.op,
+            "operands": self.operands,
+        }
+
+
+class SetdiffOp(AST):
+    """AST node for setdiff(left, right), elements in left that are not in right."""
+
+    def __init__(self, left: AST, right: AST) -> None:
+        super().__init__()
+        self.op: str = "setdiff"
+        self.left: AST = left
+        self.right: AST = right
+
+    def __str__(self) -> str:
+        return "<AST(name='{name}', op='{op}', left={left}, right={right})>".format(
+            name=self.__class__.__name__,
+            op=self.op,
+            left=self.left,
+            right=self.right,
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "op": self.op,
+            "left": self.left,
+            "right": self.right,
+        }
+
+
+class SymdiffOp(AST):
+    """AST node for symdiff(left, right), elements in exactly one of left or right."""
+
+    def __init__(self, left: AST, right: AST) -> None:
+        super().__init__()
+        self.op: str = "symdiff"
+        self.left: AST = left
+        self.right: AST = right
+
+    def __str__(self) -> str:
+        return "<AST(name='{name}', op='{op}', left={left}, right={right})>".format(
+            name=self.__class__.__name__,
+            op=self.op,
+            left=self.left,
+            right=self.right,
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "op": self.op,
+            "left": self.left,
+            "right": self.right,
+        }
+
+
+class CountSetOp(AST):
+    """AST node for count(setExpression), cardinality of a ScalarSet."""
+
+    def __init__(self, operand: AST) -> None:
+        super().__init__()
+        self.op: str = "count"
+        self.operand: AST = operand
+
+    def __str__(self) -> str:
+        return "<AST(name='{name}', operand={operand})>".format(
+            name=self.__class__.__name__, operand=self.operand
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "op": self.op,
+            "operand": self.operand,
+        }
+
+
 class ParameterRef(AST):
     """AST object for a Parameter Selection (``{p_code, type [, default]}``).
 

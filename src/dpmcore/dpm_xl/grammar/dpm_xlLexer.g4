@@ -64,11 +64,14 @@ MAX:                            'max';
 MIN:                            'min';
 
 // Belonging
-// ``in`` does not push a dedicated mode: the following ``{`` pushes
-// SELECTION_MODE (see CURLY_BRACKET_LEFT), which knows item signatures,
-// literals and parameter references — so set parameters work as the RHS of
-// ``in`` without a separate SET_OPERAND_MODE.
 IN:                     'in';
+
+// Set operators
+SET_OF:                 'set_of';
+UNION:                  'union';
+INTERSECT:              'intersect';
+SETDIFF:                'setdiff';
+SYMDIFF:                'symdiff';
 
 // Punctuation elements
 COMMA:                  ',';
@@ -200,9 +203,6 @@ SELECTION_MODE_COLON:        COLON -> type(COLON);
 SELECTION_MODE_LPAREN:                 LPAREN -> type(LPAREN);
 SELECTION_MODE_RPAREN:                 RPAREN -> type(RPAREN);
 
-// A ``{`` inside a selection opens a nested selection (set-typed parameter
-// defaults, e.g. ``default: {[ns:code]}``). It re-pushes SELECTION_MODE so the
-// matching ``}`` (SELECTION_MODE_CURLY_BRACKET_RIGHT) pops back one level.
 SELECTION_MODE_CURLY_BRACKET_LEFT:     CURLY_BRACKET_LEFT -> type(CURLY_BRACKET_LEFT), pushMode(SELECTION_MODE);
 SELECTION_MODE_CURLY_BRACKET_RIGHT:    CURLY_BRACKET_RIGHT -> popMode, type(CURLY_BRACKET_RIGHT);
 
@@ -411,6 +411,13 @@ CLAUSE_DAY:                    'day' -> type(DAY);
 
 // Date constructor
 CLAUSE_DATE:                   'date' -> type(DATE);
+
+// Set operators
+CLAUSE_SET_OF:                 'set_of'    -> type(SET_OF);
+CLAUSE_UNION:                  'union'     -> type(UNION);
+CLAUSE_INTERSECT:              'intersect' -> type(INTERSECT);
+CLAUSE_SETDIFF:                'setdiff'   -> type(SETDIFF);
+CLAUSE_SYMDIFF:                'symdiff'   -> type(SYMDIFF);
 
 // String
 CLAUSE_LEN:                    'len' -> type(LEN);

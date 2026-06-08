@@ -11,10 +11,12 @@ from dpmcore.dpm_xl.ast.nodes import (
     ComplexNumericOp,
     CondExpr,
     Constant,
+    CountSetOp,
     DateConstructorOp,
     Dimension,
     FilterOp,
     GetOp,
+    IntersectSetOp,
     OperationRef,
     ParameterRef,
     ParExpr,
@@ -23,11 +25,15 @@ from dpmcore.dpm_xl.ast.nodes import (
     PropertyReference,
     RenameOp,
     Set,
+    SetdiffOp,
+    SetOfOp,
     Start,
     SubOp,
+    SymdiffOp,
     TemporaryAssignment,
     TimeShiftOp,
     UnaryOp,
+    UnionSetOp,
     VarID,
     VarRef,
     WhereClauseOp,
@@ -493,7 +499,12 @@ class InputAnalyzer(ASTTemplate, ABC):
                 cast(str, child.type) for child in constant_children
             }
             if len(types) > 1:
-                raise errors.SemanticError("11", types=", ".join(types))
+                raise errors.SemanticError(
+                    "3-3",
+                    type_1=", ".join(types),
+                    type_op="homogeneous scalar type",
+                    origin="set literal",
+                )
             common_type_code = types.pop()
             origin_elements = [str(child.value) for child in constant_children]
         else:
@@ -771,3 +782,69 @@ class InputAnalyzer(ASTTemplate, ABC):
         self, node: WithExpression
     ) -> Operand:
         return cast(Operand, self.visit(node.expression))
+
+    def visit_SetOfOp(  # type: ignore[override]
+        self, node: SetOfOp
+    ) -> ScalarSet:
+        operand = self.visit(node.operand)
+        if not isinstance(operand, RecordSet):
+            raise errors.SemanticError("4-7-1", op="set_of")
+        fact_type = operand.get_fact_component().type
+        return ScalarSet(type_=fact_type, name=None, origin="set_of")
+
+    def _visit_set_operands(self, operands: list[Any]) -> ScalarSet:
+        """Validate that all operands are ScalarSet with a common type and return one."""
+        symbols: list[ScalarSet] = []
+        for op in operands:
+            result = self.visit(op)
+            if not isinstance(result, ScalarSet):
+                raise errors.SemanticError(
+                    "3-3",
+                    type_1=type(result).__name__,
+                    type_op="ScalarSet",
+                    origin="set operator",
+                )
+            symbols.append(result)
+        types = {sym.type.__class__ for sym in symbols}
+        if len(types) > 1:
+            type_names = ", ".join(t.__name__ for t in types)
+            raise errors.SemanticError(
+                "3-3",
+                type_1=type_names,
+                type_op="homogeneous scalar type",
+                origin="set operator",
+            )
+        return symbols[0]
+
+    def visit_UnionSetOp(  # type: ignore[override]
+        self, node: UnionSetOp
+    ) -> ScalarSet:
+        return self._visit_set_operands(node.operands)
+
+    def visit_IntersectSetOp(  # type: ignore[override]
+        self, node: IntersectSetOp
+    ) -> ScalarSet:
+        return self._visit_set_operands(node.operands)
+
+    def visit_SetdiffOp(  # type: ignore[override]
+        self, node: SetdiffOp
+    ) -> ScalarSet:
+        return self._visit_set_operands([node.left, node.right])
+
+    def visit_SymdiffOp(  # type: ignore[override]
+        self, node: SymdiffOp
+    ) -> ScalarSet:
+        return self._visit_set_operands([node.left, node.right])
+
+    def visit_CountSetOp(  # type: ignore[override]
+        self, node: CountSetOp
+    ) -> Scalar:
+        operand = self.visit(node.operand)
+        if not isinstance(operand, ScalarSet):
+            raise errors.SemanticError(
+                "3-3",
+                type_1=type(operand).__name__,
+                type_op="ScalarSet",
+                origin="count",
+            )
+        return Scalar(type_=Integer(), name=None, origin="count")
