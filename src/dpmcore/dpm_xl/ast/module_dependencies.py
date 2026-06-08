@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from dpmcore import errors
 from dpmcore.dpm_xl.ast.nodes import (
     AST,
+    AnnualiseOp,
     Constant,
     Dimension,
     OperationRef,
@@ -236,6 +237,10 @@ class ModuleDependencies(ASTTemplate, ABC):
         checker.visit(node.condition)
         node.key_components = checker.key_components
         self.visit(node.condition)
+
+    def visit_AnnualiseOp(self, node: AnnualiseOp) -> None:
+        self.visit(node.operand)
+        self.visit(node.fy_end)
 
     def visit_TimeShiftOp(self, node: TimeShiftOp) -> None:
         self.from_time_shift = True

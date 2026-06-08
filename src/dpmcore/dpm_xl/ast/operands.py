@@ -15,10 +15,12 @@ warnings.filterwarnings(
 from dpmcore import errors
 from dpmcore.dpm_xl.ast.nodes import (
     AST,
+    AnnualiseOp,
     Constant,
     Dimension,
     GetOp,
     OperationRef,
+    ParameterRef,
     PersistentAssignment,
     PreconditionItem,
     Scalar,
@@ -194,6 +196,10 @@ class OperandsChecking(ASTTemplate, ABC):
 
         self.operations: list[str] = []
         self.operations_data: pd.DataFrame | None = None
+        # Parameters referenced by the expression. Parameters are not DPM
+        # entities, so they carry no DB existence check — the declared type
+        # is the type. Surfaced as the runtime-binding contract.
+        self.parameters: list[ParameterRef] = []
         self.is_scripting = is_scripting
 
         self.session = session
@@ -654,6 +660,17 @@ class OperandsChecking(ASTTemplate, ABC):
             self.visit(node.shift_number)
         self.visit(node.operand)
 
+    def visit_AnnualiseOp(self, node: AnnualiseOp) -> None:
+        if isinstance(node.fy_end, Constant):
+            fy_type = ScalarFactory().scalar_factory(
+                code=node.fy_end.type  # type: ignore[arg-type]
+            )
+            if not isinstance(fy_type, Integer):
+                raise errors.SemanticError("4-7-4")
+        else:
+            self.visit(node.fy_end)
+        self.visit(node.operand)
+
     def visit_WhereClauseOp(self, node: WhereClauseOp) -> None:
         self.visit(node.operand)
         checker = WhereClauseChecker()
@@ -666,6 +683,12 @@ class OperandsChecking(ASTTemplate, ABC):
             raise errors.SemanticError(
                 "6-2", operation_code=node.operation_code
             )
+
+    def visit_ParameterRef(self, node: ParameterRef) -> None:
+        # Record the referenced parameter. No DB lookup: parameters are not DPM
+        # entities and the declared default (including any item reference) is
+        # bound by the downstream engine, not validated here.
+        self.parameters.append(node)
 
     def visit_PersistentAssignment(self, node: PersistentAssignment) -> None:
         # TODO: visit node.left when there are calculations variables in database
