@@ -31,7 +31,6 @@ from dpmcore.dpm_xl.ast.nodes import (
     ParameterRef,
     ParExpr,
     PersistentAssignment,
-    PreconditionItem,
     PropertyReference,
     RenameNode,
     RenameOp,
