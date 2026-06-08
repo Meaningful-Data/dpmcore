@@ -20,6 +20,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     Dimension,
     GetOp,
     OperationRef,
+    ParameterRef,
     PersistentAssignment,
     PreconditionItem,
     Scalar,
@@ -195,6 +196,10 @@ class OperandsChecking(ASTTemplate, ABC):
 
         self.operations: list[str] = []
         self.operations_data: pd.DataFrame | None = None
+        # Parameters referenced by the expression. Parameters are not DPM
+        # entities, so they carry no DB existence check — the declared type
+        # is the type. Surfaced as the runtime-binding contract.
+        self.parameters: list[ParameterRef] = []
         self.is_scripting = is_scripting
 
         self.session = session
@@ -668,6 +673,12 @@ class OperandsChecking(ASTTemplate, ABC):
             raise errors.SemanticError(
                 "6-2", operation_code=node.operation_code
             )
+
+    def visit_ParameterRef(self, node: ParameterRef) -> None:
+        # Record the referenced parameter. No DB lookup: parameters are not DPM
+        # entities and the declared default (including any item reference) is
+        # bound by the downstream engine, not validated here.
+        self.parameters.append(node)
 
     def visit_PersistentAssignment(self, node: PersistentAssignment) -> None:
         # TODO: visit node.left when there are calculations variables in database

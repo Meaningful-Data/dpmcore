@@ -68,6 +68,7 @@ setOperand:
 setElements:
     itemReference (COMMA itemReference)*
     | literal (COMMA literal)*
+    | parameterRef
     ;
 
 functions:
@@ -163,6 +164,8 @@ interval:
 default:
     DEFAULT COLON literal
     | DEFAULT COLON NULL_LITERAL
+    | DEFAULT COLON itemReference
+    | DEFAULT COLON setOperand
 ;
 
 argument:
@@ -181,6 +184,16 @@ selectOperand:
     cellRef
     | varRef
     | operationRef
+    | parameterRef
+    ;
+
+parameterRef:
+    PARAMETER_REFERENCE COMMA parameterType (COMMA default)?
+    ;
+
+parameterType:
+    NUMBER | INTEGER | STRING | PARAM_DATE | BOOLEAN | ITEM
+    | SET_NUMBER | SET_INTEGER | SET_STRING | SET_DATE | SET_BOOLEAN | SET_ITEM
     ;
 
 varID:

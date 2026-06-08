@@ -28,6 +28,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     GetOp,
     GroupingClause,
     OperationRef,
+    ParameterRef,
     ParExpr,
     PersistentAssignment,
     PreconditionItem,
@@ -60,6 +61,22 @@ def _strip_backticks(text: str) -> str:
     if len(text) >= 2 and text.startswith("`") and text.endswith("`"):
         return text[1:-1]
     return text
+
+
+def _parameter_code(text: str) -> str:
+    """Strip the parameter prefix from a ``PARAMETER_REFERENCE`` token.
+
+    The leading ``p`` is always dropped. A single following ``_`` is a cosmetic
+    separator (``p_threshold`` -> ``threshold``, ``pthreshold`` -> ``threshold``);
+    a backtick-escaped code keeps its inner text verbatim
+    (``p`_legacy``` -> ``_legacy``).
+    """
+    remainder = text[1:]
+    if remainder.startswith("`"):
+        return _strip_backticks(remainder)
+    if remainder.startswith("_"):
+        return remainder[1:]
+    return remainder
 
 
 class ASTVisitor(dpm_xlParserVisitor):
@@ -447,6 +464,25 @@ class ASTVisitor(dpm_xlParserVisitor):
     def visitSelect(self, ctx: dpm_xlParser.SelectContext) -> AST:
         return cast(AST, self._visit(ctx.getChild(1)))
 
+    def visitParameterRef(
+        self, ctx: dpm_xlParser.ParameterRefContext
+    ) -> ParameterRef:
+        ctx_list = list(ctx.getChildren())
+        code = _parameter_code(self._symbol_text(ctx_list[0]))
+        # parameterType holds a single keyword terminal (e.g. ``number`` or
+        # ``set-item``); the grammar restricts it to the 12 supported types.
+        # ``is_set`` is derived from this keyword on the node itself.
+        param_type = self._symbol_text(ctx_list[2].getChild(0))
+        default: AST | None = None
+        for child in ctx_list:
+            if isinstance(child, dpm_xlParser.DefaultContext):
+                default = self.visitDefault(child)
+        return ParameterRef(
+            code=code,
+            param_type=param_type,
+            default=default,
+        )
+
     def visitComparisonOperators(
         self, ctx: dpm_xlParser.ComparisonOperatorsContext
     ) -> str:
@@ -483,12 +519,21 @@ class ASTVisitor(dpm_xlParserVisitor):
     def visitSetOperand(self, ctx: dpm_xlParser.SetOperandContext) -> AST:
         return cast(AST, self._visit(ctx.getChild(1)))
 
-    def visitSetElements(self, ctx: dpm_xlParser.SetElementsContext) -> Set:
+    def visitSetElements(
+        self, ctx: dpm_xlParser.SetElementsContext
+    ) -> Set | ParameterRef:
         ctx_list = list(ctx.getChildren())
         set_elements: list[AST] = []
         for child in ctx_list:
             if not isinstance(child, TerminalNodeImpl):
                 set_elements.append(self._visit(child))
+        # A set parameter used as the RHS of ``in`` is a single ParameterRef,
+        # not a literal/item set — return it bare so the semantic pass turns it
+        # into a ScalarSet (visit_Set only handles Constant/Scalar children).
+        if len(set_elements) == 1 and isinstance(
+            set_elements[0], ParameterRef
+        ):
+            return set_elements[0]
         return Set(children=set_elements)
 
     def visitItemReference(
@@ -724,14 +769,18 @@ class ASTVisitor(dpm_xlParserVisitor):
             interval = False
         return interval
 
-    def visitDefault(self, ctx: dpm_xlParser.DefaultContext) -> Constant:
+    def visitDefault(self, ctx: dpm_xlParser.DefaultContext) -> AST:
         third = ctx.getChild(2)
-        if isinstance(third, TerminalNodeImpl) and third.symbol.text == "null":
+        # DEFAULT COLON NULL_LITERAL — the only terminal at this position.
+        if isinstance(third, TerminalNodeImpl):
             return Constant(type_="Null", value=None)
-        default_value: Constant = self.visitLiteral(
-            cast(dpm_xlParser.LiteralContext, third)
-        )
-        return default_value
+        # Item-typed parameter default: ``default: [ns:code]``.
+        if isinstance(third, dpm_xlParser.ItemReferenceContext):
+            return self.visitItemReference(third)
+        # Set-typed parameter default: ``default: { ... }``.
+        if isinstance(third, dpm_xlParser.SetOperandContext):
+            return self.visitSetOperand(third)
+        return self.visitLiteral(cast(dpm_xlParser.LiteralContext, third))
 
     def visitRowElem(self, ctx: dpm_xlParser.RowElemContext) -> str:
         return self.process_cell_element(ctx)
