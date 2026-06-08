@@ -292,7 +292,14 @@ class TestBuildPreconditionsBlock:
             {},
         )
 
-    def test_single_variable_emits_p_vid(self, monkeypatch):
+    @pytest.mark.parametrize(
+        "expression",
+        [
+            "{v_C_01.00}",  # canonical form
+            "{vC_01.00}",  # cosmetic underscore omitted
+        ],
+    )
+    def test_single_variable_emits_p_vid(self, expression, monkeypatch):
         svc, _, mod = _bare_svc()
         svc.session = MagicMock()
 
@@ -307,7 +314,7 @@ class TestBuildPreconditionsBlock:
         )
 
         preconds, vars_ = svc._build_preconditions_block(
-            [("{v_C_01.00}", ["v1", "v2"])], release_id=5
+            [(expression, ["v1", "v2"])], release_id=5
         )
         assert "p_110" in preconds
         entry = preconds["p_110"]

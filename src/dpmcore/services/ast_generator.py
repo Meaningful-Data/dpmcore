@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-_VAR_REF_PATTERN = re.compile(r"\{v_([^}]+)\}")
+_VAR_REF_PATTERN = re.compile(r"\{v_?([^}]+)\}")
 _TABLE_CODE_NORMALIZER = re.compile(r"^([A-Z]+)_(\d+)_(\d+)$")
 _DEFAULT_FROM_DATE = "2001-01-01"
 _DEFAULT_NAMESPACE = "default_module"
