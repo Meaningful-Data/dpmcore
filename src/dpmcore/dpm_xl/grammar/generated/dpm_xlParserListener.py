@@ -386,6 +386,15 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by dpm_xlParser#annualiseFunction.
+    def enterAnnualiseFunction(self, ctx:dpm_xlParser.AnnualiseFunctionContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#annualiseFunction.
+    def exitAnnualiseFunction(self, ctx:dpm_xlParser.AnnualiseFunctionContext):
+        pass
+
+
     # Enter a parse tree produced by dpm_xlParser#dateExtractFunction.
     def enterDateExtractFunction(self, ctx:dpm_xlParser.DateExtractFunctionContext):
         pass

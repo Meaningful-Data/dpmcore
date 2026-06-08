@@ -6,6 +6,7 @@ import pandas as pd
 from dpmcore import errors
 from dpmcore.dpm_xl.ast.nodes import (
     AggregationOp,
+    AnnualiseOp,
     BinOp,
     ComplexNumericOp,
     CondExpr,
@@ -69,6 +70,7 @@ from dpmcore.dpm_xl.utils.operator_mapping import (
     UNARY_OP_MAPPING,
 )
 from dpmcore.dpm_xl.utils.tokens import (
+    ANNUALISE,
     DATE,
     DPM,
     FILTER,
@@ -633,6 +635,32 @@ class InputAnalyzer(ASTTemplate, ABC):
             shift_number=shift_number,
         )
         return result
+
+    def visit_AnnualiseOp(  # type: ignore[override]
+        self, node: AnnualiseOp
+    ) -> Operand:
+        fy_end_sym = self.visit(node.fy_end)
+        if not isinstance(
+            fy_end_sym, (Scalar, ConstantOperand)
+        ) or not isinstance(fy_end_sym.type, Integer):
+            raise errors.SemanticError("4-7-4")
+
+        fy_end_value = (
+            int(node.fy_end.value)
+            if isinstance(node.fy_end, Constant)
+            else None
+        )
+
+        operand = self.visit(node.operand)
+        if not isinstance(operand, (RecordSet, Scalar, ConstantOperand)):
+            raise errors.SemanticError("4-7-1", op=ANNUALISE)
+
+        result = cast(Any, TIME_OPERATORS[ANNUALISE]).validate(
+            operand=operand,
+            component_name=node.component,
+            fy_end=fy_end_value,
+        )
+        return cast(Operand, result)
 
     def visit_DateConstructorOp(  # type: ignore[override]
         self, node: DateConstructorOp

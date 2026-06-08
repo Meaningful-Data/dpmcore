@@ -564,6 +564,16 @@ class ASTToJSONVisitor(NodeVisitor):
             "shift_number": self.visit(node.shift_number),
         }
 
+    def visit_AnnualiseOp(self, node: Any) -> NodeDict:
+        """Visit AnnualiseOp nodes."""
+        return {
+            "class_name": "AnnualiseOp",
+            "op": node.op,
+            "operand": self.visit(node.operand),
+            "fy_end": self.visit(node.fy_end),
+            "component": node.component,
+        }
+
     def visit_RenameOp(self, node: Any) -> NodeDict:
         """Visit RenameOp nodes and serialize as RenameClauseOp."""
         return {

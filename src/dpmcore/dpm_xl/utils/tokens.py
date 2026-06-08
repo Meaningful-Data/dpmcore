@@ -53,6 +53,7 @@ CONCATENATE = "&"
 
 # Time operators
 TIME_SHIFT = "time_shift"
+ANNUALISE = "annualise"
 YEAR = "year"
 SEMESTER = "semester"
 QUARTER = "quarter"

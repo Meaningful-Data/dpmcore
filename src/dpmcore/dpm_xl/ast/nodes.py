@@ -644,6 +644,41 @@ class TimeShiftOp(AST):
         }
 
 
+class AnnualiseOp(AST):
+    """AST node for the annualise(op, fyEnd, var) operator.
+
+    :parameter operand: Recordset or Scalar of numeric type to annualise.
+    :parameter fy_end: Integer expression — month code (1-12) of financial year end.
+    :parameter component: Property code of the Date-type component of op.
+    """
+
+    def __init__(self, operand: "AST", fy_end: "AST", component: str) -> None:
+        super().__init__()
+        self.op: str = "annualise"
+        self.operand: "AST" = operand
+        self.fy_end: "AST" = fy_end
+        self.component: str = component
+
+    def __str__(self) -> str:
+        return "<AST(name='{name}', operand={operand}, fy_end={fy_end}, component={component})>".format(
+            name=self.__class__.__name__,
+            operand=self.operand,
+            fy_end=self.fy_end,
+            component=self.component,
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> "dict[str, Any]":
+        return {
+            "class_name": self.__class__.__name__,
+            "op": self.op,
+            "operand": self.operand,
+            "fy_end": self.fy_end,
+            "component": self.component,
+        }
+
+
 class DateConstructorOp(AST):
     """AST node for the date(year, month, day) constructor operator.
 

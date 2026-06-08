@@ -17,6 +17,7 @@ from dpmcore import errors
 from dpmcore.dpm_xl.ast.nodes import (
     AST,
     AggregationOp,
+    AnnualiseOp,
     BinOp,
     ComplexNumericOp,
     CondExpr,
@@ -348,6 +349,17 @@ class ASTVisitor(dpm_xlParserVisitor):
             period_indicator=period_indicator,
             shift_number=shift_number,
         )
+
+    def visitAnnualiseFunction(
+        self, ctx: dpm_xlParser.AnnualiseFunctionContext
+    ) -> AnnualiseOp:
+        ctx_list = list(ctx.getChildren())
+        # ANNUALISE ( op , fyEnd , var )
+        #     0     1  2 3   4   5  6  7
+        operand: AST = self._visit(ctx_list[2])
+        fy_end: AST = self._visit(ctx_list[4])
+        component: str = self._visit(ctx_list[6])
+        return AnnualiseOp(operand=operand, fy_end=fy_end, component=component)
 
     def visitDateExtractFunction(
         self, ctx: dpm_xlParser.DateExtractFunctionContext
