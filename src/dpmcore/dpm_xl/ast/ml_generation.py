@@ -325,9 +325,6 @@ class MLGeneration(ASTTemplate):
             self.visit(node.grouping_clause)
 
     def visit_RankOp(self, node: RankOp) -> None:
-        operand_node = self.create_operation_node(node)
-        node.operand.parent = operand_node
-        node.operand.argument = "operand"
         self.visit(node.operand)
 
     def visit_GroupingClause(self, node: GroupingClause) -> None:
