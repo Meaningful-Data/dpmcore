@@ -64,6 +64,23 @@ if TYPE_CHECKING:
 # Helper utilities
 # ------------------------------------------------------------------ #
 
+# The DPM 2.0 Refit schema stores the filing-indicator variable type as
+# the single token "filingindicator". Some source exports spell it
+# "Filing Indicator" (with a space and capitals), so matching is done on
+# a case- and whitespace-normalised form rather than a fixed literal.
+_FILING_INDICATOR_TYPE = "filingindicator"
+
+
+def _is_filing_indicator() -> Any:
+    """Return a SQLAlchemy clause matching filing-indicator variables.
+
+    Normalises ``Variable.type`` (lower-cased, spaces removed) before
+    comparison so the match is robust to spelling variants across DPM
+    source exports (``"Filing Indicator"`` vs ``"filingindicator"``).
+    """
+    normalized = func.lower(func.replace(Variable.type, " ", ""))
+    return normalized == _FILING_INDICATOR_TYPE
+
 
 def _get_engine_cache_key(session: "Session") -> Hashable:
     """Return a hashable key that identifies the engine.
@@ -343,8 +360,8 @@ class VariableVersionQuery:
         """Find a filing-indicator variable by code.
 
         Looks for a VariableVersion whose code matches
-        *variable_code* and whose Variable type is
-        ``'Filing Indicator'``.
+        *variable_code* and whose Variable type is a
+        filing indicator (see :func:`_is_filing_indicator`).
 
         Args:
             session: SQLAlchemy session.
@@ -366,7 +383,7 @@ class VariableVersionQuery:
             )
             .filter(
                 VariableVersion.code == variable_code,
-                Variable.type == "Filing Indicator",
+                _is_filing_indicator(),
             )
         )
         if release_id is not None:
@@ -485,7 +502,7 @@ class VariableVersionQuery:
                 Variable,
                 VariableVersion.variable_id == Variable.variable_id,
             )
-            .filter(Variable.type == "Filing Indicator")
+            .filter(_is_filing_indicator())
         )
         if release_id is not None:
             query = query.filter(
@@ -879,7 +896,7 @@ class ModuleVersionQuery:
                 VariableVersion.variable_id == Variable.variable_id,
             )
             .filter(VariableVersion.code.in_(precondition_items))
-            .filter(Variable.type == "Filing Indicator")
+            .filter(_is_filing_indicator())
         )
         if release_id is not None:
             query = query.filter(
