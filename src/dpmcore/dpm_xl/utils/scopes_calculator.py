@@ -112,8 +112,11 @@ class OperationScopeService:
 
             # When using table_codes, unique operands are based on table codes, not table VIDs
             if table_codes:
-                unique_operands_number = len(table_codes) + len(
-                    precondition_items
+                # A module hosts an intra-instance scope only when it
+                # covers every distinct referenced table code AND every
+                # distinct precondition (filing-indicator) code.
+                unique_operands_number = len(set(table_codes)) + len(
+                    set(precondition_items)
                 )
 
                 # First pass: categorize modules by table code and lifecycle
@@ -128,13 +131,24 @@ class OperationScopeService:
                     modules_info_dataframe.groupby(MODULE_VID),
                 )
                 for module_vid, group_df in code_groups:
+                    # Referenced table codes this module contains. Drop
+                    # NaN: precondition rows carry their code in "Code",
+                    # not "TableCode", so leaving the NaN in would inflate
+                    # the count by one spurious bucket.
                     table_codes_in_module: list[str] = (
                         cast(
                             list[str],
-                            group_df["TableCode"].unique().tolist(),
+                            group_df["TableCode"].dropna().unique().tolist(),
                         )
                         if "TableCode" in group_df.columns
                         else []
+                    )
+                    # Distinct precondition codes this module provides
+                    # (filing indicators live in the "Code" column).
+                    precondition_codes_in_module = (
+                        int(group_df["Code"].dropna().nunique())
+                        if "Code" in group_df.columns
+                        else 0
                     )
 
                     # Get module lifecycle info
@@ -147,7 +161,11 @@ class OperationScopeService:
                     # Determine if this is a "new" module starting in this release
                     is_starting = start_release == release_id
 
-                    if len(table_codes_in_module) == unique_operands_number:
+                    operands_in_module = (
+                        len(table_codes_in_module)
+                        + precondition_codes_in_module
+                    )
+                    if operands_in_module == unique_operands_number:
                         # Intra-module: include ALL modules active in the release
                         intra_modules.append(module_vid)
                     else:
@@ -233,48 +251,102 @@ class OperationScopeService:
             if len(intra_modules):
                 self.process_repeated(intra_modules, modules_info_dataframe)
 
+            required_preconditions = set(precondition_items)
             if cross_modules:
-                # When using table_codes with lifecycle grouping
-                if table_codes and (
-                    "_starting" in cross_modules or "_ending" in cross_modules
-                ):
-                    # Process each generation separately
-                    if "_starting" in cross_modules:
-                        self.process_cross_module(
-                            cross_modules=cross_modules["_starting"],
-                            modules_dataframe=modules_info_dataframe,
-                        )
-                    if "_ending" in cross_modules:
-                        self.process_cross_module(
-                            cross_modules=cross_modules["_ending"],
-                            modules_dataframe=modules_info_dataframe,
-                        )
-                # Legacy table_codes without lifecycle grouping
-                elif table_codes or set(cross_modules.keys()) == set(
-                    tables_vids
-                ):
-                    self.process_cross_module(
-                        cross_modules=cross_modules,
-                        modules_dataframe=modules_info_dataframe,
-                    )
-                else:
-                    # add the missing table_vids to cross_modules
-                    for table_vid in tables_vids:
-                        if table_vid not in cross_modules:
-                            cross_modules[table_vid] = (
-                                modules_info_dataframe[
-                                    modules_info_dataframe[VARIABLE_VID]
-                                    == table_vid
-                                ][MODULE_VID]
-                                .unique()
-                                .tolist()
+                if table_codes:
+                    required_codes = set(table_codes)
+                    if (
+                        "_starting" in cross_modules
+                        or "_ending" in cross_modules
+                    ):
+                        # Lifecycle grouping: complete and process each
+                        # generation independently.
+                        for generation in ("_starting", "_ending"):
+                            pool = cross_modules.get(generation)
+                            if not pool:
+                                continue
+                            self._supplement_missing_codes(
+                                pool, required_codes, modules_info_dataframe
                             )
+                            self.process_cross_module(
+                                cross_modules=pool,
+                                modules_dataframe=modules_info_dataframe,
+                                required_keys=required_codes,
+                                required_precondition_codes=(
+                                    required_preconditions
+                                ),
+                            )
+                    else:
+                        # Complete each partial module into a cross-instance
+                        # scope by pulling its missing table codes from the
+                        # modules that provide them (Issue #119/#120), then
+                        # build the combinations.
+                        self._supplement_missing_codes(
+                            cross_modules,
+                            required_codes,
+                            modules_info_dataframe,
+                        )
+                        self.process_cross_module(
+                            cross_modules=cross_modules,
+                            modules_dataframe=modules_info_dataframe,
+                            required_keys=required_codes,
+                            required_precondition_codes=required_preconditions,
+                        )
+                else:
+                    # Table-VID path: supplement any referenced table VID
+                    # not yet present, then build the cross combinations.
+                    self._supplement_missing_codes(
+                        cross_modules,
+                        set(tables_vids),
+                        modules_info_dataframe,
+                        key_column=VARIABLE_VID,
+                    )
                     self.process_cross_module(
                         cross_modules=cross_modules,
                         modules_dataframe=modules_info_dataframe,
+                        required_keys=set(tables_vids),
+                        required_precondition_codes=required_preconditions,
                     )
 
         return self.get_scopes_with_status()
+
+    @staticmethod
+    def _supplement_missing_codes(
+        pool: dict[Any, list[int]],
+        required_codes: set[Any],
+        modules_dataframe: pd.DataFrame,
+        key_column: str = "TableCode",
+    ) -> None:
+        """Add providers for referenced operands absent from *pool*.
+
+        A partial module contributes only the operands it actually holds,
+        so an operand it lacks would be missing from the Cartesian product
+        and yield an incomplete single-module scope. For each such operand,
+        register every module that provides it — looked up in *key_column*
+        (``"TableCode"`` for the table-code path, the variable-VID column
+        for the table-VID path) — so the product pairs the partial module
+        with a provider into a complete cross-instance scope
+        (Issue #119/#120). Operands already present are left untouched to
+        avoid re-pairing a partial module with itself.
+
+        Pairing modules from non-overlapping lifecycle generations is
+        prevented downstream: :meth:`process_cross_module` drops any
+        combination whose reference-date windows do not overlap.
+        """
+        if key_column not in modules_dataframe.columns:
+            return
+        for code in required_codes:
+            if code in pool:
+                continue
+            providers: list[int] = (
+                modules_dataframe[modules_dataframe[key_column] == code][
+                    MODULE_VID
+                ]
+                .unique()
+                .tolist()
+            )
+            if providers:
+                pool[code] = providers
 
     def extract_module_info(
         self,
@@ -402,11 +474,33 @@ class OperationScopeService:
         self,
         cross_modules: dict[Any, list[int]],
         modules_dataframe: pd.DataFrame,
+        required_keys: Iterable[Any] | None = None,
+        required_precondition_codes: Iterable[Any] | None = None,
     ) -> None:
         """Method to calculate OperationScope and OperationScopeComposition tables for a cross module operation
         :param cross_modules: dictionary with table version ids as key and its module version ids as values
         :param modules_dataframe: dataframe with modules data.
+        :param required_keys: full set of referenced operand keys (table
+            codes or table VIDs) the combination must cover. When the
+            cross-module pool does not span every required key, no single
+            module nor combination of modules can evaluate the operation,
+            so no scope is emitted. ``None`` disables the check.
+        :param required_precondition_codes: gating precondition (filing
+            indicator) codes; a combination is emitted only if its modules
+            collectively report all of them (Issue #120). ``None``/empty
+            disables the check.
         """
+        # Table coverage: each generated combination provides exactly the
+        # pool's key set (one module per key), and supplementation in
+        # ``calculate_operation_scope`` already ensures the pool spans every
+        # required table code. This guard is a defensive backstop — if the
+        # pool still lacks a required key (a code with no provider at all),
+        # no combination can evaluate the operation, so emit nothing.
+        if required_keys is not None and not set(cross_modules).issuperset(
+            required_keys
+        ):
+            return
+
         modules_dataframe[FROM_REFERENCE_DATE] = pd.to_datetime(
             modules_dataframe[FROM_REFERENCE_DATE],
             format="mixed",
@@ -423,8 +517,21 @@ class OperationScopeService:
             if vid not in module_lookup:
                 module_lookup[vid] = row
 
+        # Distinct precondition codes each module reports, so a combination
+        # can be checked for full precondition coverage.
+        req_preconditions = set(required_precondition_codes or [])
+        precond_by_module: dict[int, set[Any]] = {}
+        if req_preconditions and "Code" in modules_dataframe.columns:
+            code_groups = cast(
+                Iterable[tuple[int, pd.DataFrame]],
+                modules_dataframe.groupby(MODULE_VID),
+            )
+            for vid, grp in code_groups:
+                precond_by_module[int(vid)] = set(grp["Code"].dropna())
+
         values = cross_modules.values()
         for combination in product(*values):
+            unique_combination = set(combination)
             combination_info = modules_dataframe[
                 modules_dataframe[MODULE_VID].isin(combination)
             ]
@@ -433,21 +540,32 @@ class OperationScopeService:
             ref_from_date = from_dates.max()
             ref_to_date = to_dates.min()
 
-            is_valid_combination = True
-            for from_date, to_date in zip(from_dates, to_dates, strict=False):
-                if to_date < ref_from_date or (
-                    (not pd.isna(ref_to_date)) and from_date > ref_to_date
-                ):
-                    is_valid_combination = False
-                    break  # No need to check remaining dates
+            # Modules in a combination must share an overlapping
+            # reference-date window; otherwise they are never reported
+            # together (e.g. different lifecycle generations) and the
+            # combination is not a real scope (Issue #119/#120).
+            overlaps = all(
+                not (
+                    to_date < ref_from_date
+                    or ((not pd.isna(ref_to_date)) and from_date > ref_to_date)
+                )
+                for from_date, to_date in zip(
+                    from_dates, to_dates, strict=False
+                )
+            )
+            if not overlaps:
+                continue
 
-            from_submission_date: Any
-            if is_valid_combination:
-                from_submission_date = ref_from_date
-            else:
-                from_submission_date = None
-            operation_scope = self.create_operation_scope(from_submission_date)
-            unique_combination = set(combination)
+            # Every gating precondition must be reported by some module in
+            # the combination, else it cannot evaluate the operation.
+            if req_preconditions:
+                covered: set[Any] = set()
+                for module in unique_combination:
+                    covered |= precond_by_module.get(module, set())
+                if not covered.issuperset(req_preconditions):
+                    continue
+
+            operation_scope = self.create_operation_scope(ref_from_date)
             for module in unique_combination:
                 module_row = module_lookup.get(module)
                 if module_row is None:

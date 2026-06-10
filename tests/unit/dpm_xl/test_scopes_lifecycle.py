@@ -71,6 +71,32 @@ def _make_module_df(rows):
     )
 
 
+def _make_combined_df(rows):
+    """Build a DataFrame mirroring the concat of table-code and
+    precondition queries.
+
+    Table rows carry their code in ``TableCode`` (``Code`` is NaN);
+    precondition rows carry it in ``Code`` (``TableCode`` is NaN) — the
+    exact shape ``extract_module_info`` produces when both table codes
+    and precondition items are present.
+    """
+    return pd.DataFrame(
+        rows,
+        columns=[
+            "ModuleVID",
+            "variable_vid",
+            "TableCode",
+            "Code",
+            "ModuleCode",
+            "VersionNumber",
+            "StartReleaseID",
+            "EndReleaseID",
+            "FromReferenceDate",
+            "ToReferenceDate",
+        ],
+    )
+
+
 def _get_svc_class():
     """Import OperationScopeService avoiding ORM chain."""
     mod_name = "dpmcore.dpm_xl.utils.scopes_calculator"
@@ -169,3 +195,263 @@ class TestLifecycleSupplement:
 
         assert len(captured_repeated) == 1
         assert 10 in captured_repeated[0]
+
+
+class TestPreconditionCoverage:
+    """Precondition codes count toward intra coverage (not the NaN
+    bucket of the TableCode column).
+    """
+
+    def test_full_module_with_two_preconditions_is_intra(self):
+        """A module covering every table code AND every precondition
+        code is intra, even with two preconditions.
+
+        Regression: previously ``unique_operands_number`` summed tables
+        and preconditions while the membership test counted
+        ``TableCode.unique()``, where all precondition rows collapse to
+        a single NaN. With two preconditions the full module failed the
+        test and was wrongly pushed into the cross-module pool.
+        """
+        rows = [
+            # Full module: tables A, B + preconditions pA, pB.
+            (
+                10,
+                100,
+                "A",
+                None,
+                "MOD_FULL",
+                "1.0",
+                1,
+                None,
+                "2020-01-01",
+                None,
+            ),
+            (
+                10,
+                200,
+                "B",
+                None,
+                "MOD_FULL",
+                "1.0",
+                1,
+                None,
+                "2020-01-01",
+                None,
+            ),
+            (
+                10,
+                0,
+                None,
+                "pA",
+                "MOD_FULL",
+                "1.0",
+                1,
+                None,
+                "2020-01-01",
+                None,
+            ),
+            (
+                10,
+                0,
+                None,
+                "pB",
+                "MOD_FULL",
+                "1.0",
+                1,
+                None,
+                "2020-01-01",
+                None,
+            ),
+            # Partial sibling: only table A + precondition pA.
+            (
+                20,
+                100,
+                "A",
+                None,
+                "MOD_PART",
+                "1.0",
+                1,
+                None,
+                "2020-01-01",
+                None,
+            ),
+            (
+                20,
+                0,
+                None,
+                "pA",
+                "MOD_PART",
+                "1.0",
+                1,
+                None,
+                "2020-01-01",
+                None,
+            ),
+        ]
+        df = _make_combined_df(rows)
+
+        SvcClass = _get_svc_class()
+        svc = SvcClass(session=MagicMock())
+
+        captured_intra = []
+        captured_cross = []
+        svc.process_repeated = lambda mvids, minfo: captured_intra.extend(
+            mvids
+        )
+        svc.process_cross_module = lambda **kwargs: captured_cross.append(
+            kwargs
+        )
+        svc.get_scopes_with_status = MagicMock(return_value=([], []))
+        svc.extract_module_info = MagicMock(return_value=df)
+
+        svc.calculate_operation_scope(
+            tables_vids=[],
+            precondition_items=["pA", "pB"],
+            release_id=1,
+            table_codes=["A", "B"],
+        )
+
+        # Full module is intra; partial module is not.
+        assert 10 in captured_intra
+        assert 20 not in captured_intra
+        # The partial module (20) contributes table code "A"; the missing
+        # code "B" is supplemented from the full module (10) so the cross
+        # pool covers the full operand set {A, B} and the product pairs
+        # 20 with 10 into a complete cross-instance scope (Issue #119/#120).
+        # No spurious NaN key leaks in from the precondition rows.
+        assert captured_cross
+        cross_modules = captured_cross[0]["cross_modules"]
+        assert set(cross_modules) == {"A", "B"}
+        assert cross_modules["A"] == [20]
+        assert 10 in cross_modules["B"]
+
+
+class TestCrossModuleCoverage:
+    """process_cross_module only emits combinations that cover every
+    required operand key.
+    """
+
+    @staticmethod
+    def _modules_df():
+        return pd.DataFrame(
+            [
+                (10, "MOD_A", "1.0", "2020-01-01", None),
+                (20, "MOD_B", "1.0", "2020-01-01", None),
+            ],
+            columns=[
+                "ModuleVID",
+                "ModuleCode",
+                "VersionNumber",
+                "FromReferenceDate",
+                "ToReferenceDate",
+            ],
+        )
+
+    def test_incomplete_coverage_emits_no_scope(self):
+        """A pool missing a required key produces no scope.
+
+        ``{"A": [20]}`` cannot satisfy required keys ``{"A", "B"}`` — the
+        partial module 20 would otherwise become a spurious single-module
+        scope that cannot evaluate the operation.
+        """
+        SvcClass = _get_svc_class()
+        svc = SvcClass(session=MagicMock())
+        svc.process_cross_module(
+            cross_modules={"A": [20]},
+            modules_dataframe=self._modules_df(),
+            required_keys={"A", "B"},
+        )
+        assert svc.operation_scopes == []
+
+    def test_complete_coverage_emits_scope(self):
+        """A pool spanning every required key produces a scope."""
+        SvcClass = _get_svc_class()
+        svc = SvcClass(session=MagicMock())
+        svc.process_cross_module(
+            cross_modules={"A": [10], "B": [20]},
+            modules_dataframe=self._modules_df(),
+            required_keys={"A", "B"},
+        )
+        assert len(svc.operation_scopes) == 1
+
+    def test_none_required_keys_disables_guard(self):
+        """``required_keys=None`` keeps the legacy unguarded behaviour."""
+        SvcClass = _get_svc_class()
+        svc = SvcClass(session=MagicMock())
+        svc.process_cross_module(
+            cross_modules={"A": [20]},
+            modules_dataframe=self._modules_df(),
+            required_keys=None,
+        )
+        assert len(svc.operation_scopes) == 1
+
+    def test_non_overlapping_dates_emit_no_scope(self):
+        """Modules whose reference-date windows do not overlap are never
+        reported together (e.g. different lifecycle generations), so the
+        combination is dropped rather than emitted (Issue #119/#120).
+        """
+        df = pd.DataFrame(
+            [
+                (10, "MOD_OLD", "1.0", "2020-01-01", "2024-12-31"),
+                (30, "MOD_NEW", "2.0", "2025-01-01", None),
+            ],
+            columns=[
+                "ModuleVID",
+                "ModuleCode",
+                "VersionNumber",
+                "FromReferenceDate",
+                "ToReferenceDate",
+            ],
+        )
+        SvcClass = _get_svc_class()
+        svc = SvcClass(session=MagicMock())
+        svc.process_cross_module(
+            cross_modules={"A": [10], "B": [30]},
+            modules_dataframe=df,
+            required_keys={"A", "B"},
+        )
+        assert svc.operation_scopes == []
+
+    @staticmethod
+    def _modules_df_with_preconditions():
+        # Module 10 reports filing indicator "P1"; module 20 reports none.
+        return pd.DataFrame(
+            [
+                (10, "MOD_A", "1.0", "2020-01-01", None, "P1"),
+                (20, "MOD_B", "1.0", "2020-01-01", None, None),
+            ],
+            columns=[
+                "ModuleVID",
+                "ModuleCode",
+                "VersionNumber",
+                "FromReferenceDate",
+                "ToReferenceDate",
+                "Code",
+            ],
+        )
+
+    def test_missing_precondition_emits_no_scope(self):
+        """A combination that does not report a gating precondition cannot
+        evaluate the operation, so it is dropped (Issue #120).
+        """
+        SvcClass = _get_svc_class()
+        svc = SvcClass(session=MagicMock())
+        svc.process_cross_module(
+            cross_modules={"T": [20]},  # module 20 reports no precondition
+            modules_dataframe=self._modules_df_with_preconditions(),
+            required_keys={"T"},
+            required_precondition_codes={"P1"},
+        )
+        assert svc.operation_scopes == []
+
+    def test_precondition_covered_emits_scope(self):
+        """A combination reporting every gating precondition is emitted."""
+        SvcClass = _get_svc_class()
+        svc = SvcClass(session=MagicMock())
+        svc.process_cross_module(
+            cross_modules={"T": [10]},  # module 10 reports P1
+            modules_dataframe=self._modules_df_with_preconditions(),
+            required_keys={"T"},
+            required_precondition_codes={"P1"},
+        )
+        assert len(svc.operation_scopes) == 1
