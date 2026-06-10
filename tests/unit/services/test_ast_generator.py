@@ -947,6 +947,38 @@ class TestScript:
         assert out["success"] is False
         assert out["error"] == "bad expr"
 
+    def test_scope_error_fails_generation(self, monkeypatch):
+        """Regression for #122: a scope-calculation error must fail the
+        script generation instead of silently emitting the operation
+        with no dependency information.
+        """
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+        svc._scope_calc.calculate_from_expression.return_value = (
+            SimpleNamespace(
+                has_error=True,
+                error_message=(
+                    "No module versions found for preconditions items: "
+                    "{'F_40.01'}."
+                ),
+            )
+        )
+        out = svc.script(
+            expressions=[("e1", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+        assert out["success"] is False
+        assert "'v1'" in out["error"]
+        assert "No module versions found" in out["error"]
+
     def test_invalid_severity_returns_error(self, monkeypatch):
         svc, *_ = self._build_svc()
         out = svc.script(

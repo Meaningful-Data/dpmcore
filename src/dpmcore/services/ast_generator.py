@@ -214,9 +214,20 @@ class ASTGeneratorService:
                         code, []
                     ),
                 )
-                if not sr.has_error:
-                    ts = self._extract_time_shifts(ast)
-                    scope_pairs.append((item, sr, ts))
+                if sr.has_error:
+                    # A script whose dependency block is silently missing
+                    # is structurally valid but semantically wrong (#122),
+                    # so a scope failure fails the whole generation.
+                    return {
+                        "success": False,
+                        "enriched_ast": None,
+                        "error": (
+                            f"Scope calculation failed for operation "
+                            f"'{code}': {sr.error_message}"
+                        ),
+                    }
+                ts = self._extract_time_shifts(ast)
+                scope_pairs.append((item, sr, ts))
 
             primary_tables_full = self._scope_calc._get_module_tables(
                 primary_module_vid, release_id=release_id
