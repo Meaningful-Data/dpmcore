@@ -21,6 +21,7 @@ from dpmcore.orm.operations import (
     OperationVersion,
 )
 from dpmcore.orm.packaging import Module, ModuleVersion
+from dpmcore.orm.query_utils import chunked_in
 
 
 class MeiliJsonError(Exception):
@@ -146,19 +147,6 @@ def calculate_applicable(modules: List[Dict[str, Any]]) -> bool:  # noqa: C901
     return max_from_date < str(min_to_date)
 
 
-_SQLITE_CHUNK_SIZE = 999
-
-
-def _chunked_query(base_query: Any, column: Any, ids: Any) -> List[Any]:
-    """Split a large IN clause into 999-item batches for SQLite."""
-    ids_list = list(ids)
-    result: List[Any] = []
-    for i in range(0, len(ids_list), _SQLITE_CHUNK_SIZE):
-        chunk = ids_list[i : i + _SQLITE_CHUNK_SIZE]
-        result.extend(base_query.filter(column.in_(chunk)).all())
-    return result
-
-
 class MeiliJsonService:
     """Generate the operations JSON consumed by Meilisearch."""
 
@@ -274,7 +262,7 @@ class MeiliJsonService:
         if not operation_vids:
             return ctx
 
-        scopes = _chunked_query(
+        scopes = chunked_in(
             self._session.query(OperationScope),
             OperationScope.operation_vid,
             operation_vids,
@@ -285,7 +273,7 @@ class MeiliJsonService:
 
         scope_ids = [scope.operation_scope_id for scope in scopes]
         if scope_ids:
-            compositions = _chunked_query(
+            compositions = chunked_in(
                 self._session.query(OperationScopeComposition).options(
                     selectinload(OperationScopeComposition.module_version)
                     .selectinload(ModuleVersion.module)
@@ -318,7 +306,7 @@ class MeiliJsonService:
         }
 
         if parent_operation_ids:
-            parent_versions = _chunked_query(
+            parent_versions = chunked_in(
                 self._session.query(OperationVersion)
                 .options(selectinload(OperationVersion.operation))
                 .order_by(
@@ -338,7 +326,7 @@ class MeiliJsonService:
                         parent_version
                     )
 
-        all_versions = _chunked_query(
+        all_versions = chunked_in(
             self._session.query(OperationVersion)
             .options(
                 selectinload(OperationVersion.operation)
@@ -370,7 +358,7 @@ class MeiliJsonService:
             operation_vids
         )
         if previous_version_opvids:
-            previous_scopes = _chunked_query(
+            previous_scopes = chunked_in(
                 self._session.query(OperationScope),
                 OperationScope.operation_vid,
                 previous_version_opvids,
@@ -383,7 +371,7 @@ class MeiliJsonService:
                 scope.operation_scope_id for scope in previous_scopes
             ]
             if extra_scope_ids:
-                extra_compositions = _chunked_query(
+                extra_compositions = chunked_in(
                     self._session.query(OperationScopeComposition).options(
                         selectinload(OperationScopeComposition.module_version)
                         .selectinload(ModuleVersion.module)
@@ -403,7 +391,7 @@ class MeiliJsonService:
                         composition.operation_scope_id
                     ].append(composition)
 
-        nodes = _chunked_query(
+        nodes = chunked_in(
             self._session.query(OperationNode),
             OperationNode.operation_vid,
             all_opvids_for_info,
@@ -415,7 +403,7 @@ class MeiliJsonService:
             node_ids.append(node.node_id)
 
         if node_ids:
-            refs = _chunked_query(
+            refs = chunked_in(
                 self._session.query(OperandReference),
                 OperandReference.node_id,
                 node_ids,
@@ -430,7 +418,7 @@ class MeiliJsonService:
                 ref_ids.append(reference.operand_reference_id)
 
             if ref_ids:
-                locations = _chunked_query(
+                locations = chunked_in(
                     self._session.query(OperandReferenceLocation),
                     OperandReferenceLocation.operand_reference_id,
                     ref_ids,
