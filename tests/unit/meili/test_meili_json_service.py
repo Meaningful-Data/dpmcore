@@ -8,7 +8,6 @@ from dpmcore.services.meili_json import (
     BulkDataContext,
     MeiliJsonError,
     MeiliJsonService,
-    _chunked_query,
     _iso_date,
     calculate_applicable,
     create_substrings,
@@ -199,39 +198,10 @@ def test_calculate_applicable_multiple_modules_valid_range():
     assert calculate_applicable(modules) is True
 
 
-# ---------------------------------------------------------------------------
-# _chunked_query
-# ---------------------------------------------------------------------------
-
-
-def test_chunked_query_single_chunk():
-    mock_query = MagicMock()
-    mock_query.filter.return_value.all.return_value = ["row1", "row2"]
-
-    result = _chunked_query(mock_query, MagicMock(), [1, 2, 3])
-
-    assert mock_query.filter.call_count == 1
-    assert result == ["row1", "row2"]
-
-
-def test_chunked_query_splits_into_multiple_chunks():
-    mock_query = MagicMock()
-    mock_query.filter.return_value.all.return_value = ["row"]
-
-    ids = list(range(1001))  # 1001 > 999 → 2 chunks
-    result = _chunked_query(mock_query, MagicMock(), ids)
-
-    assert mock_query.filter.call_count == 2
-    assert len(result) == 2
-
-
-def test_chunked_query_empty_ids_returns_empty():
-    mock_query = MagicMock()
-
-    result = _chunked_query(mock_query, MagicMock(), [])
-
-    mock_query.filter.assert_not_called()
-    assert result == []
+# Chunked IN batching is now provided by the shared
+# ``dpmcore.orm.query_utils.chunked_in`` helper and is unit-tested in
+# tests/unit/orm/test_query_utils.py. The service-level test below
+# verifies that the bulk loader drives that helper correctly.
 
 
 # ---------------------------------------------------------------------------
@@ -1181,7 +1151,7 @@ def test_bulk_load_related_data_populates_all_lookup_contexts():
     service = MeiliJsonService(_FakeSession())
 
     with patch(
-        "dpmcore.services.meili_json._chunked_query",
+        "dpmcore.services.meili_json.chunked_in",
         side_effect=fake_chunked_query,
     ):
         ctx = service._bulk_load_related_data(
