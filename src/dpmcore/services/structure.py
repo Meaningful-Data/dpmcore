@@ -51,6 +51,7 @@ from dpmcore.orm.packaging import (
     ModuleVersion,
     ModuleVersionComposition,
 )
+from dpmcore.orm.query_utils import chunked_in
 from dpmcore.orm.release_sort_order import compute_sort_order
 from dpmcore.orm.rendering import (
     Cell,
@@ -331,10 +332,8 @@ class StructureService:
         unique = [oid for oid in set(owner_ids) if oid is not None]
         if not unique:
             return []
-        orgs = (
-            self.session.query(Organisation)
-            .filter(Organisation.org_id.in_(unique))
-            .all()
+        orgs = chunked_in(
+            self.session.query(Organisation), Organisation.org_id, unique
         )
         return [_organisation_to_dict(o) for o in orgs]
 
@@ -395,10 +394,10 @@ class StructureService:
             (ics_by_cat, items_by_id) — ItemCategory rows grouped by
             category_id and Item rows keyed by item_id.
         """
-        ics = (
-            self.session.query(ItemCategory)
-            .filter(ItemCategory.category_id.in_(cat_ids))
-            .all()
+        ics = chunked_in(
+            self.session.query(ItemCategory),
+            ItemCategory.category_id,
+            cat_ids,
         )
 
         ics_by_cat: Dict[int, List[ItemCategory]] = defaultdict(
@@ -413,10 +412,8 @@ class StructureService:
 
         items_by_id: Dict[int, Item] = {}
         if item_ids:
-            items = (
-                self.session.query(Item)
-                .filter(Item.item_id.in_(list(item_ids)))
-                .all()
+            items = chunked_in(
+                self.session.query(Item), Item.item_id, list(item_ids)
             )
             items_by_id = {i.item_id: i for i in items}
 
@@ -763,16 +760,15 @@ class StructureService:
         """
         if not table_vids:
             return {}
-        rows = (
+        base = (
             self.session.query(TableVersionHeader, Header, HeaderVersion)
             .join(Header, Header.header_id == TableVersionHeader.header_id)
             .join(
                 HeaderVersion,
                 HeaderVersion.header_vid == TableVersionHeader.header_vid,
             )
-            .filter(TableVersionHeader.table_vid.in_(table_vids))
-            .all()
         )
+        rows = chunked_in(base, TableVersionHeader.table_vid, table_vids)
         out: Dict[
             int, List[Tuple[TableVersionHeader, Header, HeaderVersion]]
         ] = defaultdict(list)
@@ -790,12 +786,10 @@ class StructureService:
         """
         if not table_vids:
             return {}
-        rows = (
-            self.session.query(TableVersionCell, Cell)
-            .join(Cell, Cell.cell_id == TableVersionCell.cell_id)
-            .filter(TableVersionCell.table_vid.in_(table_vids))
-            .all()
+        base = self.session.query(TableVersionCell, Cell).join(
+            Cell, Cell.cell_id == TableVersionCell.cell_id
         )
+        rows = chunked_in(base, TableVersionCell.table_vid, table_vids)
         out: Dict[int, List[Tuple[TableVersionCell, Cell]]] = defaultdict(list)
         for tvc, c in rows:
             out[tvc.table_vid].append((tvc, c))
@@ -876,10 +870,10 @@ class StructureService:
         # Bulk-load VariableVersion rows once.
         vv_by_vid: Dict[int, VariableVersion] = {}
         if all_variable_vids:
-            for vv in (
-                self.session.query(VariableVersion)
-                .filter(VariableVersion.variable_vid.in_(all_variable_vids))
-                .all()
+            for vv in chunked_in(
+                self.session.query(VariableVersion),
+                VariableVersion.variable_vid,
+                all_variable_vids,
             ):
                 vv_by_vid[vv.variable_vid] = vv
             # Variables expose their property reference too — fold
@@ -983,12 +977,10 @@ class StructureService:
         """Resolve ``{property_id: Item.name}`` for a set of property ids."""
         if not property_ids:
             return {}
-        rows = (
-            self.session.query(Item.item_id, Item.name)
-            .join(Property, Property.property_id == Item.item_id)
-            .filter(Item.item_id.in_(property_ids))
-            .all()
+        base = self.session.query(Item.item_id, Item.name).join(
+            Property, Property.property_id == Item.item_id
         )
+        rows = chunked_in(base, Item.item_id, property_ids)
         return {r[0]: r[1] for r in rows}
 
     def _load_subcategory_enumerations(
@@ -1013,7 +1005,7 @@ class StructureService:
         from dpmcore.dpm_xl.utils.filters import filter_by_release
 
         # SubCategoryVersion → SubCategory → parent Category.
-        info_rows = (
+        info_base = (
             self.session.query(SubCategoryVersion, SubCategory, Category)
             .join(
                 SubCategory,
@@ -1021,20 +1013,24 @@ class StructureService:
                 == SubCategoryVersion.subcategory_id,
             )
             .join(Category, Category.category_id == SubCategory.category_id)
-            .filter(SubCategoryVersion.subcategory_vid.in_(subcategory_vids))
-            .all()
+        )
+        info_rows = chunked_in(
+            info_base, SubCategoryVersion.subcategory_vid, subcategory_vids
         )
         subcat_info: Dict[
             int, Tuple[SubCategoryVersion, SubCategory, Category]
         ] = {sv.subcategory_vid: (sv, sc, cat) for sv, sc, cat in info_rows}
 
-        # SubCategoryItem rows + Item names, ordered.
-        item_rows = (
+        # SubCategoryItem rows + Item names, ordered. The per-subcategory
+        # ORDER BY survives chunking because each subcategory_vid falls
+        # entirely within one chunk (the chunk column is subcategory_vid).
+        item_base = (
             self.session.query(SubCategoryItem, Item)
             .join(Item, Item.item_id == SubCategoryItem.item_id)
-            .filter(SubCategoryItem.subcategory_vid.in_(subcategory_vids))
             .order_by(SubCategoryItem.subcategory_vid, SubCategoryItem.order)
-            .all()
+        )
+        item_rows = chunked_in(
+            item_base, SubCategoryItem.subcategory_vid, subcategory_vids
         )
         items_by_subcat: Dict[int, List[Tuple[SubCategoryItem, Item]]] = (
             defaultdict(list)
@@ -1049,9 +1045,7 @@ class StructureService:
         }
         item_codes: Dict[Tuple[int, int], ItemCategory] = {}
         if parent_cat_ids:
-            ic_q = self.session.query(ItemCategory).filter(
-                ItemCategory.category_id.in_(parent_cat_ids)
-            )
+            ic_q = self.session.query(ItemCategory)
             ic_q = filter_by_release(
                 ic_q,
                 start_col=ItemCategory.start_release_id,
@@ -1059,7 +1053,9 @@ class StructureService:
                 release_id=release_id,
                 active_only_fallback=True,
             )
-            for ic in ic_q.all():
+            for ic in chunked_in(
+                ic_q, ItemCategory.category_id, parent_cat_ids
+            ):
                 item_codes[(ic.item_id, ic.category_id)] = ic
 
         result: Dict[int, Dict[str, Any]] = {}
@@ -1106,10 +1102,10 @@ class StructureService:
         """
         if not variable_vids:
             return []
-        vvs = (
-            self.session.query(VariableVersion)
-            .filter(VariableVersion.variable_vid.in_(variable_vids))
-            .all()
+        vvs = chunked_in(
+            self.session.query(VariableVersion),
+            VariableVersion.variable_vid,
+            variable_vids,
         )
         vv_by_vid = {vv.variable_vid: vv for vv in vvs}
         property_ids = {vv.property_id for vv in vvs if vv.property_id}
@@ -1263,15 +1259,9 @@ class StructureService:
 
         if not parent_ids:
             return {}
-        q = (
-            self.session.query(
-                TableGroup.parent_table_group_id, TableGroup.table_group_id
-            )
-            .filter(TableGroup.parent_table_group_id.in_(parent_ids))
-            .order_by(
-                TableGroup.parent_table_group_id, TableGroup.table_group_id
-            )
-        )
+        q = self.session.query(
+            TableGroup.parent_table_group_id, TableGroup.table_group_id
+        ).order_by(TableGroup.parent_table_group_id, TableGroup.table_group_id)
         if target_release is not None:
             q = filter_by_release(
                 q,
@@ -1280,7 +1270,11 @@ class StructureService:
                 release_id=target_release.release_id,
             )
         out: Dict[int, List[int]] = defaultdict(list)
-        for parent_id, child_id in q.all():
+        # Chunking on parent_table_group_id keeps each parent's children
+        # within one chunk, so the per-parent ORDER BY is preserved.
+        for parent_id, child_id in chunked_in(
+            q, TableGroup.parent_table_group_id, parent_ids
+        ):
             out[parent_id].append(child_id)
         return dict(out)
 
@@ -1332,16 +1326,16 @@ class StructureService:
             bucket_ids = [g.table_group_id for g in bucket]
 
             # Compositions at this release.
-            comp_q = self.session.query(TableGroupComposition).filter(
-                TableGroupComposition.table_group_id.in_(bucket_ids)
-            )
+            comp_q = self.session.query(TableGroupComposition)
             comp_q = filter_by_release(
                 comp_q,
                 start_col=TableGroupComposition.start_release_id,
                 end_col=TableGroupComposition.end_release_id,
                 release_id=rid,
             )
-            comps = comp_q.all()
+            comps = chunked_in(
+                comp_q, TableGroupComposition.table_group_id, bucket_ids
+            )
 
             comps_by_group: Dict[int, List[TableGroupComposition]] = (
                 defaultdict(list)
@@ -1354,10 +1348,8 @@ class StructureService:
 
             tv_by_table_id: Dict[int, TableVersion] = {}
             if table_ids:
-                tv_q = (
-                    self.session.query(TableVersion)
-                    .options(joinedload(TableVersion.table))
-                    .filter(TableVersion.table_id.in_(table_ids))
+                tv_q = self.session.query(TableVersion).options(
+                    joinedload(TableVersion.table)
                 )
                 tv_q = filter_by_release(
                     tv_q,
@@ -1365,7 +1357,7 @@ class StructureService:
                     end_col=TableVersion.end_release_id,
                     release_id=rid,
                 )
-                for tv in tv_q.all():
+                for tv in chunked_in(tv_q, TableVersion.table_id, table_ids):
                     tv_by_table_id[tv.table_id] = tv
 
             entries_by_tvid: Dict[int, Dict[str, Any]] = {}
@@ -1395,9 +1387,7 @@ class StructureService:
                 tables_by_group[g.table_group_id] = ordered_entries
 
             # Child TableGroups at this release.
-            child_q = self.session.query(TableGroup).filter(
-                TableGroup.parent_table_group_id.in_(bucket_ids)
-            )
+            child_q = self.session.query(TableGroup)
             child_q = filter_by_release(
                 child_q,
                 start_col=TableGroup.start_release_id,
@@ -1408,7 +1398,9 @@ class StructureService:
                 TableGroup.parent_table_group_id, TableGroup.table_group_id
             )
             child_stubs: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
-            for cg in child_q.all():
+            for cg in chunked_in(
+                child_q, TableGroup.parent_table_group_id, bucket_ids
+            ):
                 child_stubs[cg.parent_table_group_id].append(
                     {
                         "id": cg.table_group_id,
@@ -1579,14 +1571,15 @@ class StructureService:
             return {}
 
         module_vids = [mv.module_vid for mv in module_versions]
-        comp_rows = (
-            self.session.query(ModuleVersionComposition)
-            .filter(ModuleVersionComposition.module_vid.in_(module_vids))
-            .order_by(
+        # Chunking on module_vid keeps each module's compositions within
+        # one chunk, so the per-module ORDER BY is preserved.
+        comp_rows = chunked_in(
+            self.session.query(ModuleVersionComposition).order_by(
                 ModuleVersionComposition.module_vid,
                 ModuleVersionComposition.order,
-            )
-            .all()
+            ),
+            ModuleVersionComposition.module_vid,
+            module_vids,
         )
 
         ordered_vids_by_module: Dict[int, List[int]] = defaultdict(list)
@@ -1600,11 +1593,12 @@ class StructureService:
         if not all_table_vids:
             return {}
 
-        tvs = (
-            self.session.query(TableVersion)
-            .options(joinedload(TableVersion.table))
-            .filter(TableVersion.table_vid.in_(all_table_vids))
-            .all()
+        tvs = chunked_in(
+            self.session.query(TableVersion).options(
+                joinedload(TableVersion.table)
+            ),
+            TableVersion.table_vid,
+            all_table_vids,
         )
         table_entries = self._build_table_entries_batch(
             tvs, detail=detail, target_release=target_release
@@ -1692,15 +1686,16 @@ class StructureService:
         """``{operator_id: [argument_dict, ...]}`` in one query."""
         if not operator_ids:
             return {}
-        rows = (
-            self.session.query(OperatorArgument)
-            .filter(OperatorArgument.operator_id.in_(operator_ids))
-            .order_by(
+        # Chunking on operator_id keeps each operator's arguments within
+        # one chunk, so the per-operator ORDER BY is preserved.
+        rows = chunked_in(
+            self.session.query(OperatorArgument).order_by(
                 OperatorArgument.operator_id,
                 OperatorArgument.order,
                 OperatorArgument.argument_id,
-            )
-            .all()
+            ),
+            OperatorArgument.operator_id,
+            operator_ids,
         )
         out: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
         for a in rows:
@@ -1897,9 +1892,7 @@ class StructureService:
 
         if not operation_ids:
             return {}
-        q = self.session.query(OperationVersion).filter(
-            OperationVersion.operation_id.in_(operation_ids)
-        )
+        q = self.session.query(OperationVersion)
         if target_release is not None:
             q = filter_by_release(
                 q,
@@ -1911,7 +1904,7 @@ class StructureService:
             OperationVersion.operation_id, OperationVersion.start_release_id
         )
         out: Dict[int, List[OperationVersion]] = defaultdict(list)
-        for v in q.all():
+        for v in chunked_in(q, OperationVersion.operation_id, operation_ids):
             out[cast(int, v.operation_id)].append(v)
         return dict(out)
 
@@ -1922,11 +1915,12 @@ class StructureService:
         """``{operation_vid: [OperationNode, ...]}`` in one query."""
         if not operation_vids:
             return {}
-        rows = (
-            self.session.query(OperationNode)
-            .filter(OperationNode.operation_vid.in_(operation_vids))
-            .order_by(OperationNode.operation_vid, OperationNode.node_id)
-            .all()
+        rows = chunked_in(
+            self.session.query(OperationNode).order_by(
+                OperationNode.operation_vid, OperationNode.node_id
+            ),
+            OperationNode.operation_vid,
+            operation_vids,
         )
         out: Dict[int, List[OperationNode]] = defaultdict(list)
         for n in rows:
@@ -1940,14 +1934,13 @@ class StructureService:
         """``{node_id: [OperandReference, ...]}`` in one query."""
         if not node_ids:
             return {}
-        rows = (
-            self.session.query(OperandReference)
-            .filter(OperandReference.node_id.in_(node_ids))
-            .order_by(
+        rows = chunked_in(
+            self.session.query(OperandReference).order_by(
                 OperandReference.node_id,
                 OperandReference.operand_reference_id,
-            )
-            .all()
+            ),
+            OperandReference.node_id,
+            node_ids,
         )
         out: Dict[int, List[OperandReference]] = defaultdict(list)
         for r in rows:
@@ -1966,15 +1959,12 @@ class StructureService:
         """
         if not reference_ids:
             return {}
-        rows = (
-            self.session.query(OperandReferenceLocation)
-            .filter(
-                OperandReferenceLocation.operand_reference_id.in_(
-                    reference_ids
-                )
-            )
-            .order_by(OperandReferenceLocation.operand_reference_id)
-            .all()
+        rows = chunked_in(
+            self.session.query(OperandReferenceLocation).order_by(
+                OperandReferenceLocation.operand_reference_id
+            ),
+            OperandReferenceLocation.operand_reference_id,
+            reference_ids,
         )
         out: Dict[int, List[OperandReferenceLocation]] = defaultdict(list)
         for loc in rows:
@@ -2065,13 +2055,12 @@ class StructureService:
         """``{parent_data_type_id: [child_id, ...]}`` in one query."""
         if not parent_ids:
             return {}
-        rows = (
+        rows = chunked_in(
             self.session.query(
                 DataType.parent_data_type_id, DataType.data_type_id
-            )
-            .filter(DataType.parent_data_type_id.in_(parent_ids))
-            .order_by(DataType.parent_data_type_id, DataType.data_type_id)
-            .all()
+            ).order_by(DataType.parent_data_type_id, DataType.data_type_id),
+            DataType.parent_data_type_id,
+            parent_ids,
         )
         out: Dict[int, List[int]] = defaultdict(list)
         for parent_id, child_id in rows:
@@ -2085,11 +2074,12 @@ class StructureService:
         """``{parent_data_type_id: [child_stub, ...]}`` in one query."""
         if not parent_ids:
             return {}
-        rows = (
-            self.session.query(DataType)
-            .filter(DataType.parent_data_type_id.in_(parent_ids))
-            .order_by(DataType.parent_data_type_id, DataType.data_type_id)
-            .all()
+        rows = chunked_in(
+            self.session.query(DataType).order_by(
+                DataType.parent_data_type_id, DataType.data_type_id
+            ),
+            DataType.parent_data_type_id,
+            parent_ids,
         )
         out: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
         for dt in rows:
@@ -2210,10 +2200,10 @@ class StructureService:
 
         # Bulk-load compositions for all matched contexts.
         context_ids = [c.context_id for c in contexts]
-        comp_rows = (
-            self.session.query(ContextComposition)
-            .filter(ContextComposition.context_id.in_(context_ids))
-            .all()
+        comp_rows = chunked_in(
+            self.session.query(ContextComposition),
+            ContextComposition.context_id,
+            context_ids,
         )
         comps_by_context: Dict[int, List[ContextComposition]] = defaultdict(
             list
@@ -2279,7 +2269,7 @@ class StructureService:
         """
         if not property_ids:
             return {}
-        rows = (
+        base = (
             self.session.query(
                 ItemCategory.item_id,
                 ItemCategory.start_release_id,
@@ -2287,12 +2277,9 @@ class StructureService:
                 ItemCategory.code,
             )
             .join(Item, Item.item_id == ItemCategory.item_id)
-            .filter(
-                ItemCategory.item_id.in_(property_ids),
-                Item.is_property.is_(True),
-            )
-            .all()
+            .filter(Item.is_property.is_(True))
         )
+        rows = chunked_in(base, ItemCategory.item_id, property_ids)
         out: Dict[int, List[Tuple[int, Optional[int], str]]] = defaultdict(
             list
         )
@@ -2311,15 +2298,15 @@ class StructureService:
         """
         if not property_ids:
             return {}
-        rows = (
+        rows = chunked_in(
             self.session.query(
                 PropertyCategory.property_id,
                 PropertyCategory.start_release_id,
                 PropertyCategory.end_release_id,
                 PropertyCategory.category_id,
-            )
-            .filter(PropertyCategory.property_id.in_(property_ids))
-            .all()
+            ),
+            PropertyCategory.property_id,
+            property_ids,
         )
         out: Dict[int, List[Tuple[int, Optional[int], int]]] = defaultdict(
             list
@@ -2342,16 +2329,16 @@ class StructureService:
         """
         if not item_ids:
             return {}
-        rows = (
+        rows = chunked_in(
             self.session.query(
                 ItemCategory.item_id,
                 ItemCategory.category_id,
                 ItemCategory.start_release_id,
                 ItemCategory.end_release_id,
                 ItemCategory.code,
-            )
-            .filter(ItemCategory.item_id.in_(item_ids))
-            .all()
+            ),
+            ItemCategory.item_id,
+            item_ids,
         )
         out: Dict[Tuple[int, int], List[Tuple[int, Optional[int], str]]] = (
             defaultdict(list)
@@ -2600,10 +2587,7 @@ class StructureService:
                 Category,
                 Category.category_id == PropertyCategory.category_id,
             )
-            .filter(
-                PropertyCategory.property_id.in_(property_ids),
-                Category.is_enumerated.is_(True),
-            )
+            .filter(Category.is_enumerated.is_(True))
         )
         pc_q = filter_by_release(
             pc_q,
@@ -2615,7 +2599,9 @@ class StructureService:
         # Deterministic pick when a property links to multiple
         # enumerated categories: lowest category_id wins.
         enum_category_by_property: Dict[int, Category] = {}
-        for pc, cat in pc_q.all():
+        for pc, cat in chunked_in(
+            pc_q, PropertyCategory.property_id, property_ids
+        ):
             existing = enum_category_by_property.get(pc.property_id)
             if existing is None or cat.category_id < existing.category_id:
                 enum_category_by_property[pc.property_id] = cat
@@ -2625,10 +2611,8 @@ class StructureService:
         category_ids = {
             cat.category_id for cat in enum_category_by_property.values()
         }
-        ic_q = (
-            self.session.query(ItemCategory, Item)
-            .join(Item, Item.item_id == ItemCategory.item_id)
-            .filter(ItemCategory.category_id.in_(category_ids))
+        ic_q = self.session.query(ItemCategory, Item).join(
+            Item, Item.item_id == ItemCategory.item_id
         )
         ic_q = filter_by_release(
             ic_q,
@@ -2640,7 +2624,9 @@ class StructureService:
         items_by_category: Dict[int, List[Tuple[ItemCategory, Item]]] = (
             defaultdict(list)
         )
-        for ic, item in ic_q.all():
+        for ic, item in chunked_in(
+            ic_q, ItemCategory.category_id, category_ids
+        ):
             items_by_category[ic.category_id].append((ic, item))
 
         result: Dict[int, Dict[str, Any]] = {}
@@ -2844,10 +2830,10 @@ class StructureService:
         """``{key_id: CompoundKey.signature}`` in one query."""
         if not key_ids:
             return {}
-        rows = (
-            self.session.query(CompoundKey.key_id, CompoundKey.signature)
-            .filter(CompoundKey.key_id.in_(key_ids))
-            .all()
+        rows = chunked_in(
+            self.session.query(CompoundKey.key_id, CompoundKey.signature),
+            CompoundKey.key_id,
+            key_ids,
         )
         return {row[0]: row[1] for row in rows}
 
@@ -2967,7 +2953,6 @@ class StructureService:
             self.session.query(ModuleVersion)
             .join(Module, Module.module_id == ModuleVersion.module_id)
             .options(joinedload(ModuleVersion.module))
-            .filter(Module.framework_id.in_(framework_ids))
         )
         if target_release is not None:
             q = filter_by_release(
@@ -2982,7 +2967,11 @@ class StructureService:
             ModuleVersion.module_id,
             ModuleVersion.start_release_id,
         )
-        module_versions: List[ModuleVersion] = q.all()
+        # Chunking on framework_id keeps each framework's modules within
+        # one chunk, so the per-framework ORDER BY is preserved.
+        module_versions: List[ModuleVersion] = chunked_in(
+            q, Module.framework_id, framework_ids
+        )
         if not module_versions:
             return {}
 
@@ -3031,12 +3020,12 @@ class StructureService:
         """``{framework_id: {"id", "code", "name"}}`` in one query."""
         if not framework_ids:
             return {}
-        rows = (
+        rows = chunked_in(
             self.session.query(
                 Framework.framework_id, Framework.code, Framework.name
-            )
-            .filter(Framework.framework_id.in_(framework_ids))
-            .all()
+            ),
+            Framework.framework_id,
+            framework_ids,
         )
         return {
             fid: {"id": fid, "code": code, "name": name}
@@ -3050,15 +3039,14 @@ class StructureService:
         """``{module_vid: [variable_vid, ...]}`` in one query."""
         if not module_vids:
             return {}
-        rows = (
+        rows = chunked_in(
             self.session.query(
                 ModuleParameters.module_vid, ModuleParameters.variable_vid
-            )
-            .filter(ModuleParameters.module_vid.in_(module_vids))
-            .order_by(
+            ).order_by(
                 ModuleParameters.module_vid, ModuleParameters.variable_vid
-            )
-            .all()
+            ),
+            ModuleParameters.module_vid,
+            module_vids,
         )
         out: Dict[int, List[int]] = defaultdict(list)
         for mvid, vvid in rows:
