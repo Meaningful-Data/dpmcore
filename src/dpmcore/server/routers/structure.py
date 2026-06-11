@@ -462,11 +462,10 @@ def _owner_ids_from_acronyms(
 ) -> List[int]:
     """Resolve acronyms to org IDs for get_release_organisations."""
     from dpmcore.orm.infrastructure import Organisation
+    from dpmcore.orm.query_utils import chunked_in
 
-    orgs = (
-        svc.session.query(Organisation)
-        .filter(Organisation.acronym.in_(acronyms))
-        .all()
+    orgs = chunked_in(
+        svc.session.query(Organisation), Organisation.acronym, acronyms
     )
     return [o.org_id for o in orgs]
 
