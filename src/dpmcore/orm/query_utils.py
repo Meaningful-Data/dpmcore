@@ -35,21 +35,28 @@ def chunked_in(
     the rows. This is only valid when the result is the simple *union*
     of the rows matching the ``IN`` set — i.e. the query has no
     ``LIMIT``/``OFFSET``, no aggregate or ``GROUP BY`` over the set, and
-    no globally-significant ``ORDER BY``. Because the batches partition
-    *values* disjointly, each matching row appears in exactly one batch,
-    so the concatenation equals the single-statement result.
+    no globally-significant ``ORDER BY``.
+
+    *values* is de-duplicated (preserving first-seen order) before
+    batching so the batches partition the distinct values disjointly.
+    Each matching row therefore appears in exactly one batch and the
+    concatenation equals the single-statement result — a single SQL
+    ``IN (...)`` likewise ignores duplicate bound values, so this keeps
+    the chunked path faithful to it even when the caller passes a
+    collection with duplicates that would otherwise straddle batches.
 
     Args:
         query: A query that does **not** already contain the chunked
             filter; the ``column.in_(...)`` filter is added per batch.
         column: The column the ``IN`` filter applies to.
-        values: The collection bound into the ``IN`` clause. An empty
-            collection issues no query and yields an empty list.
+        values: The collection bound into the ``IN`` clause. Duplicates
+            are collapsed; an empty collection issues no query and
+            yields an empty list.
 
     Returns:
         The concatenated rows from every batch, in batch order.
     """
-    values = list(values)
+    values = list(dict.fromkeys(values))
     rows: list[Any] = []
     for start in range(0, len(values), IN_CHUNK_SIZE):
         chunk = values[start : start + IN_CHUNK_SIZE]

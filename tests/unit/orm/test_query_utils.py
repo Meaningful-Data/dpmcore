@@ -64,6 +64,21 @@ def test_multiple_chunks_equal_unchunked(
     assert sorted(w.id for w in chunked) == ids
 
 
+def test_duplicates_across_chunks_yield_each_row_once(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Duplicate values that straddle batches don't duplicate rows.
+
+    Without de-duplication ``[1, 2, 1]`` at chunk size 2 would query id
+    1 in both batches and return its row twice, diverging from a single
+    ``IN (...)`` (which ignores duplicate bound values).
+    """
+    monkeypatch.setattr(query_utils, "IN_CHUNK_SIZE", 2)
+    rows = chunked_in(session.query(_Widget), _Widget.id, [1, 2, 1])
+    assert sorted(w.id for w in rows) == [1, 2]
+
+
 def test_base_query_filters_preserved_across_chunks(
     session: Session,
     monkeypatch: pytest.MonkeyPatch,
