@@ -208,16 +208,28 @@ def _load_member_codes(
 
     from dpmcore.orm.glossary import ItemCategory
 
-    base = session.query(
-        ItemCategory.item_id,
-        ItemCategory.code,
-        ItemCategory.category_id,
-    ).filter(
-        ItemCategory.category_id.in_(domain_category_ids),
-        ItemCategory.end_release_id.is_(None),
+    # Match the domain in Python rather than via a second ``IN (...)`` so
+    # the chunked statement binds only the item-id batch (plus the
+    # release filter) and never approaches SQL Server's 2,100-parameter
+    # cap, however many domains the export spans. ``category_id`` is
+    # already selected, so this is the same predicate moved off SQL.
+    domain = set(domain_category_ids)
+    base = (
+        session.query(
+            ItemCategory.item_id,
+            ItemCategory.code,
+            ItemCategory.category_id,
+        )
+        .filter(ItemCategory.end_release_id.is_(None))
+        # When an item has several in-domain rows the dict's last write
+        # wins, so order to make that winner deterministic (highest
+        # ``(category_id, code)``). The ORDER BY survives chunking
+        # because every item_id falls entirely within one chunk (the
+        # chunk column is item_id), so each item's rows stay contiguous.
+        .order_by(ItemCategory.category_id, ItemCategory.code)
     )
     rows = chunked_in(base, ItemCategory.item_id, item_ids)
-    return {r[0]: r[1] for r in rows if r[1]}
+    return {r[0]: r[1] for r in rows if r[1] and r[2] in domain}
 
 
 # ------------------------------------------------------------------ #
