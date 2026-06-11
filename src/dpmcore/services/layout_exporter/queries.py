@@ -223,9 +223,12 @@ def _load_member_codes(
         .filter(ItemCategory.end_release_id.is_(None))
         # When an item has several in-domain rows the dict's last write
         # wins, so order to make that winner deterministic (highest
-        # ``(category_id, code)``). The ORDER BY survives chunking
-        # because every item_id falls entirely within one chunk (the
-        # chunk column is item_id), so each item's rows stay contiguous.
+        # ``(category_id, code)``). This holds under chunking because
+        # each item_id is queried in exactly one batch (the chunk column
+        # is item_id): all of an item's rows land in that one batch's
+        # ordered result, so the ORDER BY puts the item's highest row
+        # last. Cross-batch order is irrelevant since no item spans
+        # batches.
         .order_by(ItemCategory.category_id, ItemCategory.code)
     )
     rows = chunked_in(base, ItemCategory.item_id, item_ids)
