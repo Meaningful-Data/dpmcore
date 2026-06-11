@@ -23,6 +23,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     PersistentAssignment,
     PreconditionItem,
     PropertyReference,
+    RankOp,
     RenameOp,
     Set,
     SetdiffOp,
@@ -72,6 +73,7 @@ from dpmcore.dpm_xl.utils.operator_mapping import (
     CLAUSE_OP_MAPPING,
     COMPLEX_OP_MAPPING,
     CONDITIONAL_OP_MAPPING,
+    RANK_OP_MAPPING,
     TIME_OPERATORS,
     UNARY_OP_MAPPING,
 )
@@ -451,18 +453,43 @@ class InputAnalyzer(ASTTemplate, ABC):
                 f"Performing an aggregation on recordset: {operand.name} which has only global key components"
             )
 
+        op = cast(str, node.op)
+
+        if node.analytic_clause is not None:
+            if isinstance(operand.get_fact_component().type, Mixed):
+                raise errors.SemanticError("4-4-0-3", origin=f"{op}(...)")
+            result = AGGR_OP_MAPPING[op].validate_analytic(
+                operand, node.analytic_clause
+            )
+            return cast(Operand, result)
+
         grouping_clause = None
         if node.grouping_clause:
             grouping_clause = node.grouping_clause.components
 
-        op = cast(str, node.op)
         if isinstance(operand.get_fact_component().type, Mixed):
             origin_expression = AGGR_OP_MAPPING[op].generate_origin_expression(
                 operand, grouping_clause
             )
             raise errors.SemanticError("4-4-0-3", origin=origin_expression)
 
-        result = AGGR_OP_MAPPING[op].validate(operand, grouping_clause)
+        reducing_result: RecordSet | Scalar = AGGR_OP_MAPPING[op].validate(
+            operand, grouping_clause
+        )
+        return cast(Operand, reducing_result)
+
+    def visit_RankOp(  # type: ignore[override]
+        self, node: RankOp
+    ) -> Operand:
+        operand = self.visit(node.operand)
+        if not isinstance(operand, RecordSet):
+            raise errors.SemanticError("4-4-0-1", op="rank")
+        if operand.has_only_global_components:
+            add_semantic_warning(
+                f"Performing an aggregation on recordset: {operand.name} which has only global key components"
+            )
+        op = cast(str, node.op)
+        result = RANK_OP_MAPPING[op].validate(operand, node.analytic_clause)
         return cast(Operand, result)
 
     def visit_Dimension(  # type: ignore[override]
