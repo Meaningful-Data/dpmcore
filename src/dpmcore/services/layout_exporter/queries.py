@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Optional
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
+from dpmcore.orm.query_utils import chunked_in
 from dpmcore.services.layout_exporter.models import DimensionMember
 
 if TYPE_CHECKING:
@@ -179,16 +180,15 @@ def _load_dimension_codes(
 
     from dpmcore.orm.glossary import Category, ItemCategory
 
-    rows = (
+    base = (
         session.query(ItemCategory.item_id, ItemCategory.code)
         .join(Category, Category.category_id == ItemCategory.category_id)
         .filter(
-            ItemCategory.item_id.in_(property_ids),
             Category.code == "_PR",
             ItemCategory.end_release_id.is_(None),
         )
-        .all()
     )
+    rows = chunked_in(base, ItemCategory.item_id, property_ids)
     return {r[0]: r[1] for r in rows if r[1]}
 
 
@@ -208,19 +208,15 @@ def _load_member_codes(
 
     from dpmcore.orm.glossary import ItemCategory
 
-    rows = (
-        session.query(
-            ItemCategory.item_id,
-            ItemCategory.code,
-            ItemCategory.category_id,
-        )
-        .filter(
-            ItemCategory.item_id.in_(item_ids),
-            ItemCategory.category_id.in_(domain_category_ids),
-            ItemCategory.end_release_id.is_(None),
-        )
-        .all()
+    base = session.query(
+        ItemCategory.item_id,
+        ItemCategory.code,
+        ItemCategory.category_id,
+    ).filter(
+        ItemCategory.category_id.in_(domain_category_ids),
+        ItemCategory.end_release_id.is_(None),
     )
+    rows = chunked_in(base, ItemCategory.item_id, item_ids)
     return {r[0]: r[1] for r in rows if r[1]}
 
 
@@ -254,7 +250,7 @@ def load_categorisations(
     DimItem = aliased(Item, name="dim_item")
     MemberItem = aliased(Item, name="member_item")
 
-    rows = (
+    base = (
         session.query(
             ContextComposition.context_id,
             ContextComposition.property_id,
@@ -286,9 +282,8 @@ def load_categorisations(
             Category.category_id == PropertyCategory.category_id,
         )
         .outerjoin(DataType, DataType.data_type_id == Property.data_type_id)
-        .filter(ContextComposition.context_id.in_(context_ids))
-        .all()
     )
+    rows = chunked_in(base, ContextComposition.context_id, context_ids)
 
     # Collect IDs for code lookups
     prop_ids: set[int] = set()
@@ -336,7 +331,7 @@ def load_property_as_categorisation(
     from dpmcore.orm.glossary import Category, Item, Property, PropertyCategory
     from dpmcore.orm.infrastructure import DataType
 
-    rows = (
+    base = (
         session.query(
             Item.item_id,
             Item.name,  # member label (e.g., "Carrying amount")
@@ -356,9 +351,8 @@ def load_property_as_categorisation(
             Category.category_id == PropertyCategory.category_id,
         )
         .outerjoin(DataType, DataType.data_type_id == Property.data_type_id)
-        .filter(Item.item_id.in_(property_ids))
-        .all()
     )
+    rows = chunked_in(base, Item.item_id, property_ids)
 
     # Load member codes: for "Main Property", the property itself
     # IS the member, so its code in category '_PR' is the
@@ -406,7 +400,7 @@ def load_dp_categorisations(
     DimItem = aliased(Item, name="dim_item")
     MemberItem = aliased(Item, name="member_item")
 
-    rows = (
+    base = (
         session.query(
             VariableVersion.variable_vid,
             ContextComposition.property_id,
@@ -442,9 +436,8 @@ def load_dp_categorisations(
             Category.category_id == PropertyCategory.category_id,
         )
         .outerjoin(DataType, DataType.data_type_id == Property.data_type_id)
-        .filter(VariableVersion.variable_vid.in_(variable_vids))
-        .all()
     )
+    rows = chunked_in(base, VariableVersion.variable_vid, variable_vids)
 
     # Collect IDs for code lookups
     prop_ids: set[int] = set()
@@ -490,7 +483,7 @@ def load_subcategory_info(
 
     from dpmcore.orm.glossary import Category, SubCategory, SubCategoryVersion
 
-    rows = (
+    base = (
         session.query(
             SubCategoryVersion.subcategory_vid,
             SubCategory.code,
@@ -503,8 +496,9 @@ def load_subcategory_info(
             SubCategory.subcategory_id == SubCategoryVersion.subcategory_id,
         )
         .join(Category, Category.category_id == SubCategory.category_id)
-        .filter(SubCategoryVersion.subcategory_vid.in_(subcategory_vids))
-        .all()
+    )
+    rows = chunked_in(
+        base, SubCategoryVersion.subcategory_vid, subcategory_vids
     )
     # Prefer description over name (some subcategories only have one populated)
     return {r[0]: (r[1] or "", r[2] or r[4] or "", r[3] or "") for r in rows}
@@ -523,13 +517,10 @@ def load_key_variable_property_ids(
 
     from dpmcore.orm.variables import VariableVersion
 
-    rows = (
-        session.query(
-            VariableVersion.variable_vid, VariableVersion.property_id
-        )
-        .filter(VariableVersion.variable_vid.in_(variable_vids))
-        .all()
+    base = session.query(
+        VariableVersion.variable_vid, VariableVersion.property_id
     )
+    rows = chunked_in(base, VariableVersion.variable_vid, variable_vids)
     return {r[0]: r[1] for r in rows if r[1]}
 
 
@@ -549,7 +540,7 @@ def load_variable_info(
     from dpmcore.orm.infrastructure import DataType
     from dpmcore.orm.variables import VariableVersion
 
-    rows = (
+    base = (
         session.query(
             VariableVersion.variable_vid,
             VariableVersion.variable_id,
@@ -562,7 +553,6 @@ def load_variable_info(
         )
         .outerjoin(DataType, DataType.data_type_id == Property.data_type_id)
         .outerjoin(Item, Item.item_id == VariableVersion.property_id)
-        .filter(VariableVersion.variable_vid.in_(variable_vids))
-        .all()
     )
+    rows = chunked_in(base, VariableVersion.variable_vid, variable_vids)
     return {r[0]: (r[1], r[2] or "", r[3] or "") for r in rows}
