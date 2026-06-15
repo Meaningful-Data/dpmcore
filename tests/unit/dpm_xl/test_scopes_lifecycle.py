@@ -455,3 +455,107 @@ class TestCrossModuleCoverage:
             required_precondition_codes={"P1"},
         )
         assert len(svc.operation_scopes) == 1
+
+    @staticmethod
+    def _two_provider_df():
+        # Modules 100 and 200 both host every table; 300 hosts the last.
+        # All three overlap in time (open-ended windows from the same date).
+        return pd.DataFrame(
+            [
+                (100, "MOD_A", "1.0", "2026-03-31", None),
+                (200, "MOD_B", "1.0", "2026-03-31", None),
+                (300, "MOD_C", "1.0", "2026-03-31", None),
+            ],
+            columns=[
+                "ModuleVID",
+                "ModuleCode",
+                "VersionNumber",
+                "FromReferenceDate",
+                "ToReferenceDate",
+            ],
+        )
+
+    @staticmethod
+    def _capture_scope_sets(svc):
+        """Record each emitted scope's module set.
+
+        The mocked ORM back-populates neither
+        ``operation_scope_compositions`` nor distinct ``OperationScope``
+        objects (the mocked class returns one shared instance), so both
+        ``create_operation_scope`` and
+        ``create_operation_scope_composition`` are stubbed: the former
+        hands out a unique sentinel per scope, the latter records module
+        VIDs grouped by that sentinel's identity.
+        """
+        members: dict[int, set] = {}
+
+        def make_scope(submission_date):
+            scope = object()
+            svc.operation_scopes.append(scope)
+            return scope
+
+        def spy(operation_scope, module_vid, module_info=None):
+            members.setdefault(id(operation_scope), set()).add(module_vid)
+
+        svc.create_operation_scope = make_scope
+        svc.create_operation_scope_composition = spy
+        return members
+
+    def test_shared_provider_lists_do_not_explode(self):
+        """Many codes sharing one provider list must not multiply scopes.
+
+        Regression: the Cartesian product picked a provider per code
+        independently, so N codes each hosted by the same two modules
+        emitted the identical module set 2**N times. Here ten codes share
+        ``[100, 200]`` and one code is hosted by ``300`` — the engine must
+        emit the two minimal covers (``{100, 300}`` / ``{200, 300}``), not
+        2**10 duplicates nor the bloated ``{100, 200, 300}`` superset.
+        """
+        codes = [f"T{i}" for i in range(10)]
+        cross_modules = {c: [100, 200] for c in codes}
+        cross_modules["LAST"] = [300]
+        required = set(codes) | {"LAST"}
+
+        SvcClass = _get_svc_class()
+        svc = SvcClass(session=MagicMock())
+        members = self._capture_scope_sets(svc)
+        svc.process_cross_module(
+            cross_modules=cross_modules,
+            modules_dataframe=self._two_provider_df(),
+            required_keys=required,
+        )
+
+        assert len(svc.operation_scopes) == 2
+        scope_sets = {frozenset(m) for m in members.values()}
+        assert scope_sets == {frozenset({100, 300}), frozenset({200, 300})}
+
+    def test_non_minimal_superset_is_dropped(self):
+        """A combination strictly containing another is not emitted.
+
+        ``A`` is hosted by both 10 and 20; ``B`` only by 20. The covers are
+        ``{10, 20}`` and ``{20}`` — but ``{20}`` alone covers both keys, so
+        the superset ``{10, 20}`` is redundant and dropped.
+        """
+        df = pd.DataFrame(
+            [
+                (10, "MOD_A", "1.0", "2026-03-31", None),
+                (20, "MOD_B", "1.0", "2026-03-31", None),
+            ],
+            columns=[
+                "ModuleVID",
+                "ModuleCode",
+                "VersionNumber",
+                "FromReferenceDate",
+                "ToReferenceDate",
+            ],
+        )
+        SvcClass = _get_svc_class()
+        svc = SvcClass(session=MagicMock())
+        members = self._capture_scope_sets(svc)
+        svc.process_cross_module(
+            cross_modules={"A": [10, 20], "B": [20]},
+            modules_dataframe=df,
+            required_keys={"A", "B"},
+        )
+        assert len(svc.operation_scopes) == 1
+        assert [frozenset(m) for m in members.values()] == [frozenset({20})]
