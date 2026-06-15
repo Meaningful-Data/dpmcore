@@ -161,6 +161,60 @@ def test_load_member_codes_populated(memory_session):
     assert out == {500: "m1"}
 
 
+def test_load_member_codes_out_of_domain_filtered(memory_session):
+    """Rows whose category isn't in the domain set are dropped."""
+    seed_releases(memory_session)
+    make_member(
+        memory_session,
+        item_id=500,
+        name="InDomain",
+        domain_category_id=20,
+        code="keep",
+    )
+    make_member(
+        memory_session,
+        item_id=501,
+        name="OutOfDomain",
+        domain_category_id=99,
+        code="drop",
+    )
+    memory_session.commit()
+    # 99 is not in the requested domain set, so 501 is filtered in Python.
+    out = queries._load_member_codes(memory_session, {500, 501}, {20})
+    assert out == {500: "keep"}
+
+
+def test_load_member_codes_multiple_domains_deterministic(memory_session):
+    """An item in several in-domain categories resolves deterministically.
+
+    The highest ``(category_id, code)`` wins last-write-wins, regardless
+    of the backend's physical row order.
+    """
+    from dpmcore.orm.glossary import ItemCategory
+
+    seed_releases(memory_session)
+    # One item categorised under two domains the export spans.
+    make_member(
+        memory_session,
+        item_id=500,
+        name="MultiDomain",
+        domain_category_id=20,
+        code="aaa",
+    )
+    # Distinct start release: ItemCategory is unique on (item, start).
+    memory_session.add(
+        ItemCategory(
+            item_id=500,
+            start_release_id=2,
+            category_id=21,
+            code="bbb",
+        ),
+    )
+    memory_session.commit()
+    out = queries._load_member_codes(memory_session, {500}, {20, 21})
+    assert out == {500: "bbb"}
+
+
 # ---------------------------------------------------------------- #
 # load_categorisations
 # ---------------------------------------------------------------- #

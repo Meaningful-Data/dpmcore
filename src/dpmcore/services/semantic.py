@@ -25,6 +25,7 @@ from dpmcore.orm.operations import (
     OperationScopeComposition,
     OperationVersion,
 )
+from dpmcore.orm.query_utils import chunked_in
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -349,7 +350,7 @@ class SemanticService:
         found. The ``LIKE`` filter guarantees a non-null expression (``LIKE``
         rejects NULL), so the cast to ``str`` is sound.
         """
-        rows = (
+        base = (
             self.session.query(OperationVersion.expression)
             .join(
                 OperationScope,
@@ -360,16 +361,24 @@ class SemanticService:
                 OperationScope.operation_scope_id
                 == OperationScopeComposition.operation_scope_id,
             )
-            .filter(OperationScopeComposition.module_vid.in_(module_vids))
             .filter(
                 _whitespace_insensitive(OperationVersion.expression).like(
                     _PARAM_MARKER
                 )
             )
             .distinct()
-            .all()
         )
-        return [expression for (expression,) in cast("list[tuple[str]]", rows)]
+        rows = chunked_in(
+            base, OperationScopeComposition.module_vid, module_vids
+        )
+        # Chunking the module_vid IN clause splits the query, so the
+        # per-statement DISTINCT no longer dedups across chunks; collapse
+        # repeated expressions here while preserving order.
+        return list(
+            dict.fromkeys(
+                expression for (expression,) in cast("list[tuple[str]]", rows)
+            )
+        )
 
     def _declarations(self, expression: str) -> dict[str, str]:
         """Extract ``{code: declared_type}`` from one persisted expression.
