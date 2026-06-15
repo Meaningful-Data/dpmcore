@@ -28,6 +28,7 @@ from dpmcore.orm.packaging import (
     ModuleVersion,
     ModuleVersionComposition,
 )
+from dpmcore.orm.query_utils import chunked_in
 from dpmcore.orm.rendering import (
     TableVersion,
     TableVersionCell,
@@ -321,10 +322,10 @@ class ScopeCalculatorService:
         dep_modules: Dict[str, Any] = {}
 
         sorted_vids = sorted(valid_vids)
-        mv_rows = (
-            self.session.query(ModuleVersion)
-            .filter(ModuleVersion.module_vid.in_(sorted_vids))
-            .all()
+        mv_rows = chunked_in(
+            self.session.query(ModuleVersion),
+            ModuleVersion.module_vid,
+            sorted_vids,
         )
         mv_by_vid = {mv.module_vid: mv for mv in mv_rows}
 
@@ -527,10 +528,10 @@ class ScopeCalculatorService:
 
         mv_by_vid: Dict[int, Any] = {}
         if needed:
-            mv_rows = (
-                self.session.query(ModuleVersion)
-                .filter(ModuleVersion.module_vid.in_(needed))
-                .all()
+            mv_rows = chunked_in(
+                self.session.query(ModuleVersion),
+                ModuleVersion.module_vid,
+                needed,
             )
             mv_by_vid = {mv.module_vid: mv for mv in mv_rows}
 
@@ -593,7 +594,7 @@ class ScopeCalculatorService:
             tvid: {} for tvid in table_vids
         }
         if table_vids:
-            var_rows = (
+            var_base = (
                 self.session.query(
                     TableVersionCell.table_vid,
                     Variable.variable_id,
@@ -617,9 +618,10 @@ class ScopeCalculatorService:
                     DataType,
                     Property.data_type_id == DataType.data_type_id,
                 )
-                .filter(TableVersionCell.table_vid.in_(table_vids))
                 .distinct()
-                .all()
+            )
+            var_rows = chunked_in(
+                var_base, TableVersionCell.table_vid, table_vids
             )
             for row in var_rows:
                 tvid = row[0]
@@ -680,7 +682,6 @@ class ScopeCalculatorService:
                 TableVersion,
                 KeyComposition.key_id == TableVersion.key_id,
             )
-            .filter(TableVersion.code.in_(table_codes))
         )
 
         if release_id is not None:
@@ -692,11 +693,8 @@ class ScopeCalculatorService:
                 TableVersion.start_release_id <= release_id,
             )
 
-        rows = (
-            query.distinct()
-            .order_by(TableVersion.code, ItemCategory.code)
-            .all()
-        )
+        query = query.distinct().order_by(TableVersion.code, ItemCategory.code)
+        rows = chunked_in(query, TableVersion.code, table_codes)
         for row in rows:
             tcode = row.table_code
             pcode = row.property_code
