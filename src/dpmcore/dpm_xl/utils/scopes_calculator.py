@@ -546,6 +546,15 @@ class OperationScopeService:
             seen_lists.add(list_key)
             distinct_lists.append(tuple(providers))
 
+        # No constraints means no combination to evaluate. An empty
+        # ``distinct_lists`` would make ``product()`` yield a single empty
+        # tuple, whose empty module set has no reference dates and would
+        # raise on ``from_dates.max()``. Real callers never pass an empty
+        # pool (each is guarded by ``if cross_modules``), so this is a
+        # defensive no-op.
+        if not distinct_lists:
+            return
+
         # Collapse each combination to its module set and evaluate only the
         # first occurrence of a given set, so a combination never yields more
         # than one scope.

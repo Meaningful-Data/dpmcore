@@ -385,6 +385,23 @@ class TestCrossModuleCoverage:
         )
         assert len(svc.operation_scopes) == 1
 
+    def test_empty_cross_modules_emits_no_scope(self):
+        """An empty pool is a safe no-op rather than a hard crash.
+
+        With no provider lists, ``product()`` would yield a single empty
+        combination whose empty module set has no reference dates and
+        would raise on ``from_dates.max()``. The method must instead
+        return without emitting a scope.
+        """
+        SvcClass = _get_svc_class()
+        svc = SvcClass(session=MagicMock())
+        svc.process_cross_module(
+            cross_modules={},
+            modules_dataframe=self._modules_df(),
+            required_keys=None,
+        )
+        assert svc.operation_scopes == []
+
     def test_non_overlapping_dates_emit_no_scope(self):
         """Modules whose reference-date windows do not overlap are never
         reported together (e.g. different lifecycle generations), so the
