@@ -2,28 +2,37 @@ from __future__ import annotations
 
 from dpmcore.dpm_xl.ast.nodes import (
     AggregationOp,
+    AnnualiseOp,
     BinOp,
     ComplexNumericOp,
     CondExpr,
     Constant,
+    CountSetOp,
     DateConstructorOp,
     Dimension,
     FilterOp,
     GetOp,
     GroupingClause,
+    IntersectSetOp,
     OperationRef,
+    ParameterRef,
     ParExpr,
     PersistentAssignment,
     PreconditionItem,
     PropertyReference,
+    RankOp,
     RenameOp,
     Scalar,
     Set,
+    SetdiffOp,
+    SetOfOp,
     Start,
     SubOp,
+    SymdiffOp,
     TemporaryAssignment,
     TimeShiftOp,
     UnaryOp,
+    UnionSetOp,
     VarID,
     VarRef,
     WhereClauseOp,
@@ -76,6 +85,9 @@ class ASTTemplate(NodeVisitor):
         if node.grouping_clause:
             self.visit(node.grouping_clause)
 
+    def visit_RankOp(self, node: RankOp) -> None:
+        self.visit(node.operand)
+
     def visit_GroupingClause(self, node: GroupingClause) -> None:
         pass
 
@@ -98,6 +110,10 @@ class ASTTemplate(NodeVisitor):
 
     def visit_TimeShiftOp(self, node: TimeShiftOp) -> None:
         self.visit(node.operand)
+
+    def visit_AnnualiseOp(self, node: AnnualiseOp) -> None:
+        self.visit(node.operand)
+        self.visit(node.fy_end)
 
     def visit_DateConstructorOp(self, node: DateConstructorOp) -> None:
         self.visit(node.year)
@@ -139,9 +155,37 @@ class ASTTemplate(NodeVisitor):
     def visit_OperationRef(self, node: OperationRef) -> None:
         pass
 
+    def visit_ParameterRef(self, node: ParameterRef) -> None:
+        # Leaf by default: a parameter's declared ``default`` is metadata, not a
+        # sub-expression to traverse, so the base does not recurse into it.
+        # Passes that care (operand collection, semantic typing) override this.
+        pass
+
     def visit_PersistentAssignment(self, node: PersistentAssignment) -> None:
         self.visit(node.left)
         self.visit(node.right)
 
     def visit_TemporaryAssignment(self, node: TemporaryAssignment) -> None:
         self.visit(node.right)
+
+    def visit_SetOfOp(self, node: SetOfOp) -> None:
+        self.visit(node.operand)
+
+    def visit_UnionSetOp(self, node: UnionSetOp) -> None:
+        for operand in node.operands:
+            self.visit(operand)
+
+    def visit_IntersectSetOp(self, node: IntersectSetOp) -> None:
+        for operand in node.operands:
+            self.visit(operand)
+
+    def visit_SetdiffOp(self, node: SetdiffOp) -> None:
+        self.visit(node.left)
+        self.visit(node.right)
+
+    def visit_SymdiffOp(self, node: SymdiffOp) -> None:
+        self.visit(node.left)
+        self.visit(node.right)
+
+    def visit_CountSetOp(self, node: CountSetOp) -> None:
+        self.visit(node.operand)

@@ -292,7 +292,14 @@ class TestBuildPreconditionsBlock:
             {},
         )
 
-    def test_single_variable_emits_p_vid(self, monkeypatch):
+    @pytest.mark.parametrize(
+        "expression",
+        [
+            "{v_C_01.00}",  # canonical form
+            "{vC_01.00}",  # cosmetic underscore omitted
+        ],
+    )
+    def test_single_variable_emits_p_vid(self, expression, monkeypatch):
         svc, _, mod = _bare_svc()
         svc.session = MagicMock()
 
@@ -307,7 +314,7 @@ class TestBuildPreconditionsBlock:
         )
 
         preconds, vars_ = svc._build_preconditions_block(
-            [("{v_C_01.00}", ["v1", "v2"])], release_id=5
+            [(expression, ["v1", "v2"])], release_id=5
         )
         assert "p_110" in preconds
         entry = preconds["p_110"]
@@ -940,6 +947,38 @@ class TestScript:
         assert out["success"] is False
         assert out["error"] == "bad expr"
 
+    def test_scope_error_fails_generation(self, monkeypatch):
+        """Regression for #122: a scope-calculation error must fail the
+        script generation instead of silently emitting the operation
+        with no dependency information.
+        """
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+        svc._scope_calc.calculate_from_expression.return_value = (
+            SimpleNamespace(
+                has_error=True,
+                error_message=(
+                    "No module versions found for preconditions items: "
+                    "{'F_40.01'}."
+                ),
+            )
+        )
+        out = svc.script(
+            expressions=[("e1", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+        assert out["success"] is False
+        assert "'v1'" in out["error"]
+        assert "No module versions found" in out["error"]
+
     def test_invalid_severity_returns_error(self, monkeypatch):
         svc, *_ = self._build_svc()
         out = svc.script(
@@ -973,7 +1012,7 @@ class TestScript:
         )
         svc, mv, rr, _ = self._build_svc()
         svc._semantic.validate.return_value = SimpleNamespace(
-            is_valid=True, error_message=None
+            is_valid=True, error_message=None, parameters=()
         )
         svc._semantic.ast = "AST"
         out = svc.script(
@@ -1014,7 +1053,7 @@ class TestScript:
         )
         svc, *_ = self._build_svc()
         svc._semantic.validate.return_value = SimpleNamespace(
-            is_valid=True, error_message=None
+            is_valid=True, error_message=None, parameters=()
         )
         svc._semantic.ast = "AST"
         out = svc.script(
@@ -1033,7 +1072,7 @@ class TestScript:
         )
         svc, *_ = self._build_svc()
         svc._semantic.validate.return_value = SimpleNamespace(
-            is_valid=True, error_message=None
+            is_valid=True, error_message=None, parameters=()
         )
         svc._semantic.ast = "AST"
         svc._scope_calc._get_module_uri.return_value = None
@@ -1043,3 +1082,94 @@ class TestScript:
             module_version="1.0",
         )
         assert "default_module" in out["enriched_ast"]
+
+    def test_parameters_block_in_enriched_ast(self, monkeypatch):
+        # A VarID (for tables) plus a ParameterRef on the RHS — the script()
+        # flow must surface the parameter under the ``parameters`` block.
+        self._stub_serialize_ast(
+            monkeypatch,
+            {
+                "class_name": "BinOp",
+                "left": {
+                    "class_name": "VarID",
+                    "table": "C_01.00",
+                    "data": [{"datapoint": 1, "data_type": "m"}],
+                },
+                "right": {
+                    "class_name": "ParameterRef",
+                    "code": "threshold",
+                    "param_type": "number",
+                    "default": 0,
+                },
+            },
+        )
+        svc, *_ = self._build_svc()
+        # Parameters now come from SemanticResult.parameters (not a re-walk of
+        # the serialised AST). A SimpleNamespace stand-in exposing
+        # .code/.declared_type is all _accumulate_parameters reads.
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True,
+            error_message=None,
+            parameters=(
+                SimpleNamespace(code="threshold", declared_type="Number"),
+            ),
+        )
+        svc._semantic.ast = "AST"
+        out = svc.script(
+            expressions=[("e1", "v1"), ("e2", "v2")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+        assert out["success"] is True
+        ns = next(iter(out["enriched_ast"].values()))
+        # The trimmed registry is a flat ``code -> declared_type`` map (no
+        # nested is_set/default object), deduplicated across both expressions
+        # to a single entry. Value correctness is covered by the real-module
+        # tests on ``_accumulate_parameters``.
+        assert list(ns["parameters"]) == ["threshold"]
+        assert ns["parameters"]["threshold"] == "Number"
+        assert not isinstance(ns["parameters"]["threshold"], dict)
+
+    def test_parameters_block_empty_when_none_referenced(self, monkeypatch):
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+        out = svc.script(
+            expressions=[("e1", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+        ns = next(iter(out["enriched_ast"].values()))
+        assert ns["parameters"] == {}
+
+    def test_script_validates_without_scope_opt_out(self, monkeypatch):
+        # Regression: script() must validate each expression through the plain
+        # validate() path with no scope opt-out. The opt-out was removed (the
+        # scope lookup only runs when an expression references a parameter, so
+        # it costs nothing on a parameter-free database), so no call may pass a
+        # ``check_scope`` argument. A parameter clash with a co-scoped
+        # *persisted* operation is thus always caught; the batch-wide
+        # _accumulate_parameters check only sees this script's own expressions.
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+        svc.script(
+            expressions=[("e1", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+        assert svc._semantic.validate.called
+        for call in svc._semantic.validate.call_args_list:
+            assert "check_scope" not in call.kwargs

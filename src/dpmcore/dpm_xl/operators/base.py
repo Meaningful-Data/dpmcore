@@ -348,6 +348,7 @@ class Binary(Operator):
             result_structure = cls._check_structures(
                 left.structure, right.structure, origin
             )
+            cls._check_contradictory_where(left, right)
             if left.records is not None and right.records is not None:
                 if (
                     not cls.do_not_check_with_return_type
@@ -417,6 +418,33 @@ class Binary(Operator):
             return None, None
         else:
             return None, None
+
+    @classmethod
+    def _check_contradictory_where(
+        cls, left: RecordSet, right: RecordSet
+    ) -> None:
+        """Reject a binary op whose operands pin a shared key disjointly.
+
+        Two ``where`` filters that fix the same key component to different
+        literal values can never align: the inner join over that key yields
+        no rows, so the operation is dead. This raises the same "no match"
+        error the data-path empty-join check would (``2-2``), but during
+        structure-only validation where no records are loaded.
+
+        Args:
+            left: Left recordset operand.
+            right: Right recordset operand.
+
+        Raises:
+            SemanticError: ``2-2`` when a shared key is pinned to differing
+                values on the two operands.
+        """
+        shared = left.where_constraints.keys() & right.where_constraints.keys()
+        for dim in shared:
+            if left.where_constraints[dim] != right.where_constraints[dim]:
+                raise SemanticError(
+                    "2-2", op=cls.op, left=left.name, right=right.name
+                )
 
     @classmethod
     def check_same_components(

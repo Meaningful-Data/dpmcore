@@ -260,6 +260,69 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by dpm_xlParser#setLiteralExpr.
+    def enterSetLiteralExpr(self, ctx:dpm_xlParser.SetLiteralExprContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#setLiteralExpr.
+    def exitSetLiteralExpr(self, ctx:dpm_xlParser.SetLiteralExprContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#setOfExpr.
+    def enterSetOfExpr(self, ctx:dpm_xlParser.SetOfExprContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#setOfExpr.
+    def exitSetOfExpr(self, ctx:dpm_xlParser.SetOfExprContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#unionSetExpr.
+    def enterUnionSetExpr(self, ctx:dpm_xlParser.UnionSetExprContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#unionSetExpr.
+    def exitUnionSetExpr(self, ctx:dpm_xlParser.UnionSetExprContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#intersectSetExpr.
+    def enterIntersectSetExpr(self, ctx:dpm_xlParser.IntersectSetExprContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#intersectSetExpr.
+    def exitIntersectSetExpr(self, ctx:dpm_xlParser.IntersectSetExprContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#setdiffSetExpr.
+    def enterSetdiffSetExpr(self, ctx:dpm_xlParser.SetdiffSetExprContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#setdiffSetExpr.
+    def exitSetdiffSetExpr(self, ctx:dpm_xlParser.SetdiffSetExprContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#symdiffSetExpr.
+    def enterSymdiffSetExpr(self, ctx:dpm_xlParser.SymdiffSetExprContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#symdiffSetExpr.
+    def exitSymdiffSetExpr(self, ctx:dpm_xlParser.SymdiffSetExprContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#subcategorySelectExpr.
+    def enterSubcategorySelectExpr(self, ctx:dpm_xlParser.SubcategorySelectExprContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#subcategorySelectExpr.
+    def exitSubcategorySelectExpr(self, ctx:dpm_xlParser.SubcategorySelectExprContext):
+        pass
+
+
     # Enter a parse tree produced by dpm_xlParser#aggregateFunctions.
     def enterAggregateFunctions(self, ctx:dpm_xlParser.AggregateFunctionsContext):
         pass
@@ -386,6 +449,15 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by dpm_xlParser#annualiseFunction.
+    def enterAnnualiseFunction(self, ctx:dpm_xlParser.AnnualiseFunctionContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#annualiseFunction.
+    def exitAnnualiseFunction(self, ctx:dpm_xlParser.AnnualiseFunctionContext):
+        pass
+
+
     # Enter a parse tree produced by dpm_xlParser#dateExtractFunction.
     def enterDateExtractFunction(self, ctx:dpm_xlParser.DateExtractFunctionContext):
         pass
@@ -431,12 +503,84 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by dpm_xlParser#rankOp.
+    def enterRankOp(self, ctx:dpm_xlParser.RankOpContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#rankOp.
+    def exitRankOp(self, ctx:dpm_xlParser.RankOpContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#countSetOp.
+    def enterCountSetOp(self, ctx:dpm_xlParser.CountSetOpContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#countSetOp.
+    def exitCountSetOp(self, ctx:dpm_xlParser.CountSetOpContext):
+        pass
+
+
     # Enter a parse tree produced by dpm_xlParser#groupingClause.
     def enterGroupingClause(self, ctx:dpm_xlParser.GroupingClauseContext):
         pass
 
     # Exit a parse tree produced by dpm_xlParser#groupingClause.
     def exitGroupingClause(self, ctx:dpm_xlParser.GroupingClauseContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#analyticClause.
+    def enterAnalyticClause(self, ctx:dpm_xlParser.AnalyticClauseContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#analyticClause.
+    def exitAnalyticClause(self, ctx:dpm_xlParser.AnalyticClauseContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#partitionClause.
+    def enterPartitionClause(self, ctx:dpm_xlParser.PartitionClauseContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#partitionClause.
+    def exitPartitionClause(self, ctx:dpm_xlParser.PartitionClauseContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#orderClause.
+    def enterOrderClause(self, ctx:dpm_xlParser.OrderClauseContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#orderClause.
+    def exitOrderClause(self, ctx:dpm_xlParser.OrderClauseContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#orderItem.
+    def enterOrderItem(self, ctx:dpm_xlParser.OrderItemContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#orderItem.
+    def exitOrderItem(self, ctx:dpm_xlParser.OrderItemContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#windowClause.
+    def enterWindowClause(self, ctx:dpm_xlParser.WindowClauseContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#windowClause.
+    def exitWindowClause(self, ctx:dpm_xlParser.WindowClauseContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#windowBoundary.
+    def enterWindowBoundary(self, ctx:dpm_xlParser.WindowBoundaryContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#windowBoundary.
+    def exitWindowBoundary(self, ctx:dpm_xlParser.WindowBoundaryContext):
         pass
 
 
@@ -590,6 +734,24 @@ class dpm_xlParserListener(ParseTreeListener):
 
     # Exit a parse tree produced by dpm_xlParser#selectOperand.
     def exitSelectOperand(self, ctx:dpm_xlParser.SelectOperandContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#parameterRef.
+    def enterParameterRef(self, ctx:dpm_xlParser.ParameterRefContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#parameterRef.
+    def exitParameterRef(self, ctx:dpm_xlParser.ParameterRefContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#parameterType.
+    def enterParameterType(self, ctx:dpm_xlParser.ParameterTypeContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#parameterType.
+    def exitParameterType(self, ctx:dpm_xlParser.ParameterTypeContext):
         pass
 
 

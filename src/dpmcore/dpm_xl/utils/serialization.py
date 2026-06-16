@@ -457,7 +457,54 @@ class ASTToJSONVisitor(NodeVisitor):
             if isinstance(gc, dict) and gc.get("components"):
                 grouping_clause = gc
         result["grouping_clause"] = grouping_clause
+        # Include analytic_clause when present.
+        analytic_clause: NodeValue = None
+        if (
+            hasattr(node, "analytic_clause")
+            and node.analytic_clause is not None
+        ):
+            analytic_clause = self._serialize_analytic_clause(
+                node.analytic_clause
+            )
+        result["analytic_clause"] = analytic_clause
         return result
+
+    def visit_RankOp(self, node: Any) -> NodeDict:
+        """Visit RankOp nodes."""
+        return {
+            "class_name": "RankOp",
+            "op": "rank",
+            "operand": self.visit(node.operand),
+            "analytic_clause": self._serialize_analytic_clause(
+                node.analytic_clause
+            ),
+        }
+
+    def _serialize_analytic_clause(self, clause: Any) -> NodeDict:
+        result: NodeDict = {
+            "class_name": "AnalyticClause",
+            "partition_by": list(clause.partition_by),
+            "order_by": [
+                {"key_name": item.key_name, "direction": item.direction}
+                for item in clause.order_by
+            ],
+        }
+        if clause.window is not None:
+            w = clause.window
+            result["window"] = {
+                "frame_type": w.frame_type,
+                "start": self._serialize_window_boundary(w.start),
+                "end": self._serialize_window_boundary(w.end),
+            }
+        else:
+            result["window"] = None
+        return result
+
+    def _serialize_window_boundary(self, boundary: Any) -> NodeDict:
+        d: NodeDict = {"bound_type": boundary.bound_type}
+        if boundary.n is not None:
+            d["n"] = boundary.n
+        return d
 
     def visit_GroupingClause(self, node: Any) -> NodeDict | None:
         """Visit GroupingClause nodes."""
@@ -564,6 +611,16 @@ class ASTToJSONVisitor(NodeVisitor):
             "shift_number": self.visit(node.shift_number),
         }
 
+    def visit_AnnualiseOp(self, node: Any) -> NodeDict:
+        """Visit AnnualiseOp nodes."""
+        return {
+            "class_name": "AnnualiseOp",
+            "op": node.op,
+            "operand": self.visit(node.operand),
+            "fy_end": self.visit(node.fy_end),
+            "component": node.component,
+        }
+
     def visit_RenameOp(self, node: Any) -> NodeDict:
         """Visit RenameOp nodes and serialize as RenameClauseOp."""
         return {
@@ -635,6 +692,26 @@ class ASTToJSONVisitor(NodeVisitor):
             result["member"] = node.member
 
         return result
+
+    def visit_ParameterRef(self, node: Any) -> NodeDict:
+        """Visit a ParameterRef: emit ``code`` + ``param_type`` + ``default``.
+
+        ``is_set`` is omitted (derivable from the ``set-`` prefix).
+        ``param_type`` is the engine's canonical PascalCase name. ``default`` is
+        the per-reference fallback and is kept; only the flat ``parameters``
+        meta-dictionary stays type-only.
+        """
+        from dpmcore.dpm_xl.ast.nodes import (
+            canonical_param_type,
+            parameter_default_value,
+        )
+
+        return {
+            "class_name": "ParameterRef",
+            "code": node.code,
+            "param_type": canonical_param_type(node.param_type),
+            "default": parameter_default_value(node.default),
+        }
 
     def generic_visit(self, node: Any) -> NodeDict:
         """Generic visit method for nodes without specific visitors."""

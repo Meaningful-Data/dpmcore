@@ -175,6 +175,19 @@ centralised_messages: Dict[str, str] = {
         " {default_type} but it has to be a"
         " {expected_type}."
     ),
+    "3-7": (
+        "Parameter default is not compatible with the declared"
+        " type {declared_type}."
+    ),
+    "3-8": (
+        "Parameter {parameter} is declared with conflicting types"
+        " {type_1} and {type_2}; every reference to a parameter must"
+        " declare the same type."
+    ),
+    "3-9": (
+        "Set-typed defaults are not supported ({reference})."
+        " Use a scalar/item default or null."
+    ),
     # Operators
     # - Aggregate Operators
     "4-4-0-1": (
@@ -186,6 +199,11 @@ centralised_messages: Dict[str, str] = {
     "4-4-0-3": (
         "Mixed type can't be used in aggregation. Please check {origin}."
     ),
+    "4-4-0-4": ("rank operator requires an order by clause."),
+    "4-4-0-5": (
+        "analytical invocation: a window clause requires an order by clause."
+    ),
+    "4-4-0-6": ("rank operator does not accept a window clause."),
     # - Clause Operators
     "4-5-0-1": (
         "On recordset {recordset}: clause operators"

@@ -8,28 +8,36 @@ from sqlalchemy.orm import Session
 from dpmcore.dpm_xl.ast.nodes import (
     AST,
     AggregationOp,
+    AnnualiseOp,
     BinOp,
     ComplexNumericOp,
     CondExpr,
     Constant,
+    CountSetOp,
     DateConstructorOp,
     Dimension,
     FilterOp,
     GetOp,
     GroupingClause,
+    IntersectSetOp,
     OperationRef,
     ParExpr,
     PersistentAssignment,
     PreconditionItem,
+    RankOp,
     RenameNode,
     RenameOp,
     Scalar,
     Set,
+    SetdiffOp,
+    SetOfOp,
     Start,
     SubOp,
+    SymdiffOp,
     TemporaryAssignment,
     TimeShiftOp,
     UnaryOp,
+    UnionSetOp,
     VarID,
     VarRef,
     WhereClauseOp,
@@ -323,6 +331,9 @@ class MLGeneration(ASTTemplate):
             node.grouping_clause.argument = "grouping_clause"
             self.visit(node.grouping_clause)
 
+    def visit_RankOp(self, node: RankOp) -> None:
+        self.visit(node.operand)
+
     def visit_GroupingClause(self, node: GroupingClause) -> None:
         gc_node = self.create_operation_node(node)
         for component in node.components:
@@ -398,6 +409,40 @@ class MLGeneration(ASTTemplate):
         component = node.component
         if component is None:
             raise RuntimeError("TimeShiftOp component is required")
+        op_ref: OperandReference
+        if property_ref_period_mangement(component):
+            op_ref = OperandReference(
+                op_node=operand_node, OperandReference="refPeriod"
+            )
+        else:
+            property_id = ItemCategoryQuery.get_property_id_from_code(
+                code=component, session=self.session_queries
+            )[0]
+            op_ref = OperandReference(
+                op_node=operand_node,
+                OperandReference=ast_element.source_reference,
+                PropertyID=property_id,
+            )
+        self.session.add(op_ref)
+
+    def visit_AnnualiseOp(self, node: AnnualiseOp) -> None:
+        node.op = "annualise"
+        get_node = self.create_operation_node(node)
+
+        node.operand.parent = get_node
+        node.operand.argument = "operand"
+        self.visit(node.operand)
+
+        node.fy_end.parent = get_node
+        node.fy_end.argument = "fy_end"
+        self.visit(node.fy_end)
+
+        ast_element = AST()
+        ast_element.parent = get_node
+        ast_element.argument = "dimension"
+        ast_element.source_reference = "property"
+        operand_node = self.create_operation_node(ast_element, is_leaf=True)
+        component = node.component
         op_ref: OperandReference
         if property_ref_period_mangement(component):
             op_ref = OperandReference(
@@ -707,6 +752,36 @@ class MLGeneration(ASTTemplate):
             op_node=op_node, OperandReference=op_version_id
         )
         self.session.add(operand_ref)
+
+    def visit_SetOfOp(self, node: SetOfOp) -> None:
+        raise NotImplementedError(
+            "ML generation for set_of is not yet supported"
+        )
+
+    def visit_UnionSetOp(self, node: UnionSetOp) -> None:
+        raise NotImplementedError(
+            "ML generation for union is not yet supported"
+        )
+
+    def visit_IntersectSetOp(self, node: IntersectSetOp) -> None:
+        raise NotImplementedError(
+            "ML generation for intersect is not yet supported"
+        )
+
+    def visit_SetdiffOp(self, node: SetdiffOp) -> None:
+        raise NotImplementedError(
+            "ML generation for setdiff is not yet supported"
+        )
+
+    def visit_SymdiffOp(self, node: SymdiffOp) -> None:
+        raise NotImplementedError(
+            "ML generation for symdiff is not yet supported"
+        )
+
+    def visit_CountSetOp(self, node: CountSetOp) -> None:
+        raise NotImplementedError(
+            "ML generation for count(setExpression) is not yet supported"
+        )
 
     def _get_op_version_id(self, operation_code: str) -> int:
         if self.operations_data is None:

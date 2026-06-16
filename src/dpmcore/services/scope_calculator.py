@@ -28,6 +28,7 @@ from dpmcore.orm.packaging import (
     ModuleVersion,
     ModuleVersionComposition,
 )
+from dpmcore.orm.query_utils import chunked_in
 from dpmcore.orm.rendering import (
     TableVersion,
     TableVersionCell,
@@ -273,7 +274,21 @@ class ScopeCalculatorService:
         is_cross = scope_result.is_cross_module
         ts = time_shifts or {}
 
-        if not is_cross or scope_result.has_error:
+        # Issue #120: when the primary module can evaluate the operation
+        # on its own (it appears as a single-module scope), prefer the
+        # intra-instance reading even if cross-instance scopes also exist
+        # for other modules. Only when the primary appears *solely* in
+        # multi-module scopes is it a genuine cross-instance dependency.
+        primary_has_intra = not scope_result.has_error and any(
+            {
+                c.module_vid
+                for c in getattr(s, "operation_scope_compositions", [])
+            }
+            == {primary_module_vid}
+            for s in scope_result.scopes or []
+        )
+
+        if scope_result.has_error or not is_cross or primary_has_intra:
             alternative_deps: List[List[str]] = []
             if compute_alternative_deps and not scope_result.has_error:
                 alternative_deps = self.detect_alternative_dependencies(
@@ -284,7 +299,9 @@ class ScopeCalculatorService:
             return {
                 **empty_result,
                 "intra_instance_validations": (
-                    [] if is_cross or not operation_code else [operation_code]
+                    [operation_code]
+                    if operation_code and (not is_cross or primary_has_intra)
+                    else []
                 ),
                 "alternative_dependencies": alternative_deps,
             }
@@ -305,10 +322,10 @@ class ScopeCalculatorService:
         dep_modules: Dict[str, Any] = {}
 
         sorted_vids = sorted(valid_vids)
-        mv_rows = (
-            self.session.query(ModuleVersion)
-            .filter(ModuleVersion.module_vid.in_(sorted_vids))
-            .all()
+        mv_rows = chunked_in(
+            self.session.query(ModuleVersion),
+            ModuleVersion.module_vid,
+            sorted_vids,
         )
         mv_by_vid = {mv.module_vid: mv for mv in mv_rows}
 
@@ -511,10 +528,10 @@ class ScopeCalculatorService:
 
         mv_by_vid: Dict[int, Any] = {}
         if needed:
-            mv_rows = (
-                self.session.query(ModuleVersion)
-                .filter(ModuleVersion.module_vid.in_(needed))
-                .all()
+            mv_rows = chunked_in(
+                self.session.query(ModuleVersion),
+                ModuleVersion.module_vid,
+                needed,
             )
             mv_by_vid = {mv.module_vid: mv for mv in mv_rows}
 
@@ -577,7 +594,7 @@ class ScopeCalculatorService:
             tvid: {} for tvid in table_vids
         }
         if table_vids:
-            var_rows = (
+            var_base = (
                 self.session.query(
                     TableVersionCell.table_vid,
                     Variable.variable_id,
@@ -601,9 +618,10 @@ class ScopeCalculatorService:
                     DataType,
                     Property.data_type_id == DataType.data_type_id,
                 )
-                .filter(TableVersionCell.table_vid.in_(table_vids))
                 .distinct()
-                .all()
+            )
+            var_rows = chunked_in(
+                var_base, TableVersionCell.table_vid, table_vids
             )
             for row in var_rows:
                 tvid = row[0]
@@ -664,7 +682,6 @@ class ScopeCalculatorService:
                 TableVersion,
                 KeyComposition.key_id == TableVersion.key_id,
             )
-            .filter(TableVersion.code.in_(table_codes))
         )
 
         if release_id is not None:
@@ -676,11 +693,8 @@ class ScopeCalculatorService:
                 TableVersion.start_release_id <= release_id,
             )
 
-        rows = (
-            query.distinct()
-            .order_by(TableVersion.code, ItemCategory.code)
-            .all()
-        )
+        query = query.distinct().order_by(TableVersion.code, ItemCategory.code)
+        rows = chunked_in(query, TableVersion.code, table_codes)
         for row in rows:
             tcode = row.table_code
             pcode = row.property_code

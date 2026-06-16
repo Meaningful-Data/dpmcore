@@ -50,7 +50,7 @@ expression:
     | left=expression op=(PLUS|MINUS) right=expression                                                  #numericExpr
     | left=expression op=CONCAT right=expression                                                        #concatExpr
     | left=expression op=comparisonOperators right=expression                                           #compExpr
-    | left=expression op=IN setOperand                                                                  #inExpr
+    | left=expression op=IN setExpression                                                               #inExpr
     | left=expression op=AND right=expression                                                           #boolExpr
     | left=expression op=(OR|XOR) right=expression                                                      #boolExpr
     | IF conditionalExpr=expression THEN thenExpr=expression (ELSE elseExpr=expression)? ENDIF          #ifExpr
@@ -68,6 +68,17 @@ setOperand:
 setElements:
     itemReference (COMMA itemReference)*
     | literal (COMMA literal)*
+    | parameterRef
+    ;
+
+setExpression:
+    setOperand                                                              #setLiteralExpr
+    | SET_OF LPAREN op=expression RPAREN                                     #setOfExpr
+    | UNION LPAREN setExpression (COMMA setExpression)+ RPAREN               #unionSetExpr
+    | INTERSECT LPAREN setExpression (COMMA setExpression)+ RPAREN           #intersectSetExpr
+    | SETDIFF LPAREN left=setExpression COMMA right=setExpression RPAREN     #setdiffSetExpr
+    | SYMDIFF LPAREN left=setExpression COMMA right=setExpression RPAREN     #symdiffSetExpr
+    | select                                                                #subcategorySelectExpr
     ;
 
 functions:
@@ -97,6 +108,7 @@ filterOperators:
 
 timeOperators:
     TIME_SHIFT LPAREN expression COMMA TIME_PERIOD COMMA expression (COMMA propertyCode)? RPAREN #timeShiftFunction
+    | ANNUALISE LPAREN expression COMMA expression COMMA propertyCode RPAREN                     #annualiseFunction
     | op=(YEAR|SEMESTER|QUARTER|MONTH|WEEK|DAY) LPAREN expression RPAREN                        #dateExtractFunction
     | DATE LPAREN year=expression COMMA month=expression COMMA day=expression RPAREN            #dateConstructorFunction
     ;
@@ -115,11 +127,42 @@ aggregateOperators:
         |SUM
         |COUNT
         |AVG
-        |MEDIAN) LPAREN expression (groupingClause)? RPAREN        #commonAggrOp
+        |MEDIAN) LPAREN expression (groupingClause | analyticClause)? RPAREN   #commonAggrOp
+    | RANK LPAREN expression analyticClause RPAREN                              #rankOp
+    | COUNT LPAREN setExpression RPAREN                                         #countSetOp
     ;
 
 groupingClause:
     GROUP_BY keyNames (COMMA keyNames)*
+;
+
+// Analytical (windowing) invocation — mutually exclusive with groupingClause.
+analyticClause:
+    OVER LPAREN partitionClause? orderClause? windowClause? RPAREN
+;
+
+partitionClause:
+    PARTITION_BY keyNames (COMMA keyNames)*
+;
+
+orderClause:
+    ORDER_BY orderItem (COMMA orderItem)*
+;
+
+orderItem:
+    keyNames (ASC | DESC)?
+;
+
+windowClause:
+    (DATA_POINTS | RANGE) BETWEEN windowBoundary AND windowBoundary
+;
+
+windowBoundary:
+    UNBOUNDED PRECEDING
+    | UNBOUNDED FOLLOWING
+    | CURRENT_DATA_POINT
+    | INTEGER_LITERAL PRECEDING
+    | INTEGER_LITERAL FOLLOWING
 ;
 
 // Dimension management and members
@@ -162,6 +205,8 @@ interval:
 default:
     DEFAULT COLON literal
     | DEFAULT COLON NULL_LITERAL
+    | DEFAULT COLON itemReference
+    | DEFAULT COLON setOperand
 ;
 
 argument:
@@ -180,6 +225,16 @@ selectOperand:
     cellRef
     | varRef
     | operationRef
+    | parameterRef
+    ;
+
+parameterRef:
+    PARAMETER_REFERENCE COMMA parameterType (COMMA default)?
+    ;
+
+parameterType:
+    NUMBER | INTEGER | STRING | PARAM_DATE | BOOLEAN | ITEM
+    | SET_NUMBER | SET_INTEGER | SET_STRING | SET_DATE | SET_BOOLEAN | SET_ITEM
     ;
 
 varID:
