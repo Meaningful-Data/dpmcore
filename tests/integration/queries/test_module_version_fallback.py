@@ -10,7 +10,6 @@ window still covers the date, and must leave non-ghost rows untouched.
 import datetime as dt
 
 import pandas as pd
-import pytest
 
 from dpmcore.dpm_xl.model_queries import _apply_fallback_for_equal_dates
 from dpmcore.orm.packaging import ModuleVersion
@@ -325,9 +324,6 @@ class TestApplyFallbackForEqualDates:
         out = _apply_fallback_for_equal_dates(memory_session, df)
         assert out.iloc[0]["ModuleVID"] == 602
 
-    @pytest.mark.filterwarnings(
-        "ignore:.*IN-predicate.*:sqlalchemy.exc.SAWarning"
-    )
     def test_null_module_id_ghost_kept(self, memory_session):
         memory_session.add(
             _mv(

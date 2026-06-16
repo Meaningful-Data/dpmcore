@@ -1075,7 +1075,9 @@ def _apply_fallback_for_equal_dates(
         for r in current_modules
     }
 
-    unique_mids = list({info[0] for info in current_info.values()})
+    unique_mids = list(
+        {info[0] for info in current_info.values() if info[0] is not None}
+    )
     # The per-module_id ORDER BY survives chunking because each module_id
     # falls entirely within one chunk (the chunk column is module_id).
     prev_versions = chunked_in(
