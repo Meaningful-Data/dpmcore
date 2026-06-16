@@ -166,6 +166,11 @@ class TestRankValidate:
         assert "over(" in result.origin
         assert "order by r" in result.origin
 
+    def test_order_by_fact_column_is_valid(self) -> None:
+        rs = _make_rs(key_names=["r", "c"])
+        result = Rank.validate(rs, _analytic(order_by=["f"]))
+        assert isinstance(result.get_fact_component().type, Integer)
+
     def test_without_order_by_raises(self) -> None:
         with pytest.raises(SemanticError) as exc_info:
             Rank.validate(_make_rs(key_names=["r"]), _analytic())

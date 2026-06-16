@@ -176,7 +176,7 @@ class AggregateOperator(Unary):
     def _check_analytic_components(
         cls, operand: RecordSet, analytic_clause: AnalyticClause
     ) -> None:
-        key_components = operand.get_key_components_names()
+        key_components = operand.get_key_components_names() + ["f"]
         analytic_components = list(analytic_clause.partition_by) + [
             item.key_name for item in analytic_clause.order_by
         ]
