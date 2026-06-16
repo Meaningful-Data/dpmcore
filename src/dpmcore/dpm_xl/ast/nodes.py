@@ -421,18 +421,25 @@ class AggregationOp(AST):
         op: str,
         operand: AST,
         grouping_clause: "GroupingClause | None",
+        analytic_clause: "AnalyticClause | None" = None,
     ) -> None:
         super().__init__()
         self.op = op
         self.operand: AST = operand
         self.grouping_clause: GroupingClause | None = grouping_clause
+        self.analytic_clause: AnalyticClause | None = analytic_clause
 
     def __str__(self) -> str:
-        return "<AST(name='{name}', op='{op}', operand={operand}, grouping_clause={grouping_clause})>".format(
-            name=self.__class__.__name__,
-            op=self.op,
-            operand=self.operand,
-            grouping_clause=self.grouping_clause,
+        return (
+            "<AST(name='{name}', op='{op}', operand={operand}, "
+            "grouping_clause={grouping_clause}, "
+            "analytic_clause={analytic_clause})>".format(
+                name=self.__class__.__name__,
+                op=self.op,
+                operand=self.operand,
+                grouping_clause=self.grouping_clause,
+                analytic_clause=self.analytic_clause,
+            )
         )
 
     __repr__ = __str__
@@ -443,6 +450,11 @@ class AggregationOp(AST):
             "op": self.op,
             "operand": self.operand,
             "grouping_clause": self.grouping_clause,
+            "analytic_clause": (
+                self.analytic_clause.toJSON()
+                if self.analytic_clause is not None
+                else None
+            ),
         }
 
 
@@ -464,6 +476,146 @@ class GroupingClause(AST):
         return {
             "class_name": self.__class__.__name__,
             "components": self.components,
+        }
+
+
+class OrderItem(AST):
+    """One item in an analytic order by clause: keyName [asc|desc]."""
+
+    def __init__(self, key_name: str, direction: str = "asc") -> None:
+        super().__init__()
+        self.key_name = key_name
+        self.direction = direction  # 'asc' | 'desc'
+
+    def __str__(self) -> str:
+        return f"<OrderItem(key_name='{self.key_name}', direction='{self.direction}')>"
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "key_name": self.key_name,
+            "direction": self.direction,
+        }
+
+
+class WindowBoundary(AST):
+    """One bound of an analytic window frame.
+
+    bound_type: 'unbounded_preceding' | 'n_preceding' | 'current_data_point'
+                | 'n_following' | 'unbounded_following'
+    n: integer offset for n_preceding / n_following; None otherwise.
+    """
+
+    def __init__(self, bound_type: str, n: int | None = None) -> None:
+        super().__init__()
+        self.bound_type = bound_type
+        self.n = n
+
+    def __str__(self) -> str:
+        return f"<WindowBoundary(bound_type='{self.bound_type}', n={self.n})>"
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "bound_type": self.bound_type,
+            "n": self.n,
+        }
+
+
+class WindowClause(AST):
+    """Window frame definition inside an analytic clause.
+
+    frame_type: 'data_points' | 'range'
+    """
+
+    def __init__(
+        self,
+        frame_type: str,
+        start: "WindowBoundary",
+        end: "WindowBoundary",
+    ) -> None:
+        super().__init__()
+        self.frame_type = frame_type
+        self.start: WindowBoundary = start
+        self.end: WindowBoundary = end
+
+    def __str__(self) -> str:
+        return (
+            f"<WindowClause(frame_type='{self.frame_type}', "
+            f"start={self.start}, end={self.end})>"
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "frame_type": self.frame_type,
+            "start": self.start.toJSON(),
+            "end": self.end.toJSON(),
+        }
+
+
+class AnalyticClause(AST):
+    """Analytical invocation clause: over(partition_by? order_by? window?)."""
+
+    def __init__(
+        self,
+        partition_by: list[str],
+        order_by: "list[OrderItem]",
+        window: "WindowClause | None",
+    ) -> None:
+        super().__init__()
+        self.partition_by: list[str] = partition_by
+        self.order_by: list[OrderItem] = order_by
+        self.window: WindowClause | None = window
+
+    def __str__(self) -> str:
+        return (
+            f"<AnalyticClause(partition_by={self.partition_by}, "
+            f"order_by={self.order_by}, window={self.window})>"
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "partition_by": self.partition_by,
+            "order_by": [item.toJSON() for item in self.order_by],
+            "window": self.window.toJSON() if self.window else None,
+        }
+
+
+class RankOp(AST):
+    """rank(expression over(...)) operator node."""
+
+    def __init__(
+        self, operand: AST, analytic_clause: "AnalyticClause"
+    ) -> None:
+        super().__init__()
+        self.op = "rank"
+        self.operand: AST = operand
+        self.analytic_clause: AnalyticClause = analytic_clause
+
+    def __str__(self) -> str:
+        return (
+            f"<RankOp(operand={self.operand}, "
+            f"analytic_clause={self.analytic_clause})>"
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> dict[str, Any]:
+        return {
+            "class_name": self.__class__.__name__,
+            "op": self.op,
+            "operand": self.operand,
+            "analytic_clause": self.analytic_clause.toJSON(),
         }
 
 
