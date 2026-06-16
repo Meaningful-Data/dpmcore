@@ -44,6 +44,7 @@ from dpmcore.orm.packaging import (
     ModuleVersion,
     ModuleVersionComposition,
 )
+from dpmcore.orm.query_utils import chunked_in
 from dpmcore.orm.rendering import (
     Cell,
     HeaderVersion,
@@ -63,6 +64,23 @@ if TYPE_CHECKING:
 # ------------------------------------------------------------------ #
 # Helper utilities
 # ------------------------------------------------------------------ #
+
+# The DPM 2.0 Refit schema stores the filing-indicator variable type as
+# the single token "filingindicator". Some source exports spell it
+# "Filing Indicator" (with a space and capitals), so matching is done on
+# a case- and whitespace-normalised form rather than a fixed literal.
+_FILING_INDICATOR_TYPE = "filingindicator"
+
+
+def _is_filing_indicator() -> Any:
+    """Return a SQLAlchemy clause matching filing-indicator variables.
+
+    Normalises ``Variable.type`` (lower-cased, spaces removed) before
+    comparison so the match is robust to spelling variants across DPM
+    source exports (``"Filing Indicator"`` vs ``"filingindicator"``).
+    """
+    normalized = func.lower(func.replace(Variable.type, " ", ""))
+    return normalized == _FILING_INDICATOR_TYPE
 
 
 def _get_engine_cache_key(session: "Session") -> Hashable:
@@ -343,8 +361,8 @@ class VariableVersionQuery:
         """Find a filing-indicator variable by code.
 
         Looks for a VariableVersion whose code matches
-        *variable_code* and whose Variable type is
-        ``'Filing Indicator'``.
+        *variable_code* and whose Variable type is a
+        filing indicator (see :func:`_is_filing_indicator`).
 
         Args:
             session: SQLAlchemy session.
@@ -366,7 +384,7 @@ class VariableVersionQuery:
             )
             .filter(
                 VariableVersion.code == variable_code,
-                Variable.type == "Filing Indicator",
+                _is_filing_indicator(),
             )
         )
         if release_id is not None:
@@ -485,7 +503,7 @@ class VariableVersionQuery:
                 Variable,
                 VariableVersion.variable_id == Variable.variable_id,
             )
-            .filter(Variable.type == "Filing Indicator")
+            .filter(_is_filing_indicator())
         )
         if release_id is not None:
             query = query.filter(
@@ -725,23 +743,18 @@ class ModuleVersionQuery:
         if not tables_vids:
             return pd.DataFrame(columns=cols)
 
-        query = (
-            session.query(
-                ModuleVersion.module_vid.label("ModuleVID"),
-                ModuleVersionComposition.table_vid.label("variable_vid"),
-                ModuleVersion.code.label("ModuleCode"),
-                ModuleVersion.version_number.label("VersionNumber"),
-                ModuleVersion.from_reference_date.label("FromReferenceDate"),
-                ModuleVersion.to_reference_date.label("ToReferenceDate"),
-                ModuleVersion.start_release_id.label("StartReleaseID"),
-                ModuleVersion.end_release_id.label("EndReleaseID"),
-            )
-            .join(
-                ModuleVersionComposition,
-                ModuleVersion.module_vid
-                == ModuleVersionComposition.module_vid,
-            )
-            .filter(ModuleVersionComposition.table_vid.in_(tables_vids))
+        query = session.query(
+            ModuleVersion.module_vid.label("ModuleVID"),
+            ModuleVersionComposition.table_vid.label("variable_vid"),
+            ModuleVersion.code.label("ModuleCode"),
+            ModuleVersion.version_number.label("VersionNumber"),
+            ModuleVersion.from_reference_date.label("FromReferenceDate"),
+            ModuleVersion.to_reference_date.label("ToReferenceDate"),
+            ModuleVersion.start_release_id.label("StartReleaseID"),
+            ModuleVersion.end_release_id.label("EndReleaseID"),
+        ).join(
+            ModuleVersionComposition,
+            ModuleVersion.module_vid == ModuleVersionComposition.module_vid,
         )
         if release_id is not None:
             query = query.filter(
@@ -753,7 +766,9 @@ class ModuleVersionQuery:
                     ),
                 )
             )
-        results = query.all()
+        results = chunked_in(
+            query, ModuleVersionComposition.table_vid, tables_vids
+        )
         df = pd.DataFrame(results, columns=cols)
         return _apply_fallback_for_equal_dates(session, df)
 
@@ -808,7 +823,6 @@ class ModuleVersionQuery:
                 TableVersion,
                 ModuleVersionComposition.table_vid == TableVersion.table_vid,
             )
-            .filter(TableVersion.code.in_(table_codes))
         )
         if release_id is not None:
             query = query.filter(
@@ -820,7 +834,7 @@ class ModuleVersionQuery:
                     ),
                 )
             )
-        results = query.all()
+        results = chunked_in(query, TableVersion.code, table_codes)
         df = pd.DataFrame(results, columns=cols)
         return _apply_fallback_for_equal_dates(session, df)
 
@@ -879,7 +893,7 @@ class ModuleVersionQuery:
                 VariableVersion.variable_id == Variable.variable_id,
             )
             .filter(VariableVersion.code.in_(precondition_items))
-            .filter(Variable.type == "Filing Indicator")
+            .filter(_is_filing_indicator())
         )
         if release_id is not None:
             query = query.filter(
@@ -961,14 +975,14 @@ def _apply_fallback_for_equal_dates(
 
     vids_needing = [int(v) for v in rows_needing[module_vid_col].unique()]
 
-    current_modules = (
+    current_modules = chunked_in(
         session.query(
             ModuleVersion.module_vid,
             ModuleVersion.module_id,
             ModuleVersion.start_release_id,
-        )
-        .filter(ModuleVersion.module_vid.in_(vids_needing))
-        .all()
+        ),
+        ModuleVersion.module_vid,
+        vids_needing,
     )
     current_info = {
         r.module_vid: (r.module_id, r.start_release_id)
@@ -976,14 +990,15 @@ def _apply_fallback_for_equal_dates(
     }
 
     unique_mids = list({info[0] for info in current_info.values()})
-    prev_versions = (
-        session.query(ModuleVersion)
-        .filter(ModuleVersion.module_id.in_(unique_mids))
-        .order_by(
+    # The per-module_id ORDER BY survives chunking because each module_id
+    # falls entirely within one chunk (the chunk column is module_id).
+    prev_versions = chunked_in(
+        session.query(ModuleVersion).order_by(
             ModuleVersion.module_id,
             ModuleVersion.start_release_id.desc(),
-        )
-        .all()
+        ),
+        ModuleVersion.module_id,
+        unique_mids,
     )
 
     by_mid: dict[int, list[ModuleVersion]] = {}

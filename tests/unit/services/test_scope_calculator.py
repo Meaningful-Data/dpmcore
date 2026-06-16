@@ -533,6 +533,76 @@ class TestDetectCrossModuleDependencies:
         assert "T_01" in dm["http://uri/mod_20"]["tables"]
         assert dm["http://uri/mod_20"]["variables"] == {"v1": "x"}
 
+    def test_dependency_table_open_keys_propagate(self):
+        """Regression for #122: a dependency module's table entries must
+        keep their ``open_keys`` so the engine can join on them.
+        """
+        svc, SR = self._make_svc()
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "C_06.02": {
+                "variables": {"5486578": "s"},
+                "open_keys": {"qEGS": "e", "qLGS": "s"},
+            }
+        }
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [mv]
+
+        sr = SR(
+            scopes=[_scope([10, 20])],
+            is_cross_module=True,
+        )
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+        )
+        dep = info["dependency_modules"]["http://uri/mod_20"]
+        assert dep["tables"]["C_06.02"]["open_keys"] == {
+            "qEGS": "e",
+            "qLGS": "s",
+        }
+
+    def test_primary_module_never_a_dependency(self):
+        """Regression for #122: the primary module must not appear in
+        its own cross dependencies or ``dependency_modules``.
+        """
+        svc, SR = self._make_svc()
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "T_01": {"variables": {"v1": "x"}, "open_keys": {}},
+        }
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [mv]
+
+        sr = SR(
+            scopes=[_scope([10, 20])],
+            is_cross_module=True,
+        )
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+            operation_code="EGDQ_0131",
+        )
+        assert "http://uri/mod_10" not in info["dependency_modules"]
+        dep_uris = {
+            m["URI"]
+            for cd in info["cross_instance_dependencies"]
+            for m in cd["modules"]
+        }
+        assert dep_uris == {"http://uri/mod_20"}
+
     def test_module_with_only_variable_less_tables_is_dropped(self):
         """Modules whose tables all have empty ``variables`` are dropped.
 
