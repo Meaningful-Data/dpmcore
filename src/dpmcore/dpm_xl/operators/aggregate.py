@@ -286,7 +286,7 @@ class Rank(AggregateOperator):
     interval_allowed: ClassVar[bool] = False
 
     @classmethod
-    def validate(  # type: ignore[override]
+    def validate_analytic(
         cls,
         operand: RecordSet,
         analytic_clause: AnalyticClause,

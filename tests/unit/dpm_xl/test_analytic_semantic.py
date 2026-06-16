@@ -135,14 +135,14 @@ class TestWindowClause:
 
 class TestRankValidate:
     def test_returns_integer_fact(self) -> None:
-        result = Rank.validate(
+        result = Rank.validate_analytic(
             _make_rs(key_names=["r", "c"]), _analytic(order_by=["r"])
         )
         assert isinstance(result, RecordSet)
         assert isinstance(result.get_fact_component().type, Integer)
 
     def test_accepts_any_fact_type(self) -> None:
-        result = Rank.validate(
+        result = Rank.validate_analytic(
             _make_rs(fact_type=String(), key_names=["r"]),
             _analytic(order_by=["r"]),
         )
@@ -153,12 +153,12 @@ class TestRankValidate:
         rs.records = pd.DataFrame(
             {"r": ["1", "2"], "data_type": [Number(), Number()]}
         )
-        result = Rank.validate(rs, _analytic(order_by=["r"]))
+        result = Rank.validate_analytic(rs, _analytic(order_by=["r"]))
         assert result.records is not None
         assert all(isinstance(t, Integer) for t in result.records["data_type"])
 
     def test_origin_string(self) -> None:
-        result = Rank.validate(
+        result = Rank.validate_analytic(
             _make_rs(key_names=["r", "c"]),
             _analytic(partition_by=["c"], order_by=["r"]),
         )
@@ -168,17 +168,17 @@ class TestRankValidate:
 
     def test_order_by_fact_column_is_valid(self) -> None:
         rs = _make_rs(key_names=["r", "c"])
-        result = Rank.validate(rs, _analytic(order_by=["f"]))
+        result = Rank.validate_analytic(rs, _analytic(order_by=["f"]))
         assert isinstance(result.get_fact_component().type, Integer)
 
     def test_without_order_by_raises(self) -> None:
         with pytest.raises(SemanticError) as exc_info:
-            Rank.validate(_make_rs(key_names=["r"]), _analytic())
+            Rank.validate_analytic(_make_rs(key_names=["r"]), _analytic())
         assert exc_info.value.code == "4-4-0-4"
 
     def test_with_missing_component_raises(self) -> None:
         with pytest.raises(SemanticError) as exc_info:
-            Rank.validate(
+            Rank.validate_analytic(
                 _make_rs(key_names=["r"]), _analytic(order_by=["nonexistent"])
             )
         assert exc_info.value.code == "4-4-0-2"
@@ -188,5 +188,5 @@ class TestRankValidate:
             partition_by=[], order_by=[OrderItem("r")], window=_window_clause()
         )
         with pytest.raises(SemanticError) as exc_info:
-            Rank.validate(_make_rs(key_names=["r"]), clause)
+            Rank.validate_analytic(_make_rs(key_names=["r"]), clause)
         assert exc_info.value.code == "4-4-0-6"

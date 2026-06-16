@@ -493,7 +493,9 @@ class InputAnalyzer(ASTTemplate, ABC):
                 f"Performing an aggregation on recordset: {operand.name} which has only global key components"
             )
         op = cast(str, node.op)
-        result = RANK_OP_MAPPING[op].validate(operand, node.analytic_clause)
+        result = RANK_OP_MAPPING[op].validate_analytic(
+            operand, node.analytic_clause
+        )
         return cast(Operand, result)
 
     def visit_Dimension(  # type: ignore[override]
