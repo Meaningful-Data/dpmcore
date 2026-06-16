@@ -12,8 +12,8 @@ from dpmcore.dpm_xl.symbols import (
     RecordSet,
     Structure,
 )
-from dpmcore.dpm_xl.types.scalar import Number
-from dpmcore.dpm_xl.utils.tokens import STANDARD
+from dpmcore.dpm_xl.types.scalar import Item, Number
+from dpmcore.dpm_xl.utils.tokens import DPM, STANDARD
 from dpmcore.errors import SemanticError
 
 
@@ -47,3 +47,48 @@ class TestValidateStructuresDifferentRecordCounts:
         right = _make_recordset(3)
         with pytest.raises(SemanticError, match="different number of headers"):
             BinPlus.validate_structures(left, right)
+
+
+def _make_pinned_recordset(pins: dict[str, str]) -> RecordSet:
+    """Recordset sharing one DPM key (``qEEA``) with given where-pins."""
+    structure = Structure(
+        [
+            KeyComponent("r", Number(), STANDARD, "test"),
+            KeyComponent("qEEA", Item(), DPM, "test"),
+            FactComponent(Number(), "test"),
+        ]
+    )
+    rs = RecordSet(structure, "test", "test")
+    rs.where_constraints = pins
+    return rs
+
+
+class TestValidateStructuresContradictoryWhere:
+    """Issue #121: disjoint where-pins on a shared key are a dead join."""
+
+    def test_disjoint_pins_raise_2_2(self):
+        left = _make_pinned_recordset({"qEEA": "qx2023"})
+        right = _make_pinned_recordset({"qEEA": "qx2022"})
+        with pytest.raises(SemanticError, match="no match between"):
+            BinPlus.validate_structures(left, right)
+
+    def test_disjoint_pins_raise_2_2_for_comparison(self):
+        left = _make_pinned_recordset({"qEEA": "qx2023"})
+        right = _make_pinned_recordset({"qEEA": "qx2022"})
+        with pytest.raises(SemanticError, match="no match between"):
+            LessEqual.validate_structures(left, right)
+
+    def test_same_pin_value_does_not_raise(self):
+        left = _make_pinned_recordset({"qEEA": "qx2023"})
+        right = _make_pinned_recordset({"qEEA": "qx2023"})
+        BinPlus.validate_structures(left, right)  # must not raise
+
+    def test_pin_on_one_side_only_does_not_raise(self):
+        left = _make_pinned_recordset({"qEEA": "qx2023"})
+        right = _make_pinned_recordset({})
+        BinPlus.validate_structures(left, right)  # must not raise
+
+    def test_no_pins_does_not_raise(self):
+        left = _make_pinned_recordset({})
+        right = _make_pinned_recordset({})
+        BinPlus.validate_structures(left, right)  # must not raise
