@@ -43,6 +43,10 @@ from dpmcore.dpm_xl.ast.nodes import (
     Scalar as ScalarNode,
 )
 from dpmcore.dpm_xl.ast.template import ASTTemplate
+from dpmcore.dpm_xl.ast.where_clause import (
+    collect_where_equality_pins,
+    merge_where_constraints,
+)
 from dpmcore.dpm_xl.operators.clause import Sub as SubOperator
 from dpmcore.dpm_xl.symbols import (
     Component,
@@ -703,6 +707,13 @@ class InputAnalyzer(ASTTemplate, ABC):
             key_names=node.key_components,
             new_names=None,
             condition=condition,
+        )
+        # Record which dimensions this filter pins to a single value, merged
+        # with any carried by the inner operand (e.g. chained where clauses),
+        # so a binary operator can spot a contradictory inner join.
+        result.where_constraints = merge_where_constraints(
+            getattr(operand, "where_constraints", {}),
+            collect_where_equality_pins(node.condition),
         )
         return result
 
