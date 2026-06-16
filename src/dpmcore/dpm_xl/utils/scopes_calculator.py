@@ -529,11 +529,46 @@ class OperationScopeService:
             for vid, grp in code_groups:
                 precond_by_module[int(vid)] = set(grp["Code"].dropna())
 
-        values = cross_modules.values()
-        for combination in product(*values):
-            unique_combination = set(combination)
+        # Many referenced table codes share the *same* provider list (one
+        # FINREP module commonly hosts every F_04.* table). The Cartesian
+        # product over the raw per-code lists would then choose a provider
+        # for each code independently and emit the identical module set once
+        # per redundant choice — thousands of duplicates for the same scope.
+        # Collapsing identical provider lists first removes that multiplicity
+        # without changing which module sets are reachable: two codes with
+        # the same providers impose the same "pick one of these" constraint.
+        distinct_lists: list[tuple[int, ...]] = []
+        seen_lists: set[frozenset[int]] = set()
+        for providers in cross_modules.values():
+            list_key = frozenset(providers)
+            if list_key in seen_lists:
+                continue
+            seen_lists.add(list_key)
+            distinct_lists.append(tuple(providers))
+
+        # No constraints means no combination to evaluate. An empty
+        # ``distinct_lists`` would make ``product()`` yield a single empty
+        # tuple, whose empty module set has no reference dates and would
+        # raise on ``from_dates.max()``. Real callers never pass an empty
+        # pool (each is guarded by ``if cross_modules``), so this is a
+        # defensive no-op.
+        if not distinct_lists:
+            return
+
+        # Collapse each combination to its module set and evaluate only the
+        # first occurrence of a given set, so a combination never yields more
+        # than one scope.
+        seen_sets: set[frozenset[int]] = set()
+        valid_sets: list[frozenset[int]] = []
+        ref_from_by_set: dict[frozenset[int], Any] = {}
+        for combination in product(*distinct_lists):
+            module_set = frozenset(combination)
+            if module_set in seen_sets:
+                continue
+            seen_sets.add(module_set)
+
             combination_info = modules_dataframe[
-                modules_dataframe[MODULE_VID].isin(combination)
+                modules_dataframe[MODULE_VID].isin(module_set)
             ]
             from_dates = combination_info[FROM_REFERENCE_DATE].to_numpy()
             to_dates = combination_info[TO_REFERENCE_DATE].to_numpy()
@@ -560,13 +595,28 @@ class OperationScopeService:
             # the combination, else it cannot evaluate the operation.
             if req_preconditions:
                 covered: set[Any] = set()
-                for module in unique_combination:
+                for module in module_set:
                     covered |= precond_by_module.get(module, set())
                 if not covered.issuperset(req_preconditions):
                     continue
 
-            operation_scope = self.create_operation_scope(ref_from_date)
-            for module in unique_combination:
+            valid_sets.append(module_set)
+            ref_from_by_set[module_set] = ref_from_date
+
+        # Each retained combination already covers every required key (the
+        # product picks one provider per distinct constraint). A combination
+        # that strictly contains another retained one therefore only pairs in
+        # a module a smaller covering combination already does without — e.g.
+        # two alternative modules that each host the whole referenced table
+        # set. Drop such non-minimal supersets so the alternatives surface as
+        # separate scopes instead of one bloated multi-module scope.
+        for module_set in valid_sets:
+            if any(other < module_set for other in valid_sets):
+                continue
+            operation_scope = self.create_operation_scope(
+                ref_from_by_set[module_set]
+            )
+            for module in module_set:
                 module_row = module_lookup.get(module)
                 if module_row is None:
                     continue
