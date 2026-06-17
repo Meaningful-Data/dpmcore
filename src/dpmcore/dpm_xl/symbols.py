@@ -212,6 +212,10 @@ class RecordSet(Operand):
         self.errors: Any = None
         self.interval: bool | None = None
         self.default: Any = None
+        # Dimensions this recordset pins to a single literal value via a
+        # ``where`` equality (dimension code -> value). Used by binary
+        # operators to detect an inner join that can never match.
+        self.where_constraints: dict[str, str] = {}
         self.has_only_global_components = all(
             component.is_global
             for component in structure.get_key_components().values()

@@ -284,6 +284,11 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by dpm_xlParser#rankOp.
+    def visitRankOp(self, ctx:dpm_xlParser.RankOpContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by dpm_xlParser#countSetOp.
     def visitCountSetOp(self, ctx:dpm_xlParser.CountSetOpContext):
         return self.visitChildren(ctx)
@@ -291,6 +296,36 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by dpm_xlParser#groupingClause.
     def visitGroupingClause(self, ctx:dpm_xlParser.GroupingClauseContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#analyticClause.
+    def visitAnalyticClause(self, ctx:dpm_xlParser.AnalyticClauseContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#partitionClause.
+    def visitPartitionClause(self, ctx:dpm_xlParser.PartitionClauseContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#orderClause.
+    def visitOrderClause(self, ctx:dpm_xlParser.OrderClauseContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#orderItem.
+    def visitOrderItem(self, ctx:dpm_xlParser.OrderItemContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#windowClause.
+    def visitWindowClause(self, ctx:dpm_xlParser.WindowClauseContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#windowBoundary.
+    def visitWindowBoundary(self, ctx:dpm_xlParser.WindowBoundaryContext):
         return self.visitChildren(ctx)
 
 

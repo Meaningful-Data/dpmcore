@@ -10,6 +10,7 @@ legacy ``session.query()`` API for compatibility.
 from __future__ import annotations
 
 import warnings
+from datetime import date
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -945,17 +946,97 @@ class ModuleVersionQuery:
         return pd.DataFrame(results, columns=cols)
 
 
+def _select_version_in_effect(
+    siblings: list[ModuleVersion],
+    ghost_date: date | None,
+) -> ModuleVersion | None:
+    """Return the sibling whose real window covers ``ghost_date``.
+
+    Considers non-degenerate sibling versions (``from != to``) whose
+    validity window contains the ghost's collapsed reference date,
+    regardless of lifecycle direction. Ties prefer an open-ended
+    window, then the latest start date, then the highest start
+    release.
+
+    Args:
+        siblings: Versions of the same module.
+        ghost_date: The ghost's collapsed reference date.
+
+    Returns:
+        The version in effect, or ``None`` if none covers the date.
+    """
+    if ghost_date is None:
+        return None
+    candidates = [
+        mv
+        for mv in siblings
+        if mv.from_reference_date is not None
+        and mv.from_reference_date != mv.to_reference_date
+        and mv.from_reference_date <= ghost_date
+        and (
+            mv.to_reference_date is None or mv.to_reference_date >= ghost_date
+        )
+    ]
+    if not candidates:
+        return None
+    return max(
+        candidates,
+        key=lambda mv: (
+            mv.to_reference_date is None,
+            mv.from_reference_date,
+            mv.start_release_id or 0,
+        ),
+    )
+
+
+def _select_previous_version(
+    siblings: list[ModuleVersion],
+    cur_srid: int,
+) -> ModuleVersion | None:
+    """Return the nearest non-ghost predecessor by start release.
+
+    Last-resort fallback for ghosts whose reference date no sibling
+    window covers. ``siblings`` is ordered by ``start_release_id``
+    descending, so the first qualifying match is the closest earlier
+    version.
+
+    Args:
+        siblings: Versions of the same module.
+        cur_srid: Start release ID of the ghost version.
+
+    Returns:
+        The nearest earlier non-ghost version, or ``None``.
+    """
+    for mv in siblings:
+        if (
+            mv.start_release_id is not None
+            and mv.start_release_id < cur_srid
+            and mv.from_reference_date != mv.to_reference_date
+        ):
+            return mv
+    return None
+
+
 def _apply_fallback_for_equal_dates(
     session: "Session",
     df: pd.DataFrame,
     module_vid_col: str = "ModuleVID",
 ) -> pd.DataFrame:
-    """Replace ghost modules where dates are equal.
+    """Replace ghost module versions with the version in effect.
 
-    When ``FromReferenceDate == ToReferenceDate`` for a
-    module version, find the previous version of the same
-    module and substitute its metadata while preserving
+    A "ghost" version has a collapsed validity window
+    (``FromReferenceDate == ToReferenceDate``): it was superseded on
+    its own start date and never really applies. For each ghost row,
+    substitute the metadata of the sibling version (same module) that
+    is actually in effect on that reference date, preserving the
     association columns.
+
+    Selection is date-driven, so it repairs ghosts in either
+    lifecycle direction -- a forward successor that starts on the same
+    date (issue #131) or a backward predecessor whose window still
+    covers the date -- without depending on the opaque ``ReleaseID``
+    ordering. Only when no sibling window covers the date does it fall
+    back to the nearest non-ghost predecessor by start release.
 
     Args:
         session: SQLAlchemy session.
@@ -980,16 +1061,23 @@ def _apply_fallback_for_equal_dates(
             ModuleVersion.module_vid,
             ModuleVersion.module_id,
             ModuleVersion.start_release_id,
+            ModuleVersion.from_reference_date,
         ),
         ModuleVersion.module_vid,
         vids_needing,
     )
     current_info = {
-        r.module_vid: (r.module_id, r.start_release_id)
+        r.module_vid: (
+            r.module_id,
+            r.start_release_id,
+            r.from_reference_date,
+        )
         for r in current_modules
     }
 
-    unique_mids = list({info[0] for info in current_info.values()})
+    unique_mids = list(
+        {info[0] for info in current_info.values() if info[0] is not None}
+    )
     # The per-module_id ORDER BY survives chunking because each module_id
     # falls entirely within one chunk (the chunk column is module_id).
     prev_versions = chunked_in(
@@ -1001,24 +1089,23 @@ def _apply_fallback_for_equal_dates(
         unique_mids,
     )
 
-    by_mid: dict[int, list[ModuleVersion]] = {}
+    # ``prev_versions`` is filtered by ``module_id IN (...)``, which never
+    # matches NULL, so every row carries a concrete module_id. The key type
+    # stays optional only to mirror the nullable ORM column.
+    by_mid: dict[int | None, list[ModuleVersion]] = {}
     for mv in prev_versions:
-        if mv.module_id is None:
-            continue
         by_mid.setdefault(mv.module_id, []).append(mv)
 
     replacement: dict[int, ModuleVersion] = {}
-    for cur_vid, (mid, cur_srid) in current_info.items():
-        if mid is None or cur_srid is None:
+    for cur_vid, (mid, cur_srid, ghost_date) in current_info.items():
+        if mid is None:
             continue
-        for mv in by_mid.get(mid, []):
-            if (
-                mv.start_release_id is not None
-                and mv.start_release_id < cur_srid
-            ):
-                if mv.from_reference_date != mv.to_reference_date:
-                    replacement[cur_vid] = mv
-                    break
+        siblings = by_mid.get(mid, [])
+        chosen = _select_version_in_effect(siblings, ghost_date)
+        if chosen is None and cur_srid is not None:
+            chosen = _select_previous_version(siblings, cur_srid)
+        if chosen is not None:
+            replacement[cur_vid] = chosen
 
     if not replacement:
         return df
