@@ -555,6 +555,12 @@ class ASTGeneratorService:
             break
 
         op_symbol = getattr(node, "op", None)
+        if not op_symbol and type(node).__name__ == "CondExpr":
+            # An ``if-then`` / ``if-then-else`` validation has a ``CondExpr``
+            # root that carries no ``op`` on this stateless serialize path
+            # (only ``MLGeneration.visit_CondExpr`` sets it). Resolve its
+            # operator symbol explicitly, matching ``ml_generation.py``.
+            op_symbol = "if-then-else"
         if not op_symbol:
             raise RuntimeError(
                 f"Cannot resolve root operator: AST root "
