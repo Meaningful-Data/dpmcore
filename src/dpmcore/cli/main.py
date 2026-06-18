@@ -7,6 +7,10 @@ Usage::
     dpmcore generate-script --expressions ./rules.json \
         --module-code COREP_Con --module-version 2.0.1 \
         --database sqlite:///dpm.db --output ./script.json
+    dpmcore generate-graph ./calculations_script.csv -o ./graph.html
+    dpmcore generate-graph -e "c1={tA,r1,c1} <- {tB,r1,c1}" -o ./graph.html
+    dpmcore generate-graph --database sqlite:///dpm.db --table C_01.00 \
+        -o ./graph.html
     dpmcore --version
 """
 
@@ -677,3 +681,156 @@ def export_layout(
             )
 
     click.echo(f"Exported to {path}")
+
+
+@main.command("generate-graph")
+@click.argument(
+    "csv",
+    required=False,
+    type=click.Path(exists=True, dir_okay=False, path_type=str),
+)
+@click.option(
+    "--expression",
+    "-e",
+    "expressions",
+    multiple=True,
+    metavar="CODE=EXPRESSION",
+    help=(
+        "Inline operation as CODE=EXPRESSION (repeatable). Use instead "
+        "of the CSV argument for a quick, ad-hoc graph."
+    ),
+)
+@click.option(
+    "--output",
+    "-o",
+    "output_path",
+    default="calculations_graph.html",
+    show_default=True,
+    type=click.Path(dir_okay=False, path_type=str),
+    help="Output HTML path.",
+)
+@click.option(
+    "--database",
+    default=None,
+    help=(
+        "SQLAlchemy database URL. Builds the graph from the DPM "
+        "dictionary using the engine's resolved operand cells."
+    ),
+)
+@click.option(
+    "--module",
+    "module_code",
+    default=None,
+    help="Engine mode: restrict to operations in this module version code.",
+)
+@click.option(
+    "--table",
+    "table_code",
+    default=None,
+    help="Engine mode: restrict to operations referencing this table code.",
+)
+@click.option(
+    "--release",
+    "release_code",
+    default=None,
+    help="Engine mode: restrict to operations active in this release code.",
+)
+@click.option(
+    "--title",
+    "-t",
+    default=None,
+    help="Graph title (default: derived from the input).",
+)
+def generate_graph(
+    csv: str | None,
+    expressions: tuple[str, ...],
+    database: str | None,
+    module_code: str | None,
+    table_code: str | None,
+    release_code: str | None,
+    output_path: str,
+    title: str | None,
+) -> None:
+    r"""Build a self-contained HTML dependency graph of a calculations script.
+
+    Provide exactly one input source:
+
+    \b
+    * a ``Code,Expression`` CSV file (the CSV argument);
+    * one or more inline ``-e CODE=EXPRESSION`` operations; or
+    * ``--database URL`` to read the DPM dictionary directly, deriving
+      dependencies from the engine's resolved operand cells (filter with
+      ``--module`` / ``--table`` / ``--release``).
+
+    The output is a single HTML file with its rendering libraries embedded
+    inline, so it opens offline.
+    """
+    from pathlib import Path
+
+    try:
+        from rich.console import Console
+    except ImportError:
+        click.echo(
+            "Install 'rich' for pretty output: pip install dpmcore[cli]",
+            err=True,
+        )
+        sys.exit(1)
+
+    from dpmcore.errors import DpmCoreError
+    from dpmcore.services.calculations_graph import CalculationsGraphService
+
+    sources = [csv is not None, bool(expressions), database is not None]
+    if sum(sources) != 1:
+        raise click.UsageError(
+            "Provide exactly one input source: a CSV path argument, one or "
+            "more --expression options, or --database."
+        )
+    if database is None and (module_code or table_code or release_code):
+        raise click.UsageError(
+            "--module / --table / --release only apply with --database."
+        )
+
+    rows: list[tuple[str, str]] = []
+    for item in expressions:
+        code, sep, expr = item.partition("=")
+        if not sep:
+            raise click.UsageError(
+                f"Invalid --expression {item!r}; expected CODE=EXPRESSION."
+            )
+        rows.append((code.strip(), expr.strip()))
+
+    console = Console()
+
+    svc = CalculationsGraphService()
+    try:
+        if database is not None:
+            from dpmcore.connection import connect
+
+            with connect(database) as db:
+                result = svc.generate_from_database(
+                    db.session,
+                    release_code=release_code,
+                    module_code=module_code,
+                    table_code=table_code,
+                    title=title,
+                )
+        elif csv is not None:
+            result = svc.generate(Path(csv), title)
+        else:
+            result = svc.generate_from_rows(rows, title or "Execution graph")
+    except DpmCoreError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        sys.exit(1)
+
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(result.html, encoding="utf-8")
+
+    size_kib = out.stat().st_size // 1024
+    console.print(
+        f"[green]Wrote graph to[/green] {out} "
+        f"({result.n_nodes} operations, {result.n_edges} dependencies, "
+        f"{result.n_roots} roots; {size_kib} KiB, self-contained)."
+    )
+    for warning in result.warnings:
+        console.print(f"[yellow]Warning:[/yellow] {warning}")
