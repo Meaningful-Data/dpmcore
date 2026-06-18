@@ -310,16 +310,8 @@ class ScopeCalculatorService:
             scope_result, primary_module_vid
         )
         if not valid_vids:
-            # Reaching here, the operation is cross-module yet the primary
-            # module is neither a single-module scope on its own (see
-            # ``primary_has_intra`` above) nor a partner in any multi-module
-            # scope (``filter_valid_dependency_modules`` returned nothing).
-            # That means the primary participates in *no* scope at all and so
-            # hosts none of the referenced tables — it cannot be the
-            # intra-instance owner. Classifying it intra here would emit a
-            # script with an empty ``tables`` block falsely marked
-            # intra-instance (e.g. generating an IF_CLASS2/IF_CLASS3
-            # validation for COREP_OF). Emit no classification instead.
+            # The primary module appears in no scope, so it hosts none of
+            # the referenced tables and is not the intra-instance owner.
             return {**empty_result}
 
         # Build cross_instance_dependencies and dependency_modules

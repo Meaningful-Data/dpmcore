@@ -321,10 +321,8 @@ class ASTToJSONVisitor(NodeVisitor):
                                     )
                                 transformed_record["z"] = z_index
 
-                        # Note: column and row are at VarID level, not in data entries
-
-                        # Add additional fields required by ADAM engine
-                        # CRITICAL: data_type determines how the engine processes values
+                        # Column and row live at VarID level, not in data entries.
+                        # data_type determines how values are processed downstream.
                         if (
                             "data_type" in record
                             and record["data_type"] is not None
@@ -393,10 +391,8 @@ class ASTToJSONVisitor(NodeVisitor):
                     }
                     coord_to_field = {"x": "row", "y": "column", "z": "sheet"}
 
-                    # Add dimension codes to each data entry
-                    # IMPORTANT: adam-engine requires BOTH row AND column in every data item
-                    # We add all dimension codes (row, column, sheet) when they exist in the original record
-                    # We need to match each transformed record back to its original record
+                    # Every data item carries both row and column (plus sheet
+                    # when present); match each transformed record to its origin.
                     record_index = 0
                     for x_index, row_code in enumerate(rows, 1):
                         for original_record in entries_by_row[row_code]:
@@ -405,8 +401,7 @@ class ASTToJSONVisitor(NodeVisitor):
                                     record_index
                                 ]
 
-                                # Add ALL dimension codes (row, column, sheet) to every data item
-                                # This is required by adam-engine even when the coordinate is common
+                                # Emit every coordinate, even when it is common.
                                 for coord in ["x", "y", "z"]:
                                     dimension_field = coord_to_dimension[coord]
                                     output_field = coord_to_field[coord]
@@ -553,11 +548,10 @@ class ASTToJSONVisitor(NodeVisitor):
         """Serialize SubOp as left-deep chained ``SubClauseOp`` nodes.
 
         Multi-sub ``X[sub a=1, b=2]`` is semantically equivalent to chained
-        single-subs ``X[sub a=1][sub b=2]``. The adam-engine consumer
-        defines ``SubClauseOp`` with a single ``condition`` field
-        (additionalProperties: false), so chaining is the only valid wire
-        shape -- the original recordset sits at the deepest level and each
-        substitution wraps the previous result.
+        single-subs ``X[sub a=1][sub b=2]``. ``SubClauseOp`` takes a single
+        ``condition`` field, so chaining is the only valid wire shape -- the
+        original recordset sits at the deepest level and each substitution
+        wraps the previous result.
         """
         result: NodeValue = self.visit(node.operand)
         for sub in node.substitutions:
@@ -670,21 +664,12 @@ class ASTToJSONVisitor(NodeVisitor):
         return result
 
     def visit_Scalar(self, node: Any) -> NodeDict:
-        """Visit Scalar nodes, emitting the item code verbatim.
-
-        The item code is the namespaced member signature as authored
-        (e.g. ``eba_qEC:qx01``) and must be serialized unchanged. An
-        earlier "version compatibility" pass rewrote ``eba_q*`` to
-        ``eba_*``, which corrupted the namespace the engine consumes
-        (it dropped the ``q`` so ``eba_qEC`` became ``eba_EC``); the
-        engine requires the original code, so no rewriting is applied.
-        """
+        """Visit Scalar nodes, emitting the item code unchanged."""
         result: NodeDict = {"class_name": "Scalar"}
 
         if hasattr(node, "item") and node.item:
             result["item"] = node.item
 
-        # Include scalar_type field (REQUIRED by ADAM Engine)
         if hasattr(node, "scalar_type") and node.scalar_type:
             result["scalar_type"] = node.scalar_type
 
@@ -924,7 +909,7 @@ def serialize_ast(ast_obj: Any) -> NodeValue:
     # ``toJSON`` for everything except ``GetOp``/``SubOp`` emitted
     # raw node attributes (``rows``/``cols``/``sheets``,
     # ``is_table_group``, ``default`` as a Constant dict) which the
-    # ADAM engine schema rejects.
+    # consumer schema rejects.
     if isinstance(expanded_obj, ASTObjects.AST):
         visitor = ASTToJSONVisitor()
         return visitor.visit(expanded_obj)

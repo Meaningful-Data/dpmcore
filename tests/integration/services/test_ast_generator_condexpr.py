@@ -6,7 +6,7 @@
     Cannot resolve root operator: AST root 'CondExpr' has no 'op' attribute.
 
 because ``CondExpr`` carries no ``op`` on the stateless serialize path (only
-``MLGeneration.visit_CondExpr`` sets it). The ADAM engine consumes the
+``MLGeneration.visit_CondExpr`` sets it). The downstream engine consumes the
 ``script`` output, so this blocked a broad slice of the dictionary (DORA,
 REM_DBM, ...). These tests pin the fix against the real 4.2.1 dictionary.
 """

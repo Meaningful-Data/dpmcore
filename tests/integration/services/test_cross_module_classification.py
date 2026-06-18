@@ -1,8 +1,8 @@
-"""Integration regression for intra/cross-module classification (#623 P1).
+"""Integration regression for intra/cross-module classification.
 
 These pin, against the real 4.2.1 dictionary, the dependency-information
 classification that ``ASTGeneratorService.script`` emits for the validations
-the ADAM engine flagged. The agreed rule: a validation is intra-instance for
+the downstream engine flagged. The agreed rule: a validation is intra-instance for
 module M when every table it references belongs to M; otherwise, for a module
 that hosts only some of the tables it is a cross-instance dependency; and for
 a module that hosts *none* of its tables it is neither (empty classification).
