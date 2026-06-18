@@ -78,8 +78,8 @@ def test_multiple_sub_produces_multiple_substitutions():
 def test_single_sub_serializes_as_one_subclause_op():
     """Single-sub JSON is one SubClauseOp wrapping the recordset directly.
 
-    Backwards-compatibility check: adam-engine's existing scripts use this
-    shape, so the wire format must be unchanged for the single-sub case.
+    Backwards-compatibility check: the wire format must be unchanged for
+    the single-sub case.
     """
     ast = SyntaxService().parse('{tT, r010}[sub c0010 = "ES"]')
     sub_op = ast.children[0]
@@ -97,9 +97,8 @@ def test_single_sub_serializes_as_one_subclause_op():
 def test_multi_sub_serializes_as_chained_subclause_ops():
     """Multi-sub JSON nests one SubClauseOp per substitution (left-deep).
 
-    Locks the wire-format contract with adam-engine, whose ``SubClauseOp``
-    schema accepts a single ``condition`` per node. The outermost node
-    wraps the LAST substitution; the original recordset sits at the
+    ``SubClauseOp`` accepts a single ``condition`` per node. The outermost
+    node wraps the LAST substitution; the original recordset sits at the
     deepest level. Order matches the left-to-right reading of the
     source: ``c0010`` is applied first, ``c0020`` second.
     """
@@ -131,13 +130,7 @@ def test_multi_sub_serializes_as_chained_subclause_ops():
     ],
 )
 def test_scalar_item_serialized_verbatim(item_code):
-    """A Scalar item code is serialized unchanged.
-
-    Regression: an earlier pass rewrote ``eba_q*`` to ``eba_*`` (dropping
-    the ``q``), corrupting the namespaced member signature the engine
-    consumes (``eba_qEC:qx01`` became ``eba_EC:qx01``). The code must be
-    emitted exactly as authored.
-    """
+    """A Scalar item code is serialized exactly as authored."""
     serialized = ASTToJSONVisitor().visit(
         Scalar(item=item_code, scalar_type="Item")
     )
@@ -148,11 +141,7 @@ def test_scalar_item_serialized_verbatim(item_code):
 
 
 def test_sub_clause_preserves_eba_q_item_namespace():
-    """``[sub key = [eba_qEC:qx01]]`` keeps the ``q`` in the item code.
-
-    End-to-end through the parser and serializer: the substitution value
-    is a namespaced item whose ``q`` must survive into the wire format.
-    """
+    """``[sub key = [eba_qEC:qx01]]`` keeps the ``q`` in the item code."""
     ast = SyntaxService().parse("{tT, r010}[sub c0010 = [eba_qEC:qx01]]")
     sub_op = ast.children[0]
     serialized = ASTToJSONVisitor().visit(sub_op)

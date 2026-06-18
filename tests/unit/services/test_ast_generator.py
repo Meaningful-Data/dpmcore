@@ -489,13 +489,12 @@ class TestResolveRootOperatorId:
         assert Cls._resolve_root_operator_id(pa, MagicMock()) == 33
 
     def test_condexpr_root_resolves_to_if_then_else(self, monkeypatch):
-        # An if-then / if-then-else validation has a CondExpr root that
-        # carries no 'op' on the stateless serialize path. It must resolve
-        # to the 'if-then-else' operator rather than raising.
+        # A CondExpr root has no 'op'; it resolves to the if-then-else
+        # operator instead of raising.
         _, Cls, _ = _bare_svc()
         CondExpr = type("CondExpr", (), {})
         node = CondExpr()
-        node.op = None  # mirrors the AST base default
+        node.op = None
 
         WithExpression = type("WithExpression", (), {})
         with_expr = WithExpression()

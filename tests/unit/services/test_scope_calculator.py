@@ -397,11 +397,8 @@ class TestDetectCrossModuleDependencies:
         assert dep["affected_operations"] == ["v1234"]
 
     def test_primary_in_no_scope_is_not_intra(self):
-        # The primary module (10) appears in no scope: the cross-module
-        # scope is between 20 and 30. The primary hosts none of the
-        # referenced tables, so it must NOT be classified intra-instance
-        # (it would otherwise emit a script with an empty tables block
-        # falsely marked intra).
+        # Primary module 10 is in no scope (the cross-module scope is
+        # 20+30), so it must not be classified intra-instance.
         svc, SR = self._make_svc()
         sr = SR(
             scopes=[_scope([20, 30])],

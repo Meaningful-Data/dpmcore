@@ -1,14 +1,9 @@
-"""Integration regression for intra/cross-module classification.
+"""Integration regression: intra/cross-module classification.
 
-These pin, against the real 4.2.1 dictionary, the dependency-information
-classification that ``ASTGeneratorService.script`` emits for the validations
-the downstream engine flagged. The agreed rule: a validation is intra-instance for
-module M when every table it references belongs to M; otherwise, for a module
-that hosts only some of the tables it is a cross-instance dependency; and for
-a module that hosts *none* of its tables it is neither (empty classification).
-
-Synthetic-fixture greens are what let the rc2 misclassifications slip, so
-these run end-to-end on the shipped dictionary.
+A validation is intra-instance for a module when every table it references
+belongs to that module; cross-instance when the module hosts only some of
+them; and neither when the module hosts none. These tests pin that behaviour
+for the affected validations.
 """
 
 from __future__ import annotations
@@ -76,19 +71,14 @@ def test_named_classification(
     expect_intra,
     expect_cross,
 ):
-    """Each named validation classifies as agreed against real data."""
+    """Each named validation classifies as expected."""
     result = _classify(fixture_session, code, module_code, module_version)
     assert (result["intra"] == [code]) is expect_intra
     assert (result["cross"] > 0) is expect_cross
 
 
 def test_primary_hosting_no_tables_is_not_intra(fixture_session):
-    """v11120_m for COREP_OF (hosts neither I_04.00 nor I_05.00).
-
-    Regression for the misclassification where a validation generated for a
-    module that hosts none of its tables was emitted as intra-instance with
-    an empty ``tables`` block. It must be neither intra nor cross.
-    """
+    """A module hosting none of a validation's tables is neither intra nor cross."""
     result = _classify(fixture_session, "v11120_m", "COREP_OF", "4.1.0")
     assert result["intra"] == []
     assert result["cross"] == 0

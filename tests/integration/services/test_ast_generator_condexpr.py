@@ -1,14 +1,8 @@
-"""Integration regression for if-then(-else) script generation.
+"""Integration regression: if-then(-else) script generation.
 
-``ASTGeneratorService.script`` previously failed for every ``if-then`` /
-``if-then-else`` validation with::
-
-    Cannot resolve root operator: AST root 'CondExpr' has no 'op' attribute.
-
-because ``CondExpr`` carries no ``op`` on the stateless serialize path (only
-``MLGeneration.visit_CondExpr`` sets it). The downstream engine consumes the
-``script`` output, so this blocked a broad slice of the dictionary (DORA,
-REM_DBM, ...). These tests pin the fix against the real 4.2.1 dictionary.
+``ASTGeneratorService.script`` failed for every ``if-then`` / ``if-then-else``
+validation because a ``CondExpr`` root carries no ``op`` attribute. These
+tests confirm such validations now generate and resolve their root operator.
 """
 
 from __future__ import annotations
