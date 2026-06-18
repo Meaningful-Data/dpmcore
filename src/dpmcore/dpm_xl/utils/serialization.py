@@ -670,19 +670,19 @@ class ASTToJSONVisitor(NodeVisitor):
         return result
 
     def visit_Scalar(self, node: Any) -> NodeDict:
-        """Visit Scalar nodes with item name normalization."""
+        """Visit Scalar nodes, emitting the item code verbatim.
+
+        The item code is the namespaced member signature as authored
+        (e.g. ``eba_qEC:qx01``) and must be serialized unchanged. An
+        earlier "version compatibility" pass rewrote ``eba_q*`` to
+        ``eba_*``, which corrupted the namespace the engine consumes
+        (it dropped the ``q`` so ``eba_qEC`` became ``eba_EC``); the
+        engine requires the original code, so no rewriting is applied.
+        """
         result: NodeDict = {"class_name": "Scalar"}
 
-        # Apply item name normalization for version compatibility
         if hasattr(node, "item") and node.item:
-            item_name = node.item
-            # Handle version differences in scalar naming
-            # e.g., eba_qEC -> eba_EC, eba_qLR -> eba_LR
-            if isinstance(item_name, str) and item_name.startswith("eba_q"):
-                normalized_item = item_name.replace("eba_q", "eba_")
-                result["item"] = normalized_item
-            else:
-                result["item"] = item_name
+            result["item"] = node.item
 
         # Include scalar_type field (REQUIRED by ADAM Engine)
         if hasattr(node, "scalar_type") and node.scalar_type:

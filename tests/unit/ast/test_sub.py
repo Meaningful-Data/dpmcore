@@ -6,7 +6,7 @@ The sub clause accepts one or more comma-separated substitutions:
 
 import pytest
 
-from dpmcore.dpm_xl.ast.nodes import SubAssignment, SubOp
+from dpmcore.dpm_xl.ast.nodes import Scalar, SubAssignment, SubOp
 from dpmcore.dpm_xl.utils.serialization import ASTToJSONVisitor
 from dpmcore.services.syntax import SyntaxService
 
@@ -118,6 +118,48 @@ def test_multi_sub_serializes_as_chained_subclause_ops():
 
     # Original recordset sits at the deepest level.
     assert inner["operand"]["class_name"] != "SubClauseOp"
+
+
+@pytest.mark.parametrize(
+    "item_code",
+    [
+        "eba_qEC:qx01",
+        "eba_qAE:qx2023",
+        "eba_qLR:qx10",
+        "eba_EC:qx01",
+        "ns:code",
+    ],
+)
+def test_scalar_item_serialized_verbatim(item_code):
+    """A Scalar item code is serialized unchanged.
+
+    Regression: an earlier pass rewrote ``eba_q*`` to ``eba_*`` (dropping
+    the ``q``), corrupting the namespaced member signature the engine
+    consumes (``eba_qEC:qx01`` became ``eba_EC:qx01``). The code must be
+    emitted exactly as authored.
+    """
+    serialized = ASTToJSONVisitor().visit(
+        Scalar(item=item_code, scalar_type="Item")
+    )
+
+    assert serialized["class_name"] == "Scalar"
+    assert serialized["item"] == item_code
+    assert serialized["scalar_type"] == "Item"
+
+
+def test_sub_clause_preserves_eba_q_item_namespace():
+    """``[sub key = [eba_qEC:qx01]]`` keeps the ``q`` in the item code.
+
+    End-to-end through the parser and serializer: the substitution value
+    is a namespaced item whose ``q`` must survive into the wire format.
+    """
+    ast = SyntaxService().parse("{tT, r010}[sub c0010 = [eba_qEC:qx01]]")
+    sub_op = ast.children[0]
+    serialized = ASTToJSONVisitor().visit(sub_op)
+
+    right = serialized["condition"]["right"]
+    assert right["class_name"] == "Scalar"
+    assert right["item"] == "eba_qEC:qx01"
 
 
 def test_three_subs_serialize_as_three_chained_subclause_ops():
