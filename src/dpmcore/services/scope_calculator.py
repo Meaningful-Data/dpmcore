@@ -310,8 +310,9 @@ class ScopeCalculatorService:
             scope_result, primary_module_vid
         )
         if not valid_vids:
-            # The primary module appears in no scope, so it hosts none of
-            # the referenced tables and is not the intra-instance owner.
+            # Scopes exist, but the primary module hosts none of the
+            # referenced tables and so participates in none of them: it is
+            # neither the intra-instance owner nor a cross-instance partner.
             return {**empty_result}
 
         # Build cross_instance_dependencies and dependency_modules

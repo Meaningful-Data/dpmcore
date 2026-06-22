@@ -20,13 +20,15 @@ def _latest_expression(session, code: str) -> str:
         {"c": code},
     ).scalar()
     assert operation_id is not None, f"{code} not in fixture DB"
-    return session.execute(
+    expression = session.execute(
         text(
             "SELECT Expression FROM OperationVersion "
             "WHERE OperationID = :o ORDER BY OperationVID DESC LIMIT 1"
         ),
         {"o": operation_id},
     ).scalar()
+    assert expression is not None, f"{code} has no expression in fixture DB"
+    return expression
 
 
 def _classify(session, code, module_code, module_version):
