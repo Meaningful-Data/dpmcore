@@ -555,6 +555,9 @@ class ASTGeneratorService:
             break
 
         op_symbol = getattr(node, "op", None)
+        if not op_symbol and type(node).__name__ == "CondExpr":
+            # CondExpr carries no ``op`` attribute; its operator is fixed.
+            op_symbol = "if-then-else"
         if not op_symbol:
             raise RuntimeError(
                 f"Cannot resolve root operator: AST root "

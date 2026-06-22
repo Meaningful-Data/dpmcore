@@ -488,6 +488,34 @@ class TestResolveRootOperatorId:
         )
         assert Cls._resolve_root_operator_id(pa, MagicMock()) == 33
 
+    def test_condexpr_root_resolves_to_if_then_else(self, monkeypatch):
+        # A CondExpr root has no 'op'; it resolves to the if-then-else
+        # operator instead of raising.
+        _, Cls, _ = _bare_svc()
+        CondExpr = type("CondExpr", (), {})
+        node = CondExpr()
+        node.op = None
+
+        WithExpression = type("WithExpression", (), {})
+        with_expr = WithExpression()
+        with_expr.expression = node
+
+        class FakeOperatorQuery:
+            @staticmethod
+            def get_operators(session):  # noqa: ARG004
+                import pandas as pd
+
+                return pd.DataFrame(
+                    [{"Symbol": "if-then-else", "OperatorID": 30}]
+                )
+
+        monkeypatch.setitem(
+            sys.modules,
+            "dpmcore.dpm_xl.model_queries",
+            SimpleNamespace(OperatorQuery=FakeOperatorQuery),
+        )
+        assert Cls._resolve_root_operator_id(with_expr, MagicMock()) == 30
+
     def test_unresolvable_root_raises(self, monkeypatch):
         _, Cls, _ = _bare_svc()
         # No 'op' attribute anywhere.
