@@ -80,7 +80,7 @@ dpmcore = "dpmcore.cli.main:main"
 packages = [{ include = "dpmcore", from = "src" }]
 
 [tool.poetry.group.dev.dependencies]
-coverage = ">=7.14.0,<8.0"
+coverage = ">=7.14.3,<8.0"
 ruff = ">=0.15.17"
 mypy = ">=2.1.0"
 pytest = ">=9.1.0"
