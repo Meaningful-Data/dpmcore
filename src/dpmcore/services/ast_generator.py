@@ -386,11 +386,15 @@ class ASTGeneratorService:
         """Resolve and window-check an explicit release.
 
         Looks up ``Release.code == release`` and validates that the
-        release_id sits inside ``mv``'s window. Raises ``ValueError``
-        if the release is unknown, predates ``start_release_id``, or
-        is past ``end_release_id``.
+        release sits inside ``mv``'s window. Comparison runs against the
+        semver-parsed sort order of each release ``code`` (the DPM
+        ``ReleaseID`` FK is no longer monotonic — see
+        :mod:`dpmcore.orm.release_sort_order`), not the raw id. Raises
+        ``ValueError`` if the release is unknown, predates
+        ``start_release_id``, or is past ``end_release_id``.
         """
         from dpmcore.orm.infrastructure import Release
+        from dpmcore.orm.release_sort_order import resolve_sort_order
 
         if self.session is None:
             raise RuntimeError("session required")
@@ -399,16 +403,22 @@ class ASTGeneratorService:
         )
         if release_row is None:
             raise ValueError(f"Release not found: {release}")
-        rid = release_row.release_id
+        target = resolve_sort_order(
+            self.session, release_row.release_id, role=f"release {release}"
+        )
         start = mv.start_release_id
         end = mv.end_release_id
-        if start is not None and rid < start:
+        if start is not None and target < resolve_sort_order(
+            self.session, start, role="module version start release"
+        ):
             raise ValueError(
                 f"Release {release} predates module version "
                 f"{module_code} {module_version} "
                 f"(starts at release_id={start})."
             )
-        if end is not None and rid >= end:
+        if end is not None and target >= resolve_sort_order(
+            self.session, end, role="module version end release"
+        ):
             raise ValueError(
                 f"Release {release} is past the end of module "
                 f"version {module_code} {module_version} "
