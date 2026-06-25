@@ -694,6 +694,32 @@ class OperatorQuery:
 # ------------------------------------------------------------------ #
 
 
+def _exclude_collapsed_reference_window(query: Any) -> Any:
+    """Drop module versions whose reference-date window is a single day.
+
+    Per EBA business rule, a module version with
+    ``FromReferenceDate == ToReferenceDate`` describes a single reporting
+    reference date and is never used for scope. Open-ended windows
+    (``ToReferenceDate IS NULL``) and genuine multi-day ranges are kept.
+
+    Args:
+        query: A session-bound ``ModuleVersion``-bearing query (typed
+            ``Any`` to match ``filter_by_release`` and allow reassignment
+            to the caller's narrowly-typed query variable).
+
+    Returns:
+        The query with collapsed-window versions filtered out.
+    """
+    return query.filter(
+        or_(
+            ModuleVersion.from_reference_date.is_(None),
+            ModuleVersion.to_reference_date.is_(None),
+            ModuleVersion.from_reference_date
+            != ModuleVersion.to_reference_date,
+        )
+    )
+
+
 class ModuleVersionQuery:
     """Query helpers around ModuleVersion."""
 
@@ -762,6 +788,7 @@ class ModuleVersionQuery:
             end_col=ModuleVersion.end_release_id,
             release_id=release_id,
         )
+        query = _exclude_collapsed_reference_window(query)
         results = chunked_in(
             query, ModuleVersionComposition.table_vid, tables_vids
         )
@@ -825,6 +852,7 @@ class ModuleVersionQuery:
             end_col=ModuleVersion.end_release_id,
             release_id=release_id,
         )
+        query = _exclude_collapsed_reference_window(query)
         results = chunked_in(query, TableVersion.code, table_codes)
         return pd.DataFrame(results, columns=cols)
 
@@ -891,6 +919,7 @@ class ModuleVersionQuery:
             end_col=ModuleVersion.end_release_id,
             release_id=release_id,
         )
+        query = _exclude_collapsed_reference_window(query)
         results = query.all()
         return pd.DataFrame(results, columns=cols)
 

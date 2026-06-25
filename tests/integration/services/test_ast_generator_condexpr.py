@@ -33,11 +33,15 @@ def _latest_expression(session, code: str) -> str:
     return expression
 
 
+# Both module versions are non-collapsed (genuine reference-date ranges /
+# open-ended), so they remain in scope under the single-day exclusion rule.
+# DORA 1.2.0 is deliberately NOT used: it is a single-day version (from == to),
+# now excluded from scope, which leaves B_01.02 unscopable.
 @pytest.mark.parametrize(
     ("code", "module_code", "module_version"),
     [
         ("v22581_m", "REM_DBM", "2.3.0"),
-        ("v8804_m", "DORA", "1.2.0"),
+        ("v8804_m", "DORA", "1.1.0"),
     ],
 )
 def test_if_then_validation_generates(
