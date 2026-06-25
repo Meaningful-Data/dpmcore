@@ -55,32 +55,44 @@ def _ordered_releases(session):
 
 
 def _release_sort_by_id(session):
-    """``{release_id: sort_order}`` for window/release-axis comparisons."""
-    return {
+    """``{release_id: sort_order}`` for window/release-axis comparisons.
+
+    Asserts every ``Release.code`` parses, so ``target_sort`` is always an
+    ``int`` downstream: an unparseable code would otherwise make the oracle
+    crash with a ``TypeError`` (``int <= None``) instead of failing clearly.
+    """
+    sort_by_id = {
         r.release_id: compute_sort_order(r.code)
         for r in session.query(Release).all()
     }
+    assert all(v is not None for v in sort_by_id.values()), (
+        "fixture has an unparseable Release.code; the oracle assumes every "
+        "release code parses as MAJOR.MINOR[.PATCH]"
+    )
+    return sort_by_id
 
 
 def _valid_in_release(mv, target_sort, sort_by_id):
     """Whether ``mv``'s release window contains ``target_sort``.
 
-    Mirrors the end-exclusive release filter: ``start <= target`` and
-    ``(end is open or target < end)``, compared on the semver sort order.
+    Faithful mirror of ``filter_by_release`` (``start <= target`` and
+    ``(end is open or target < end)`` on the semver sort order), including
+    its handling of unresolved bounds: a start/end whose release yields no
+    sort order (unparseable code or orphan FK) excludes the row, exactly as
+    ``release_ids_for_sort_order`` drops ``None`` sort orders from the
+    in-lists. Only a NULL ``end_release_id`` is a genuinely open window.
     """
-    start = (
-        sort_by_id.get(mv.start_release_id)
-        if mv.start_release_id is not None
-        else None
-    )
-    end = (
-        sort_by_id.get(mv.end_release_id)
-        if mv.end_release_id is not None
-        else None
-    )
-    if start is None:
+    if mv.start_release_id is None:
         return False
-    return start <= target_sort and (end is None or target_sort < end)
+    start = sort_by_id.get(mv.start_release_id)
+    if start is None or start > target_sort:
+        return False
+    if mv.end_release_id is None:
+        return True
+    end = sort_by_id.get(mv.end_release_id)
+    if end is None:
+        return False
+    return target_sort < end
 
 
 def _is_collapsed(mv):
