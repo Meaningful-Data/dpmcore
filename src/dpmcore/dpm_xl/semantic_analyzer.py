@@ -253,17 +253,14 @@ class InputAnalyzer(ASTTemplate, ABC):
         cell_implicities = implicit_type_promotion_dict.get(
             type_.__class__, set()
         )
-        # Accept: D→C, C→D, or shared promotion target (excl. Boolean crossings).
-        # Mixed has no dict entry; empty cell_implicities skips the check.
-        if cell_implicities and not (
-            type_.is_included(default_implicities)
-            or default_type.is_included(cell_implicities)
-            or (
-                not isinstance(default_type, Boolean)
-                and not isinstance(type_, Boolean)
-                and default_implicities & cell_implicities
-            )
-        ):
+        # A default fills the cell, so its type must be implicitly castable
+        # *to* the cell type (spec §2.3.2) — a one-directional check. The
+        # reverse direction is meaningless: every type is implicitly castable
+        # to String, so a bidirectional check wrongly accepts e.g. a String
+        # default on a Number cell (String → Number is an Explicit cast).
+        # Null already promotes to every type; a Mixed cell has unknown type
+        # (no dict entry, empty ``cell_implicities``) and accepts any default.
+        if cell_implicities and not type_.is_included(default_implicities):
             raise errors.SemanticError(
                 "3-6", expected_type=type_, default_type=default_type
             )
