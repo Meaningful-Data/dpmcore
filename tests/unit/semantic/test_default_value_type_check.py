@@ -101,9 +101,7 @@ class TestCheckDefaultValue:
                 default_value, Boolean()
             )
 
-        assert "Invalid default type" in str(exc_info.value)
-        assert "String" in str(exc_info.value)
-        assert "Boolean" in str(exc_info.value)
+        assert exc_info.value.code == "3-6"
 
     def test_string_default_for_number_raises_error(self):
         """String default for Number cell should raise SemanticError 3-6.
