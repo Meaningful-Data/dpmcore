@@ -238,10 +238,25 @@ class ASTGeneratorService:
             primary_tables_full = self._scope_calc._get_module_tables(
                 primary_module_vid, release_id=release_id
             )
-            tables_block: Dict[str, Any] = {
-                code: primary_tables_full[code]
-                for code in sorted(referenced_table_codes)
+            # Seed from every module-composition table that carries
+            # variables — i.e. the non-abstract tables; abstract templates
+            # have no cells, and the engine schema forbids an empty
+            # variables map — then union in anything the expressions
+            # reference. MDPM lists all such tables even when no validation
+            # touches them (#158). The union keeps this additive: a
+            # referenced table is never dropped.
+            seed_codes = {
+                code
+                for code, data in primary_tables_full.items()
+                if data.get("variables")
+            }
+            seed_codes |= {
+                code
+                for code in referenced_table_codes
                 if code in primary_tables_full
+            }
+            tables_block: Dict[str, Any] = {
+                code: primary_tables_full[code] for code in sorted(seed_codes)
             }
             variables_block: Dict[str, str] = {}
             for tbl in tables_block.values():
