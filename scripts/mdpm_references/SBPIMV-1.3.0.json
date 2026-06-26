@@ -1,0 +1,158 @@
+{
+  "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/sbp/cir-2070-2016/2023-07-31/mod/sbpimv": {
+    "module_code": "SBPIMV",
+    "module_version": "1.3.0",
+    "framework_code": "SBP",
+    "dpm_release": {
+      "release": "4.2.1",
+      "publication_date": "2026-03-17"
+    },
+    "dates": {
+      "from": "2023-09-30",
+      "to": "2026-02-26"
+    },
+    "operations": {
+      "e4435_e": {
+        "version_id": 1521,
+        "code": "e4435_e",
+        "expression": "with {tS_00.01, default: null, interval: false}: not ( isnull ({r0010, c0010}) )",
+        "root_operator_id": 24,
+        "ast": {
+          "class_name": "UnaryOp",
+          "op": "not",
+          "operand": {
+            "class_name": "UnaryOp",
+            "op": "isnull",
+            "operand": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 31870,
+                  "operand_reference_id": 89333
+                }
+              ],
+              "table": "S_00.01",
+              "row": "0010",
+              "column": "0010",
+              "interval": false
+            }
+          }
+        },
+        "from_submission_date": "2023-09-30",
+        "severity": "error"
+      },
+      "e4436_e": {
+        "version_id": 1522,
+        "code": "e4436_e",
+        "expression": "with {tS_00.01, default: null, interval: false}: not ( isnull ({r0020, c0010}) )",
+        "root_operator_id": 24,
+        "ast": {
+          "class_name": "UnaryOp",
+          "op": "not",
+          "operand": {
+            "class_name": "UnaryOp",
+            "op": "isnull",
+            "operand": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 37969,
+                  "operand_reference_id": 89566
+                }
+              ],
+              "table": "S_00.01",
+              "row": "0020",
+              "column": "0010",
+              "interval": false
+            }
+          }
+        },
+        "from_submission_date": "2023-09-30",
+        "severity": "error"
+      }
+    },
+    "variables": {
+      "31870": "e",
+      "37969": "e",
+      "113367": "s",
+      "113368": "b",
+      "113369": "b",
+      "113370": "b",
+      "113371": "e",
+      "132672": "m",
+      "461004": "m",
+      "461006": "m",
+      "461009": "e",
+      "461010": "e",
+      "461011": "e",
+      "461012": "s",
+      "475753": "e"
+    },
+    "tables": {
+      "C_106.00": {
+        "variables": {
+          "113367": "s",
+          "113368": "b",
+          "113369": "b",
+          "113370": "b",
+          "113371": "e",
+          "132672": "m"
+        },
+        "open_keys": {
+          "PBE": "s"
+        }
+      },
+      "S_00.01": {
+        "variables": {
+          "31870": "e",
+          "37969": "e"
+        },
+        "open_keys": {}
+      },
+      "C_106.01": {
+        "variables": {
+          "461004": "m",
+          "461006": "m",
+          "461009": "e",
+          "461010": "e",
+          "461011": "e",
+          "461012": "s",
+          "475753": "e"
+        },
+        "open_keys": {
+          "RFI": "e",
+          "RIB": "s",
+          "RFB": "s",
+          "RFS": "s",
+          "RFA": "s"
+        }
+      }
+    },
+    "preconditions": {
+      "p_801": {
+        "ast": {
+          "class_name": "PreconditionItem",
+          "variable_id": 395621,
+          "variable_code": "S_00.01"
+        },
+        "affected_operations": [
+          "e4435_e",
+          "e4436_e"
+        ],
+        "version_id": 8571,
+        "code": "p_801"
+      }
+    },
+    "precondition_variables": {
+      "395621": "b"
+    },
+    "dependency_information": {
+      "intra_instance_validations": [
+        "e4435_e",
+        "e4436_e"
+      ],
+      "cross_instance_dependencies": []
+    },
+    "dependency_modules": {}
+  }
+}

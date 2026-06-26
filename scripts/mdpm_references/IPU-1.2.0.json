@@ -1,0 +1,120 @@
+{
+  "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/ipu/4.2/mod/ipu": {
+    "module_code": "IPU",
+    "module_version": "1.2.0",
+    "framework_code": "IPU",
+    "dpm_release": {
+      "release": "4.2.1",
+      "publication_date": "2026-03-17"
+    },
+    "dates": {
+      "from": "2026-03-31",
+      "to": null
+    },
+    "operations": {
+      "v12764_s": {
+        "version_id": 20877,
+        "code": "v12764_s",
+        "expression": "with {tU_01.00, default: null, interval: false}: {c0150-0160} >= 0",
+        "root_operator_id": 15,
+        "ast": {
+          "class_name": "BinOp",
+          "op": ">=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "y": 2,
+                "column": "0160",
+                "datapoint": 5485669,
+                "operand_reference_id": 7249149
+              },
+              {
+                "y": 1,
+                "column": "0150",
+                "datapoint": 5485668,
+                "operand_reference_id": 7249150
+              }
+            ],
+            "table": "U_01.00",
+            "interval": false
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 0
+          }
+        },
+        "from_submission_date": "2026-03-31",
+        "severity": "warning"
+      }
+    },
+    "variables": {
+      "5485641": "e",
+      "5485642": "e",
+      "5485664": "d",
+      "5485665": "e",
+      "5485666": "e",
+      "5485667": "b",
+      "5485668": "m",
+      "5485669": "m",
+      "5485670": "s",
+      "5485671": "s",
+      "5485672": "b",
+      "5485673": "e",
+      "5486573": "s",
+      "5486582": "s",
+      "5486589": "s"
+    },
+    "tables": {
+      "U_01.00": {
+        "variables": {
+          "5485641": "e",
+          "5485642": "e",
+          "5485664": "d",
+          "5485665": "e",
+          "5485666": "e",
+          "5485667": "b",
+          "5485668": "m",
+          "5485669": "m",
+          "5485670": "s",
+          "5485671": "s",
+          "5485672": "b",
+          "5485673": "e",
+          "5486573": "s",
+          "5486582": "s",
+          "5486589": "s"
+        },
+        "open_keys": {
+          "qNCO": "e",
+          "qCFA": "s",
+          "TCG": "s"
+        }
+      }
+    },
+    "preconditions": {
+      "p_771": {
+        "ast": {
+          "class_name": "PreconditionItem",
+          "variable_id": 395671,
+          "variable_code": "U_01.00"
+        },
+        "affected_operations": [
+          "v12764_s"
+        ],
+        "version_id": 8541,
+        "code": "p_771"
+      }
+    },
+    "precondition_variables": {
+      "395671": "b"
+    },
+    "dependency_information": {
+      "intra_instance_validations": [
+        "v12764_s"
+      ],
+      "cross_instance_dependencies": []
+    },
+    "dependency_modules": {}
+  }
+}

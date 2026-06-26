@@ -1,0 +1,107 @@
+💥  AE-1.2.0.json                            ERROR: Grey cells {F_32.03.a, r0040, c0010}, {F_32.03.a, r0050, c0010}, {F_32.03.a, r00
+📈🔤📉❓ AE-1.4.0.json                            ops= 252/229  (+ 23/-  0) tables= 22/23  vars= 1218/1226  pc_ast=22/24 pc_naming_diff=22 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,finding3_tables_vars_missing,unclassified
+💥  CODIS-2.0.0.json                         ERROR: Cell expression K_26.00.b, c0050, c0070 was not found.
+📈📉❓  CODIS-2.1.0.json                         ops=  99/0    (+ 50/-  0) tables= 68/96  vars= 3438/5107  pc_ast= 0/0  pc_naming_diff= 0 tags=finding1_dpmcore_extra_ops,finding3_tables_vars_missing,unclassified
+📈🔤📉❓ CONDIS-1.0.0.json                        ops=  22/21   (+  1/-  0) tables= 16/18  vars= 4231/5762  pc_ast=11/11 pc_naming_diff=11 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,finding3_tables_vars_missing,unclassified
+💥  COREP_ALM-3.1.0.json                     ERROR: Grey cells {C_66.01.c, r1270, c0010, s0010}, {C_66.01.c, r1280, c0010, s0010}, {
+🔤❓   COREP_ALM-3.3.0.json                     ops= 140/134  (+  6/-  0) tables= 17/17  vars=14426/14426 pc_ast= 7/7  pc_naming_diff= 7 tags=finding2_precondition_naming,unclassified
+🔤📉   COREP_FRTB-3.1.0.json                    ops=   2/2    (+  0/-  0) tables=  1/3   vars=    2/168   pc_ast= 1/1  pc_naming_diff= 1 tags=finding2_precondition_naming,finding3_tables_vars_missing
+🔤    COREP_FRTB-3.4.0.json                    ops=   9/9    (+  0/-  0) tables=  3/3   vars=  169/169   pc_ast= 3/3  pc_naming_diff= 3 tags=finding2_precondition_naming
+🔤📉   COREP_LCR_DA-3.1.0.json                  ops= 331/331  (+  0/-  0) tables= 11/12  vars= 5094/5099  pc_ast=10/10 pc_naming_diff=10 tags=finding2_precondition_naming,finding3_tables_vars_missing
+🔤📉❓  COREP_LCR_DA-3.3.0.json                  ops= 337/333  (+  4/-  0) tables= 13/14  vars= 5094/5099  pc_ast=10/10 pc_naming_diff=10 tags=finding2_precondition_naming,finding3_tables_vars_missing,unclassified
+🔤❓   COREP_LE-3.1.0.json                      ops=  29/25   (+  4/-  0) tables=  5/5   vars=   79/79    pc_ast= 7/7  pc_naming_diff= 7 tags=finding2_precondition_naming,unclassified
+🔤    COREP_LE-3.3.0.json                      ops=  29/29   (+  0/-  0) tables=  5/5   vars=   79/79    pc_ast= 7/7  pc_naming_diff= 7 tags=finding2_precondition_naming
+💥  COREP_LR-3.1.0.json                      ERROR: Grey cells {C_40.00.a, r0030, c0020}, {C_40.00.a, r0040, c0020} were found.
+💥  COREP_LR-4.0.0.json                      ERROR: This operation is not allowed, because there is no match between DPM components.
+💥  COREP_LR-4.1.0.json                      ERROR: This operation is not allowed, because there is no match between DPM components.
+💥  COREP_NSFR-3.1.0.json                    ERROR: Grey cells {C_82.00.c, r0010, c0070}, {C_82.00.c, r0010, c0080}, {C_82.00.c, r00
+🔤    COREP_NSFR-3.2.0.json                    ops= 316/316  (+  0/-  0) tables= 35/35  vars= 1748/1748  pc_ast=10/10 pc_naming_diff=10 tags=finding2_precondition_naming
+💥  COREP_OF-3.1.0.json                      ERROR: Grey cells {C_10.02, r*, c0030}, {C_10.02, r*, c0040}, {C_10.02, r*, c0050} were
+💥  COREP_OF-4.0.0.json                      ERROR: This operation is not allowed, because there is no match between DPM components.
+💥  COREP_OF-4.1.0.json                      ERROR: This operation is not allowed, because there is no match between DPM components.
+💥  COVID19-1.0.1.json                       ERROR: Grey cells {F_91.05.b, r0020, c0150}, {F_91.05.b, r0030, c0150}, {F_91.05.b, r00
+💥  DORA-1.1.0.json                          ERROR: Cannot use null literal, you must use the isnull function
+📈🔤📉❓ ESG-1.0.0.json                           ops=  78/69   (+  9/-  0) tables= 24/25  vars= 2484/2497  pc_ast=13/13 pc_naming_diff=13 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,finding3_tables_vars_missing,unclassified
+📈🔤📉❓ ESG-1.2.0.json                           ops= 253/219  (+ 34/-  0) tables= 23/25  vars= 2493/2501  pc_ast=14/14 pc_naming_diff=14 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,finding3_tables_vars_missing,unclassified
+📈🔤📉❓ ESG-1.3.0.json                           ops= 254/234  (+ 20/-  0) tables= 23/25  vars= 2492/2500  pc_ast=14/14 pc_naming_diff=14 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,finding3_tables_vars_missing,unclassified
+🔤📉   ESGDIS-1.0.0.json                        ops=  77/77   (+  0/-  0) tables= 24/25  vars= 2488/2488  pc_ast=13/13 pc_naming_diff=13 tags=finding2_precondition_naming,finding3_tables_vars_missing
+📈📉❓  ESGDIS-2.0.0.json                        ops=  85/0    (+ 50/-  0) tables= 22/26  vars= 2489/2509  pc_ast= 0/0  pc_naming_diff= 0 tags=finding1_dpmcore_extra_ops,finding3_tables_vars_missing,unclassified
+📈📉❓  ESGDIS-2.1.0.json                        ops=  72/0    (+ 50/-  0) tables= 22/26  vars= 2492/2512  pc_ast= 0/0  pc_naming_diff= 0 tags=finding1_dpmcore_extra_ops,finding3_tables_vars_missing,unclassified
+🔤    FC-1.0.0.json                            ops= 114/114  (+  0/-  0) tables= 13/13  vars=  291/291   pc_ast=18/18 pc_naming_diff=18 tags=finding2_precondition_naming
+🔤    FC-1.1.1.json                            ops= 114/114  (+  0/-  0) tables= 13/13  vars=  288/288   pc_ast=18/18 pc_naming_diff=18 tags=finding2_precondition_naming
+🔤    FINDIS-1.0.0.json                        ops=   6/6    (+  0/-  0) tables=  3/3   vars=  122/122   pc_ast= 3/3  pc_naming_diff= 3 tags=finding2_precondition_naming
+📈📉❓  FINDIS-2.0.0.json                        ops=  60/0    (+ 50/-  0) tables= 32/33  vars= 1128/1143  pc_ast= 0/0  pc_naming_diff= 0 tags=finding1_dpmcore_extra_ops,finding3_tables_vars_missing,unclassified
+📈📉❓  FINDIS-2.1.0.json                        ops=  52/0    (+ 50/-  0) tables= 30/34  vars= 1077/1176  pc_ast= 0/0  pc_naming_diff= 0 tags=finding1_dpmcore_extra_ops,finding3_tables_vars_missing,unclassified
+📈🔤❓  FINREP9-3.1.0.json                       ops=2489/2414 (+ 50/-  0) tables=122/122 vars=13394/13394 pc_ast=226/245 pc_naming_diff=226 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,unclassified
+📈🔤📉❓ FINREP9-3.3.0.json                       ops=2434/2341 (+ 50/-  0) tables=121/124 vars=13380/13384 pc_ast=220/245 pc_naming_diff=220 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,finding3_tables_vars_missing,unclassified
+📈🔤📉❓ FINREP9DP-1.1.0.json                     ops=2488/2396 (+ 50/-  0) tables=128/139 vars=13616/13620 pc_ast=230/254 pc_naming_diff=230 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,finding3_tables_vars_missing,unclassified
+🔤❓   FP-2.1.0.json                            ops= 313/281  (+ 32/-  0) tables= 15/15  vars= 1004/1004  pc_ast=26/28 pc_naming_diff=26 tags=finding2_precondition_naming,unclassified
+🔤❓   FP-2.2.1.json                            ops= 308/308  (+  0/-  0) tables= 15/15  vars= 1004/1004  pc_ast=25/27 pc_naming_diff=25 tags=finding2_precondition_naming,unclassified
+🔤    GSII-1.1.0.json                          ops=   4/4    (+  0/-  0) tables=  1/1   vars=   17/17    pc_ast= 4/4  pc_naming_diff= 4 tags=finding2_precondition_naming
+🔤❓   GSII-1.3.0.json                          ops=   4/2    (+  2/-  0) tables=  1/1   vars=   17/17    pc_ast= 2/2  pc_naming_diff= 2 tags=finding2_precondition_naming,unclassified
+📉❓   GSIIDIS-1.0.0.json                       ops=  14/0    (+ 14/-  0) tables= 13/15  vars=   85/93    pc_ast= 0/0  pc_naming_diff= 0 tags=finding3_tables_vars_missing,unclassified
+📉❓   GSIIDIS-1.1.0.json                       ops=  14/0    (+ 14/-  0) tables= 13/15  vars=   85/93    pc_ast= 0/0  pc_naming_diff= 0 tags=finding3_tables_vars_missing,unclassified
+📈🔤📉❓ IF_CLASS2-1.2.0.json                     ops= 263/225  (+ 38/-  0) tables= 32/36  vars= 6332/6386  pc_ast=41/41 pc_naming_diff=41 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,finding3_tables_vars_missing,unclassified
+💥  IF_CLASS2-1.3.0.json                     ERROR: Cell expression C_25.01.a, c0050 was not found.
+🔤📉❓  IF_CLASS2-1.4.0.json                     ops= 282/250  (+ 32/-  0) tables= 34/38  vars= 6632/6686  pc_ast=38/38 pc_naming_diff=38 tags=finding2_precondition_naming,finding3_tables_vars_missing,unclassified
+🔤    IF_CLASS3-1.2.0.json                     ops=  40/40   (+  0/-  0) tables=  6/6   vars=   99/99    pc_ast= 8/8  pc_naming_diff= 8 tags=finding2_precondition_naming
+🔤❓   IF_CLASS3-1.4.0.json                     ops=  41/40   (+  1/-  0) tables=  6/6   vars=   99/99    pc_ast= 8/8  pc_naming_diff= 8 tags=finding2_precondition_naming,unclassified
+🔤    IF_GROUPTEST-1.2.0.json                  ops=   6/6    (+  0/-  0) tables=  3/3   vars=   71/71    pc_ast= 3/3  pc_naming_diff= 3 tags=finding2_precondition_naming
+🔤    IF_GROUPTEST-1.4.0.json                  ops=   5/5    (+  0/-  0) tables=  3/3   vars=   71/71    pc_ast= 3/3  pc_naming_diff= 3 tags=finding2_precondition_naming
+🔤    IF_TM-1.4.0.json                         ops=  10/10   (+  0/-  0) tables=  2/2   vars=   26/26    pc_ast= 2/2  pc_naming_diff= 2 tags=finding2_precondition_naming
+🔤    IPU-1.0.0.json                           ops=   2/2    (+  0/-  0) tables=  2/2   vars=   17/17    pc_ast= 2/2  pc_naming_diff= 2 tags=finding2_precondition_naming
+🔤    IPU-1.2.0.json                           ops=   1/1    (+  0/-  0) tables=  1/1   vars=   15/15    pc_ast= 1/1  pc_naming_diff= 1 tags=finding2_precondition_naming
+💥  IRRBB-1.0.1.json                         ERROR: Grey cells {J_05.00.a, r0050, c0010, s*}, {J_05.00.a, r0050, c0020, s*}, {J_05.0
+📈🔤📉❓ IRRBB-1.2.0.json                         ops= 206/161  (+ 45/-  0) tables= 14/18  vars= 4067/4103  pc_ast= 9/9  pc_naming_diff= 9 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,finding3_tables_vars_missing,unclassified
+💥  IRRBBDIS-1.0.0.json                      ERROR: No validations found for IRRBBDIS 1.0.0
+💥  IRRBBDIS-1.1.0.json                      ERROR: No validations found for IRRBBDIS 1.1.0
+🔤📉   MICA-2.0.0.json                          ops=  59/59   (+  0/-  0) tables= 14/17  vars=  711/718   pc_ast=13/13 pc_naming_diff=13 tags=finding2_precondition_naming,finding3_tables_vars_missing
+🔤📉   MICA-2.0.1.json                          ops=  59/59   (+  0/-  0) tables= 14/17  vars=  711/718   pc_ast=13/13 pc_naming_diff=13 tags=finding2_precondition_naming,finding3_tables_vars_missing
+🔤📉❓  MICA_ITS-1.0.0.json                      ops=  29/13   (+ 16/-  0) tables= 10/12  vars=   78/82    pc_ast= 8/8  pc_naming_diff= 8 tags=finding2_precondition_naming,finding3_tables_vars_missing,unclassified
+🔤    MICA_OF-1.0.0.json                       ops=   5/5    (+  0/-  0) tables=  2/2   vars=   13/13    pc_ast= 2/2  pc_naming_diff= 2 tags=finding2_precondition_naming
+🔤    MICA_OF-1.0.1.json                       ops=   5/5    (+  0/-  0) tables=  2/2   vars=   13/13    pc_ast= 2/2  pc_naming_diff= 2 tags=finding2_precondition_naming
+📈📉❓  MRELTLACDIS-1.0.0.json                   ops=  13/0    (+ 13/-  0) tables=  6/13  vars=  186/239   pc_ast= 0/0  pc_naming_diff= 0 tags=finding1_dpmcore_extra_ops,finding3_tables_vars_missing,unclassified
+📈📉❓  MRELTLACDIS-1.1.0.json                   ops=  10/0    (+ 10/-  0) tables=  6/13  vars=  186/238   pc_ast= 0/0  pc_naming_diff= 0 tags=finding1_dpmcore_extra_ops,finding3_tables_vars_missing,unclassified
+🔤    MREL_DECISIONS-1.0.1.json                ops=   6/6    (+  0/-  0) tables=  1/1   vars=   50/50    pc_ast= 1/1  pc_naming_diff= 1 tags=finding2_precondition_naming
+🔤    MREL_DECISIONS-1.2.0.json                ops=   6/6    (+  0/-  0) tables=  1/1   vars=   46/46    pc_ast= 1/1  pc_naming_diff= 1 tags=finding2_precondition_naming
+🔤❓   MREL_TLAC-1.2.0.json                     ops= 110/107  (+  3/-  0) tables=  9/9   vars=  218/218   pc_ast=12/12 pc_naming_diff=12 tags=finding2_precondition_naming,unclassified
+🔤❓   MREL_TLAC-1.4.0.json                     ops= 112/109  (+  3/-  0) tables=  9/9   vars=  218/218   pc_ast=13/13 pc_naming_diff=13 tags=finding2_precondition_naming,unclassified
+🔤📉   NOTIF_IMPRACTICABILITY-1.0.1.json        ops=   8/8    (+  0/-  0) tables=  3/4   vars=   50/62    pc_ast= 3/3  pc_naming_diff= 3 tags=finding2_precondition_naming,finding3_tables_vars_missing
+🔤📉   NOTIF_IMPRACTICABILITY-1.2.0.json        ops=   8/8    (+  0/-  0) tables=  3/4   vars=   50/62    pc_ast= 3/3  pc_naming_diff= 3 tags=finding2_precondition_naming,finding3_tables_vars_missing
+❓    P3DH-1.0.0.json                          ops=   1/0    (+  1/-  0) tables=  1/1   vars=   21/21    pc_ast= 0/0  pc_naming_diff= 0 tags=unclassified
+💥  P3DH-2.0.0.json                          ERROR: No validations found for P3DH 2.0.0
+💥  P3_DIS_DOCS-1.0.0.json                   ERROR: No validations found for P3_DIS_DOCS 1.0.0
+💥  P3_NONREM_DIS_DOCS-1.0.0.json            ERROR: No validations found for P3_NONREM_DIS_DOCS 1.0.0
+💥  P3_REM_DIS_DOCS-1.0.0.json               ERROR: No validations found for P3_REM_DIS_DOCS 1.0.0
+🔤    PSD_FRP-1.0.1.json                       ops=  82/82   (+  0/-  0) tables= 14/14  vars= 1830/1830  pc_ast=14/14 pc_naming_diff=14 tags=finding2_precondition_naming
+🔤    PSD_FRP-1.2.0.json                       ops=  90/90   (+  0/-  0) tables= 14/14  vars= 1830/1830  pc_ast=14/14 pc_naming_diff=14 tags=finding2_precondition_naming
+🔤    REMDIS-1.0.0.json                        ops=  16/16   (+  0/-  0) tables=  6/6   vars=  374/374   pc_ast= 5/5  pc_naming_diff= 5 tags=finding2_precondition_naming
+📈❓   REMDIS-2.0.0.json                        ops=   8/0    (+  8/-  0) tables=  6/6   vars=  374/374   pc_ast= 0/0  pc_naming_diff= 0 tags=finding1_dpmcore_extra_ops,unclassified
+📈❓   REMDIS-2.1.0.json                        ops=   7/0    (+  7/-  0) tables=  6/6   vars=  368/368   pc_ast= 0/0  pc_naming_diff= 0 tags=finding1_dpmcore_extra_ops,unclassified
+📈🔤❓  REM_BM-2.0.0.json                        ops= 215/197  (+ 18/-  0) tables= 13/13  vars=  720/720   pc_ast=22/22 pc_naming_diff=22 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,unclassified
+📈🔤❓  REM_BM_CI-2.2.0.json                     ops= 144/128  (+ 16/-  0) tables=  9/9   vars=  464/464   pc_ast=15/15 pc_naming_diff=15 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,unclassified
+🔤❓   REM_BM_IF-2.2.0.json                     ops=  51/43   (+  8/-  0) tables=  4/4   vars=  292/292   pc_ast= 5/5  pc_naming_diff= 5 tags=finding2_precondition_naming,unclassified
+📈🔤📉❓ REM_DBM-2.1.0.json                       ops=  54/52   (+  2/-  0) tables= 13/14  vars=  313/333   pc_ast=19/20 pc_naming_diff=19 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,finding3_tables_vars_missing,unclassified
+📈🔤📉❓ REM_DBM-2.3.0.json                       ops=  56/41   (+ 15/-  0) tables= 13/14  vars=  313/333   pc_ast=18/19 pc_naming_diff=18 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,finding3_tables_vars_missing,unclassified
+📈🔤❓  REM_GAP-2.0.0.json                       ops=  12/8    (+  4/-  0) tables=  4/4   vars=   42/42    pc_ast= 2/2  pc_naming_diff= 2 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,unclassified
+📈🔤❓  REM_GAP_CI-2.2.0.json                    ops=   8/6    (+  2/-  0) tables=  2/2   vars=   42/42    pc_ast= 1/1  pc_naming_diff= 1 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,unclassified
+🔤    REM_GAP_IF-2.2.0.json                    ops=   4/4    (+  0/-  0) tables=  2/2   vars=   42/42    pc_ast= 1/1  pc_naming_diff= 1 tags=finding2_precondition_naming
+📈🔤❓  REM_HE-2.0.0.json                        ops= 357/321  (+ 36/-  0) tables=  6/6   vars=  614/614   pc_ast= 4/4  pc_naming_diff= 4 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,unclassified
+📈🔤❓  REM_HE_CI-2.2.0.json                     ops= 216/72   (+ 50/-  0) tables=  3/3   vars=  346/346   pc_ast= 3/3  pc_naming_diff= 3 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,unclassified
+📈🔤❓  REM_HE_IF-2.2.0.json                     ops= 175/132  (+ 43/-  0) tables=  3/3   vars=  332/332   pc_ast= 2/2  pc_naming_diff= 2 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,unclassified
+🔤❓   REM_HR_Country-2.0.0.json                ops=  13/12   (+  1/-  0) tables=  1/1   vars=   13/13    pc_ast= 1/1  pc_naming_diff= 1 tags=finding2_precondition_naming,unclassified
+🔤❓   REM_HR_Country-2.2.0.json                ops=  13/11   (+  2/-  0) tables=  1/1   vars=   13/13    pc_ast= 1/1  pc_naming_diff= 1 tags=finding2_precondition_naming,unclassified
+🔤❓   REM_HR_Institution-2.0.0.json            ops=  11/9    (+  2/-  0) tables=  1/1   vars=    7/7     pc_ast= 2/2  pc_naming_diff= 2 tags=finding2_precondition_naming,unclassified
+📈🔤❓  REM_HR_Institution-2.2.0.json            ops=  11/7    (+  4/-  0) tables=  1/1   vars=    7/7     pc_ast= 1/1  pc_naming_diff= 1 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,unclassified
+📈🔤📉❓ RESOL-1.2.1.json                         ops= 271/253  (+ 18/-  0) tables= 52/58  vars= 3408/3423  pc_ast=37/37 pc_naming_diff=37 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,finding3_tables_vars_missing,unclassified
+🔤❓   RESOL1-2.0.0.json                        ops= 123/119  (+  4/-  0) tables= 17/17  vars= 1528/1528  pc_ast=16/16 pc_naming_diff=16 tags=finding2_precondition_naming,unclassified
+💥  RESOL2-2.0.0.json                        ERROR: Scope calculation failed for operation 'v90343_m': No module versions found for 
+🔤📉   SBPIMV-1.3.0.json                        ops=   2/2    (+  0/-  0) tables=  1/3   vars=    2/15    pc_ast= 1/1  pc_naming_diff= 1 tags=finding2_precondition_naming,finding3_tables_vars_missing
+🔤📉   SBPIMV-1.5.0.json                        ops=   2/2    (+  0/-  0) tables=  1/4   vars=    2/18    pc_ast= 1/1  pc_naming_diff= 1 tags=finding2_precondition_naming,finding3_tables_vars_missing
+📈🔤📉❓ SBP_CR-1.3.0.json                        ops=  44/43   (+  1/-  0) tables=  6/7   vars=   76/78    pc_ast=13/13 pc_naming_diff=13 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,finding3_tables_vars_missing,unclassified
+💥  SBP_CR-1.5.0.json                        ERROR: This operation is not allowed, because there is no match between DPM components.
+🔤    SBP_IFRS9-1.3.0.json                     ops=  46/46   (+  0/-  0) tables=  9/9   vars=  116/116   pc_ast=10/10 pc_naming_diff=10 tags=finding2_precondition_naming
+🔤    SBP_IFRS9-1.5.0.json                     ops=  46/46   (+  0/-  0) tables=  9/9   vars=  116/116   pc_ast=10/10 pc_naming_diff=10 tags=finding2_precondition_naming
+📈🔤📉❓ SBP_RM-1.3.0.json                        ops=  24/21   (+  3/-  0) tables= 15/20  vars=   70/81    pc_ast=12/12 pc_naming_diff=12 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,finding3_tables_vars_missing,unclassified
+📈🔤📉❓ SBP_RM-1.5.0.json                        ops=  24/8    (+ 16/-  0) tables= 15/20  vars=   70/81    pc_ast= 6/6  pc_naming_diff= 6 tags=finding1_dpmcore_extra_ops,finding2_precondition_naming,finding3_tables_vars_missing,unclassified
+🔤    SEPA_IPR-1.1.0.json                      ops=  37/37   (+  0/-  0) tables=  6/6   vars=   91/91    pc_ast= 6/6  pc_naming_diff= 6 tags=finding2_precondition_naming

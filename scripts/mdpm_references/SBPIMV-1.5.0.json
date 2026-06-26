@@ -1,0 +1,174 @@
+{
+  "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/sbp/4.2/mod/sbpimv": {
+    "module_code": "SBPIMV",
+    "module_version": "1.5.0",
+    "framework_code": "SBP",
+    "dpm_release": {
+      "release": "4.2.1",
+      "publication_date": "2026-03-17"
+    },
+    "dates": {
+      "from": "2026-02-27",
+      "to": null
+    },
+    "operations": {
+      "e4435_e": {
+        "version_id": 16198,
+        "code": "e4435_e",
+        "expression": "with {tS_00.01, default: null, interval: false}: not ( isnull ({r0010, c0010}) )",
+        "root_operator_id": 24,
+        "ast": {
+          "class_name": "UnaryOp",
+          "op": "not",
+          "operand": {
+            "class_name": "UnaryOp",
+            "op": "isnull",
+            "operand": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 31870,
+                  "operand_reference_id": 7276954
+                }
+              ],
+              "table": "S_00.01",
+              "row": "0010",
+              "column": "0010",
+              "interval": false
+            }
+          }
+        },
+        "from_submission_date": "2026-03-31",
+        "severity": "warning"
+      },
+      "e4436_e": {
+        "version_id": 16199,
+        "code": "e4436_e",
+        "expression": "with {tS_00.01, default: null, interval: false}: not ( isnull ({r0020, c0010}) )",
+        "root_operator_id": 24,
+        "ast": {
+          "class_name": "UnaryOp",
+          "op": "not",
+          "operand": {
+            "class_name": "UnaryOp",
+            "op": "isnull",
+            "operand": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 37969,
+                  "operand_reference_id": 7276955
+                }
+              ],
+              "table": "S_00.01",
+              "row": "0020",
+              "column": "0010",
+              "interval": false
+            }
+          }
+        },
+        "from_submission_date": "2026-03-31",
+        "severity": "warning"
+      }
+    },
+    "variables": {
+      "31870": "e",
+      "37969": "e",
+      "113367": "s",
+      "113368": "b",
+      "113369": "b",
+      "113370": "b",
+      "113371": "e",
+      "132672": "m",
+      "5485674": "e",
+      "5485680": "s",
+      "5486748": "s",
+      "5488267": "m",
+      "5488999": "m",
+      "5489000": "m",
+      "5490063": "e",
+      "5490064": "e",
+      "5490071": "e",
+      "5490134": "e"
+    },
+    "tables": {
+      "C_106.00": {
+        "variables": {
+          "113367": "s",
+          "113368": "b",
+          "113369": "b",
+          "113370": "b",
+          "113371": "e",
+          "132672": "m"
+        },
+        "open_keys": {
+          "PBE": "s"
+        }
+      },
+      "S_00.01": {
+        "variables": {
+          "31870": "e",
+          "37969": "e"
+        },
+        "open_keys": {}
+      },
+      "C_106.01": {
+        "variables": {
+          "5485674": "e",
+          "5486748": "s",
+          "5488999": "m",
+          "5489000": "m",
+          "5490063": "e",
+          "5490064": "e",
+          "5490071": "e"
+        },
+        "open_keys": {
+          "qRFI": "e",
+          "RFB": "s",
+          "RFS": "s",
+          "RFA": "s",
+          "RIB": "s"
+        }
+      },
+      "C_106.02": {
+        "variables": {
+          "5485680": "s",
+          "5488267": "m",
+          "5490134": "e"
+        },
+        "open_keys": {
+          "qTMR": "e",
+          "qTRC": "e",
+          "qCOS": "e",
+          "qBWY": "s"
+        }
+      }
+    },
+    "preconditions": {
+      "p_801": {
+        "ast": {
+          "class_name": "PreconditionItem",
+          "variable_id": 395621,
+          "variable_code": "S_00.01"
+        },
+        "affected_operations": [
+          "e4435_e",
+          "e4436_e"
+        ],
+        "version_id": 8571,
+        "code": "p_801"
+      }
+    },
+    "precondition_variables": {
+      "395621": "b"
+    },
+    "dependency_information": {
+      "intra_instance_validations": [
+        "e4435_e",
+        "e4436_e"
+      ],
+      "cross_instance_dependencies": []
+    },
+    "dependency_modules": {}
+  }
+}

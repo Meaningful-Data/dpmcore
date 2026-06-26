@@ -1,0 +1,663 @@
+======================================================================
+  QA REPORT — DPMcore vs MDPM — todos los módulos
+======================================================================
+
+  Total módulos procesados : 107
+  ✅ Pasaron               : 25
+  ❌ Fallaron              : 29
+  💥 Error al llamar DPMcore: 53
+
+
+💥  AE 1.2.0  (AE-1.2.0.json)
+     ERROR: Invalid precondition expression '(F_32.01 := true and F_36.01 := true)': "offendingSymbol: [@1,1:7='F_32.01',<83>,1:1] msg: mismatched input 'F_32.01' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  AE 1.4.0  (AE-1.4.0.json)
+     ERROR: Invalid precondition expression '(F_32.01 := true and F_01.01 := true)': "offendingSymbol: [@1,1:7='F_32.01',<83>,1:1] msg: mismatched input 'F_32.01' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+❌  CODIS 2.0.0  (CODIS-2.0.0.json)
+     Operaciones : 0/0 OK
+     Tablas ausentes en DPMcore: ['K_05.00.a', 'K_05.00.b', 'K_06.00', 'K_07.00', 'K_08.00', 'K_26.01', 'K_28.00', 'K_29.01.a', 'K_29.01.b', 'K_60.00.a', 'K_61.00', 'K_60.00.b', 'K_04.00.b', 'K_26.00.b', 'K_62.01', 'K_62.02', 'K_63.01.a', 'K_63.01.b', 'K_63.01.c', 'K_63.01.d', 'K_63.02.a', 'K_63.02.b', 'K_64.01.a', 'K_64.01.b', 'K_64.01.c', 'K_64.01.d', 'K_64.02', 'K_64.03.a', 'K_64.03.b', 'K_65.00', 'K_66.02.a', 'K_66.02.b', 'K_66.02.c', 'K_66.02.d', 'K_66.02.e', 'K_66.02.f', 'K_67.01.a', 'K_67.01.b', 'K_67.02', 'K_70.00', 'K_71.00', 'K_72.00', 'K_73.00.c', 'K_74.00.c', 'K_23.00', 'K_24.00', 'K_25.00', 'K_27.01', 'K_27.02.a', 'K_27.02.b', 'K_29.02.a', 'K_29.02.b', 'K_29.02.c', 'K_10.00', 'K_02.00', 'K_03.00', 'K_09.01', 'K_09.02', 'K_09.03', 'K_09.04', 'K_09.05', 'K_13.00', 'K_11.00.b', 'K_12.00', 'K_19.01', 'K_19.03', 'K_18.01.a', 'K_18.02.a', 'K_18.03', 'K_18.04', 'K_01.00.a', 'K_19.02.a', 'K_19.02.b', 'K_66.01.a', 'K_66.01.b', 'K_73.00.e', 'K_73.00.d', 'K_73.00.a', 'K_63.02.c', 'K_01.00.b', 'K_74.00.f', 'K_11.00.a', 'K_74.00.a', 'K_74.00.b', 'K_74.00.d', 'K_74.00.e', 'K_00.02', 'K_29.00', 'K_26.00.a', 'K_73.00.b', 'K_19.02.c', 'K_60.00.c', 'K_63.01.e', 'K_18.01.b', 'K_18.02.b', 'K_04.00.a']
+     Variables con tipo diferente (5310):
+       - 15657: MDPM=m  DPMcore=None
+       - 15668: MDPM=m  DPMcore=None
+       - 15679: MDPM=m  DPMcore=None
+       - 15680: MDPM=m  DPMcore=None
+       - 15681: MDPM=m  DPMcore=None
+       - 15684: MDPM=m  DPMcore=None
+       - 15753: MDPM=m  DPMcore=None
+       - 15756: MDPM=m  DPMcore=None
+       - 15767: MDPM=m  DPMcore=None
+       - 17458: MDPM=m  DPMcore=None
+
+❌  CODIS 2.1.0  (CODIS-2.1.0.json)
+     Operaciones : 0/0 OK
+     Tablas ausentes en DPMcore: ['K_05.00.a', 'K_05.00.b', 'K_06.00', 'K_07.00', 'K_08.00', 'K_26.01', 'K_28.00', 'K_29.01.a', 'K_29.01.b', 'K_60.00.a', 'K_61.00', 'K_60.00.b', 'K_04.00.b', 'K_26.00.b', 'K_62.01', 'K_62.02', 'K_63.01.a', 'K_63.01.b', 'K_63.01.c', 'K_63.01.d', 'K_63.02.a', 'K_63.02.b', 'K_64.01.a', 'K_64.01.b', 'K_64.01.c', 'K_64.01.d', 'K_64.02', 'K_64.03.a', 'K_64.03.b', 'K_65.00', 'K_66.02.a', 'K_66.02.b', 'K_66.02.c', 'K_66.02.d', 'K_66.02.e', 'K_66.02.f', 'K_67.01.a', 'K_67.01.b', 'K_67.02', 'K_70.00', 'K_71.00', 'K_72.00', 'K_73.00.c', 'K_74.00.c', 'K_24.00', 'K_25.00', 'K_27.01', 'K_27.02.a', 'K_27.02.b', 'K_29.02.b', 'K_29.02.c', 'K_10.00', 'K_02.00', 'K_03.00', 'K_09.01', 'K_09.02', 'K_09.03', 'K_09.04', 'K_09.05', 'K_13.00', 'K_11.00.b', 'K_12.00', 'K_19.01', 'K_19.03', 'K_18.01.a', 'K_18.02.a', 'K_18.03', 'K_18.04', 'K_01.00.a', 'K_19.02.a', 'K_19.02.b', 'K_66.01.a', 'K_66.01.b', 'K_73.00.e', 'K_73.00.d', 'K_73.00.a', 'K_63.02.c', 'K_01.00.b', 'K_74.00.f', 'K_11.00.a', 'K_74.00.a', 'K_74.00.b', 'K_74.00.d', 'K_74.00.e', 'K_00.02', 'K_29.00', 'K_26.00.a', 'K_73.00.b', 'K_19.02.c', 'K_60.00.c', 'K_63.01.e', 'K_18.01.b', 'K_18.02.b', 'K_04.00.a', 'K_19.02.d', 'K_29.02.a']
+     Variables con tipo diferente (5107):
+       - 15657: MDPM=m  DPMcore=None
+       - 15668: MDPM=m  DPMcore=None
+       - 15679: MDPM=m  DPMcore=None
+       - 15680: MDPM=m  DPMcore=None
+       - 15681: MDPM=m  DPMcore=None
+       - 15684: MDPM=m  DPMcore=None
+       - 15753: MDPM=m  DPMcore=None
+       - 15756: MDPM=m  DPMcore=None
+       - 15767: MDPM=m  DPMcore=None
+       - 17458: MDPM=m  DPMcore=None
+
+❌  CONDIS 1.0.0  (CONDIS-1.0.0.json)
+     Operaciones : 21/21 OK
+     Tablas ausentes en DPMcore: ['K_29.00', 'K_29.01.b', 'K_60.00.b']
+     Variables con tipo diferente (1537):
+       - 458573: MDPM=s  DPMcore=None
+       - 473013: MDPM=i  DPMcore=None
+       - 473014: MDPM=i  DPMcore=None
+       - 473015: MDPM=i  DPMcore=None
+       - 473016: MDPM=i  DPMcore=None
+       - 473017: MDPM=i  DPMcore=None
+       - 473018: MDPM=i  DPMcore=None
+       - 473019: MDPM=i  DPMcore=None
+       - 473020: MDPM=i  DPMcore=None
+       - 473021: MDPM=i  DPMcore=None
+
+💥  COREP_ALM 3.1.0  (COREP_ALM-3.1.0.json)
+     ERROR: Grey cells {C_66.01.c, r1270, c0010, s0010}, {C_66.01.c, r1280, c0010, s0010}, {C_66.01.c, r1290, c0010, s0010} were found.
+
+✅  COREP_ALM 3.3.0  (COREP_ALM-3.3.0.json)
+     Operaciones : 134/134 OK
+
+❌  COREP_FRTB 3.1.0  (COREP_FRTB-3.1.0.json)
+     Operaciones : 2/2 OK
+     Tablas ausentes en DPMcore: ['C_90.00', 'C_91.00']
+     Variables con tipo diferente (166):
+       - 454524: MDPM=m  DPMcore=None
+       - 454525: MDPM=m  DPMcore=None
+       - 454526: MDPM=m  DPMcore=None
+       - 454527: MDPM=p  DPMcore=None
+       - 454528: MDPM=p  DPMcore=None
+       - 454529: MDPM=p  DPMcore=None
+       - 454530: MDPM=m  DPMcore=None
+       - 454531: MDPM=m  DPMcore=None
+       - 454532: MDPM=m  DPMcore=None
+       - 454533: MDPM=m  DPMcore=None
+
+✅  COREP_FRTB 3.4.0  (COREP_FRTB-3.4.0.json)
+     Operaciones : 9/9 OK
+
+💥  COREP_LCR_DA 3.1.0  (COREP_LCR_DA-3.1.0.json)
+     ERROR: Invalid precondition expression '(P_01.03 := true and C_76.00 := true)': "offendingSymbol: [@1,1:7='P_01.03',<83>,1:1] msg: mismatched input 'P_01.03' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  COREP_LCR_DA 3.3.0  (COREP_LCR_DA-3.3.0.json)
+     ERROR: Invalid precondition expression '(P_01.03 := true and C_76.00 := true)': "offendingSymbol: [@1,1:7='P_01.03',<83>,1:1] msg: mismatched input 'P_01.03' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  COREP_LE 3.1.0  (COREP_LE-3.1.0.json)
+     ERROR: Invalid precondition expression '(C_28.00 := true and C_01.00 := true)': "offendingSymbol: [@1,1:7='C_28.00',<83>,1:1] msg: mismatched input 'C_28.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  COREP_LE 3.3.0  (COREP_LE-3.3.0.json)
+     ERROR: Invalid precondition expression '(C_28.00 := true and C_01.00 := true)': "offendingSymbol: [@1,1:7='C_28.00',<83>,1:1] msg: mismatched input 'C_28.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  COREP_LR 3.1.0  (COREP_LR-3.1.0.json)
+     ERROR: Invalid precondition expression '(C_43.00 := true and C_08.01 := true)': "offendingSymbol: [@1,1:7='C_43.00',<83>,1:1] msg: mismatched input 'C_43.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  COREP_LR 4.0.0  (COREP_LR-4.0.0.json)
+     ERROR: Invalid precondition expression '(C_43.00 := true and C_47.00 := true)': "offendingSymbol: [@1,1:7='C_43.00',<83>,1:1] msg: mismatched input 'C_43.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  COREP_LR 4.1.0  (COREP_LR-4.1.0.json)
+     ERROR: Invalid precondition expression '(C_43.00 := true and C_47.00 := true)': "offendingSymbol: [@1,1:7='C_43.00',<83>,1:1] msg: mismatched input 'C_43.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  COREP_NSFR 3.1.0  (COREP_NSFR-3.1.0.json)
+     ERROR: Invalid precondition expression '(C_84.00 := true and C_80.00 := true)': "offendingSymbol: [@1,1:7='C_84.00',<83>,1:1] msg: mismatched input 'C_84.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  COREP_NSFR 3.2.0  (COREP_NSFR-3.2.0.json)
+     ERROR: Invalid precondition expression '(C_84.00 := true and C_80.00 := true)': "offendingSymbol: [@1,1:7='C_84.00',<83>,1:1] msg: mismatched input 'C_84.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  COREP_OF 3.1.0  (COREP_OF-3.1.0.json)
+     ERROR: Invalid precondition expression '(C_01.00 := true and C_05.01 := true)': "offendingSymbol: [@1,1:7='C_01.00',<83>,1:1] msg: mismatched input 'C_01.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  COREP_OF 4.0.0  (COREP_OF-4.0.0.json)
+     ERROR: Invalid precondition expression '(C_01.00 := true and C_05.01 := true)': "offendingSymbol: [@1,1:7='C_01.00',<83>,1:1] msg: mismatched input 'C_01.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  COREP_OF 4.1.0  (COREP_OF-4.1.0.json)
+     ERROR: Invalid precondition expression '(C_01.00 := true and C_05.01 := true)': "offendingSymbol: [@1,1:7='C_01.00',<83>,1:1] msg: mismatched input 'C_01.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  COVID19 1.0.1  (COVID19-1.0.1.json)
+     ERROR: Invalid precondition expression '((F_90.01 := true and F_91.01 := true) and F_91.03 := true)': "offendingSymbol: [@2,2:8='F_90.01',<83>,1:2] msg: mismatched input 'F_90.01' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+❌  DORA 1.1.0  (DORA-1.1.0.json)
+     Operaciones : 49/49 OK
+     Tablas ausentes en DPMcore: ['B_02.03', 'B_03.01', 'B_03.02', 'B_03.03', 'B_04.01', 'B_05.02', 'B_99.01']
+     Variables con tipo diferente (26):
+       - 480863: MDPM=t  DPMcore=None
+       - 480864: MDPM=t  DPMcore=None
+       - 480865: MDPM=t  DPMcore=None
+       - 483168: MDPM=s  DPMcore=None
+       - 483169: MDPM=s  DPMcore=None
+       - 483170: MDPM=s  DPMcore=None
+       - 483171: MDPM=s  DPMcore=None
+       - 483172: MDPM=s  DPMcore=None
+       - 483173: MDPM=s  DPMcore=None
+       - 483174: MDPM=s  DPMcore=None
+
+❌  ESG 1.0.0  (ESG-1.0.0.json)
+     Operaciones : 69/69 OK
+     Tablas ausentes en DPMcore: ['D_07.00.b']
+     Variables con tipo diferente (13):
+       - 471594: MDPM=m  DPMcore=None
+       - 471597: MDPM=m  DPMcore=None
+       - 471602: MDPM=m  DPMcore=None
+       - 471605: MDPM=m  DPMcore=None
+       - 471608: MDPM=m  DPMcore=None
+       - 471611: MDPM=m  DPMcore=None
+       - 471616: MDPM=m  DPMcore=None
+       - 471619: MDPM=m  DPMcore=None
+       - 471622: MDPM=m  DPMcore=None
+       - 471625: MDPM=m  DPMcore=None
+
+💥  ESG 1.2.0  (ESG-1.2.0.json)
+     ERROR: Invalid precondition expression '(D_01.00 := true and D_04.00 := true)': "offendingSymbol: [@1,1:7='D_01.00',<83>,1:1] msg: mismatched input 'D_01.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  ESG 1.3.0  (ESG-1.3.0.json)
+     ERROR: Invalid precondition expression '(D_01.00 := true and D_04.00 := true)': "offendingSymbol: [@1,1:7='D_01.00',<83>,1:1] msg: mismatched input 'D_01.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+❌  ESGDIS 1.0.0  (ESGDIS-1.0.0.json)
+     Operaciones : 77/77 OK
+     Tablas ausentes en DPMcore: ['K_49.02.d']
+
+❌  ESGDIS 2.0.0  (ESGDIS-2.0.0.json)
+     Operaciones : 0/0 OK
+     Tablas ausentes en DPMcore: ['K_41.00', 'K_42.00.a', 'K_43.00.b', 'K_44.00', 'K_45.00.a', 'K_45.00.b', 'K_46.00.a', 'K_46.00.b', 'K_47.00.a', 'K_47.00.b', 'K_48.00.a', 'K_48.00.b', 'K_48.00.c', 'K_48.00.d', 'K_48.00.e', 'K_49.01', 'K_49.02.a', 'K_49.02.b', 'K_49.02.c', 'K_49.02.d', 'K_49.03.a', 'K_49.03.b', 'K_50.00', 'K_42.00.b', 'K_43.00.a', 'K_00.03']
+     Variables con tipo diferente (2509):
+       - 470585: MDPM=p  DPMcore=None
+       - 470586: MDPM=p  DPMcore=None
+       - 470587: MDPM=p  DPMcore=None
+       - 470588: MDPM=p  DPMcore=None
+       - 470589: MDPM=p  DPMcore=None
+       - 470590: MDPM=p  DPMcore=None
+       - 470591: MDPM=p  DPMcore=None
+       - 470592: MDPM=p  DPMcore=None
+       - 470593: MDPM=p  DPMcore=None
+       - 470594: MDPM=p  DPMcore=None
+
+❌  ESGDIS 2.1.0  (ESGDIS-2.1.0.json)
+     Operaciones : 0/0 OK
+     Tablas ausentes en DPMcore: ['K_41.00', 'K_42.00.a', 'K_43.00.b', 'K_44.00', 'K_45.00.a', 'K_45.00.b', 'K_46.00.a', 'K_46.00.b', 'K_47.00.a', 'K_47.00.b', 'K_48.00.a', 'K_48.00.b', 'K_48.00.c', 'K_48.00.d', 'K_48.00.e', 'K_49.01', 'K_49.02.a', 'K_49.02.b', 'K_49.02.c', 'K_49.02.d', 'K_49.03.a', 'K_49.03.b', 'K_50.00', 'K_42.00.b', 'K_43.00.a', 'K_00.03']
+     Variables con tipo diferente (2512):
+       - 470585: MDPM=p  DPMcore=None
+       - 470586: MDPM=p  DPMcore=None
+       - 470587: MDPM=p  DPMcore=None
+       - 470588: MDPM=p  DPMcore=None
+       - 470589: MDPM=p  DPMcore=None
+       - 470590: MDPM=p  DPMcore=None
+       - 470591: MDPM=p  DPMcore=None
+       - 470592: MDPM=p  DPMcore=None
+       - 470593: MDPM=p  DPMcore=None
+       - 470594: MDPM=p  DPMcore=None
+
+💥  FC 1.0.0  (FC-1.0.0.json)
+     ERROR: Invalid precondition expression '(L_00.03 := true and L_01.00 := true)': "offendingSymbol: [@1,1:7='L_00.03',<83>,1:1] msg: mismatched input 'L_00.03' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  FC 1.1.1  (FC-1.1.1.json)
+     ERROR: Invalid precondition expression '(L_00.03 := true and L_01.00 := true)': "offendingSymbol: [@1,1:7='L_00.03',<83>,1:1] msg: mismatched input 'L_00.03' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+✅  FINDIS 1.0.0  (FINDIS-1.0.0.json)
+     Operaciones : 6/6 OK
+
+❌  FINDIS 2.0.0  (FINDIS-2.0.0.json)
+     Operaciones : 0/0 OK
+     Tablas ausentes en DPMcore: ['K_20.01', 'K_20.02', 'K_20.03', 'K_82.00.a', 'K_82.00.b', 'K_82.00.c', 'K_21.02', 'K_22.01', 'K_21.01.a', 'K_21.01.b', 'K_21.01.c', 'K_21.01.d', 'K_21.01.e', 'K_21.01.f', 'K_80.00.a', 'K_80.00.b', 'K_80.00.c', 'K_80.00.d', 'K_80.00.e', 'K_86.00', 'K_83.01.a', 'K_83.01.b', 'K_83.01.c', 'K_83.01.d', 'K_83.01.e', 'K_87.00.a', 'K_87.00.b', 'K_81.00', 'K_22.02.a', 'K_22.02.b', 'K_84.01', 'K_85.00', 'K_00.01']
+     Variables con tipo diferente (1143):
+       - 41569: MDPM=m  DPMcore=None
+       - 41574: MDPM=m  DPMcore=None
+       - 41586: MDPM=m  DPMcore=None
+       - 41588: MDPM=m  DPMcore=None
+       - 41634: MDPM=m  DPMcore=None
+       - 41641: MDPM=m  DPMcore=None
+       - 41674: MDPM=m  DPMcore=None
+       - 41729: MDPM=m  DPMcore=None
+       - 41731: MDPM=m  DPMcore=None
+       - 41733: MDPM=m  DPMcore=None
+
+❌  FINDIS 2.1.0  (FINDIS-2.1.0.json)
+     Operaciones : 0/0 OK
+     Tablas ausentes en DPMcore: ['K_20.01', 'K_20.02', 'K_20.03', 'K_23.00', 'K_82.00.a', 'K_82.00.b', 'K_82.00.c', 'K_21.02', 'K_22.01', 'K_21.01.a', 'K_21.01.b', 'K_21.01.c', 'K_21.01.d', 'K_21.01.e', 'K_21.01.f', 'K_80.00.a', 'K_80.00.b', 'K_80.00.c', 'K_80.00.d', 'K_80.00.e', 'K_86.00', 'K_83.01.a', 'K_83.01.b', 'K_83.01.c', 'K_83.01.d', 'K_83.01.e', 'K_87.00.a', 'K_87.00.b', 'K_81.00', 'K_22.02.a', 'K_22.02.b', 'K_84.01', 'K_85.00', 'K_00.01']
+     Variables con tipo diferente (1176):
+       - 41569: MDPM=m  DPMcore=None
+       - 41574: MDPM=m  DPMcore=None
+       - 41586: MDPM=m  DPMcore=None
+       - 41588: MDPM=m  DPMcore=None
+       - 41634: MDPM=m  DPMcore=None
+       - 41641: MDPM=m  DPMcore=None
+       - 41674: MDPM=m  DPMcore=None
+       - 41729: MDPM=m  DPMcore=None
+       - 41731: MDPM=m  DPMcore=None
+       - 41733: MDPM=m  DPMcore=None
+
+💥  FINREP9 3.1.0  (FINREP9-3.1.0.json)
+     ERROR: Invalid precondition expression '(F_01.02 := true and F_01.03 := true)': "offendingSymbol: [@1,1:7='F_01.02',<83>,1:1] msg: mismatched input 'F_01.02' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  FINREP9 3.3.0  (FINREP9-3.3.0.json)
+     ERROR: Invalid precondition expression '(F_01.02 := true and F_01.03 := true)': "offendingSymbol: [@1,1:7='F_01.02',<83>,1:1] msg: mismatched input 'F_01.02' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  FINREP9DP 1.1.0  (FINREP9DP-1.1.0.json)
+     ERROR: Invalid precondition expression '(F_01.02 := true and F_01.03 := true)': "offendingSymbol: [@1,1:7='F_01.02',<83>,1:1] msg: mismatched input 'F_01.02' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  FP 2.1.0  (FP-2.1.0.json)
+     ERROR: Invalid precondition expression '(P_01.01 := true or P_02.04 := true)': "offendingSymbol: [@1,1:7='P_01.01',<83>,1:1] msg: mismatched input 'P_01.01' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  FP 2.2.1  (FP-2.2.1.json)
+     ERROR: Invalid precondition expression '(P_01.01 := true or P_02.04 := true)': "offendingSymbol: [@1,1:7='P_01.01',<83>,1:1] msg: mismatched input 'P_01.01' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  GSII 1.1.0  (GSII-1.1.0.json)
+     ERROR: Invalid precondition expression '(G_01.00 := true and C_47.00 := true)': "offendingSymbol: [@1,1:7='G_01.00',<83>,1:1] msg: mismatched input 'G_01.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  GSII 1.3.0  (GSII-1.3.0.json)
+     ERROR: Invalid precondition expression '(G_01.00 := true and F_14.00 := true)': "offendingSymbol: [@1,1:7='G_01.00',<83>,1:1] msg: mismatched input 'G_01.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+❌  GSIIDIS 1.0.0  (GSIIDIS-1.0.0.json)
+     Operaciones : 0/0 OK
+     Tablas ausentes en DPMcore: ['K_100.00', 'K_101.00', 'K_102.00', 'K_103.00', 'K_104.00', 'K_105.00', 'K_106.00', 'K_107.00', 'K_108.00', 'K_109.00', 'K_110.00', 'K_111.00', 'K_112.00', 'K_113.00', 'K_00.06']
+     Variables con tipo diferente (93):
+       - 418157: MDPM=d  DPMcore=None
+       - 3525499: MDPM=e  DPMcore=None
+       - 3525572: MDPM=m  DPMcore=None
+       - 3525573: MDPM=m  DPMcore=None
+       - 3525574: MDPM=m  DPMcore=None
+       - 3525608: MDPM=m  DPMcore=None
+       - 3525609: MDPM=m  DPMcore=None
+       - 3525642: MDPM=m  DPMcore=None
+       - 3525688: MDPM=m  DPMcore=None
+       - 3525689: MDPM=m  DPMcore=None
+
+❌  GSIIDIS 1.1.0  (GSIIDIS-1.1.0.json)
+     Operaciones : 0/0 OK
+     Tablas ausentes en DPMcore: ['K_100.00', 'K_101.00', 'K_102.00', 'K_103.00', 'K_104.00', 'K_105.00', 'K_106.00', 'K_107.00', 'K_108.00', 'K_109.00', 'K_110.00', 'K_111.00', 'K_112.00', 'K_113.00', 'K_00.06']
+     Variables con tipo diferente (93):
+       - 418157: MDPM=d  DPMcore=None
+       - 3525499: MDPM=e  DPMcore=None
+       - 3525572: MDPM=m  DPMcore=None
+       - 3525573: MDPM=m  DPMcore=None
+       - 3525574: MDPM=m  DPMcore=None
+       - 3525608: MDPM=m  DPMcore=None
+       - 3525609: MDPM=m  DPMcore=None
+       - 3525642: MDPM=m  DPMcore=None
+       - 3525688: MDPM=m  DPMcore=None
+       - 3525689: MDPM=m  DPMcore=None
+
+💥  IF_CLASS2 1.2.0  (IF_CLASS2-1.2.0.json)
+     ERROR: Invalid precondition expression '(C_18.00 := true and C_02.00 := true)': "offendingSymbol: [@1,1:7='C_18.00',<83>,1:1] msg: mismatched input 'C_18.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  IF_CLASS2 1.3.0  (IF_CLASS2-1.3.0.json)
+     ERROR: Invalid precondition expression '(C_18.00 := true and C_02.00 := true)': "offendingSymbol: [@1,1:7='C_18.00',<83>,1:1] msg: mismatched input 'C_18.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  IF_CLASS2 1.4.0  (IF_CLASS2-1.4.0.json)
+     ERROR: Invalid precondition expression '((I_01.00 := true and I_02.01 := true) and I_02.02 := true)': "offendingSymbol: [@2,2:8='I_01.00',<83>,1:2] msg: mismatched input 'I_01.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  IF_CLASS3 1.2.0  (IF_CLASS3-1.2.0.json)
+     ERROR: Invalid precondition expression '(I_04.00 := true and I_05.00 := true)': "offendingSymbol: [@1,1:7='I_04.00',<83>,1:1] msg: mismatched input 'I_04.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  IF_CLASS3 1.4.0  (IF_CLASS3-1.4.0.json)
+     ERROR: Invalid precondition expression '(I_04.00 := true and I_05.00 := true)': "offendingSymbol: [@1,1:7='I_04.00',<83>,1:1] msg: mismatched input 'I_04.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+✅  IF_GROUPTEST 1.2.0  (IF_GROUPTEST-1.2.0.json)
+     Operaciones : 6/6 OK
+
+✅  IF_GROUPTEST 1.4.0  (IF_GROUPTEST-1.4.0.json)
+     Operaciones : 5/5 OK
+
+💥  IF_TM 1.4.0  (IF_TM-1.4.0.json)
+     ERROR: Invalid precondition expression '(I_10.01 := true and I_10.02 := true)': "offendingSymbol: [@1,1:7='I_10.01',<83>,1:1] msg: mismatched input 'I_10.01' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+✅  IPU 1.0.0  (IPU-1.0.0.json)
+     Operaciones : 2/2 OK
+
+✅  IPU 1.2.0  (IPU-1.2.0.json)
+     Operaciones : 1/1 OK
+
+💥  IRRBB 1.0.1  (IRRBB-1.0.1.json)
+     ERROR: Grey cells {J_05.00.a, r0050, c0010, s*}, {J_05.00.a, r0050, c0020, s*}, {J_05.00.a, r0050, c0030, s*}, {J_05.00.a, r0050, c0040, s*}, {J_05.00.a, r0050, c0050, s*}, {J_05.00.a, r0050, c0060, s*}, {J_05.00.a, r0050, c0260, s*}, {J_05.00.a, r0050, c0270, s*}, {J_05.00.a, r0050, c0280, s*}, {J_05.00.a, r0050, c0290, s*} were found.
+
+❌  IRRBB 1.2.0  (IRRBB-1.2.0.json)
+     Operaciones : 161/161 OK
+     Tablas ausentes en DPMcore: ['J_10.01', 'J_10.02', 'J_11.01', 'J_11.02']
+     Variables con tipo diferente (36):
+       - 476961: MDPM=e  DPMcore=None
+       - 476962: MDPM=e  DPMcore=None
+       - 476963: MDPM=e  DPMcore=None
+       - 476964: MDPM=e  DPMcore=None
+       - 476965: MDPM=e  DPMcore=None
+       - 476966: MDPM=e  DPMcore=None
+       - 476967: MDPM=e  DPMcore=None
+       - 477350: MDPM=e  DPMcore=None
+       - 477351: MDPM=e  DPMcore=None
+       - 477352: MDPM=e  DPMcore=None
+
+❌  IRRBBDIS 1.0.0  (IRRBBDIS-1.0.0.json)
+     Operaciones : 0/0 OK
+     Tablas ausentes en DPMcore: ['K_68.00', 'K_00.04']
+     Variables con tipo diferente (17):
+       - 3525475: MDPM=m  DPMcore=None
+       - 3525476: MDPM=m  DPMcore=None
+       - 3525477: MDPM=m  DPMcore=None
+       - 3525478: MDPM=m  DPMcore=None
+       - 3525479: MDPM=m  DPMcore=None
+       - 3525480: MDPM=m  DPMcore=None
+       - 3525481: MDPM=m  DPMcore=None
+       - 3525482: MDPM=m  DPMcore=None
+       - 3525483: MDPM=m  DPMcore=None
+       - 3525484: MDPM=m  DPMcore=None
+
+❌  IRRBBDIS 1.1.0  (IRRBBDIS-1.1.0.json)
+     Operaciones : 0/0 OK
+     Tablas ausentes en DPMcore: ['K_68.00', 'K_00.04']
+     Variables con tipo diferente (17):
+       - 3525475: MDPM=m  DPMcore=None
+       - 3525476: MDPM=m  DPMcore=None
+       - 3525477: MDPM=m  DPMcore=None
+       - 3525478: MDPM=m  DPMcore=None
+       - 3525479: MDPM=m  DPMcore=None
+       - 3525480: MDPM=m  DPMcore=None
+       - 3525481: MDPM=m  DPMcore=None
+       - 3525482: MDPM=m  DPMcore=None
+       - 3525483: MDPM=m  DPMcore=None
+       - 3525484: MDPM=m  DPMcore=None
+
+💥  MICA 2.0.0  (MICA-2.0.0.json)
+     ERROR: Invalid precondition expression '(Q_03.01 := true and Q_03.03 := true)': "offendingSymbol: [@1,1:7='Q_03.01',<83>,1:1] msg: mismatched input 'Q_03.01' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  MICA 2.0.1  (MICA-2.0.1.json)
+     ERROR: Invalid precondition expression '(Q_03.01 := true and Q_03.03 := true)': "offendingSymbol: [@1,1:7='Q_03.01',<83>,1:1] msg: mismatched input 'Q_03.01' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+❌  MICA_ITS 1.0.0  (MICA_ITS-1.0.0.json)
+     Operaciones : 13/13 OK
+     Tablas ausentes en DPMcore: ['Q_04.04', 'Q_00.01']
+     Variables con tipo diferente (4):
+       - 3295990: MDPM=e  DPMcore=None
+       - 3295991: MDPM=e  DPMcore=None
+       - 3296033: MDPM=es  DPMcore=None
+       - 3296034: MDPM=s  DPMcore=None
+
+✅  MICA_OF 1.0.0  (MICA_OF-1.0.0.json)
+     Operaciones : 5/5 OK
+
+✅  MICA_OF 1.0.1  (MICA_OF-1.0.1.json)
+     Operaciones : 5/5 OK
+
+❌  MRELTLACDIS 1.0.0  (MRELTLACDIS-1.0.0.json)
+     Operaciones : 0/0 OK
+     Tablas ausentes en DPMcore: ['K_91.00.a', 'K_90.01', 'K_93.00', 'K_95.00.a', 'K_95.00.b', 'K_97.00.a', 'K_97.00.b', 'K_91.00.b', 'K_00.05', 'K_96.00.a', 'K_96.00.b', 'K_98.00.a', 'K_98.00.b']
+     Variables con tipo diferente (239):
+       - 38483: MDPM=m  DPMcore=None
+       - 459153: MDPM=m  DPMcore=None
+       - 459154: MDPM=p  DPMcore=None
+       - 459156: MDPM=m  DPMcore=None
+       - 459157: MDPM=m  DPMcore=None
+       - 459158: MDPM=m  DPMcore=None
+       - 459159: MDPM=m  DPMcore=None
+       - 459160: MDPM=m  DPMcore=None
+       - 459168: MDPM=m  DPMcore=None
+       - 459169: MDPM=m  DPMcore=None
+
+❌  MRELTLACDIS 1.1.0  (MRELTLACDIS-1.1.0.json)
+     Operaciones : 0/0 OK
+     Tablas ausentes en DPMcore: ['K_91.00.a', 'K_90.01', 'K_93.00', 'K_95.00.a', 'K_95.00.b', 'K_97.00.a', 'K_97.00.b', 'K_91.00.b', 'K_00.05', 'K_96.00.a', 'K_96.00.b', 'K_98.00.a', 'K_98.00.b']
+     Variables con tipo diferente (238):
+       - 38483: MDPM=m  DPMcore=None
+       - 459153: MDPM=m  DPMcore=None
+       - 459154: MDPM=p  DPMcore=None
+       - 459156: MDPM=m  DPMcore=None
+       - 459157: MDPM=m  DPMcore=None
+       - 459158: MDPM=m  DPMcore=None
+       - 459159: MDPM=m  DPMcore=None
+       - 459160: MDPM=m  DPMcore=None
+       - 459168: MDPM=m  DPMcore=None
+       - 459169: MDPM=m  DPMcore=None
+
+✅  MREL_DECISIONS 1.0.1  (MREL_DECISIONS-1.0.1.json)
+     Operaciones : 6/6 OK
+
+✅  MREL_DECISIONS 1.2.0  (MREL_DECISIONS-1.2.0.json)
+     Operaciones : 6/6 OK
+
+💥  MREL_TLAC 1.2.0  (MREL_TLAC-1.2.0.json)
+     ERROR: Invalid precondition expression '(M_01.00 := true and M_02.00 := true)': "offendingSymbol: [@1,1:7='M_01.00',<83>,1:1] msg: mismatched input 'M_01.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  MREL_TLAC 1.4.0  (MREL_TLAC-1.4.0.json)
+     ERROR: Invalid precondition expression '(M_01.00 := true and M_02.00 := true)': "offendingSymbol: [@1,1:7='M_01.00',<83>,1:1] msg: mismatched input 'M_01.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+❌  NOTIF_IMPRACTICABILITY 1.0.1  (NOTIF_IMPRACTICABILITY-1.0.1.json)
+     Operaciones : 8/8 OK
+     Tablas ausentes en DPMcore: ['N_01.00']
+     Variables con tipo diferente (12):
+       - 459455: MDPM=e  DPMcore=None
+       - 459598: MDPM=s  DPMcore=None
+       - 459599: MDPM=d  DPMcore=None
+       - 459600: MDPM=e  DPMcore=None
+       - 459601: MDPM=d  DPMcore=None
+       - 459602: MDPM=d  DPMcore=None
+       - 459603: MDPM=s  DPMcore=None
+       - 459604: MDPM=s  DPMcore=None
+       - 459605: MDPM=s  DPMcore=None
+       - 459606: MDPM=s  DPMcore=None
+
+❌  NOTIF_IMPRACTICABILITY 1.2.0  (NOTIF_IMPRACTICABILITY-1.2.0.json)
+     Operaciones : 8/8 OK
+     Tablas ausentes en DPMcore: ['N_01.00']
+     Variables con tipo diferente (12):
+       - 459455: MDPM=e  DPMcore=None
+       - 459598: MDPM=s  DPMcore=None
+       - 459599: MDPM=d  DPMcore=None
+       - 459600: MDPM=e  DPMcore=None
+       - 459601: MDPM=d  DPMcore=None
+       - 459602: MDPM=d  DPMcore=None
+       - 459603: MDPM=s  DPMcore=None
+       - 459604: MDPM=s  DPMcore=None
+       - 459605: MDPM=s  DPMcore=None
+       - 459606: MDPM=s  DPMcore=None
+
+❌  P3DH 1.0.0  (P3DH-1.0.0.json)
+     Operaciones : 0/0 OK
+     Tablas ausentes en DPMcore: ['X_01.00']
+     Variables con tipo diferente (21):
+       - 3525498: MDPM=e  DPMcore=None
+       - 3526249: MDPM=s  DPMcore=None
+       - 3526250: MDPM=s  DPMcore=None
+       - 3526439: MDPM=s  DPMcore=None
+       - 3526440: MDPM=s  DPMcore=None
+       - 3526441: MDPM=s  DPMcore=None
+       - 3526442: MDPM=s  DPMcore=None
+       - 3526443: MDPM=s  DPMcore=None
+       - 3526444: MDPM=s  DPMcore=None
+       - 3526445: MDPM=s  DPMcore=None
+
+❌  P3DH 2.0.0  (P3DH-2.0.0.json)
+     Operaciones : 0/0 OK
+     Tablas ausentes en DPMcore: ['X_01.00']
+     Variables con tipo diferente (20):
+       - 3525498: MDPM=e  DPMcore=None
+       - 3526249: MDPM=s  DPMcore=None
+       - 3526439: MDPM=s  DPMcore=None
+       - 3526440: MDPM=s  DPMcore=None
+       - 3526441: MDPM=s  DPMcore=None
+       - 3526442: MDPM=s  DPMcore=None
+       - 3526443: MDPM=s  DPMcore=None
+       - 3526444: MDPM=s  DPMcore=None
+       - 3526445: MDPM=s  DPMcore=None
+       - 3530326: MDPM=e  DPMcore=None
+
+✅  P3_DIS_DOCS 1.0.0  (P3_DIS_DOCS-1.0.0.json)
+     Operaciones : 0/0 OK
+
+✅  P3_NONREM_DIS_DOCS 1.0.0  (P3_NONREM_DIS_DOCS-1.0.0.json)
+     Operaciones : 0/0 OK
+
+✅  P3_REM_DIS_DOCS 1.0.0  (P3_REM_DIS_DOCS-1.0.0.json)
+     Operaciones : 0/0 OK
+
+✅  PSD_FRP 1.0.1  (PSD_FRP-1.0.1.json)
+     Operaciones : 82/82 OK
+
+✅  PSD_FRP 1.2.0  (PSD_FRP-1.2.0.json)
+     Operaciones : 90/90 OK
+
+✅  REMDIS 1.0.0  (REMDIS-1.0.0.json)
+     Operaciones : 16/16 OK
+
+❌  REMDIS 2.0.0  (REMDIS-2.0.0.json)
+     Operaciones : 0/0 OK
+     Tablas ausentes en DPMcore: ['K_30.01', 'K_30.02', 'K_30.03', 'K_30.04', 'K_30.05.a', 'K_30.05.b']
+     Variables con tipo diferente (374):
+       - 435474: MDPM=m  DPMcore=None
+       - 435475: MDPM=m  DPMcore=None
+       - 435476: MDPM=m  DPMcore=None
+       - 435477: MDPM=m  DPMcore=None
+       - 435538: MDPM=m  DPMcore=None
+       - 435539: MDPM=m  DPMcore=None
+       - 435540: MDPM=m  DPMcore=None
+       - 435541: MDPM=m  DPMcore=None
+       - 438078: MDPM=i  DPMcore=None
+       - 438113: MDPM=m  DPMcore=None
+
+❌  REMDIS 2.1.0  (REMDIS-2.1.0.json)
+     Operaciones : 0/0 OK
+     Tablas ausentes en DPMcore: ['K_30.01', 'K_30.02', 'K_30.03', 'K_30.04', 'K_30.05.a', 'K_30.05.b']
+     Variables con tipo diferente (368):
+       - 435474: MDPM=m  DPMcore=None
+       - 435475: MDPM=m  DPMcore=None
+       - 435476: MDPM=m  DPMcore=None
+       - 435477: MDPM=m  DPMcore=None
+       - 435538: MDPM=m  DPMcore=None
+       - 435539: MDPM=m  DPMcore=None
+       - 435540: MDPM=m  DPMcore=None
+       - 435541: MDPM=m  DPMcore=None
+       - 438113: MDPM=m  DPMcore=None
+       - 438114: MDPM=m  DPMcore=None
+
+💥  REM_BM 2.0.0  (REM_BM-2.0.0.json)
+     ERROR: Invalid precondition expression '(R_01.00 := true and F_02.00 := true)': "offendingSymbol: [@1,1:7='R_01.00',<83>,1:1] msg: mismatched input 'R_01.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  REM_BM_CI 2.2.0  (REM_BM_CI-2.2.0.json)
+     ERROR: Invalid precondition expression '(R_01.00 := true and R_02.00 := true)': "offendingSymbol: [@1,1:7='R_01.00',<83>,1:1] msg: mismatched input 'R_01.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  REM_BM_IF 2.2.0  (REM_BM_IF-2.2.0.json)
+     ERROR: Invalid precondition expression '(R_02.01 := true and R_02.02 := true)': "offendingSymbol: [@1,1:7='R_02.01',<83>,1:1] msg: mismatched input 'R_02.01' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  REM_DBM 2.1.0  (REM_DBM-2.1.0.json)
+     ERROR: Invalid precondition expression '(R_13.00 := true and R_14.00 := true)': "offendingSymbol: [@1,1:7='R_13.00',<83>,1:1] msg: mismatched input 'R_13.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  REM_DBM 2.3.0  (REM_DBM-2.3.0.json)
+     ERROR: Invalid precondition expression '(R_13.00 := true and R_14.00 := true)': "offendingSymbol: [@1,1:7='R_13.00',<83>,1:1] msg: mismatched input 'R_13.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+✅  REM_GAP 2.0.0  (REM_GAP-2.0.0.json)
+     Operaciones : 8/8 OK
+
+✅  REM_GAP_CI 2.2.0  (REM_GAP_CI-2.2.0.json)
+     Operaciones : 6/6 OK
+
+✅  REM_GAP_IF 2.2.0  (REM_GAP_IF-2.2.0.json)
+     Operaciones : 4/4 OK
+
+💥  REM_HE 2.0.0  (REM_HE-2.0.0.json)
+     ERROR: Invalid precondition expression '(R_04.00 := true and R_04.01 := true)': "offendingSymbol: [@1,1:7='R_04.00',<83>,1:1] msg: mismatched input 'R_04.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  REM_HE_CI 2.2.0  (REM_HE_CI-2.2.0.json)
+     ERROR: Invalid precondition expression '(R_01.00 := true and R_04.00 := true)': "offendingSymbol: [@1,1:7='R_01.00',<83>,1:1] msg: mismatched input 'R_01.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  REM_HE_IF 2.2.0  (REM_HE_IF-2.2.0.json)
+     ERROR: Invalid precondition expression '(R_04.00 := true and R_04.01 := true)': "offendingSymbol: [@1,1:7='R_04.00',<83>,1:1] msg: mismatched input 'R_04.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+✅  REM_HR_Country 2.0.0  (REM_HR_Country-2.0.0.json)
+     Operaciones : 12/12 OK
+
+✅  REM_HR_Country 2.2.0  (REM_HR_Country-2.2.0.json)
+     Operaciones : 11/11 OK
+
+💥  REM_HR_Institution 2.0.0  (REM_HR_Institution-2.0.0.json)
+     ERROR: Invalid precondition expression '(R_07.00 := true and R_12.00 := true)': "offendingSymbol: [@1,1:7='R_07.00',<83>,1:1] msg: mismatched input 'R_07.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+✅  REM_HR_Institution 2.2.0  (REM_HR_Institution-2.2.0.json)
+     Operaciones : 7/7 OK
+
+💥  RESOL 1.2.1  (RESOL-1.2.1.json)
+     ERROR: Invalid precondition expression '(T_99.00 := true and T_02.00 := true)': "offendingSymbol: [@1,1:7='T_99.00',<83>,1:1] msg: mismatched input 'T_99.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+✅  RESOL1 2.0.0  (RESOL1-2.0.0.json)
+     Operaciones : 119/119 OK
+
+❌  RESOL2 2.0.0  (RESOL2-2.0.0.json)
+     Operaciones : 52/52 OK
+     Tablas ausentes en DPMcore: ['Z_07.03', 'Z_07.04', 'Z_09.02', 'Z_09.04', 'Z_08.03', 'Z_08.04', 'Z_08.05']
+     Variables con tipo diferente (18):
+       - 5485692: MDPM=e  DPMcore=None
+       - 5486568: MDPM=s  DPMcore=None
+       - 5486750: MDPM=s  DPMcore=None
+       - 5490049: MDPM=e  DPMcore=None
+       - 5490050: MDPM=e  DPMcore=None
+       - 5490051: MDPM=e  DPMcore=None
+       - 5490052: MDPM=e  DPMcore=None
+       - 5490061: MDPM=e  DPMcore=None
+       - 5490077: MDPM=b  DPMcore=None
+       - 5490078: MDPM=b  DPMcore=None
+
+❌  SBPIMV 1.3.0  (SBPIMV-1.3.0.json)
+     Operaciones : 2/2 OK
+     Tablas ausentes en DPMcore: ['C_106.00', 'C_106.01']
+     Variables con tipo diferente (13):
+       - 113367: MDPM=s  DPMcore=None
+       - 113368: MDPM=b  DPMcore=None
+       - 113369: MDPM=b  DPMcore=None
+       - 113370: MDPM=b  DPMcore=None
+       - 113371: MDPM=e  DPMcore=None
+       - 132672: MDPM=m  DPMcore=None
+       - 461004: MDPM=m  DPMcore=None
+       - 461006: MDPM=m  DPMcore=None
+       - 461009: MDPM=e  DPMcore=None
+       - 461010: MDPM=e  DPMcore=None
+
+❌  SBPIMV 1.5.0  (SBPIMV-1.5.0.json)
+     Operaciones : 2/2 OK
+     Tablas ausentes en DPMcore: ['C_106.00', 'C_106.01', 'C_106.02']
+     Variables con tipo diferente (16):
+       - 113367: MDPM=s  DPMcore=None
+       - 113368: MDPM=b  DPMcore=None
+       - 113369: MDPM=b  DPMcore=None
+       - 113370: MDPM=b  DPMcore=None
+       - 113371: MDPM=e  DPMcore=None
+       - 132672: MDPM=m  DPMcore=None
+       - 5485674: MDPM=e  DPMcore=None
+       - 5485680: MDPM=s  DPMcore=None
+       - 5486748: MDPM=s  DPMcore=None
+       - 5488267: MDPM=m  DPMcore=None
+
+💥  SBP_CR 1.3.0  (SBP_CR-1.3.0.json)
+     ERROR: Invalid precondition expression '(C_111.00 := true and C_101.00 := true)': "offendingSymbol: [@1,1:8='C_111.00',<83>,1:1] msg: mismatched input 'C_111.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  SBP_CR 1.5.0  (SBP_CR-1.5.0.json)
+     ERROR: Invalid precondition expression '(C_111.00 := true and C_101.00 := true)': "offendingSymbol: [@1,1:8='C_111.00',<83>,1:1] msg: mismatched input 'C_111.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  SBP_IFRS9 1.3.0  (SBP_IFRS9-1.3.0.json)
+     ERROR: Invalid precondition expression '(C_111.00 := true and C_101.00 := true)': "offendingSymbol: [@1,1:8='C_111.00',<83>,1:1] msg: mismatched input 'C_111.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  SBP_IFRS9 1.5.0  (SBP_IFRS9-1.5.0.json)
+     ERROR: Invalid precondition expression '(C_111.00 := true and C_101.00 := true)': "offendingSymbol: [@1,1:8='C_111.00',<83>,1:1] msg: mismatched input 'C_111.00' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+💥  SBP_RM 1.3.0  (SBP_RM-1.3.0.json)
+     ERROR: Invalid precondition expression '(C_110.01 := true and C_110.01 := true)': "offendingSymbol: [@1,1:8='C_110.01',<83>,1:1] msg: mismatched input 'C_110.01' expecting {BOOLEAN_LITERAL, NOT, MATCH, PLUS, MINUS, MAX_AGGR, MIN_AGGR, SUM, COUNT, AVG, MEDIAN, RANK, ABS, ISNULL, EXP, LN, SQRT, POWER, LOG, MAX, MIN, LPAREN, '{', '[', IF, NVL, FILTER, TIME_SHIFT, ANNUALISE, YEAR, SEMESTER, QUARTER, MONTH, WEEK, DAY, DATE, LEN, INTEGER_LITERAL, DECIMAL_LITERAL, PERCENT_LITERAL, STRING_LITERAL, EMPTY_LITERAL, DATE_LITERAL, ESCAPED_IDENTIFIER, ROW_COMPONENT, COL_COMPONENT, SHEET_COMPONENT, PROPERTY_CODE}"
+
+❌  SBP_RM 1.5.0  (SBP_RM-1.5.0.json)
+     Operaciones : 8/8 OK
+     Tablas ausentes en DPMcore: ['C_110.03', 'C_107.01.a', 'C_107.01.b', 'C_107.02', 'C_108.00', 'C_109.01.a', 'C_109.01.b', 'C_109.03', 'C_110.01.a', 'C_110.01.b', 'C_110.02.b', 'C_109.02.b', 'C_109.02.a', 'C_110.02.a']
+     Variables con tipo diferente (46):
+       - 113372: MDPM=e  DPMcore=None
+       - 113373: MDPM=e  DPMcore=None
+       - 113374: MDPM=e  DPMcore=None
+       - 113375: MDPM=e  DPMcore=None
+       - 113376: MDPM=e  DPMcore=None
+       - 113377: MDPM=e  DPMcore=None
+       - 113378: MDPM=s  DPMcore=None
+       - 113379: MDPM=s  DPMcore=None
+       - 113380: MDPM=s  DPMcore=None
+       - 113381: MDPM=s  DPMcore=None
+
+✅  SEPA_IPR 1.1.0  (SEPA_IPR-1.1.0.json)
+     Operaciones : 37/37 OK
+
+======================================================================
