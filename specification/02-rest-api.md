@@ -513,6 +513,7 @@ Each `preconditions` entry:
 | `success` | bool | `true` if the script was generated without errors |
 | `enriched_ast` | object \| null | Engine-ready namespaced AST (`{module_uri: {...}}`) |
 | `error` | string \| null | Error description if `success` is `false` |
+| `failed_operations` | object | Map of `{validation_code: error_message}` for expressions that failed semantic validation and were skipped. Empty when all expressions succeeded. |
 
 **Example:**
 

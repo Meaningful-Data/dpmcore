@@ -55,6 +55,7 @@ class GenerateScriptResponse(BaseModel):
     success: bool
     enriched_ast: Optional[Any] = None
     error: Optional[str] = None
+    failed_operations: Dict[str, str] = {}
 
 
 def create_scripts_router(
@@ -99,6 +100,7 @@ def create_scripts_router(
             success=bool(result.get("success")),
             enriched_ast=result.get("enriched_ast"),
             error=result.get("error"),
+            failed_operations=result.get("failed_operations", {}),
         )
 
     return router

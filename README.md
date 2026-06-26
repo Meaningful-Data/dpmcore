@@ -125,10 +125,12 @@ with connect("sqlite:///dpm.db") as db:
     #                    dpm_release, dates, operations, variables, tables,
     #                    preconditions, precondition_variables,
     #                    dependency_information, dependency_modules}}
+    # script["failed_operations"] lists expressions that were skipped due to
+    # semantic errors (e.g. grey cells): {validation_code: error_message}
     namespace, ns_block = next(iter(script["enriched_ast"].items()))
-    print(ns_block["dpm_release"])      # {"release": "...", "publication_date": "..."}
-    print(ns_block["operations"])       # {validation_code: {ast, severity, ...}}
-    print(ns_block["dependency_modules"])
+    print(ns_block["dpm_release"])          # {"release": "...", "publication_date": "..."}
+    print(ns_block["operations"])           # {validation_code: {ast, severity, ...}}
+    print(script["failed_operations"])      # {validation_code: error_message} or {}
 ```
 
 `preconditions`, `severities` and `release` are all optional. Severity

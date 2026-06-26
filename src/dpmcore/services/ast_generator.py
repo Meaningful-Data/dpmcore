@@ -133,6 +133,7 @@ class ASTGeneratorService:
                 "success": False,
                 "enriched_ast": None,
                 "error": "No database session — cannot generate script.",
+                "failed_operations": {},
             }
 
         try:
@@ -158,6 +159,7 @@ class ASTGeneratorService:
                     "success": False,
                     "enriched_ast": None,
                     "error": str(exc),
+                    "failed_operations": {},
                 }
 
             from_submission_date = _format_date(
@@ -165,6 +167,7 @@ class ASTGeneratorService:
             )
 
             operations: Dict[str, Dict[str, Any]] = {}
+            failed_operations: Dict[str, str] = {}
             scope_pairs: List[
                 Tuple[Tuple[str, str], "ScopeResult", Dict[str, str]]
             ] = []
@@ -180,11 +183,8 @@ class ASTGeneratorService:
                 # conflicts between two expressions in this same script.
                 result = self._semantic.validate(expr, release_id=release_id)
                 if not result.is_valid:
-                    return {
-                        "success": False,
-                        "enriched_ast": None,
-                        "error": result.error_message,
-                    }
+                    failed_operations[code] = result.error_message or ""
+                    continue
 
                 ast = self._semantic.ast
                 ast_dict = serialize_ast(ast)
@@ -225,6 +225,7 @@ class ASTGeneratorService:
                             f"Scope calculation failed for operation "
                             f"'{code}': {sr.error_message}"
                         ),
+                        "failed_operations": failed_operations,
                     }
                 ts = self._extract_time_shifts(ast)
                 scope_pairs.append((item, sr, ts))
@@ -318,6 +319,7 @@ class ASTGeneratorService:
                 "success": True,
                 "enriched_ast": {namespace: ns_block},
                 "error": None,
+                "failed_operations": failed_operations,
             }
 
         except ValueError as exc:
@@ -325,12 +327,14 @@ class ASTGeneratorService:
                 "success": False,
                 "enriched_ast": None,
                 "error": str(exc),
+                "failed_operations": {},
             }
         except Exception as exc:
             return {
                 "success": False,
                 "enriched_ast": None,
                 "error": str(exc),
+                "failed_operations": {},
             }
 
     # ------------------------------------------------------------------ #
