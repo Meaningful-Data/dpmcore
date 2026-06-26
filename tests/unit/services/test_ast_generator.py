@@ -572,66 +572,10 @@ class TestResolveRelease:
         with pytest.raises(ValueError, match="ModuleVersion not found"):
             svc._resolve_release("X", "1.0", None)
 
-    def test_explicit_release_returns_match(self, monkeypatch):
-        svc, _, _ = _bare_svc()
-        svc.session = MagicMock()
-        mv = SimpleNamespace(
-            module_vid=1,
-            start_release_id=3,
-            end_release_id=None,
-            from_reference_date=None,
-            to_reference_date=None,
-            code="X",
-            version_number="1",
-            module=None,
-        )
-        svc._resolve_module_version = lambda c, v: mv
-
-        rr = SimpleNamespace(release_id=5, code="4.2", date=None)
-        svc.session.query.return_value.filter.return_value.first.return_value = rr  # noqa: E501
-
-        # Stub out the Release symbol used in the dynamic import.
-        infra = sys.modules["dpmcore.orm.infrastructure"]
-        infra.Release = MagicMock()
-
-        out_mv, out_rr = svc._resolve_release("X", "1", "4.2")
-        assert out_mv is mv
-        assert out_rr is rr
-
-    def test_explicit_release_before_window_raises(self):
-        svc, _, _ = _bare_svc()
-        svc.session = MagicMock()
-        mv = SimpleNamespace(
-            module_vid=1, start_release_id=10, end_release_id=None
-        )
-        svc._resolve_module_version = lambda c, v: mv
-        rr = SimpleNamespace(release_id=5, code="4.0", date=None)
-        svc.session.query.return_value.filter.return_value.first.return_value = rr  # noqa: E501
-        with pytest.raises(ValueError, match="predates module"):
-            svc._resolve_release("X", "1", "4.0")
-
-    def test_explicit_release_after_end_raises(self):
-        svc, _, _ = _bare_svc()
-        svc.session = MagicMock()
-        mv = SimpleNamespace(
-            module_vid=1, start_release_id=1, end_release_id=5
-        )
-        svc._resolve_module_version = lambda c, v: mv
-        rr = SimpleNamespace(release_id=5, code="4.2", date=None)
-        svc.session.query.return_value.filter.return_value.first.return_value = rr  # noqa: E501
-        with pytest.raises(ValueError, match="past the end"):
-            svc._resolve_release("X", "1", "4.2")
-
-    def test_unknown_release_raises(self):
-        svc, _, _ = _bare_svc()
-        svc.session = MagicMock()
-        mv = SimpleNamespace(
-            module_vid=1, start_release_id=1, end_release_id=None
-        )
-        svc._resolve_module_version = lambda c, v: mv
-        svc.session.query.return_value.filter.return_value.first.return_value = None  # noqa: E501
-        with pytest.raises(ValueError, match="Release not found"):
-            svc._resolve_release("X", "1", "ZZZ")
+    # Explicit-release window checks now compare semver sort orders, which
+    # need real Release rows. They are covered against the EBA fixture DB in
+    # tests/integration/services/test_scope_release_axis.py rather than with
+    # blanket ORM mocks (see issue #151).
 
 
 # ------------------------------------------------------------------ #
