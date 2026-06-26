@@ -175,6 +175,35 @@ class TestPostScripts:
         assert body["success"] is False
         assert body["error"] == "boom"
 
+    def test_failed_operations_exposed_in_response(self, client):
+        """failed_operations from the service are forwarded to the caller."""
+        with patch(
+            "dpmcore.services.ast_generator.ASTGeneratorService"
+        ) as Svc:
+            Svc.return_value.script.return_value = {
+                "success": True,
+                "enriched_ast": {"ns": {}},
+                "error": None,
+                "failed_operations": {
+                    "v1": "Grey cells {F_32.03.a, r0040, c0010} were found."
+                },
+            }
+            response = client.post(
+                "/api/v1/scripts",
+                json={
+                    "expressions": [["e", "v1"]],
+                    "module_code": "FINREP_Con",
+                    "module_version": "2.0.1",
+                },
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["success"] is True
+        assert body["failed_operations"] == {
+            "v1": "Grey cells {F_32.03.a, r0040, c0010} were found."
+        }
+
     def test_invalid_body_returns_422_missing_expressions(self, client):
         response = client.post(
             "/api/v1/scripts",

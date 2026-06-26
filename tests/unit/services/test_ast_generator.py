@@ -987,18 +987,55 @@ class TestScript:
         assert out["success"] is False
         assert "ModuleVersion not found" in out["error"]
 
-    def test_validation_error_short_circuits(self, monkeypatch):
+    def test_validation_error_goes_to_failed_operations(self, monkeypatch):
         svc, *_ = self._build_svc()
         svc._semantic.validate.return_value = SimpleNamespace(
-            is_valid=False, error_message="bad expr"
+            is_valid=False,
+            error_message="Grey cells {F_32.03.a, r0040, c0010} were found.",
         )
         out = svc.script(
             expressions=[("x", "v1")],
             module_code="MOD",
             module_version="1.0",
         )
-        assert out["success"] is False
-        assert out["error"] == "bad expr"
+        assert out["success"] is True
+        assert out["failed_operations"] == {
+            "v1": "Grey cells {F_32.03.a, r0040, c0010} were found."
+        }
+
+    def test_grey_cell_skips_op_preserves_others(self, monkeypatch):
+        """A grey-cell failure must skip that op, not abort the module."""
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+
+        svc._semantic.validate.side_effect = lambda expr, release_id=None: (
+            SimpleNamespace(
+                is_valid=False,
+                error_message="Grey cells {F_32.03.a, r0040, c0010} were found.",
+            )
+            if expr == "e_bad"
+            else SimpleNamespace(
+                is_valid=True, error_message=None, parameters=()
+            )
+        )
+        svc._semantic.ast = "AST"
+
+        out = svc.script(
+            expressions=[("e_bad", "v1"), ("e2", "v2"), ("e3", "v3")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+        assert out["success"] is True
+        ns = next(iter(out["enriched_ast"].values()))
+        assert "v1" not in ns["operations"]
+        assert "v2" in ns["operations"]
+        assert "v3" in ns["operations"]
+        assert out["failed_operations"] == {
+            "v1": "Grey cells {F_32.03.a, r0040, c0010} were found."
+        }
 
     def test_scope_error_fails_generation(self, monkeypatch):
         """Regression for #122: a scope-calculation error must fail the
