@@ -505,6 +505,8 @@ Each `preconditions` entry:
 |-------|------|-------------|
 | `expression` | string | Precondition DPM-XL expression |
 | `validation_codes` | `[string]` | Validation codes this precondition guards |
+| `code` | string \| null | (Optional) Custom precondition key (e.g., `"P_571"`). If omitted, generated as `p_<variable_vid>` |
+| `version_id` | integer \| null | (Optional) Custom precondition version_id. If omitted, defaults to `variable_vid` |
 
 **Response body:**
 
@@ -514,7 +516,7 @@ Each `preconditions` entry:
 | `enriched_ast` | object \| null | Engine-ready namespaced AST (`{module_uri: {...}}`) |
 | `error` | string \| null | Error description if `success` is `false` |
 
-**Example:**
+**Example without custom precondition code:**
 
 ```bash
 POST /api/v1/scripts
@@ -527,6 +529,29 @@ Content-Type: application/json
   ],
   "module_code": "C_01.00",
   "module_version": "3.4"
+}
+```
+
+**Example with custom precondition code and version_id:**
+
+```bash
+POST /api/v1/scripts
+Content-Type: application/json
+
+{
+  "expressions": [
+    ["{tC_01.00, r0010, c0010} = 0", "V001"]
+  ],
+  "module_code": "C_01.00",
+  "module_version": "3.4",
+  "preconditions": [
+    {
+      "expression": "{v_C_01.00}",
+      "validation_codes": ["V001"],
+      "code": "P_571",
+      "version_id": 8341
+    }
+  ]
 }
 ```
 
