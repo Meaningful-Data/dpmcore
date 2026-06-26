@@ -87,70 +87,111 @@ class TestCheckDefaultValue:
             default_value, expected_type
         )
 
-    def test_string_default_for_boolean_is_valid(self):
-        """String default for Boolean cell must be accepted.
+    def test_string_default_for_boolean_raises_error(self):
+        """String default for Boolean cell should raise SemanticError 3-6.
 
-        Boolean is string-representable (Boolean promotes to String).
+        A default fills the cell, so it must be implicitly castable *to* the
+        cell type. ``String → Boolean`` is an Explicit cast (spec §2.3.2), not
+        Implicit, so the default is rejected.
         """
         default_value = self._create_constant("String", "")
-        InputAnalyzer._InputAnalyzer__check_default_value(
-            default_value, Boolean()
-        )
 
-    def test_string_default_for_number_is_valid(self):
-        """String default for Number cell must be accepted.
+        with pytest.raises(SemanticError) as exc_info:
+            InputAnalyzer._InputAnalyzer__check_default_value(
+                default_value, Boolean()
+            )
 
-        Number is string-representable (Number promotes to String).
+        assert "Invalid default type" in str(exc_info.value)
+        assert "String" in str(exc_info.value)
+        assert "Boolean" in str(exc_info.value)
+
+    def test_string_default_for_number_raises_error(self):
+        """String default for Number cell should raise SemanticError 3-6.
+
+        ``String → Number`` is an Explicit cast (spec §2.3.2), not Implicit, so
+        a String default cannot fill a Number cell.
         """
         default_value = self._create_constant("String", "")
-        InputAnalyzer._InputAnalyzer__check_default_value(
-            default_value, Number()
-        )
 
-    def test_string_default_for_item_is_valid(self):
-        """String default for Item cell must be accepted.
+        with pytest.raises(SemanticError) as exc_info:
+            InputAnalyzer._InputAnalyzer__check_default_value(
+                default_value, Number()
+            )
 
-        Item columns are string-representable (Item promotes to String),
-        so ``default: ""`` is a valid sentinel for a missing enumeration value.
+        assert "Invalid default type" in str(exc_info.value)
+        assert "String" in str(exc_info.value)
+        assert "Number" in str(exc_info.value)
+
+    def test_string_default_for_item_raises_error(self):
+        """String default for Item cell should raise SemanticError 3-6.
+
+        ``String → Item`` is an Explicit cast (spec §2.3.2), not Implicit, so a
+        String default cannot fill an enumeration cell.
         """
         default_value = self._create_constant("String", "")
-        InputAnalyzer._InputAnalyzer__check_default_value(
-            default_value, Item()
-        )
 
-    def test_string_default_for_timeinterval_is_valid(self):
-        """String default for TimeInterval cell must be accepted.
+        with pytest.raises(SemanticError) as exc_info:
+            InputAnalyzer._InputAnalyzer__check_default_value(
+                default_value, Item()
+            )
 
-        TimeInterval is string-representable (TimeInterval promotes to String).
+        assert "Invalid default type" in str(exc_info.value)
+        assert "String" in str(exc_info.value)
+        assert "Item" in str(exc_info.value)
+
+    def test_string_default_for_timeinterval_raises_error(self):
+        """String default for TimeInterval cell should raise SemanticError 3-6.
+
+        ``String → TimeInterval`` is an Explicit cast (spec §2.3.2), not
+        Implicit, so a String default cannot fill a time-interval cell.
         """
         default_value = self._create_constant("String", "")
-        InputAnalyzer._InputAnalyzer__check_default_value(
-            default_value, TimeInterval()
-        )
 
-    def test_integer_default_for_item_is_valid(self):
-        """Integer default for Item cell must be accepted.
+        with pytest.raises(SemanticError) as exc_info:
+            InputAnalyzer._InputAnalyzer__check_default_value(
+                default_value, TimeInterval()
+            )
 
-        Both Integer and Item are string-representable, so integer 0 is a valid
-        numeric sentinel for a missing enumeration value.
-        Regression: 5 operations raised 3-6 with this pattern.
+        assert "Invalid default type" in str(exc_info.value)
+        assert "String" in str(exc_info.value)
+        assert "TimeInterval" in str(exc_info.value)
+
+    def test_integer_default_for_item_raises_error(self):
+        """Integer default for Item cell should raise SemanticError 3-6.
+
+        ``Integer → Item`` is not an Implicit cast (spec §2.3.2): integer 0 is
+        not a valid enumeration member, so it cannot fill an Item cell. The
+        known-failures oracle for ``dpm_4.2.1_20260515.db`` lists 5 operations
+        with this exact 3-6 error.
         """
         default_value = self._create_constant("Integer", 0)
-        InputAnalyzer._InputAnalyzer__check_default_value(
-            default_value, Item()
-        )
 
-    def test_integer_default_for_timeinterval_is_valid(self):
-        """Integer default for TimeInterval cell must be accepted.
+        with pytest.raises(SemanticError) as exc_info:
+            InputAnalyzer._InputAnalyzer__check_default_value(
+                default_value, Item()
+            )
 
-        Both Integer and TimeInterval are string-representable, so integer 0 is
-        a valid numeric sentinel for a missing time-interval value.
-        Regression: 1 operation raised 3-6 with this pattern.
+        assert "Invalid default type" in str(exc_info.value)
+        assert "Integer" in str(exc_info.value)
+        assert "Item" in str(exc_info.value)
+
+    def test_integer_default_for_timeinterval_raises_error(self):
+        """Integer default for TimeInterval cell should raise SemanticError 3-6.
+
+        ``Integer → TimeInterval`` is not an Implicit cast (spec §2.3.2). The
+        known-failures oracle for ``dpm_4.2.1_20260515.db`` lists 1 operation
+        with this exact 3-6 error.
         """
         default_value = self._create_constant("Integer", 0)
-        InputAnalyzer._InputAnalyzer__check_default_value(
-            default_value, TimeInterval()
-        )
+
+        with pytest.raises(SemanticError) as exc_info:
+            InputAnalyzer._InputAnalyzer__check_default_value(
+                default_value, TimeInterval()
+            )
+
+        assert "Invalid default type" in str(exc_info.value)
+        assert "Integer" in str(exc_info.value)
+        assert "TimeInterval" in str(exc_info.value)
 
     def test_item_default_for_string_is_valid(self):
         """Item default for String operand should be valid (Item can be promoted to String)."""
