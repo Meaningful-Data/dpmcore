@@ -1014,9 +1014,41 @@ class TestScript:
         # AST stripped
         ast_data = ns_block["operations"]["v1"]["ast"]["data"][0]
         assert "data_type" not in ast_data
-        # tables/variables filtered to referenced
+        # tables/variables seeded from the module composition
         assert "C_01.00" in ns_block["tables"]
         assert ns_block["variables"] == {"100": "m"}
+
+    def test_tables_block_includes_unreferenced_module_tables(
+        self, monkeypatch
+    ):
+        """#158: module-composition tables appear even when no expression
+        references them; abstract (empty-variable) tables stay excluded.
+        """
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+        svc._scope_calc._get_module_tables.return_value = {
+            "C_01.00": {"variables": {"100": "m"}, "open_keys": {}},
+            "C_99.00": {"variables": {"900": "m"}, "open_keys": {}},
+            "C_ABS.00": {"variables": {}, "open_keys": {}},
+        }
+        out = svc.script(
+            expressions=[("e1", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+        assert out["success"] is True
+        ns = next(iter(out["enriched_ast"].values()))
+        # Referenced (C_01.00) AND unreferenced-with-variables (C_99.00)
+        # are present; the empty-variable (abstract) table is dropped.
+        assert set(ns["tables"]) == {"C_01.00", "C_99.00"}
+        assert ns["variables"] == {"100": "m", "900": "m"}
 
     def test_default_severity_is_warning(self, monkeypatch):
         self._stub_serialize_ast(
