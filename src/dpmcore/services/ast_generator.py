@@ -133,6 +133,7 @@ class ASTGeneratorService:
                 "success": False,
                 "enriched_ast": None,
                 "error": "No database session — cannot generate script.",
+                "failed_operations": {},
             }
 
         try:
@@ -158,6 +159,7 @@ class ASTGeneratorService:
                     "success": False,
                     "enriched_ast": None,
                     "error": str(exc),
+                    "failed_operations": {},
                 }
 
             from_submission_date = _format_date(
@@ -223,6 +225,7 @@ class ASTGeneratorService:
                             f"Scope calculation failed for operation "
                             f"'{code}': {sr.error_message}"
                         ),
+                        "failed_operations": failed_operations,
                     }
                 ts = self._extract_time_shifts(ast)
                 scope_pairs.append((item, sr, ts))
@@ -309,12 +312,14 @@ class ASTGeneratorService:
                 "success": False,
                 "enriched_ast": None,
                 "error": str(exc),
+                "failed_operations": {},
             }
         except Exception as exc:
             return {
                 "success": False,
                 "enriched_ast": None,
                 "error": str(exc),
+                "failed_operations": {},
             }
 
     # ------------------------------------------------------------------ #
