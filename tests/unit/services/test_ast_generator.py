@@ -408,6 +408,64 @@ class TestBuildPreconditionsBlock:
             "v3",
         ]
 
+    def test_dict_format_with_custom_code_and_version_id(self, monkeypatch):
+        """Dict format allows overriding code and version_id"""
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+
+        fake_query = MagicMock()
+        fake_query.get_variable_vids_by_codes.return_value = {
+            "C_01.00": {"variable_id": 11, "variable_vid": 110}
+        }
+        monkeypatch.setitem(
+            sys.modules,
+            "dpmcore.dpm_xl.model_queries",
+            SimpleNamespace(VariableVersionQuery=fake_query),
+        )
+
+        preconds, vars_ = svc._build_preconditions_block(
+            [
+                {
+                    "expression": "{v_C_01.00}",
+                    "affected_operations": ["v1", "v2"],
+                    "code": "P_571",  # Override default p_110
+                    "version_id": 8341,  # Override default 110
+                }
+            ],
+            release_id=5,
+        )
+        assert "P_571" in preconds
+        entry = preconds["P_571"]
+        assert entry["code"] == "P_571"
+        assert entry["version_id"] == 8341
+        assert entry["affected_operations"] == ["v1", "v2"]
+        assert vars_ == {"110": "b"}
+
+    def test_backward_compat_tuple_format_still_works(self, monkeypatch):
+        """Tuple format (old) still works for backward compatibility."""
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+
+        fake_query = MagicMock()
+        fake_query.get_variable_vids_by_codes.return_value = {
+            "C_01.00": {"variable_id": 11, "variable_vid": 110}
+        }
+        monkeypatch.setitem(
+            sys.modules,
+            "dpmcore.dpm_xl.model_queries",
+            SimpleNamespace(VariableVersionQuery=fake_query),
+        )
+
+        # Old tuple format should still work
+        preconds, vars_ = svc._build_preconditions_block(
+            [("{v_C_01.00}", ["v1", "v2"])],
+            release_id=5,
+        )
+        assert "p_110" in preconds
+        entry = preconds["p_110"]
+        assert entry["code"] == "p_110"
+        assert entry["version_id"] == 110
+
 
 # ------------------------------------------------------------------ #
 # _resolve_root_operator_id
@@ -817,6 +875,29 @@ class TestBuildPreconditionIndex:
         svc._syntax.parse.side_effect = RuntimeError("syntax error")
         with pytest.raises(ValueError, match="Invalid precondition"):
             svc._build_precondition_index([("bad", ["v"])])
+
+    def test_dict_format_builds_index_correctly(self):
+        """Dict format in _build_precondition_index works like tuple format."""
+        svc, _, _ = _bare_svc()
+        svc._syntax = MagicMock()
+        svc._syntax.parse.side_effect = lambda expr: f"AST_{expr}"
+        svc._extract_precondition_codes = lambda ast: (
+            ["P1"] if ast == "AST_expr1" else ["P2"]
+        )
+        idx = svc._build_precondition_index(
+            [
+                {
+                    "expression": "expr1",
+                    "affected_operations": ["v1", "v2"],
+                    "code": "P_571",  # Custom fields ignored by index builder
+                    "version_id": 8341,
+                },
+                ("expr2", ["v2", "v3"]),  # Tuple format still works
+            ]
+        )
+        assert idx["v1"] == ["P1"]
+        assert idx["v2"] == ["P1", "P2"]
+        assert idx["v3"] == ["P2"]
 
 
 # ------------------------------------------------------------------ #

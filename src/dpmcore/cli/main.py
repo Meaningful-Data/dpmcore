@@ -13,6 +13,7 @@ Usage::
 from __future__ import annotations
 
 import sys
+from typing import Any
 
 import click
 
@@ -419,6 +420,30 @@ def serve(database: str, host: str, port: int) -> None:
     type=click.Path(dir_okay=False),
     help="Path to write the generated script JSON.",
 )
+def _process_preconditions_from_json(
+    preconditions_raw: list[Any],
+) -> list[tuple[str, list[str]] | dict[str, Any]] | None:
+    """Convert raw precondition entries to script() format."""
+    if not preconditions_raw:
+        return None
+
+    preconditions: list[tuple[str, list[str]] | dict[str, Any]] = []
+    for entry in preconditions_raw:
+        has_custom = "code" in entry or "version_id" in entry
+        if isinstance(entry, dict) and has_custom:
+            preconditions.append(entry)
+        elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
+            preconditions.append((entry[0], list(entry[1])))
+        elif isinstance(entry, dict) and "expression" in entry:
+            preconditions.append(
+                (
+                    entry["expression"],
+                    list(entry.get("affected_operations", [])),
+                )
+            )
+    return preconditions or None
+
+
 def generate_script(
     expressions_path: str,
     module_code: str,
@@ -472,7 +497,7 @@ def generate_script(
 
     items = [tuple(pair) for pair in raw["expressions"]]
     preconditions_raw = raw.get("preconditions") or []
-    preconditions = [(pair[0], list(pair[1])) for pair in preconditions_raw]
+    preconditions = _process_preconditions_from_json(preconditions_raw)
 
     severities_raw = raw.get("severities")
     severities: dict[str, str] | None = None

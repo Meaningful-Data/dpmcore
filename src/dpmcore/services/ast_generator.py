@@ -14,6 +14,7 @@ from typing import (
     List,
     Optional,
     Tuple,
+    Union,
 )
 
 from dpmcore.dpm_xl.utils.tokens import (
@@ -88,7 +89,9 @@ class ASTGeneratorService:
         expressions: List[Tuple[str, str]],
         module_code: str,
         module_version: str,
-        preconditions: Optional[List[Tuple[str, List[str]]]] = None,
+        preconditions: Optional[
+            List[Union[Tuple[str, List[str]], Dict[str, Any]]]
+        ] = None,
         severity: Optional[str] = None,
         severities: Optional[Dict[str, str]] = None,
         release: Optional[str] = None,
@@ -100,8 +103,11 @@ class ASTGeneratorService:
             module_code: Code of the primary module (e.g. ``"COREP_Con"``).
             module_version: Version of the primary module
                 (e.g. ``"2.0.1"``).
-            preconditions: Optional list of
-                ``(precondition_expression, [validation_codes])`` tuples.
+            preconditions: Optional list of precondition specs:
+                - Tuples: ``(precondition_expression, [validation_codes])``
+                - Dicts: ``{"expression": "...",
+                  "affected_operations": [...], "code": "P_571",
+                  "version_id": 8341}`` (code and version_id optional)
                 A precondition can guard many validation codes; a
                 validation may have no precondition.
             severity: Optional global default severity tag
@@ -654,7 +660,7 @@ class ASTGeneratorService:
 
     def _build_preconditions_block(
         self,
-        preconditions: List[Tuple[str, List[str]]],
+        preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
         release_id: Optional[int],
     ) -> Tuple[Dict[str, Any], Dict[str, str]]:
         """Build the ``preconditions`` and ``precondition_variables`` blocks.
@@ -674,8 +680,15 @@ class ASTGeneratorService:
             return preconditions_dict, precondition_variables
 
         all_codes: List[str] = []
-        for precondition_expr, _ in preconditions:
-            for raw in _VAR_REF_PATTERN.findall(precondition_expr):
+        for precond_spec in preconditions:
+            precond_expr = (
+                precond_spec.get("expression")
+                if isinstance(precond_spec, dict)
+                else precond_spec[0]
+            )
+            if not precond_expr:
+                continue
+            for raw in _VAR_REF_PATTERN.findall(precond_expr):
                 normalized = _normalize_variable_code(raw)
                 if normalized not in all_codes:
                     all_codes.append(normalized)
@@ -686,14 +699,24 @@ class ASTGeneratorService:
             self.session, all_codes, release_id=release_id
         )
 
-        for precondition_expr, validation_codes in preconditions:
+        for precond_spec in preconditions:
+            if isinstance(precond_spec, dict):
+                precond_expr = precond_spec["expression"]
+                validation_codes = precond_spec["affected_operations"]
+                provided_code = precond_spec.get("code")
+                provided_version_id = precond_spec.get("version_id")
+            else:
+                precond_expr, validation_codes = precond_spec
+                provided_code = None
+                provided_version_id = None
+
             var_infos = self._collect_precondition_var_infos(
-                precondition_expr, resolved, precondition_variables
+                precond_expr, resolved, precondition_variables
             )
             if not var_infos:
                 continue
             key, entry = self._build_precondition_entry(
-                var_infos, validation_codes
+                var_infos, validation_codes, provided_code, provided_version_id
             )
             self._merge_precondition_entry(preconditions_dict, key, entry)
 
@@ -755,29 +778,38 @@ class ASTGeneratorService:
     def _build_precondition_entry(
         var_infos: List[Dict[str, Any]],
         validation_codes: List[str],
+        provided_code: Optional[str] = None,
+        provided_version_id: Optional[int] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """Assemble a single ``preconditions[key]`` entry.
 
         Single-variable case → ``p_<vid>`` with a ``PreconditionItem``
         AST. Compound case → ``p_<sorted_vids>`` with a left-folded
         chain of ``BinOp(op="and")`` nodes.
+
+        When provided_code or provided_version_id are supplied, they override
+        the auto-generated values.
         """
         if len(var_infos) == 1:
             vi = var_infos[0]
-            key = f"p_{vi['variable_vid']}"
-            return key, {
+            default_key = f"p_{vi['variable_vid']}"
+            code = provided_code or default_key
+            version_id = provided_version_id or vi["variable_vid"]
+            return code, {
                 "ast": {
                     "class_name": "PreconditionItem",
                     "variable_id": vi["variable_id"],
                     "variable_code": vi["variable_code"],
                 },
                 "affected_operations": list(validation_codes),
-                "version_id": vi["variable_vid"],
-                "code": key,
+                "version_id": version_id,
+                "code": code,
             }
 
         sorted_vids = sorted(vi["variable_vid"] for vi in var_infos)
-        key = "p_" + "_".join(str(v) for v in sorted_vids)
+        default_key = "p_" + "_".join(str(v) for v in sorted_vids)
+        code = provided_code or default_key
+        version_id = provided_version_id or sorted_vids[0]
         ast_node: Dict[str, Any] = {
             "class_name": "PreconditionItem",
             "variable_id": var_infos[0]["variable_id"],
@@ -794,11 +826,11 @@ class ASTGeneratorService:
                     "variable_code": vi["variable_code"],
                 },
             }
-        return key, {
+        return code, {
             "ast": ast_node,
             "affected_operations": list(validation_codes),
-            "version_id": sorted_vids[0],
-            "code": key,
+            "version_id": version_id,
+            "code": code,
         }
 
     # ------------------------------------------------------------------ #
@@ -891,22 +923,28 @@ class ASTGeneratorService:
 
     def _build_precondition_index(
         self,
-        preconditions: List[Tuple[str, List[str]]],
+        preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
     ) -> Dict[str, List[str]]:
         """Map each validation code → unioned precondition variable codes.
 
         Parses each precondition expression once and extracts variable
         codes that act as precondition items. Raises ``ValueError`` if
         a precondition expression cannot be parsed.
+        Supports both tuple and dict formats.
         """
         index: Dict[str, List[str]] = {}
-        for precondition_expr, validation_codes in preconditions:
+        for precond_spec in preconditions:
+            if isinstance(precond_spec, dict):
+                precond_expr = precond_spec["expression"]
+                validation_codes = precond_spec["affected_operations"]
+            else:
+                precond_expr, validation_codes = precond_spec
+
             try:
-                ast = self._syntax.parse(precondition_expr)
+                ast = self._syntax.parse(precond_expr)
             except Exception as exc:
                 raise ValueError(
-                    f"Invalid precondition expression "
-                    f"{precondition_expr!r}: {exc}"
+                    f"Invalid precondition expression {precond_expr!r}: {exc}"
                 ) from exc
             codes = self._extract_precondition_codes(ast)
             for vc in validation_codes:

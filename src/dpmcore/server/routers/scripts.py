@@ -11,10 +11,15 @@ from sqlalchemy.orm import Session
 
 
 class PreconditionEntry(BaseModel):
-    """A precondition expression and the validation codes it guards."""
+    """A precondition expression and the validation codes it guards.
+
+    Supports custom code and version_id.
+    """
 
     expression: str
     validation_codes: List[str]
+    code: Optional[str] = None
+    version_id: Optional[int] = None
 
 
 class GenerateScriptRequest(BaseModel):
@@ -78,14 +83,28 @@ def create_scripts_router(
         items: List[tuple[str, str]] = [
             (item[0], item[1]) for item in body.expressions
         ]
-        preconditions = (
-            [
-                (p.expression, list(p.validation_codes))
-                for p in body.preconditions
-            ]
-            if body.preconditions
-            else None
-        )
+        preconditions: Optional[
+            List[tuple[str, List[str]] | Dict[str, Any]]
+        ] = None
+        if body.preconditions:
+            preconditions = []
+            for p in body.preconditions:
+                if p.code is not None or p.version_id is not None:
+                    # Dict format with optional code/version_id
+                    entry: Dict[str, Any] = {
+                        "expression": p.expression,
+                        "affected_operations": list(p.validation_codes),
+                    }
+                    if p.code is not None:
+                        entry["code"] = p.code
+                    if p.version_id is not None:
+                        entry["version_id"] = p.version_id
+                    preconditions.append(entry)
+                else:
+                    # Tuple format (backward compat)
+                    preconditions.append(
+                        (p.expression, list(p.validation_codes))
+                    )
         result = ASTGeneratorService(session).script(
             expressions=items,
             module_code=body.module_code,
