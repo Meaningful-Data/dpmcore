@@ -367,6 +367,30 @@ def serve(database: str, host: str, port: int) -> None:
     uvicorn.run(app, host=host, port=port)
 
 
+def _process_preconditions_from_json(
+    preconditions_raw: list[Any],
+) -> list[tuple[str, list[str]] | dict[str, Any]] | None:
+    """Convert raw precondition entries to script() format."""
+    if not preconditions_raw:
+        return None
+
+    preconditions: list[tuple[str, list[str]] | dict[str, Any]] = []
+    for entry in preconditions_raw:
+        has_custom = "code" in entry or "version_id" in entry
+        if isinstance(entry, dict) and has_custom:
+            preconditions.append(entry)
+        elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
+            preconditions.append((entry[0], list(entry[1])))
+        elif isinstance(entry, dict) and "expression" in entry:
+            preconditions.append(
+                (
+                    entry["expression"],
+                    list(entry.get("affected_operations", [])),
+                )
+            )
+    return preconditions or None
+
+
 @main.command("generate-script")
 @click.option(
     "--expressions",
@@ -420,30 +444,6 @@ def serve(database: str, host: str, port: int) -> None:
     type=click.Path(dir_okay=False),
     help="Path to write the generated script JSON.",
 )
-def _process_preconditions_from_json(
-    preconditions_raw: list[Any],
-) -> list[tuple[str, list[str]] | dict[str, Any]] | None:
-    """Convert raw precondition entries to script() format."""
-    if not preconditions_raw:
-        return None
-
-    preconditions: list[tuple[str, list[str]] | dict[str, Any]] = []
-    for entry in preconditions_raw:
-        has_custom = "code" in entry or "version_id" in entry
-        if isinstance(entry, dict) and has_custom:
-            preconditions.append(entry)
-        elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
-            preconditions.append((entry[0], list(entry[1])))
-        elif isinstance(entry, dict) and "expression" in entry:
-            preconditions.append(
-                (
-                    entry["expression"],
-                    list(entry.get("affected_operations", [])),
-                )
-            )
-    return preconditions or None
-
-
 def generate_script(
     expressions_path: str,
     module_code: str,

@@ -793,8 +793,12 @@ class ASTGeneratorService:
         if len(var_infos) == 1:
             vi = var_infos[0]
             default_key = f"p_{vi['variable_vid']}"
-            code = provided_code or default_key
-            version_id = provided_version_id or vi["variable_vid"]
+            code = provided_code if provided_code is not None else default_key
+            version_id = (
+                provided_version_id
+                if provided_version_id is not None
+                else vi["variable_vid"]
+            )
             return code, {
                 "ast": {
                     "class_name": "PreconditionItem",
@@ -808,8 +812,12 @@ class ASTGeneratorService:
 
         sorted_vids = sorted(vi["variable_vid"] for vi in var_infos)
         default_key = "p_" + "_".join(str(v) for v in sorted_vids)
-        code = provided_code or default_key
-        version_id = provided_version_id or sorted_vids[0]
+        code = provided_code if provided_code is not None else default_key
+        version_id = (
+            provided_version_id
+            if provided_version_id is not None
+            else sorted_vids[0]
+        )
         ast_node: Dict[str, Any] = {
             "class_name": "PreconditionItem",
             "variable_id": var_infos[0]["variable_id"],
