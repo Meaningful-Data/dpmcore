@@ -165,6 +165,7 @@ class ASTGeneratorService:
             )
 
             operations: Dict[str, Dict[str, Any]] = {}
+            failed_operations: Dict[str, str] = {}
             scope_pairs: List[
                 Tuple[Tuple[str, str], "ScopeResult", Dict[str, str]]
             ] = []
@@ -180,11 +181,8 @@ class ASTGeneratorService:
                 # conflicts between two expressions in this same script.
                 result = self._semantic.validate(expr, release_id=release_id)
                 if not result.is_valid:
-                    return {
-                        "success": False,
-                        "enriched_ast": None,
-                        "error": result.error_message,
-                    }
+                    failed_operations[code] = result.error_message
+                    continue
 
                 ast = self._semantic.ast
                 ast_dict = serialize_ast(ast)
@@ -303,6 +301,7 @@ class ASTGeneratorService:
                 "success": True,
                 "enriched_ast": {namespace: ns_block},
                 "error": None,
+                "failed_operations": failed_operations,
             }
 
         except ValueError as exc:
