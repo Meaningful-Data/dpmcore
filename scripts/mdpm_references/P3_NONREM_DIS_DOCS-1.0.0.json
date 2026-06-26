@@ -1,0 +1,25 @@
+{
+  "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/pillar3/4.0/mod/p3_nonrem_dis_docs": {
+    "module_code": "P3_NONREM_DIS_DOCS",
+    "module_version": "1.0.0",
+    "framework_code": "PILLAR3",
+    "dpm_release": {
+      "release": "4.2.1",
+      "publication_date": "2026-03-17"
+    },
+    "dates": {
+      "from": "2023-12-31",
+      "to": null
+    },
+    "operations": {},
+    "variables": {},
+    "tables": {},
+    "preconditions": {},
+    "precondition_variables": {},
+    "dependency_information": {
+      "intra_instance_validations": [],
+      "cross_instance_dependencies": []
+    },
+    "dependency_modules": {}
+  }
+}

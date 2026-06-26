@@ -1,0 +1,438 @@
+{
+  "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/mica/4.2/mod/mica_of": {
+    "module_code": "MICA_OF",
+    "module_version": "1.0.1",
+    "framework_code": "MICA",
+    "dpm_release": {
+      "release": "4.2.1",
+      "publication_date": "2026-03-17"
+    },
+    "dates": {
+      "from": "2026-03-31",
+      "to": null
+    },
+    "operations": {
+      "v89020_s": {
+        "version_id": 11790,
+        "code": "v89020_s",
+        "expression": "with {tQ_09.01, default: null, interval: false}: {r*, c0010} >= 0",
+        "root_operator_id": 15,
+        "ast": {
+          "class_name": "BinOp",
+          "op": ">=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "x": 2,
+                "row": "0020",
+                "datapoint": 3530301,
+                "operand_reference_id": 2727983
+              },
+              {
+                "x": 4,
+                "row": "0040",
+                "datapoint": 3529897,
+                "operand_reference_id": 2727984
+              },
+              {
+                "x": 3,
+                "row": "0030",
+                "datapoint": 3526449,
+                "operand_reference_id": 2727985
+              },
+              {
+                "x": 1,
+                "row": "0010",
+                "datapoint": 3529881,
+                "operand_reference_id": 2727986
+              },
+              {
+                "x": 7,
+                "row": "0070",
+                "datapoint": 3530920,
+                "operand_reference_id": 2727987
+              },
+              {
+                "x": 5,
+                "row": "0050",
+                "datapoint": 3529898,
+                "operand_reference_id": 2727988
+              },
+              {
+                "x": 6,
+                "row": "0060",
+                "datapoint": 3529894,
+                "operand_reference_id": 2727989
+              }
+            ],
+            "table": "Q_09.01",
+            "column": "0010",
+            "interval": false
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 0
+          }
+        },
+        "from_submission_date": "2026-03-31",
+        "severity": "warning"
+      },
+      "v89021_s": {
+        "version_id": 14723,
+        "code": "v89021_s",
+        "expression": "with {tQ_09.02, c0010, default: null, interval: false}: {r0010-0060} >= 0",
+        "root_operator_id": 15,
+        "ast": {
+          "class_name": "BinOp",
+          "op": ">=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "x": 3,
+                "row": "0030",
+                "datapoint": 33309,
+                "operand_reference_id": 7212799
+              },
+              {
+                "x": 5,
+                "row": "0050",
+                "datapoint": 32677,
+                "operand_reference_id": 7212800
+              },
+              {
+                "x": 2,
+                "row": "0020",
+                "datapoint": 33306,
+                "operand_reference_id": 7212801
+              },
+              {
+                "x": 4,
+                "row": "0040",
+                "datapoint": 32671,
+                "operand_reference_id": 7212802
+              },
+              {
+                "x": 6,
+                "row": "0060",
+                "datapoint": 3529899,
+                "operand_reference_id": 7212803
+              },
+              {
+                "x": 1,
+                "row": "0010",
+                "datapoint": 3529897,
+                "operand_reference_id": 7212804
+              }
+            ],
+            "table": "Q_09.02",
+            "column": "0010",
+            "interval": false
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 0
+          }
+        },
+        "from_submission_date": "2026-03-31",
+        "severity": "warning"
+      },
+      "v89135_m": {
+        "version_id": 12562,
+        "code": "v89135_m",
+        "expression": "with {tQ_09.01, c0010, default:null , interval: true}: {r0070} = {r0040} / {r0020}",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 3530920,
+                "operand_reference_id": 2737835
+              }
+            ],
+            "table": "Q_09.01",
+            "row": "0070",
+            "column": "0010",
+            "interval": true
+          },
+          "right": {
+            "class_name": "BinOp",
+            "op": "/",
+            "left": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 3529897,
+                  "operand_reference_id": 2737836
+                }
+              ],
+              "table": "Q_09.01",
+              "row": "0040",
+              "column": "0010",
+              "interval": true
+            },
+            "right": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 3530301,
+                  "operand_reference_id": 2737837
+                }
+              ],
+              "table": "Q_09.01",
+              "row": "0020",
+              "column": "0010",
+              "interval": true
+            }
+          }
+        },
+        "from_submission_date": "2026-03-31",
+        "severity": "warning"
+      },
+      "v89136_m": {
+        "version_id": 19846,
+        "code": "v89136_m",
+        "expression": "with {tQ_09.02, c0010, default:null , interval: true}: {r0060} = {r0010} - sum({r0020-0050})",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 3529899,
+                "operand_reference_id": 7369155
+              }
+            ],
+            "table": "Q_09.02",
+            "row": "0060",
+            "column": "0010",
+            "interval": true
+          },
+          "right": {
+            "class_name": "BinOp",
+            "op": "-",
+            "left": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 3529897,
+                  "operand_reference_id": 7369156
+                }
+              ],
+              "table": "Q_09.02",
+              "row": "0010",
+              "column": "0010",
+              "interval": true
+            },
+            "right": {
+              "class_name": "AggregationOp",
+              "op": "sum",
+              "operand": {
+                "class_name": "VarID",
+                "data": [
+                  {
+                    "x": 1,
+                    "row": "0020",
+                    "datapoint": 33306,
+                    "operand_reference_id": 7369157
+                  },
+                  {
+                    "x": 4,
+                    "row": "0050",
+                    "datapoint": 32677,
+                    "operand_reference_id": 7369158
+                  },
+                  {
+                    "x": 2,
+                    "row": "0030",
+                    "datapoint": 33309,
+                    "operand_reference_id": 7369159
+                  },
+                  {
+                    "x": 3,
+                    "row": "0040",
+                    "datapoint": 32671,
+                    "operand_reference_id": 7369160
+                  }
+                ],
+                "table": "Q_09.02",
+                "column": "0010",
+                "interval": true
+              },
+              "grouping_clause": null
+            }
+          }
+        },
+        "from_submission_date": "2026-03-31",
+        "severity": "warning"
+      },
+      "v89454_m": {
+        "version_id": 13240,
+        "code": "v89454_m",
+        "expression": "with{tQ_09.01, c0010, default: 0, interval: true}: {r0010} = max (350000, 0.02 * {r0020}, {r0030})",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 3529881,
+                "operand_reference_id": 2741637
+              }
+            ],
+            "table": "Q_09.01",
+            "row": "0010",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "ComplexNumericOp",
+            "op": "max",
+            "operands": [
+              {
+                "class_name": "Constant",
+                "type_": "Integer",
+                "value": 350000
+              },
+              {
+                "class_name": "BinOp",
+                "op": "*",
+                "left": {
+                  "class_name": "Constant",
+                  "type_": "Number",
+                  "value": 0.02
+                },
+                "right": {
+                  "class_name": "VarID",
+                  "data": [
+                    {
+                      "datapoint": 3530301,
+                      "operand_reference_id": 2741638
+                    }
+                  ],
+                  "table": "Q_09.01",
+                  "row": "0020",
+                  "column": "0010",
+                  "default": 0,
+                  "interval": true
+                }
+              },
+              {
+                "class_name": "VarID",
+                "data": [
+                  {
+                    "datapoint": 3526449,
+                    "operand_reference_id": 2741639
+                  }
+                ],
+                "table": "Q_09.01",
+                "row": "0030",
+                "column": "0010",
+                "default": 0,
+                "interval": true
+              }
+            ]
+          }
+        },
+        "from_submission_date": "2026-03-31",
+        "severity": "warning"
+      }
+    },
+    "variables": {
+      "32671": "m",
+      "32677": "m",
+      "33306": "m",
+      "33309": "m",
+      "3526449": "m",
+      "3529881": "m",
+      "3529894": "m",
+      "3529897": "m",
+      "3529898": "m",
+      "3529899": "m",
+      "3529912": "m",
+      "3530301": "m",
+      "3530920": "p"
+    },
+    "tables": {
+      "Q_09.01": {
+        "variables": {
+          "3526449": "m",
+          "3529881": "m",
+          "3529894": "m",
+          "3529897": "m",
+          "3529898": "m",
+          "3530301": "m",
+          "3530920": "p"
+        },
+        "open_keys": {}
+      },
+      "Q_09.02": {
+        "variables": {
+          "32671": "m",
+          "32677": "m",
+          "33306": "m",
+          "33309": "m",
+          "3529897": "m",
+          "3529899": "m",
+          "3529912": "m"
+        },
+        "open_keys": {}
+      }
+    },
+    "preconditions": {
+      "p_1069": {
+        "ast": {
+          "class_name": "PreconditionItem",
+          "variable_id": 3296223,
+          "variable_code": "Q_09.01"
+        },
+        "affected_operations": [
+          "v89020_s",
+          "v89135_m",
+          "v89454_m"
+        ],
+        "version_id": 11672,
+        "code": "p_1069"
+      },
+      "p_1070": {
+        "ast": {
+          "class_name": "PreconditionItem",
+          "variable_id": 3296224,
+          "variable_code": "Q_09.02"
+        },
+        "affected_operations": [
+          "v89021_s",
+          "v89136_m"
+        ],
+        "version_id": 11673,
+        "code": "p_1070"
+      }
+    },
+    "precondition_variables": {
+      "3296223": "b",
+      "3296224": "b"
+    },
+    "dependency_information": {
+      "intra_instance_validations": [
+        "v89020_s",
+        "v89021_s",
+        "v89135_m",
+        "v89136_m",
+        "v89454_m"
+      ],
+      "cross_instance_dependencies": []
+    },
+    "dependency_modules": {}
+  }
+}

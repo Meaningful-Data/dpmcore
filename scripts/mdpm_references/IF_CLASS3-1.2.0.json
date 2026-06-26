@@ -1,0 +1,3061 @@
+{
+  "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/if/its-002-2021/2022-03-01/mod/if_class3": {
+    "module_code": "IF_CLASS3",
+    "module_version": "1.2.0",
+    "framework_code": "IF",
+    "dpm_release": {
+      "release": "4.2.1",
+      "publication_date": "2026-03-17"
+    },
+    "dates": {
+      "from": "2023-06-30",
+      "to": "2026-03-30"
+    },
+    "operations": {
+      "v10869_h": {
+        "version_id": 5471,
+        "code": "v10869_h",
+        "expression": "with {tI_01.01, c0010, default: 0, interval: true}: {r0020} = + {r0300} + {r0030}",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 84817,
+                "operand_reference_id": 172853
+              }
+            ],
+            "table": "I_01.01",
+            "row": "0020",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "BinOp",
+            "op": "+",
+            "left": {
+              "class_name": "UnaryOp",
+              "op": "+",
+              "operand": {
+                "class_name": "VarID",
+                "data": [
+                  {
+                    "datapoint": 33410,
+                    "operand_reference_id": 172858
+                  }
+                ],
+                "table": "I_01.01",
+                "row": "0300",
+                "column": "0010",
+                "default": 0,
+                "interval": true
+              }
+            },
+            "right": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 33411,
+                  "operand_reference_id": 172863
+                }
+              ],
+              "table": "I_01.01",
+              "row": "0030",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            }
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v10872_s": {
+        "version_id": 5473,
+        "code": "v10872_s",
+        "expression": "with {tI_02.03, c0010, default: null, interval: false}: {r*} >= 0",
+        "root_operator_id": 15,
+        "ast": {
+          "class_name": "BinOp",
+          "op": ">=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "x": 1,
+                "row": "0010",
+                "datapoint": 441408,
+                "operand_reference_id": 173243
+              },
+              {
+                "x": 2,
+                "row": "0020",
+                "datapoint": 441396,
+                "operand_reference_id": 173249
+              },
+              {
+                "x": 3,
+                "row": "0030",
+                "datapoint": 441393,
+                "operand_reference_id": 173254
+              },
+              {
+                "x": 4,
+                "row": "0050",
+                "datapoint": 459988,
+                "operand_reference_id": 173258
+              },
+              {
+                "x": 5,
+                "row": "0060",
+                "datapoint": 459989,
+                "operand_reference_id": 173262
+              },
+              {
+                "x": 6,
+                "row": "0070",
+                "datapoint": 459987,
+                "operand_reference_id": 173266
+              },
+              {
+                "x": 7,
+                "row": "0080",
+                "datapoint": 459990,
+                "operand_reference_id": 173272
+              },
+              {
+                "x": 8,
+                "row": "0090",
+                "datapoint": 459991,
+                "operand_reference_id": 173279
+              },
+              {
+                "x": 9,
+                "row": "0110",
+                "datapoint": 459992,
+                "operand_reference_id": 173286
+              },
+              {
+                "x": 10,
+                "row": "0130",
+                "datapoint": 459986,
+                "operand_reference_id": 173294
+              }
+            ],
+            "table": "I_02.03",
+            "column": "0010",
+            "interval": false
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 0
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v10873_s": {
+        "version_id": 5474,
+        "code": "v10873_s",
+        "expression": "with {tI_01.01, c0010, default: null, interval: false}: {(r0040, r0050, r0130, r0300, r0310, r0320, r0420, r0430, r0440)} >= 0",
+        "root_operator_id": 15,
+        "ast": {
+          "class_name": "BinOp",
+          "op": ">=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "x": 1,
+                "row": "0040",
+                "datapoint": 32673,
+                "operand_reference_id": 173406
+              },
+              {
+                "x": 2,
+                "row": "0050",
+                "datapoint": 32681,
+                "operand_reference_id": 173410
+              },
+              {
+                "x": 3,
+                "row": "0130",
+                "datapoint": 459794,
+                "operand_reference_id": 173413
+              },
+              {
+                "x": 4,
+                "row": "0300",
+                "datapoint": 33410,
+                "operand_reference_id": 173416
+              },
+              {
+                "x": 5,
+                "row": "0310",
+                "datapoint": 459761,
+                "operand_reference_id": 173419
+              },
+              {
+                "x": 6,
+                "row": "0320",
+                "datapoint": 459760,
+                "operand_reference_id": 173422
+              },
+              {
+                "x": 7,
+                "row": "0420",
+                "datapoint": 33412,
+                "operand_reference_id": 173426
+              },
+              {
+                "x": 8,
+                "row": "0430",
+                "datapoint": 459758,
+                "operand_reference_id": 173430
+              },
+              {
+                "x": 9,
+                "row": "0440",
+                "datapoint": 459759,
+                "operand_reference_id": 173433
+              }
+            ],
+            "table": "I_01.01",
+            "column": "0010",
+            "interval": false
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 0
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v10874_s": {
+        "version_id": 5475,
+        "code": "v10874_s",
+        "expression": "with {tI_01.01, c0010, default: null, interval: false}: {(r0140, r0190, r0200, r0210, r0220, r0230, r0240, r0285, r0330, r0450)} <= 0",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "x": 1,
+                "row": "0140",
+                "datapoint": 459792,
+                "operand_reference_id": 173533
+              },
+              {
+                "x": 2,
+                "row": "0190",
+                "datapoint": 459789,
+                "operand_reference_id": 173537
+              },
+              {
+                "x": 3,
+                "row": "0200",
+                "datapoint": 33336,
+                "operand_reference_id": 173541
+              },
+              {
+                "x": 4,
+                "row": "0210",
+                "datapoint": 33337,
+                "operand_reference_id": 173545
+              },
+              {
+                "x": 5,
+                "row": "0220",
+                "datapoint": 33334,
+                "operand_reference_id": 173550
+              },
+              {
+                "x": 6,
+                "row": "0230",
+                "datapoint": 459801,
+                "operand_reference_id": 173554
+              },
+              {
+                "x": 7,
+                "row": "0240",
+                "datapoint": 459802,
+                "operand_reference_id": 173559
+              },
+              {
+                "x": 8,
+                "row": "0285",
+                "datapoint": 459804,
+                "operand_reference_id": 173564
+              },
+              {
+                "x": 9,
+                "row": "0330",
+                "datapoint": 459791,
+                "operand_reference_id": 173569
+              },
+              {
+                "x": 10,
+                "row": "0450",
+                "datapoint": 459793,
+                "operand_reference_id": 173574
+              }
+            ],
+            "table": "I_01.01",
+            "column": "0010",
+            "interval": false
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 0
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v10985_h": {
+        "version_id": 5477,
+        "code": "v10985_h",
+        "expression": "with {tI_01.01, c0010, default: 0, interval: true}: {r0010} = + {r0300} + {r0030} + {r0420}",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 33413,
+                "operand_reference_id": 174054
+              }
+            ],
+            "table": "I_01.01",
+            "row": "0010",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "BinOp",
+            "op": "+",
+            "left": {
+              "class_name": "BinOp",
+              "op": "+",
+              "left": {
+                "class_name": "UnaryOp",
+                "op": "+",
+                "operand": {
+                  "class_name": "VarID",
+                  "data": [
+                    {
+                      "datapoint": 33410,
+                      "operand_reference_id": 174058
+                    }
+                  ],
+                  "table": "I_01.01",
+                  "row": "0300",
+                  "column": "0010",
+                  "default": 0,
+                  "interval": true
+                }
+              },
+              "right": {
+                "class_name": "VarID",
+                "data": [
+                  {
+                    "datapoint": 33411,
+                    "operand_reference_id": 174063
+                  }
+                ],
+                "table": "I_01.01",
+                "row": "0030",
+                "column": "0010",
+                "default": 0,
+                "interval": true
+              }
+            },
+            "right": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 33412,
+                  "operand_reference_id": 174069
+                }
+              ],
+              "table": "I_01.01",
+              "row": "0420",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            }
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v10993_s": {
+        "version_id": 5484,
+        "code": "v10993_s",
+        "expression": "with {tI_09.01, c0010, default: null, interval: false}: {r*} >= 0",
+        "root_operator_id": 15,
+        "ast": {
+          "class_name": "BinOp",
+          "op": ">=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "x": 1,
+                "row": "0010",
+                "datapoint": 460136,
+                "operand_reference_id": 175731
+              },
+              {
+                "x": 2,
+                "row": "0020",
+                "datapoint": 460135,
+                "operand_reference_id": 175737
+              },
+              {
+                "x": 3,
+                "row": "0030",
+                "datapoint": 145637,
+                "operand_reference_id": 175743
+              }
+            ],
+            "table": "I_09.01",
+            "column": "0010",
+            "interval": false
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 0
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v10999_s": {
+        "version_id": 5490,
+        "code": "v10999_s",
+        "expression": "with {tI_03.01, c0010, default: null, interval: false}: {(r0010, r0020, r0030, r0040, r0200)} >= 0",
+        "root_operator_id": 15,
+        "ast": {
+          "class_name": "BinOp",
+          "op": ">=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "x": 1,
+                "row": "0010",
+                "datapoint": 441393,
+                "operand_reference_id": 176665
+              },
+              {
+                "x": 2,
+                "row": "0020",
+                "datapoint": 441371,
+                "operand_reference_id": 176669
+              },
+              {
+                "x": 3,
+                "row": "0030",
+                "datapoint": 441372,
+                "operand_reference_id": 176673
+              },
+              {
+                "x": 4,
+                "row": "0040",
+                "datapoint": 441373,
+                "operand_reference_id": 176678
+              },
+              {
+                "x": 5,
+                "row": "0200",
+                "datapoint": 441388,
+                "operand_reference_id": 176683
+              }
+            ],
+            "table": "I_03.01",
+            "column": "0010",
+            "interval": false
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 0
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11000_s": {
+        "version_id": 5491,
+        "code": "v11000_s",
+        "expression": "with {tI_05.00, default: null, interval: false}: {r0130, c0010} <= 0",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459785,
+                "operand_reference_id": 176813
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0130",
+            "column": "0010",
+            "interval": false
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 0
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11120_m": {
+        "version_id": 5514,
+        "code": "v11120_m",
+        "expression": "with {c0010, default: 0, interval: true}: {tI_05.00, r0050} = {tI_04.00, r0040} + {tI_04.00, r0050}",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 460095,
+                "operand_reference_id": 180719
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0050",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "BinOp",
+            "op": "+",
+            "left": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 441417,
+                  "operand_reference_id": 180722
+                }
+              ],
+              "table": "I_04.00",
+              "row": "0040",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            },
+            "right": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 441418,
+                  "operand_reference_id": 180724
+                }
+              ],
+              "table": "I_04.00",
+              "row": "0050",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            }
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11121_m": {
+        "version_id": 5515,
+        "code": "v11121_m",
+        "expression": "with {c0010, default: 0, interval: true}: {tI_05.00, r0060} = {tI_04.00, r0140} + {tI_04.00, r0150}",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 460063,
+                "operand_reference_id": 180824
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0060",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "BinOp",
+            "op": "+",
+            "left": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 441414,
+                  "operand_reference_id": 180828
+                }
+              ],
+              "table": "I_04.00",
+              "row": "0140",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            },
+            "right": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 441416,
+                  "operand_reference_id": 180830
+                }
+              ],
+              "table": "I_04.00",
+              "row": "0150",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            }
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11122_m": {
+        "version_id": 5516,
+        "code": "v11122_m",
+        "expression": "with {c0010, default: 0, interval: true}: {tI_02.04, r0020} = {tI_01.01, r0030} - ({tI_02.03, r0130} * 0.56 )",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 33280,
+                "operand_reference_id": 181083
+              }
+            ],
+            "table": "I_02.04",
+            "row": "0020",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "BinOp",
+            "op": "-",
+            "left": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 33411,
+                  "operand_reference_id": 181091
+                }
+              ],
+              "table": "I_01.01",
+              "row": "0030",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            },
+            "right": {
+              "class_name": "ParExpr",
+              "expression": {
+                "class_name": "BinOp",
+                "op": "*",
+                "left": {
+                  "class_name": "VarID",
+                  "data": [
+                    {
+                      "datapoint": 459986,
+                      "operand_reference_id": 181100
+                    }
+                  ],
+                  "table": "I_02.03",
+                  "row": "0130",
+                  "column": "0010",
+                  "default": 0,
+                  "interval": true
+                },
+                "right": {
+                  "class_name": "Constant",
+                  "type_": "Number",
+                  "value": 0.56
+                }
+              }
+            }
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11123_m": {
+        "version_id": 5517,
+        "code": "v11123_m",
+        "expression": "with {c0010, default: 0, interval: true}: {tI_02.04, r0040} = {tI_01.01, r0020} - ({tI_02.03, r0130} * 0.75 )",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 33281,
+                "operand_reference_id": 181408
+              }
+            ],
+            "table": "I_02.04",
+            "row": "0040",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "BinOp",
+            "op": "-",
+            "left": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 84817,
+                  "operand_reference_id": 181416
+                }
+              ],
+              "table": "I_01.01",
+              "row": "0020",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            },
+            "right": {
+              "class_name": "ParExpr",
+              "expression": {
+                "class_name": "BinOp",
+                "op": "*",
+                "left": {
+                  "class_name": "VarID",
+                  "data": [
+                    {
+                      "datapoint": 459986,
+                      "operand_reference_id": 181423
+                    }
+                  ],
+                  "table": "I_02.03",
+                  "row": "0130",
+                  "column": "0010",
+                  "default": 0,
+                  "interval": true
+                },
+                "right": {
+                  "class_name": "Constant",
+                  "type_": "Number",
+                  "value": 0.75
+                }
+              }
+            }
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11124_m": {
+        "version_id": 5518,
+        "code": "v11124_m",
+        "expression": "with {c0010, default: 0, interval: true}: {tI_02.04, r0060} = {tI_01.01, r0010} - {tI_02.03, r0130}",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 33282,
+                "operand_reference_id": 181688
+              }
+            ],
+            "table": "I_02.04",
+            "row": "0060",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "BinOp",
+            "op": "-",
+            "left": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 33413,
+                  "operand_reference_id": 181693
+                }
+              ],
+              "table": "I_01.01",
+              "row": "0010",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            },
+            "right": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 459986,
+                  "operand_reference_id": 181696
+                }
+              ],
+              "table": "I_02.03",
+              "row": "0130",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            }
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11125_m": {
+        "version_id": 5519,
+        "code": "v11125_m",
+        "expression": "with {tI_02.03, c0010, default: 0, interval: true}: {r0130} = {r0010} + {r0110}",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459986,
+                "operand_reference_id": 181826
+              }
+            ],
+            "table": "I_02.03",
+            "row": "0130",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "BinOp",
+            "op": "+",
+            "left": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 441408,
+                  "operand_reference_id": 181830
+                }
+              ],
+              "table": "I_02.03",
+              "row": "0010",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            },
+            "right": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 459992,
+                  "operand_reference_id": 181834
+                }
+              ],
+              "table": "I_02.03",
+              "row": "0110",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            }
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11127_m": {
+        "version_id": 5521,
+        "code": "v11127_m",
+        "expression": "with {tI_01.01, c0010, default: 0, interval: true}: {r0300} = {r0310} + {r0320} + {r0330} + {r0410}",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 33410,
+                "operand_reference_id": 182414
+              }
+            ],
+            "table": "I_01.01",
+            "row": "0300",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "BinOp",
+            "op": "+",
+            "left": {
+              "class_name": "BinOp",
+              "op": "+",
+              "left": {
+                "class_name": "BinOp",
+                "op": "+",
+                "left": {
+                  "class_name": "VarID",
+                  "data": [
+                    {
+                      "datapoint": 459761,
+                      "operand_reference_id": 182419
+                    }
+                  ],
+                  "table": "I_01.01",
+                  "row": "0310",
+                  "column": "0010",
+                  "default": 0,
+                  "interval": true
+                },
+                "right": {
+                  "class_name": "VarID",
+                  "data": [
+                    {
+                      "datapoint": 459760,
+                      "operand_reference_id": 182424
+                    }
+                  ],
+                  "table": "I_01.01",
+                  "row": "0320",
+                  "column": "0010",
+                  "default": 0,
+                  "interval": true
+                }
+              },
+              "right": {
+                "class_name": "VarID",
+                "data": [
+                  {
+                    "datapoint": 459791,
+                    "operand_reference_id": 182430
+                  }
+                ],
+                "table": "I_01.01",
+                "row": "0330",
+                "column": "0010",
+                "default": 0,
+                "interval": true
+              }
+            },
+            "right": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 459805,
+                  "operand_reference_id": 182435
+                }
+              ],
+              "table": "I_01.01",
+              "row": "0410",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            }
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11131_m": {
+        "version_id": 5525,
+        "code": "v11131_m",
+        "expression": "with {tI_01.01, c0010, default: 0, interval: true}: {r0420} = {r0430} + {r0440} + {r0450} + {r0520}",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 33412,
+                "operand_reference_id": 183227
+              }
+            ],
+            "table": "I_01.01",
+            "row": "0420",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "BinOp",
+            "op": "+",
+            "left": {
+              "class_name": "BinOp",
+              "op": "+",
+              "left": {
+                "class_name": "BinOp",
+                "op": "+",
+                "left": {
+                  "class_name": "VarID",
+                  "data": [
+                    {
+                      "datapoint": 459758,
+                      "operand_reference_id": 183230
+                    }
+                  ],
+                  "table": "I_01.01",
+                  "row": "0430",
+                  "column": "0010",
+                  "default": 0,
+                  "interval": true
+                },
+                "right": {
+                  "class_name": "VarID",
+                  "data": [
+                    {
+                      "datapoint": 459759,
+                      "operand_reference_id": 183232
+                    }
+                  ],
+                  "table": "I_01.01",
+                  "row": "0440",
+                  "column": "0010",
+                  "default": 0,
+                  "interval": true
+                }
+              },
+              "right": {
+                "class_name": "VarID",
+                "data": [
+                  {
+                    "datapoint": 459793,
+                    "operand_reference_id": 183235
+                  }
+                ],
+                "table": "I_01.01",
+                "row": "0450",
+                "column": "0010",
+                "default": 0,
+                "interval": true
+              }
+            },
+            "right": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 459807,
+                  "operand_reference_id": 183238
+                }
+              ],
+              "table": "I_01.01",
+              "row": "0520",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            }
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11135_m": {
+        "version_id": 5529,
+        "code": "v11135_m",
+        "expression": "with {tI_01.01, c0010, default: 0, interval: true}: {r0140} = {r0190} + {r0200} + {r0210} + {r0220} + {r0230} + {r0240} + {r0285}",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459792,
+                "operand_reference_id": 184003
+              }
+            ],
+            "table": "I_01.01",
+            "row": "0140",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "BinOp",
+            "op": "+",
+            "left": {
+              "class_name": "BinOp",
+              "op": "+",
+              "left": {
+                "class_name": "BinOp",
+                "op": "+",
+                "left": {
+                  "class_name": "BinOp",
+                  "op": "+",
+                  "left": {
+                    "class_name": "BinOp",
+                    "op": "+",
+                    "left": {
+                      "class_name": "BinOp",
+                      "op": "+",
+                      "left": {
+                        "class_name": "VarID",
+                        "data": [
+                          {
+                            "datapoint": 459789,
+                            "operand_reference_id": 184005
+                          }
+                        ],
+                        "table": "I_01.01",
+                        "row": "0190",
+                        "column": "0010",
+                        "default": 0,
+                        "interval": true
+                      },
+                      "right": {
+                        "class_name": "VarID",
+                        "data": [
+                          {
+                            "datapoint": 33336,
+                            "operand_reference_id": 184008
+                          }
+                        ],
+                        "table": "I_01.01",
+                        "row": "0200",
+                        "column": "0010",
+                        "default": 0,
+                        "interval": true
+                      }
+                    },
+                    "right": {
+                      "class_name": "VarID",
+                      "data": [
+                        {
+                          "datapoint": 33337,
+                          "operand_reference_id": 184010
+                        }
+                      ],
+                      "table": "I_01.01",
+                      "row": "0210",
+                      "column": "0010",
+                      "default": 0,
+                      "interval": true
+                    }
+                  },
+                  "right": {
+                    "class_name": "VarID",
+                    "data": [
+                      {
+                        "datapoint": 33334,
+                        "operand_reference_id": 184012
+                      }
+                    ],
+                    "table": "I_01.01",
+                    "row": "0220",
+                    "column": "0010",
+                    "default": 0,
+                    "interval": true
+                  }
+                },
+                "right": {
+                  "class_name": "VarID",
+                  "data": [
+                    {
+                      "datapoint": 459801,
+                      "operand_reference_id": 184015
+                    }
+                  ],
+                  "table": "I_01.01",
+                  "row": "0230",
+                  "column": "0010",
+                  "default": 0,
+                  "interval": true
+                }
+              },
+              "right": {
+                "class_name": "VarID",
+                "data": [
+                  {
+                    "datapoint": 459802,
+                    "operand_reference_id": 184017
+                  }
+                ],
+                "table": "I_01.01",
+                "row": "0240",
+                "column": "0010",
+                "default": 0,
+                "interval": true
+              }
+            },
+            "right": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 459804,
+                  "operand_reference_id": 184019
+                }
+              ],
+              "table": "I_01.01",
+              "row": "0285",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            }
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11137_m": {
+        "version_id": 5531,
+        "code": "v11137_m",
+        "expression": "with {tI_03.01, c0010, default: 0, interval: true}: {r0010} >= {r0020} * 0.25",
+        "root_operator_id": 15,
+        "ast": {
+          "class_name": "BinOp",
+          "op": ">=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 441393,
+                "operand_reference_id": 184164
+              }
+            ],
+            "table": "I_03.01",
+            "row": "0010",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "BinOp",
+            "op": "*",
+            "left": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 441371,
+                  "operand_reference_id": 184166
+                }
+              ],
+              "table": "I_03.01",
+              "row": "0020",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            },
+            "right": {
+              "class_name": "Constant",
+              "type_": "Number",
+              "value": 0.25
+            }
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11141_m": {
+        "version_id": 5535,
+        "code": "v11141_m",
+        "expression": "with {r0010, c0010, default: 0, interval: true}: {tI_09.01} >= {tI_03.01} * ( 1 / 3 )",
+        "root_operator_id": 15,
+        "ast": {
+          "class_name": "BinOp",
+          "op": ">=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 460136,
+                "operand_reference_id": 184784
+              }
+            ],
+            "table": "I_09.01",
+            "row": "0010",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "BinOp",
+            "op": "*",
+            "left": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 441393,
+                  "operand_reference_id": 184787
+                }
+              ],
+              "table": "I_03.01",
+              "row": "0010",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            },
+            "right": {
+              "class_name": "ParExpr",
+              "expression": {
+                "class_name": "BinOp",
+                "op": "/",
+                "left": {
+                  "class_name": "Constant",
+                  "type_": "Integer",
+                  "value": 1
+                },
+                "right": {
+                  "class_name": "Constant",
+                  "type_": "Integer",
+                  "value": 3
+                }
+              }
+            }
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11143_m": {
+        "version_id": 5537,
+        "code": "v11143_m",
+        "expression": "with {tI_02.03, c0010, default: 0, interval: true}: {r0010} = max( {r0020}, {r0030} )",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 441408,
+                "operand_reference_id": 184921
+              }
+            ],
+            "table": "I_02.03",
+            "row": "0010",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "ComplexNumericOp",
+            "op": "max",
+            "operands": [
+              {
+                "class_name": "VarID",
+                "data": [
+                  {
+                    "datapoint": 441396,
+                    "operand_reference_id": 184925
+                  }
+                ],
+                "table": "I_02.03",
+                "row": "0020",
+                "column": "0010",
+                "default": 0,
+                "interval": true
+              },
+              {
+                "class_name": "VarID",
+                "data": [
+                  {
+                    "datapoint": 441393,
+                    "operand_reference_id": 184929
+                  }
+                ],
+                "table": "I_02.03",
+                "row": "0030",
+                "column": "0010",
+                "default": 0,
+                "interval": true
+              }
+            ]
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11145_m": {
+        "version_id": 5539,
+        "code": "v11145_m",
+        "expression": "with {tI_03.01, c0010, default: 0, interval: true}: {r0040} <= {r0030}",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 441373,
+                "operand_reference_id": 185116
+              }
+            ],
+            "table": "I_03.01",
+            "row": "0040",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 441372,
+                "operand_reference_id": 185123
+              }
+            ],
+            "table": "I_03.01",
+            "row": "0030",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11146_m": {
+        "version_id": 5540,
+        "code": "v11146_m",
+        "expression": "with {tI_05.00, c0010, default: 0, interval: true}: {r0140} <= {r0110}",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459769,
+                "operand_reference_id": 185309
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0140",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459767,
+                "operand_reference_id": 185315
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0110",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11147_m": {
+        "version_id": 5541,
+        "code": "v11147_m",
+        "expression": "with {tI_05.00, c0010, default: 0, interval: true}: {r0150} <= {r0110}",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459770,
+                "operand_reference_id": 185482
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0150",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459767,
+                "operand_reference_id": 185487
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0110",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11148_m": {
+        "version_id": 5542,
+        "code": "v11148_m",
+        "expression": "with {tI_05.00, c0010, default: 0, interval: true}: {r0160} <= {r0110}",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459771,
+                "operand_reference_id": 185620
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0160",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459767,
+                "operand_reference_id": 185625
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0110",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11149_m": {
+        "version_id": 5543,
+        "code": "v11149_m",
+        "expression": "with {tI_05.00, c0010, default: 0, interval: true}: {r0170} <= {r0110}",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459772,
+                "operand_reference_id": 185753
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0170",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459767,
+                "operand_reference_id": 185755
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0110",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11150_m": {
+        "version_id": 5544,
+        "code": "v11150_m",
+        "expression": "with {tI_05.00, c0010, default: 0, interval: true}: {r0180} <= {r0110}",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459773,
+                "operand_reference_id": 185803
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0180",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459767,
+                "operand_reference_id": 185807
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0110",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11151_m": {
+        "version_id": 5545,
+        "code": "v11151_m",
+        "expression": "with {tI_05.00, c0010, default: 0, interval: true}: {r0190} <= {r0110}",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459774,
+                "operand_reference_id": 185873
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0190",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459767,
+                "operand_reference_id": 185877
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0110",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11152_m": {
+        "version_id": 5546,
+        "code": "v11152_m",
+        "expression": "with {tI_05.00, c0010, default: 0, interval: true}: {r0200} <= {r0110}",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459775,
+                "operand_reference_id": 185974
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0200",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459767,
+                "operand_reference_id": 185977
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0110",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11153_m": {
+        "version_id": 5547,
+        "code": "v11153_m",
+        "expression": "with {tI_05.00, c0010, default: 0, interval: true}: {r0210} <= {r0110}",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459776,
+                "operand_reference_id": 186085
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0210",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459767,
+                "operand_reference_id": 186088
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0110",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11154_m": {
+        "version_id": 5548,
+        "code": "v11154_m",
+        "expression": "with {tI_05.00, c0010, default: 0, interval: true}: {r0220} <= {r0110}",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459777,
+                "operand_reference_id": 186199
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0220",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459767,
+                "operand_reference_id": 186204
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0110",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11155_m": {
+        "version_id": 5549,
+        "code": "v11155_m",
+        "expression": "with {tI_05.00, c0010, default: 0, interval: true}: {r0230} <= {r0110}",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459778,
+                "operand_reference_id": 186299
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0230",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459767,
+                "operand_reference_id": 186304
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0110",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11156_m": {
+        "version_id": 5550,
+        "code": "v11156_m",
+        "expression": "with {tI_05.00, c0010, default: 0, interval: true}: {r0240} <= {r0110}",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459779,
+                "operand_reference_id": 186418
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0240",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459767,
+                "operand_reference_id": 186424
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0110",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11157_m": {
+        "version_id": 5551,
+        "code": "v11157_m",
+        "expression": "with {tI_05.00, c0010, default: 0, interval: true}: {r0250} <= {r0110}",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459780,
+                "operand_reference_id": 186550
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0250",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459767,
+                "operand_reference_id": 186556
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0110",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11158_m": {
+        "version_id": 5552,
+        "code": "v11158_m",
+        "expression": "with {tI_05.00, c0010, default: 0, interval: true}: {r0260} <= {r0110}",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459768,
+                "operand_reference_id": 186701
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0260",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459767,
+                "operand_reference_id": 186704
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0110",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11159_m": {
+        "version_id": 5553,
+        "code": "v11159_m",
+        "expression": "with {tI_05.00, c0010, default: 0, interval: true}: {r0270} <= {r0110}",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459781,
+                "operand_reference_id": 186777
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0270",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459767,
+                "operand_reference_id": 186781
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0110",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11160_m": {
+        "version_id": 5554,
+        "code": "v11160_m",
+        "expression": "with {tI_05.00, c0010, default: 0, interval: true}: {r0280} <= {r0110}",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459782,
+                "operand_reference_id": 186841
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0280",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459767,
+                "operand_reference_id": 186843
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0110",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11161_m": {
+        "version_id": 5555,
+        "code": "v11161_m",
+        "expression": "with {tI_05.00, c0010, default: 0, interval: true}: {r0290} <= {r0110}",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459783,
+                "operand_reference_id": 186925
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0290",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459767,
+                "operand_reference_id": 186929
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0110",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11162_m": {
+        "version_id": 5556,
+        "code": "v11162_m",
+        "expression": "with {tI_05.00, c0010, default: 0, interval: true}: {r0110} >= {r0140} + {r0150} + {r0160} + {r0170} + {r0180} + {r0190} + {r0200} + {r0210} + {r0220} + {r0230} + {r0240} + {r0250} + {r0260} + {r0270} + {r0280} + {r0290}",
+        "root_operator_id": 15,
+        "ast": {
+          "class_name": "BinOp",
+          "op": ">=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459767,
+                "operand_reference_id": 187307
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0110",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "BinOp",
+            "op": "+",
+            "left": {
+              "class_name": "BinOp",
+              "op": "+",
+              "left": {
+                "class_name": "BinOp",
+                "op": "+",
+                "left": {
+                  "class_name": "BinOp",
+                  "op": "+",
+                  "left": {
+                    "class_name": "BinOp",
+                    "op": "+",
+                    "left": {
+                      "class_name": "BinOp",
+                      "op": "+",
+                      "left": {
+                        "class_name": "BinOp",
+                        "op": "+",
+                        "left": {
+                          "class_name": "BinOp",
+                          "op": "+",
+                          "left": {
+                            "class_name": "BinOp",
+                            "op": "+",
+                            "left": {
+                              "class_name": "BinOp",
+                              "op": "+",
+                              "left": {
+                                "class_name": "BinOp",
+                                "op": "+",
+                                "left": {
+                                  "class_name": "BinOp",
+                                  "op": "+",
+                                  "left": {
+                                    "class_name": "BinOp",
+                                    "op": "+",
+                                    "left": {
+                                      "class_name": "BinOp",
+                                      "op": "+",
+                                      "left": {
+                                        "class_name": "BinOp",
+                                        "op": "+",
+                                        "left": {
+                                          "class_name": "VarID",
+                                          "data": [
+                                            {
+                                              "datapoint": 459769,
+                                              "operand_reference_id": 187310
+                                            }
+                                          ],
+                                          "table": "I_05.00",
+                                          "row": "0140",
+                                          "column": "0010",
+                                          "default": 0,
+                                          "interval": true
+                                        },
+                                        "right": {
+                                          "class_name": "VarID",
+                                          "data": [
+                                            {
+                                              "datapoint": 459770,
+                                              "operand_reference_id": 187314
+                                            }
+                                          ],
+                                          "table": "I_05.00",
+                                          "row": "0150",
+                                          "column": "0010",
+                                          "default": 0,
+                                          "interval": true
+                                        }
+                                      },
+                                      "right": {
+                                        "class_name": "VarID",
+                                        "data": [
+                                          {
+                                            "datapoint": 459771,
+                                            "operand_reference_id": 187318
+                                          }
+                                        ],
+                                        "table": "I_05.00",
+                                        "row": "0160",
+                                        "column": "0010",
+                                        "default": 0,
+                                        "interval": true
+                                      }
+                                    },
+                                    "right": {
+                                      "class_name": "VarID",
+                                      "data": [
+                                        {
+                                          "datapoint": 459772,
+                                          "operand_reference_id": 187322
+                                        }
+                                      ],
+                                      "table": "I_05.00",
+                                      "row": "0170",
+                                      "column": "0010",
+                                      "default": 0,
+                                      "interval": true
+                                    }
+                                  },
+                                  "right": {
+                                    "class_name": "VarID",
+                                    "data": [
+                                      {
+                                        "datapoint": 459773,
+                                        "operand_reference_id": 187326
+                                      }
+                                    ],
+                                    "table": "I_05.00",
+                                    "row": "0180",
+                                    "column": "0010",
+                                    "default": 0,
+                                    "interval": true
+                                  }
+                                },
+                                "right": {
+                                  "class_name": "VarID",
+                                  "data": [
+                                    {
+                                      "datapoint": 459774,
+                                      "operand_reference_id": 187330
+                                    }
+                                  ],
+                                  "table": "I_05.00",
+                                  "row": "0190",
+                                  "column": "0010",
+                                  "default": 0,
+                                  "interval": true
+                                }
+                              },
+                              "right": {
+                                "class_name": "VarID",
+                                "data": [
+                                  {
+                                    "datapoint": 459775,
+                                    "operand_reference_id": 187334
+                                  }
+                                ],
+                                "table": "I_05.00",
+                                "row": "0200",
+                                "column": "0010",
+                                "default": 0,
+                                "interval": true
+                              }
+                            },
+                            "right": {
+                              "class_name": "VarID",
+                              "data": [
+                                {
+                                  "datapoint": 459776,
+                                  "operand_reference_id": 187338
+                                }
+                              ],
+                              "table": "I_05.00",
+                              "row": "0210",
+                              "column": "0010",
+                              "default": 0,
+                              "interval": true
+                            }
+                          },
+                          "right": {
+                            "class_name": "VarID",
+                            "data": [
+                              {
+                                "datapoint": 459777,
+                                "operand_reference_id": 187342
+                              }
+                            ],
+                            "table": "I_05.00",
+                            "row": "0220",
+                            "column": "0010",
+                            "default": 0,
+                            "interval": true
+                          }
+                        },
+                        "right": {
+                          "class_name": "VarID",
+                          "data": [
+                            {
+                              "datapoint": 459778,
+                              "operand_reference_id": 187345
+                            }
+                          ],
+                          "table": "I_05.00",
+                          "row": "0230",
+                          "column": "0010",
+                          "default": 0,
+                          "interval": true
+                        }
+                      },
+                      "right": {
+                        "class_name": "VarID",
+                        "data": [
+                          {
+                            "datapoint": 459779,
+                            "operand_reference_id": 187348
+                          }
+                        ],
+                        "table": "I_05.00",
+                        "row": "0240",
+                        "column": "0010",
+                        "default": 0,
+                        "interval": true
+                      }
+                    },
+                    "right": {
+                      "class_name": "VarID",
+                      "data": [
+                        {
+                          "datapoint": 459780,
+                          "operand_reference_id": 187351
+                        }
+                      ],
+                      "table": "I_05.00",
+                      "row": "0250",
+                      "column": "0010",
+                      "default": 0,
+                      "interval": true
+                    }
+                  },
+                  "right": {
+                    "class_name": "VarID",
+                    "data": [
+                      {
+                        "datapoint": 459768,
+                        "operand_reference_id": 187354
+                      }
+                    ],
+                    "table": "I_05.00",
+                    "row": "0260",
+                    "column": "0010",
+                    "default": 0,
+                    "interval": true
+                  }
+                },
+                "right": {
+                  "class_name": "VarID",
+                  "data": [
+                    {
+                      "datapoint": 459781,
+                      "operand_reference_id": 187357
+                    }
+                  ],
+                  "table": "I_05.00",
+                  "row": "0270",
+                  "column": "0010",
+                  "default": 0,
+                  "interval": true
+                }
+              },
+              "right": {
+                "class_name": "VarID",
+                "data": [
+                  {
+                    "datapoint": 459782,
+                    "operand_reference_id": 187360
+                  }
+                ],
+                "table": "I_05.00",
+                "row": "0280",
+                "column": "0010",
+                "default": 0,
+                "interval": true
+              }
+            },
+            "right": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 459783,
+                  "operand_reference_id": 187363
+                }
+              ],
+              "table": "I_05.00",
+              "row": "0290",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            }
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11163_m": {
+        "version_id": 5557,
+        "code": "v11163_m",
+        "expression": "with {tI_05.00, c0010, default: 0, interval: true}: {r0120} = {r0110} + {r0130}",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 459784,
+                "operand_reference_id": 187458
+              }
+            ],
+            "table": "I_05.00",
+            "row": "0120",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "BinOp",
+            "op": "+",
+            "left": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 459767,
+                  "operand_reference_id": 187462
+                }
+              ],
+              "table": "I_05.00",
+              "row": "0110",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            },
+            "right": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 459785,
+                  "operand_reference_id": 187465
+                }
+              ],
+              "table": "I_05.00",
+              "row": "0130",
+              "column": "0010",
+              "default": 0,
+              "interval": true
+            }
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      },
+      "v11198_s": {
+        "version_id": 5588,
+        "code": "v11198_s",
+        "expression": "with {tI_03.01, c0010, default: null, interval: false}: {r0050-0190} <= 0",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "x": 1,
+                "row": "0050",
+                "datapoint": 441376,
+                "operand_reference_id": 197727
+              },
+              {
+                "x": 2,
+                "row": "0060",
+                "datapoint": 441370,
+                "operand_reference_id": 197731
+              },
+              {
+                "x": 3,
+                "row": "0070",
+                "datapoint": 441377,
+                "operand_reference_id": 197735
+              },
+              {
+                "x": 4,
+                "row": "0080",
+                "datapoint": 441378,
+                "operand_reference_id": 197739
+              },
+              {
+                "x": 5,
+                "row": "0090",
+                "datapoint": 441379,
+                "operand_reference_id": 197744
+              },
+              {
+                "x": 6,
+                "row": "0100",
+                "datapoint": 441380,
+                "operand_reference_id": 197749
+              },
+              {
+                "x": 7,
+                "row": "0110",
+                "datapoint": 441381,
+                "operand_reference_id": 197756
+              },
+              {
+                "x": 8,
+                "row": "0130",
+                "datapoint": 441383,
+                "operand_reference_id": 197761
+              },
+              {
+                "x": 9,
+                "row": "0140",
+                "datapoint": 441384,
+                "operand_reference_id": 197768
+              },
+              {
+                "x": 10,
+                "row": "0150",
+                "datapoint": 441385,
+                "operand_reference_id": 197773
+              },
+              {
+                "x": 11,
+                "row": "0160",
+                "datapoint": 441386,
+                "operand_reference_id": 197778
+              },
+              {
+                "x": 12,
+                "row": "0170",
+                "datapoint": 441387,
+                "operand_reference_id": 197783
+              },
+              {
+                "x": 13,
+                "row": "0180",
+                "datapoint": 459786,
+                "operand_reference_id": 197789
+              },
+              {
+                "x": 14,
+                "row": "0190",
+                "datapoint": 459787,
+                "operand_reference_id": 197797
+              }
+            ],
+            "table": "I_03.01",
+            "column": "0010",
+            "interval": false
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 0
+          }
+        },
+        "from_submission_date": "2023-06-30",
+        "severity": "warning"
+      }
+    },
+    "variables": {
+      "32673": "m",
+      "32677": "m",
+      "32678": "m",
+      "32679": "m",
+      "32681": "m",
+      "33280": "m",
+      "33281": "m",
+      "33282": "m",
+      "33293": "m",
+      "33309": "m",
+      "33329": "m",
+      "33334": "m",
+      "33336": "m",
+      "33337": "m",
+      "33410": "m",
+      "33411": "m",
+      "33412": "m",
+      "33413": "m",
+      "84817": "m",
+      "85151": "p",
+      "85152": "p",
+      "145637": "m",
+      "441370": "m",
+      "441371": "m",
+      "441372": "m",
+      "441373": "m",
+      "441376": "m",
+      "441377": "m",
+      "441378": "m",
+      "441379": "m",
+      "441380": "m",
+      "441381": "m",
+      "441383": "m",
+      "441384": "m",
+      "441385": "m",
+      "441386": "m",
+      "441387": "m",
+      "441388": "m",
+      "441393": "m",
+      "441396": "m",
+      "441408": "m",
+      "441420": "m",
+      "441421": "m",
+      "441423": "p",
+      "459758": "m",
+      "459759": "m",
+      "459760": "m",
+      "459761": "m",
+      "459766": "m",
+      "459767": "m",
+      "459768": "m",
+      "459769": "m",
+      "459770": "m",
+      "459771": "m",
+      "459772": "m",
+      "459773": "m",
+      "459774": "m",
+      "459775": "m",
+      "459776": "m",
+      "459777": "m",
+      "459778": "m",
+      "459779": "m",
+      "459780": "m",
+      "459781": "m",
+      "459782": "m",
+      "459783": "m",
+      "459784": "m",
+      "459785": "m",
+      "459786": "m",
+      "459787": "m",
+      "459788": "m",
+      "459789": "m",
+      "459791": "m",
+      "459792": "m",
+      "459793": "m",
+      "459794": "m",
+      "459801": "m",
+      "459802": "m",
+      "459804": "m",
+      "459805": "m",
+      "459806": "m",
+      "459807": "m",
+      "459986": "m",
+      "459987": "m",
+      "459988": "m",
+      "459989": "m",
+      "459990": "m",
+      "459991": "m",
+      "459992": "m",
+      "460042": "m",
+      "460057": "m",
+      "460063": "m",
+      "460091": "m",
+      "460095": "m",
+      "460098": "m",
+      "460099": "m",
+      "460100": "p",
+      "460135": "m",
+      "460136": "m"
+    },
+    "tables": {
+      "I_01.01": {
+        "variables": {
+          "32673": "m",
+          "32677": "m",
+          "32678": "m",
+          "32679": "m",
+          "32681": "m",
+          "33293": "m",
+          "33309": "m",
+          "33329": "m",
+          "33334": "m",
+          "33336": "m",
+          "33337": "m",
+          "33410": "m",
+          "33411": "m",
+          "33412": "m",
+          "33413": "m",
+          "84817": "m",
+          "459758": "m",
+          "459759": "m",
+          "459760": "m",
+          "459761": "m",
+          "459788": "m",
+          "459789": "m",
+          "459791": "m",
+          "459792": "m",
+          "459793": "m",
+          "459794": "m",
+          "459801": "m",
+          "459802": "m",
+          "459804": "m",
+          "459805": "m",
+          "459806": "m",
+          "459807": "m"
+        },
+        "open_keys": {}
+      },
+      "I_02.03": {
+        "variables": {
+          "441393": "m",
+          "441396": "m",
+          "441408": "m",
+          "459986": "m",
+          "459987": "m",
+          "459988": "m",
+          "459989": "m",
+          "459990": "m",
+          "459991": "m",
+          "459992": "m"
+        },
+        "open_keys": {}
+      },
+      "I_02.04": {
+        "variables": {
+          "33280": "m",
+          "33281": "m",
+          "33282": "m",
+          "85151": "p",
+          "85152": "p",
+          "460100": "p"
+        },
+        "open_keys": {}
+      },
+      "I_03.01": {
+        "variables": {
+          "441370": "m",
+          "441371": "m",
+          "441372": "m",
+          "441373": "m",
+          "441376": "m",
+          "441377": "m",
+          "441378": "m",
+          "441379": "m",
+          "441380": "m",
+          "441381": "m",
+          "441383": "m",
+          "441384": "m",
+          "441385": "m",
+          "441386": "m",
+          "441387": "m",
+          "441388": "m",
+          "441393": "m",
+          "441423": "p",
+          "459786": "m",
+          "459787": "m"
+        },
+        "open_keys": {}
+      },
+      "I_09.01": {
+        "variables": {
+          "145637": "m",
+          "460135": "m",
+          "460136": "m"
+        },
+        "open_keys": {}
+      },
+      "I_05.00": {
+        "variables": {
+          "441420": "m",
+          "441421": "m",
+          "459766": "m",
+          "459767": "m",
+          "459768": "m",
+          "459769": "m",
+          "459770": "m",
+          "459771": "m",
+          "459772": "m",
+          "459773": "m",
+          "459774": "m",
+          "459775": "m",
+          "459776": "m",
+          "459777": "m",
+          "459778": "m",
+          "459779": "m",
+          "459780": "m",
+          "459781": "m",
+          "459782": "m",
+          "459783": "m",
+          "459784": "m",
+          "459785": "m",
+          "460042": "m",
+          "460057": "m",
+          "460063": "m",
+          "460091": "m",
+          "460095": "m",
+          "460098": "m",
+          "460099": "m"
+        },
+        "open_keys": {}
+      }
+    },
+    "preconditions": {
+      "p_523": {
+        "ast": {
+          "class_name": "PreconditionItem",
+          "variable_id": 395437,
+          "variable_code": "I_01.01"
+        },
+        "affected_operations": [
+          "v10869_h",
+          "v10873_s",
+          "v10874_s",
+          "v10985_h",
+          "v11127_m",
+          "v11131_m",
+          "v11135_m"
+        ],
+        "version_id": 8293,
+        "code": "p_523"
+      },
+      "p_526": {
+        "ast": {
+          "class_name": "PreconditionItem",
+          "variable_id": 395440,
+          "variable_code": "I_02.03"
+        },
+        "affected_operations": [
+          "v10872_s",
+          "v11125_m",
+          "v11143_m"
+        ],
+        "version_id": 8296,
+        "code": "p_526"
+      },
+      "p_557": {
+        "ast": {
+          "class_name": "PreconditionItem",
+          "variable_id": 395467,
+          "variable_code": "I_09.01"
+        },
+        "affected_operations": [
+          "v10993_s"
+        ],
+        "version_id": 8327,
+        "code": "p_557"
+      },
+      "p_528": {
+        "ast": {
+          "class_name": "PreconditionItem",
+          "variable_id": 395443,
+          "variable_code": "I_03.01"
+        },
+        "affected_operations": [
+          "v10999_s",
+          "v11137_m",
+          "v11145_m",
+          "v11198_s"
+        ],
+        "version_id": 8298,
+        "code": "p_528"
+      },
+      "p_536": {
+        "ast": {
+          "class_name": "PreconditionItem",
+          "variable_id": 395445,
+          "variable_code": "I_05.00"
+        },
+        "affected_operations": [
+          "v11000_s",
+          "v11146_m",
+          "v11147_m",
+          "v11148_m",
+          "v11149_m",
+          "v11150_m",
+          "v11151_m",
+          "v11152_m",
+          "v11153_m",
+          "v11154_m",
+          "v11155_m",
+          "v11156_m",
+          "v11157_m",
+          "v11158_m",
+          "v11159_m",
+          "v11160_m",
+          "v11161_m",
+          "v11162_m",
+          "v11163_m"
+        ],
+        "version_id": 8306,
+        "code": "p_536"
+      },
+      "p_530": {
+        "ast": {
+          "class_name": "BinOp",
+          "op": "and",
+          "left": {
+            "class_name": "PreconditionItem",
+            "variable_id": 395444,
+            "variable_code": "I_04.00"
+          },
+          "right": {
+            "class_name": "PreconditionItem",
+            "variable_id": 395445,
+            "variable_code": "I_05.00"
+          }
+        },
+        "affected_operations": [
+          "v11120_m",
+          "v11121_m"
+        ],
+        "version_id": 8300,
+        "code": "p_530"
+      },
+      "p_524": {
+        "ast": {
+          "class_name": "BinOp",
+          "op": "and",
+          "left": {
+            "class_name": "BinOp",
+            "op": "and",
+            "left": {
+              "class_name": "PreconditionItem",
+              "variable_id": 395437,
+              "variable_code": "I_01.01"
+            },
+            "right": {
+              "class_name": "PreconditionItem",
+              "variable_id": 395441,
+              "variable_code": "I_02.04"
+            }
+          },
+          "right": {
+            "class_name": "PreconditionItem",
+            "variable_id": 395440,
+            "variable_code": "I_02.03"
+          }
+        },
+        "affected_operations": [
+          "v11122_m",
+          "v11123_m",
+          "v11124_m"
+        ],
+        "version_id": 8294,
+        "code": "p_524"
+      },
+      "p_558": {
+        "ast": {
+          "class_name": "BinOp",
+          "op": "and",
+          "left": {
+            "class_name": "PreconditionItem",
+            "variable_id": 395467,
+            "variable_code": "I_09.01"
+          },
+          "right": {
+            "class_name": "PreconditionItem",
+            "variable_id": 395443,
+            "variable_code": "I_03.01"
+          }
+        },
+        "affected_operations": [
+          "v11141_m"
+        ],
+        "version_id": 8328,
+        "code": "p_558"
+      }
+    },
+    "precondition_variables": {
+      "395437": "b",
+      "395440": "b",
+      "395467": "b",
+      "395443": "b",
+      "395445": "b",
+      "395444": "b",
+      "395441": "b"
+    },
+    "dependency_information": {
+      "intra_instance_validations": [
+        "v10869_h",
+        "v10872_s",
+        "v10873_s",
+        "v10874_s",
+        "v10985_h",
+        "v10993_s",
+        "v10999_s",
+        "v11000_s",
+        "v11122_m",
+        "v11123_m",
+        "v11124_m",
+        "v11125_m",
+        "v11127_m",
+        "v11131_m",
+        "v11135_m",
+        "v11137_m",
+        "v11141_m",
+        "v11143_m",
+        "v11145_m",
+        "v11146_m",
+        "v11147_m",
+        "v11148_m",
+        "v11149_m",
+        "v11150_m",
+        "v11151_m",
+        "v11152_m",
+        "v11153_m",
+        "v11154_m",
+        "v11155_m",
+        "v11156_m",
+        "v11157_m",
+        "v11158_m",
+        "v11159_m",
+        "v11160_m",
+        "v11161_m",
+        "v11162_m",
+        "v11163_m",
+        "v11198_s"
+      ],
+      "cross_instance_dependencies": [
+        {
+          "modules": [
+            {
+              "URI": "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/if/its-002-2021/2022-03-01/mod/if_class2",
+              "module_version": "1.2.0",
+              "ref_period": "T"
+            }
+          ],
+          "affected_operations": [
+            "v11120_m",
+            "v11121_m"
+          ],
+          "from_reference_date": "2023-06-30",
+          "to_reference_date": "2025-03-30"
+        }
+      ]
+    },
+    "dependency_modules": {
+      "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/if/its-002-2021/2022-03-01/mod/if_class2": {
+        "tables": {
+          "I_04.00": {
+            "variables": {
+              "441414": "m",
+              "441416": "m",
+              "441417": "m",
+              "441418": "m"
+            },
+            "open_keys": {}
+          }
+        },
+        "variables": {
+          "460095": "m",
+          "441417": "m",
+          "441418": "m",
+          "460063": "m",
+          "441414": "m",
+          "441416": "m"
+        }
+      }
+    }
+  }
+}

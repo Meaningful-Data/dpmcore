@@ -1,0 +1,71 @@
+{
+  "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/pillar3/4.1/mod/irrbbdis": {
+    "module_code": "IRRBBDIS",
+    "module_version": "1.0.0",
+    "framework_code": "PILLAR3",
+    "dpm_release": {
+      "release": "4.2.1",
+      "publication_date": "2026-03-17"
+    },
+    "dates": {
+      "from": "2025-06-30",
+      "to": "2026-03-30"
+    },
+    "operations": {},
+    "variables": {
+      "3525475": "m",
+      "3525476": "m",
+      "3525477": "m",
+      "3525478": "m",
+      "3525479": "m",
+      "3525480": "m",
+      "3525481": "m",
+      "3525482": "m",
+      "3525483": "m",
+      "3525484": "m",
+      "3525485": "m",
+      "3525486": "m",
+      "3525487": "m",
+      "3525488": "m",
+      "3525489": "m",
+      "3525490": "m",
+      "3531072": "s"
+    },
+    "tables": {
+      "K_68.00": {
+        "variables": {
+          "3525475": "m",
+          "3525476": "m",
+          "3525477": "m",
+          "3525478": "m",
+          "3525479": "m",
+          "3525480": "m",
+          "3525481": "m",
+          "3525482": "m",
+          "3525483": "m",
+          "3525484": "m",
+          "3525485": "m",
+          "3525486": "m",
+          "3525487": "m",
+          "3525488": "m",
+          "3525489": "m",
+          "3525490": "m"
+        },
+        "open_keys": {}
+      },
+      "K_00.04": {
+        "variables": {
+          "3531072": "s"
+        },
+        "open_keys": {}
+      }
+    },
+    "preconditions": {},
+    "precondition_variables": {},
+    "dependency_information": {
+      "intra_instance_validations": [],
+      "cross_instance_dependencies": []
+    },
+    "dependency_modules": {}
+  }
+}

@@ -1,0 +1,196 @@
+{
+  "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/ipu/dc-2022-441/2023-05-30/mod/ipu": {
+    "module_code": "IPU",
+    "module_version": "1.0.0",
+    "framework_code": "IPU",
+    "dpm_release": {
+      "release": "4.2.1",
+      "publication_date": "2026-03-17"
+    },
+    "dates": {
+      "from": "2023-12-31",
+      "to": "2026-03-30"
+    },
+    "operations": {
+      "v12763_s": {
+        "version_id": 6810,
+        "code": "v12763_s",
+        "expression": "with {tU_02.00, default: null, interval: false}: {c0150-0160} >= 0",
+        "root_operator_id": 15,
+        "ast": {
+          "class_name": "BinOp",
+          "op": ">=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "y": 1,
+                "column": "0150",
+                "datapoint": 475736,
+                "operand_reference_id": 258826
+              },
+              {
+                "y": 2,
+                "column": "0160",
+                "datapoint": 475737,
+                "operand_reference_id": 258829
+              }
+            ],
+            "table": "U_02.00",
+            "interval": false
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 0
+          }
+        },
+        "from_submission_date": "2023-12-31",
+        "severity": "warning"
+      },
+      "v12764_s": {
+        "version_id": 6811,
+        "code": "v12764_s",
+        "expression": "with {tU_01.00, default: null, interval: false}: {c0150-0160} >= 0",
+        "root_operator_id": 15,
+        "ast": {
+          "class_name": "BinOp",
+          "op": ">=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "y": 1,
+                "column": "0150",
+                "datapoint": 475736,
+                "operand_reference_id": 258894
+              },
+              {
+                "y": 2,
+                "column": "0160",
+                "datapoint": 475737,
+                "operand_reference_id": 258897
+              }
+            ],
+            "table": "U_01.00",
+            "interval": false
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 0
+          }
+        },
+        "from_submission_date": "2023-12-31",
+        "severity": "warning"
+      }
+    },
+    "variables": {
+      "475419": "e",
+      "475420": "e",
+      "475421": "s",
+      "475422": "s",
+      "475457": "s",
+      "475568": "s",
+      "475732": "d",
+      "475733": "e",
+      "475734": "e",
+      "475735": "b",
+      "475736": "m",
+      "475737": "m",
+      "475738": "s",
+      "475739": "s",
+      "475740": "e",
+      "475741": "b",
+      "475743": "e"
+    },
+    "tables": {
+      "U_01.00": {
+        "variables": {
+          "475419": "e",
+          "475420": "e",
+          "475421": "s",
+          "475422": "s",
+          "475457": "s",
+          "475568": "s",
+          "475732": "d",
+          "475733": "e",
+          "475734": "e",
+          "475735": "b",
+          "475736": "m",
+          "475737": "m",
+          "475738": "s",
+          "475739": "s",
+          "475741": "b",
+          "475743": "e"
+        },
+        "open_keys": {
+          "CLE": "e",
+          "TCG": "s"
+        }
+      },
+      "U_02.00": {
+        "variables": {
+          "475419": "e",
+          "475420": "e",
+          "475421": "s",
+          "475422": "s",
+          "475457": "s",
+          "475568": "s",
+          "475732": "d",
+          "475733": "e",
+          "475734": "e",
+          "475735": "b",
+          "475736": "m",
+          "475737": "m",
+          "475738": "s",
+          "475739": "s",
+          "475740": "e",
+          "475743": "e"
+        },
+        "open_keys": {
+          "CLE": "e",
+          "TCG": "s"
+        }
+      }
+    },
+    "preconditions": {
+      "p_773": {
+        "ast": {
+          "class_name": "PreconditionItem",
+          "variable_id": 395672,
+          "variable_code": "U_02.00"
+        },
+        "affected_operations": [
+          "v12763_s"
+        ],
+        "version_id": 8543,
+        "code": "p_773"
+      },
+      "p_771": {
+        "ast": {
+          "class_name": "PreconditionItem",
+          "variable_id": 395671,
+          "variable_code": "U_01.00"
+        },
+        "affected_operations": [
+          "v12764_s"
+        ],
+        "version_id": 8541,
+        "code": "p_771"
+      }
+    },
+    "precondition_variables": {
+      "395672": "b",
+      "395671": "b"
+    },
+    "dependency_information": {
+      "intra_instance_validations": [
+        "v12763_s",
+        "v12764_s"
+      ],
+      "cross_instance_dependencies": []
+    },
+    "dependency_modules": {}
+  }
+}

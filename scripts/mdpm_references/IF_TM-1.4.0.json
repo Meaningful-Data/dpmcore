@@ -1,0 +1,724 @@
+{
+  "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/if/4.2/mod/if_tm": {
+    "module_code": "IF_TM",
+    "module_version": "1.4.0",
+    "framework_code": "IF",
+    "dpm_release": {
+      "release": "4.2.1",
+      "publication_date": "2026-03-17"
+    },
+    "dates": {
+      "from": "9999-12-31",
+      "to": null
+    },
+    "operations": {
+      "v11304_m": {
+        "version_id": 18585,
+        "code": "v11304_m",
+        "expression": "with {default: 0, interval: true}: {tI_10.01, r0060, c0010} = sum ({tI_10.02, c0060})",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 465269,
+                "operand_reference_id": 7336616
+              }
+            ],
+            "table": "I_10.01",
+            "row": "0060",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "AggregationOp",
+            "op": "sum",
+            "operand": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 5485751,
+                  "operand_reference_id": 7336617
+                }
+              ],
+              "table": "I_10.02",
+              "column": "0060",
+              "default": 0,
+              "interval": true
+            },
+            "grouping_clause": null
+          }
+        },
+        "from_submission_date": "9999-12-31",
+        "severity": "warning"
+      },
+      "v11329_e": {
+        "version_id": 18579,
+        "code": "v11329_e",
+        "expression": "not ( isnull ({tI_10.01, r0010, c0010-0040, default: null, interval: false}) )",
+        "root_operator_id": 24,
+        "ast": {
+          "class_name": "UnaryOp",
+          "op": "not",
+          "operand": {
+            "class_name": "UnaryOp",
+            "op": "isnull",
+            "operand": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "y": 1,
+                  "column": "0010",
+                  "datapoint": 465271,
+                  "operand_reference_id": 7336595
+                },
+                {
+                  "y": 3,
+                  "column": "0030",
+                  "datapoint": 454816,
+                  "operand_reference_id": 7336596
+                },
+                {
+                  "y": 4,
+                  "column": "0040",
+                  "datapoint": 454815,
+                  "operand_reference_id": 7336597
+                },
+                {
+                  "y": 2,
+                  "column": "0020",
+                  "datapoint": 454817,
+                  "operand_reference_id": 7336598
+                }
+              ],
+              "table": "I_10.01",
+              "row": "0010",
+              "interval": false
+            }
+          }
+        },
+        "from_submission_date": "9999-12-31",
+        "severity": "warning"
+      },
+      "v11330_m": {
+        "version_id": 18584,
+        "code": "v11330_m",
+        "expression": "with {tI_10.01, c0010-0040, default: 0, interval: true}: {r0020} >= {r0010}",
+        "root_operator_id": 15,
+        "ast": {
+          "class_name": "BinOp",
+          "op": ">=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "y": 1,
+                "column": "0010",
+                "datapoint": 465268,
+                "operand_reference_id": 7336608
+              },
+              {
+                "y": 4,
+                "column": "0040",
+                "datapoint": 465275,
+                "operand_reference_id": 7336609
+              },
+              {
+                "y": 3,
+                "column": "0030",
+                "datapoint": 465276,
+                "operand_reference_id": 7336610
+              },
+              {
+                "y": 2,
+                "column": "0020",
+                "datapoint": 465277,
+                "operand_reference_id": 7336611
+              }
+            ],
+            "table": "I_10.01",
+            "row": "0020",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "y": 4,
+                "column": "0040",
+                "datapoint": 454815,
+                "operand_reference_id": 7336612
+              },
+              {
+                "y": 2,
+                "column": "0020",
+                "datapoint": 454817,
+                "operand_reference_id": 7336613
+              },
+              {
+                "y": 3,
+                "column": "0030",
+                "datapoint": 454816,
+                "operand_reference_id": 7336614
+              },
+              {
+                "y": 1,
+                "column": "0010",
+                "datapoint": 465271,
+                "operand_reference_id": 7336615
+              }
+            ],
+            "table": "I_10.01",
+            "row": "0010",
+            "default": 0,
+            "interval": true
+          }
+        },
+        "from_submission_date": "9999-12-31",
+        "severity": "warning"
+      },
+      "v11332_m": {
+        "version_id": 18586,
+        "code": "v11332_m",
+        "expression": "with {default: 0, interval: true}: {tI_10.01, r0060, c0020} = sum ({tI_10.02, c0070})",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 465282,
+                "operand_reference_id": 7336618
+              }
+            ],
+            "table": "I_10.01",
+            "row": "0060",
+            "column": "0020",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "AggregationOp",
+            "op": "sum",
+            "operand": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 5486080,
+                  "operand_reference_id": 7336619
+                }
+              ],
+              "table": "I_10.02",
+              "column": "0070",
+              "default": 0,
+              "interval": true
+            },
+            "grouping_clause": null
+          }
+        },
+        "from_submission_date": "9999-12-31",
+        "severity": "warning"
+      },
+      "v11333_m": {
+        "version_id": 18587,
+        "code": "v11333_m",
+        "expression": "with {default: 0, interval: true}: {tI_10.01, r0060, c0030} = sum ({tI_10.02, c0080})",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 465280,
+                "operand_reference_id": 7336620
+              }
+            ],
+            "table": "I_10.01",
+            "row": "0060",
+            "column": "0030",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "AggregationOp",
+            "op": "sum",
+            "operand": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 5485749,
+                  "operand_reference_id": 7336621
+                }
+              ],
+              "table": "I_10.02",
+              "column": "0080",
+              "default": 0,
+              "interval": true
+            },
+            "grouping_clause": null
+          }
+        },
+        "from_submission_date": "9999-12-31",
+        "severity": "warning"
+      },
+      "v11334_m": {
+        "version_id": 18588,
+        "code": "v11334_m",
+        "expression": "with {default: 0, interval: true}: {tI_10.01, r0060, c0040} = sum ({tI_10.02, c0090})",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 465278,
+                "operand_reference_id": 7336622
+              }
+            ],
+            "table": "I_10.01",
+            "row": "0060",
+            "column": "0040",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "AggregationOp",
+            "op": "sum",
+            "operand": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "datapoint": 5486079,
+                  "operand_reference_id": 7336623
+                }
+              ],
+              "table": "I_10.02",
+              "column": "0090",
+              "default": 0,
+              "interval": true
+            },
+            "grouping_clause": null
+          }
+        },
+        "from_submission_date": "9999-12-31",
+        "severity": "warning"
+      },
+      "v11335_m": {
+        "version_id": 18600,
+        "code": "v11335_m",
+        "expression": "with {interval: true}: {tI_10.01, r0070, c0010, default: 0} = sum ( filter ({tI_10.02, c0060, default: 0}, {tI_10.02, c0040, default: \"\"} = true) )",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 465270,
+                "operand_reference_id": 7336700
+              }
+            ],
+            "table": "I_10.01",
+            "row": "0070",
+            "column": "0010",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "AggregationOp",
+            "op": "sum",
+            "operand": {
+              "class_name": "FilterOp",
+              "selection": {
+                "class_name": "VarID",
+                "data": [
+                  {
+                    "datapoint": 5485751,
+                    "operand_reference_id": 7336701
+                  }
+                ],
+                "table": "I_10.02",
+                "column": "0060",
+                "default": 0,
+                "interval": true
+              },
+              "condition": {
+                "class_name": "BinOp",
+                "op": "=",
+                "left": {
+                  "class_name": "VarID",
+                  "data": [
+                    {
+                      "datapoint": 5486769,
+                      "operand_reference_id": 7336702
+                    }
+                  ],
+                  "table": "I_10.02",
+                  "column": "0040",
+                  "interval": true
+                },
+                "right": {
+                  "class_name": "Constant",
+                  "type_": "Boolean",
+                  "value": true
+                }
+              }
+            },
+            "grouping_clause": null
+          }
+        },
+        "from_submission_date": "9999-12-31",
+        "severity": "warning"
+      },
+      "v11336_m": {
+        "version_id": 18601,
+        "code": "v11336_m",
+        "expression": "with {interval: true}: {tI_10.01, r0070, c0020, default: 0} = sum ( filter ({tI_10.02, c0070, default: 0}, {tI_10.02, c0040, default: \"\"} = true) )",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 465283,
+                "operand_reference_id": 7336703
+              }
+            ],
+            "table": "I_10.01",
+            "row": "0070",
+            "column": "0020",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "AggregationOp",
+            "op": "sum",
+            "operand": {
+              "class_name": "FilterOp",
+              "selection": {
+                "class_name": "VarID",
+                "data": [
+                  {
+                    "datapoint": 5486080,
+                    "operand_reference_id": 7336704
+                  }
+                ],
+                "table": "I_10.02",
+                "column": "0070",
+                "default": 0,
+                "interval": true
+              },
+              "condition": {
+                "class_name": "BinOp",
+                "op": "=",
+                "left": {
+                  "class_name": "VarID",
+                  "data": [
+                    {
+                      "datapoint": 5486769,
+                      "operand_reference_id": 7336705
+                    }
+                  ],
+                  "table": "I_10.02",
+                  "column": "0040",
+                  "interval": true
+                },
+                "right": {
+                  "class_name": "Constant",
+                  "type_": "Boolean",
+                  "value": true
+                }
+              }
+            },
+            "grouping_clause": null
+          }
+        },
+        "from_submission_date": "9999-12-31",
+        "severity": "warning"
+      },
+      "v11337_m": {
+        "version_id": 18602,
+        "code": "v11337_m",
+        "expression": "with {interval: true}: {tI_10.01, r0070, c0030, default: 0} = sum ( filter ({tI_10.02, c0080, default: 0}, {tI_10.02, c0040, default: \"\"} = true) )",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 465281,
+                "operand_reference_id": 7336706
+              }
+            ],
+            "table": "I_10.01",
+            "row": "0070",
+            "column": "0030",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "AggregationOp",
+            "op": "sum",
+            "operand": {
+              "class_name": "FilterOp",
+              "selection": {
+                "class_name": "VarID",
+                "data": [
+                  {
+                    "datapoint": 5485749,
+                    "operand_reference_id": 7336707
+                  }
+                ],
+                "table": "I_10.02",
+                "column": "0080",
+                "default": 0,
+                "interval": true
+              },
+              "condition": {
+                "class_name": "BinOp",
+                "op": "=",
+                "left": {
+                  "class_name": "VarID",
+                  "data": [
+                    {
+                      "datapoint": 5486769,
+                      "operand_reference_id": 7336708
+                    }
+                  ],
+                  "table": "I_10.02",
+                  "column": "0040",
+                  "interval": true
+                },
+                "right": {
+                  "class_name": "Constant",
+                  "type_": "Boolean",
+                  "value": true
+                }
+              }
+            },
+            "grouping_clause": null
+          }
+        },
+        "from_submission_date": "9999-12-31",
+        "severity": "warning"
+      },
+      "v11338_m": {
+        "version_id": 18583,
+        "code": "v11338_m",
+        "expression": "with {interval: true}: {tI_10.01, r0070, c0040, default: 0} = sum ( filter ({tI_10.02, c0090, default: 0}, {tI_10.02, c0040, default: \"\"} = true) )",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "datapoint": 465279,
+                "operand_reference_id": 7336605
+              }
+            ],
+            "table": "I_10.01",
+            "row": "0070",
+            "column": "0040",
+            "default": 0,
+            "interval": true
+          },
+          "right": {
+            "class_name": "AggregationOp",
+            "op": "sum",
+            "operand": {
+              "class_name": "FilterOp",
+              "selection": {
+                "class_name": "VarID",
+                "data": [
+                  {
+                    "datapoint": 5486079,
+                    "operand_reference_id": 7336606
+                  }
+                ],
+                "table": "I_10.02",
+                "column": "0090",
+                "default": 0,
+                "interval": true
+              },
+              "condition": {
+                "class_name": "BinOp",
+                "op": "=",
+                "left": {
+                  "class_name": "VarID",
+                  "data": [
+                    {
+                      "datapoint": 5486769,
+                      "operand_reference_id": 7336607
+                    }
+                  ],
+                  "table": "I_10.02",
+                  "column": "0040",
+                  "interval": true
+                },
+                "right": {
+                  "class_name": "Constant",
+                  "type_": "Boolean",
+                  "value": true
+                }
+              }
+            },
+            "grouping_clause": null
+          }
+        },
+        "from_submission_date": "9999-12-31",
+        "severity": "warning"
+      }
+    },
+    "variables": {
+      "32354": "m",
+      "410222": "s",
+      "410399": "s",
+      "454815": "m",
+      "454816": "m",
+      "454817": "m",
+      "465268": "m",
+      "465269": "m",
+      "465270": "m",
+      "465271": "m",
+      "465275": "m",
+      "465276": "m",
+      "465277": "m",
+      "465278": "m",
+      "465279": "m",
+      "465280": "m",
+      "465281": "m",
+      "465282": "m",
+      "465283": "m",
+      "469234": "e",
+      "5485749": "m",
+      "5485751": "m",
+      "5486079": "m",
+      "5486080": "m",
+      "5486769": "b",
+      "5487083": "s"
+    },
+    "tables": {
+      "I_10.01": {
+        "variables": {
+          "32354": "m",
+          "410222": "s",
+          "410399": "s",
+          "454815": "m",
+          "454816": "m",
+          "454817": "m",
+          "465268": "m",
+          "465269": "m",
+          "465270": "m",
+          "465271": "m",
+          "465275": "m",
+          "465276": "m",
+          "465277": "m",
+          "465278": "m",
+          "465279": "m",
+          "465280": "m",
+          "465281": "m",
+          "465282": "m",
+          "465283": "m",
+          "469234": "e"
+        },
+        "open_keys": {}
+      },
+      "I_10.02": {
+        "variables": {
+          "5485749": "m",
+          "5485751": "m",
+          "5486079": "m",
+          "5486080": "m",
+          "5486769": "b",
+          "5487083": "s"
+        },
+        "open_keys": {
+          "qCIG": "e",
+          "CIT": "e",
+          "EGS": "s"
+        }
+      }
+    },
+    "preconditions": {
+      "p_560": {
+        "ast": {
+          "class_name": "BinOp",
+          "op": "and",
+          "left": {
+            "class_name": "PreconditionItem",
+            "variable_id": 395468,
+            "variable_code": "I_10.01"
+          },
+          "right": {
+            "class_name": "PreconditionItem",
+            "variable_id": 395469,
+            "variable_code": "I_10.02"
+          }
+        },
+        "affected_operations": [
+          "v11304_m",
+          "v11332_m",
+          "v11333_m",
+          "v11334_m",
+          "v11335_m",
+          "v11336_m",
+          "v11337_m",
+          "v11338_m"
+        ],
+        "version_id": 8330,
+        "code": "p_560"
+      },
+      "p_559": {
+        "ast": {
+          "class_name": "PreconditionItem",
+          "variable_id": 395468,
+          "variable_code": "I_10.01"
+        },
+        "affected_operations": [
+          "v11329_e",
+          "v11330_m"
+        ],
+        "version_id": 8329,
+        "code": "p_559"
+      }
+    },
+    "precondition_variables": {
+      "395468": "b",
+      "395469": "b"
+    },
+    "dependency_information": {
+      "intra_instance_validations": [
+        "v11304_m",
+        "v11329_e",
+        "v11330_m",
+        "v11332_m",
+        "v11333_m",
+        "v11334_m",
+        "v11335_m",
+        "v11336_m",
+        "v11337_m",
+        "v11338_m"
+      ],
+      "cross_instance_dependencies": []
+    },
+    "dependency_modules": {}
+  }
+}

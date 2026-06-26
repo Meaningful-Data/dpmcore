@@ -1,0 +1,1301 @@
+{
+  "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/rem/gl-2022-06/2022-09-30/mod/rem_gap": {
+    "module_code": "REM_GAP",
+    "module_version": "2.0.0",
+    "framework_code": "REM",
+    "dpm_release": {
+      "release": "4.2.1",
+      "publication_date": "2026-03-17"
+    },
+    "dates": {
+      "from": "2023-12-31",
+      "to": "2026-03-30"
+    },
+    "operations": {
+      "v12124_s": {
+        "version_id": 6229,
+        "code": "v12124_s",
+        "expression": "with {tR_06.00.b, default: null, interval: false}: {r*, c0020-0050} >= 0",
+        "root_operator_id": 15,
+        "ast": {
+          "class_name": "BinOp",
+          "op": ">=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "x": 1,
+                "row": "0010",
+                "y": 1,
+                "column": "0020",
+                "datapoint": 470520,
+                "operand_reference_id": 201229
+              },
+              {
+                "x": 1,
+                "row": "0010",
+                "y": 2,
+                "column": "0030",
+                "datapoint": 470530,
+                "operand_reference_id": 201236
+              },
+              {
+                "x": 1,
+                "row": "0010",
+                "y": 3,
+                "column": "0040",
+                "datapoint": 470521,
+                "operand_reference_id": 201244
+              },
+              {
+                "x": 1,
+                "row": "0010",
+                "y": 4,
+                "column": "0050",
+                "datapoint": 470531,
+                "operand_reference_id": 201252
+              },
+              {
+                "x": 2,
+                "row": "0020",
+                "y": 1,
+                "column": "0020",
+                "datapoint": 470522,
+                "operand_reference_id": 201260
+              },
+              {
+                "x": 2,
+                "row": "0020",
+                "y": 2,
+                "column": "0030",
+                "datapoint": 470532,
+                "operand_reference_id": 201267
+              },
+              {
+                "x": 2,
+                "row": "0020",
+                "y": 3,
+                "column": "0040",
+                "datapoint": 470523,
+                "operand_reference_id": 201275
+              },
+              {
+                "x": 2,
+                "row": "0020",
+                "y": 4,
+                "column": "0050",
+                "datapoint": 470533,
+                "operand_reference_id": 201284
+              },
+              {
+                "x": 3,
+                "row": "0030",
+                "y": 1,
+                "column": "0020",
+                "datapoint": 470524,
+                "operand_reference_id": 201292
+              },
+              {
+                "x": 3,
+                "row": "0030",
+                "y": 2,
+                "column": "0030",
+                "datapoint": 470534,
+                "operand_reference_id": 201299
+              },
+              {
+                "x": 3,
+                "row": "0030",
+                "y": 3,
+                "column": "0040",
+                "datapoint": 470525,
+                "operand_reference_id": 201308
+              },
+              {
+                "x": 3,
+                "row": "0030",
+                "y": 4,
+                "column": "0050",
+                "datapoint": 470535,
+                "operand_reference_id": 201316
+              },
+              {
+                "x": 4,
+                "row": "0040",
+                "y": 1,
+                "column": "0020",
+                "datapoint": 470526,
+                "operand_reference_id": 201323
+              },
+              {
+                "x": 4,
+                "row": "0040",
+                "y": 2,
+                "column": "0030",
+                "datapoint": 470536,
+                "operand_reference_id": 201330
+              },
+              {
+                "x": 4,
+                "row": "0040",
+                "y": 3,
+                "column": "0040",
+                "datapoint": 470527,
+                "operand_reference_id": 201337
+              },
+              {
+                "x": 4,
+                "row": "0040",
+                "y": 4,
+                "column": "0050",
+                "datapoint": 470537,
+                "operand_reference_id": 201346
+              },
+              {
+                "x": 5,
+                "row": "0050",
+                "y": 1,
+                "column": "0020",
+                "datapoint": 470519,
+                "operand_reference_id": 201353
+              },
+              {
+                "x": 5,
+                "row": "0050",
+                "y": 2,
+                "column": "0030",
+                "datapoint": 470529,
+                "operand_reference_id": 201359
+              },
+              {
+                "x": 5,
+                "row": "0050",
+                "y": 3,
+                "column": "0040",
+                "datapoint": 470528,
+                "operand_reference_id": 201367
+              },
+              {
+                "x": 5,
+                "row": "0050",
+                "y": 4,
+                "column": "0050",
+                "datapoint": 470538,
+                "operand_reference_id": 201375
+              }
+            ],
+            "table": "R_06.00.b",
+            "interval": false
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 0
+          }
+        },
+        "from_submission_date": "2023-12-31",
+        "severity": "warning"
+      },
+      "v12141_s": {
+        "version_id": 6243,
+        "code": "v12141_s",
+        "expression": "with {tR_06.00.a, c0010, default: null, interval: false}: {r*} >= 0",
+        "root_operator_id": 15,
+        "ast": {
+          "class_name": "BinOp",
+          "op": ">=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "x": 1,
+                "row": "0010",
+                "datapoint": 469984,
+                "operand_reference_id": 206779
+              },
+              {
+                "x": 2,
+                "row": "0020",
+                "datapoint": 470124,
+                "operand_reference_id": 206784
+              }
+            ],
+            "table": "R_06.00.a",
+            "column": "0010",
+            "interval": false
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 0
+          }
+        },
+        "from_submission_date": "2023-12-31",
+        "severity": "warning"
+      },
+      "v12152_s": {
+        "version_id": 6254,
+        "code": "v12152_s",
+        "expression": "with {tR_06.01.a, c0010, default: null, interval: false}: {r*} >= 0",
+        "root_operator_id": 15,
+        "ast": {
+          "class_name": "BinOp",
+          "op": ">=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "x": 1,
+                "row": "0010",
+                "datapoint": 469984,
+                "operand_reference_id": 211105
+              },
+              {
+                "x": 2,
+                "row": "0020",
+                "datapoint": 470124,
+                "operand_reference_id": 211108
+              }
+            ],
+            "table": "R_06.01.a",
+            "column": "0010",
+            "interval": false
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 0
+          }
+        },
+        "from_submission_date": "2023-12-31",
+        "severity": "warning"
+      },
+      "v12153_s": {
+        "version_id": 6255,
+        "code": "v12153_s",
+        "expression": "with {tR_06.01.b, default: null, interval: false}: {r*, c0020-0050} >= 0",
+        "root_operator_id": 15,
+        "ast": {
+          "class_name": "BinOp",
+          "op": ">=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "x": 1,
+                "row": "0030",
+                "y": 1,
+                "column": "0020",
+                "datapoint": 470520,
+                "operand_reference_id": 211164
+              },
+              {
+                "x": 1,
+                "row": "0030",
+                "y": 2,
+                "column": "0030",
+                "datapoint": 470530,
+                "operand_reference_id": 211167
+              },
+              {
+                "x": 1,
+                "row": "0030",
+                "y": 3,
+                "column": "0040",
+                "datapoint": 470521,
+                "operand_reference_id": 211169
+              },
+              {
+                "x": 1,
+                "row": "0030",
+                "y": 4,
+                "column": "0050",
+                "datapoint": 470531,
+                "operand_reference_id": 211171
+              },
+              {
+                "x": 2,
+                "row": "0040",
+                "y": 1,
+                "column": "0020",
+                "datapoint": 470522,
+                "operand_reference_id": 211174
+              },
+              {
+                "x": 2,
+                "row": "0040",
+                "y": 2,
+                "column": "0030",
+                "datapoint": 470532,
+                "operand_reference_id": 211177
+              },
+              {
+                "x": 2,
+                "row": "0040",
+                "y": 3,
+                "column": "0040",
+                "datapoint": 470523,
+                "operand_reference_id": 211180
+              },
+              {
+                "x": 2,
+                "row": "0040",
+                "y": 4,
+                "column": "0050",
+                "datapoint": 470533,
+                "operand_reference_id": 211185
+              },
+              {
+                "x": 3,
+                "row": "0050",
+                "y": 1,
+                "column": "0020",
+                "datapoint": 470524,
+                "operand_reference_id": 211189
+              },
+              {
+                "x": 3,
+                "row": "0050",
+                "y": 2,
+                "column": "0030",
+                "datapoint": 470534,
+                "operand_reference_id": 211193
+              },
+              {
+                "x": 3,
+                "row": "0050",
+                "y": 3,
+                "column": "0040",
+                "datapoint": 470525,
+                "operand_reference_id": 211197
+              },
+              {
+                "x": 3,
+                "row": "0050",
+                "y": 4,
+                "column": "0050",
+                "datapoint": 470535,
+                "operand_reference_id": 211201
+              },
+              {
+                "x": 4,
+                "row": "0060",
+                "y": 1,
+                "column": "0020",
+                "datapoint": 470526,
+                "operand_reference_id": 211204
+              },
+              {
+                "x": 4,
+                "row": "0060",
+                "y": 2,
+                "column": "0030",
+                "datapoint": 470536,
+                "operand_reference_id": 211206
+              },
+              {
+                "x": 4,
+                "row": "0060",
+                "y": 3,
+                "column": "0040",
+                "datapoint": 470527,
+                "operand_reference_id": 211208
+              },
+              {
+                "x": 4,
+                "row": "0060",
+                "y": 4,
+                "column": "0050",
+                "datapoint": 470537,
+                "operand_reference_id": 211210
+              },
+              {
+                "x": 5,
+                "row": "0070",
+                "y": 1,
+                "column": "0020",
+                "datapoint": 470519,
+                "operand_reference_id": 211212
+              },
+              {
+                "x": 5,
+                "row": "0070",
+                "y": 2,
+                "column": "0030",
+                "datapoint": 470529,
+                "operand_reference_id": 211215
+              },
+              {
+                "x": 5,
+                "row": "0070",
+                "y": 3,
+                "column": "0040",
+                "datapoint": 470528,
+                "operand_reference_id": 211220
+              },
+              {
+                "x": 5,
+                "row": "0070",
+                "y": 4,
+                "column": "0050",
+                "datapoint": 470538,
+                "operand_reference_id": 211229
+              }
+            ],
+            "table": "R_06.01.b",
+            "interval": false
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 0
+          }
+        },
+        "from_submission_date": "2023-12-31",
+        "severity": "warning"
+      },
+      "v12532_m": {
+        "version_id": 6586,
+        "code": "v12532_m",
+        "expression": "{tR_06.00.b, r*, c*, default: 0, interval: false} <= 1",
+        "root_operator_id": 14,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "<=",
+          "left": {
+            "class_name": "VarID",
+            "data": [
+              {
+                "x": 1,
+                "row": "0010",
+                "y": 1,
+                "column": "0020",
+                "datapoint": 470520,
+                "operand_reference_id": 272592
+              },
+              {
+                "x": 1,
+                "row": "0010",
+                "y": 2,
+                "column": "0030",
+                "datapoint": 470530,
+                "operand_reference_id": 272595
+              },
+              {
+                "x": 1,
+                "row": "0010",
+                "y": 3,
+                "column": "0040",
+                "datapoint": 470521,
+                "operand_reference_id": 272598
+              },
+              {
+                "x": 1,
+                "row": "0010",
+                "y": 4,
+                "column": "0050",
+                "datapoint": 470531,
+                "operand_reference_id": 272601
+              },
+              {
+                "x": 1,
+                "row": "0010",
+                "y": 5,
+                "column": "0060",
+                "datapoint": 470540,
+                "operand_reference_id": 272604
+              },
+              {
+                "x": 1,
+                "row": "0010",
+                "y": 6,
+                "column": "0070",
+                "datapoint": 470550,
+                "operand_reference_id": 272607
+              },
+              {
+                "x": 1,
+                "row": "0010",
+                "y": 7,
+                "column": "0080",
+                "datapoint": 470541,
+                "operand_reference_id": 272610
+              },
+              {
+                "x": 1,
+                "row": "0010",
+                "y": 8,
+                "column": "0090",
+                "datapoint": 470551,
+                "operand_reference_id": 272613
+              },
+              {
+                "x": 2,
+                "row": "0020",
+                "y": 1,
+                "column": "0020",
+                "datapoint": 470522,
+                "operand_reference_id": 272616
+              },
+              {
+                "x": 2,
+                "row": "0020",
+                "y": 2,
+                "column": "0030",
+                "datapoint": 470532,
+                "operand_reference_id": 272619
+              },
+              {
+                "x": 2,
+                "row": "0020",
+                "y": 3,
+                "column": "0040",
+                "datapoint": 470523,
+                "operand_reference_id": 272622
+              },
+              {
+                "x": 2,
+                "row": "0020",
+                "y": 4,
+                "column": "0050",
+                "datapoint": 470533,
+                "operand_reference_id": 272625
+              },
+              {
+                "x": 2,
+                "row": "0020",
+                "y": 5,
+                "column": "0060",
+                "datapoint": 470542,
+                "operand_reference_id": 272628
+              },
+              {
+                "x": 2,
+                "row": "0020",
+                "y": 6,
+                "column": "0070",
+                "datapoint": 470552,
+                "operand_reference_id": 272631
+              },
+              {
+                "x": 2,
+                "row": "0020",
+                "y": 7,
+                "column": "0080",
+                "datapoint": 470543,
+                "operand_reference_id": 272635
+              },
+              {
+                "x": 2,
+                "row": "0020",
+                "y": 8,
+                "column": "0090",
+                "datapoint": 470553,
+                "operand_reference_id": 272638
+              },
+              {
+                "x": 3,
+                "row": "0030",
+                "y": 1,
+                "column": "0020",
+                "datapoint": 470524,
+                "operand_reference_id": 272641
+              },
+              {
+                "x": 3,
+                "row": "0030",
+                "y": 2,
+                "column": "0030",
+                "datapoint": 470534,
+                "operand_reference_id": 272644
+              },
+              {
+                "x": 3,
+                "row": "0030",
+                "y": 3,
+                "column": "0040",
+                "datapoint": 470525,
+                "operand_reference_id": 272647
+              },
+              {
+                "x": 3,
+                "row": "0030",
+                "y": 4,
+                "column": "0050",
+                "datapoint": 470535,
+                "operand_reference_id": 272650
+              },
+              {
+                "x": 3,
+                "row": "0030",
+                "y": 5,
+                "column": "0060",
+                "datapoint": 470544,
+                "operand_reference_id": 272653
+              },
+              {
+                "x": 3,
+                "row": "0030",
+                "y": 6,
+                "column": "0070",
+                "datapoint": 470554,
+                "operand_reference_id": 272656
+              },
+              {
+                "x": 3,
+                "row": "0030",
+                "y": 7,
+                "column": "0080",
+                "datapoint": 470545,
+                "operand_reference_id": 272659
+              },
+              {
+                "x": 3,
+                "row": "0030",
+                "y": 8,
+                "column": "0090",
+                "datapoint": 470555,
+                "operand_reference_id": 272662
+              },
+              {
+                "x": 4,
+                "row": "0040",
+                "y": 1,
+                "column": "0020",
+                "datapoint": 470526,
+                "operand_reference_id": 272665
+              },
+              {
+                "x": 4,
+                "row": "0040",
+                "y": 2,
+                "column": "0030",
+                "datapoint": 470536,
+                "operand_reference_id": 272668
+              },
+              {
+                "x": 4,
+                "row": "0040",
+                "y": 3,
+                "column": "0040",
+                "datapoint": 470527,
+                "operand_reference_id": 272671
+              },
+              {
+                "x": 4,
+                "row": "0040",
+                "y": 4,
+                "column": "0050",
+                "datapoint": 470537,
+                "operand_reference_id": 272674
+              },
+              {
+                "x": 4,
+                "row": "0040",
+                "y": 5,
+                "column": "0060",
+                "datapoint": 470546,
+                "operand_reference_id": 272677
+              },
+              {
+                "x": 4,
+                "row": "0040",
+                "y": 6,
+                "column": "0070",
+                "datapoint": 470556,
+                "operand_reference_id": 272680
+              },
+              {
+                "x": 4,
+                "row": "0040",
+                "y": 7,
+                "column": "0080",
+                "datapoint": 470547,
+                "operand_reference_id": 272683
+              },
+              {
+                "x": 4,
+                "row": "0040",
+                "y": 8,
+                "column": "0090",
+                "datapoint": 470557,
+                "operand_reference_id": 272686
+              },
+              {
+                "x": 5,
+                "row": "0050",
+                "y": 1,
+                "column": "0020",
+                "datapoint": 470519,
+                "operand_reference_id": 272689
+              },
+              {
+                "x": 5,
+                "row": "0050",
+                "y": 2,
+                "column": "0030",
+                "datapoint": 470529,
+                "operand_reference_id": 272693
+              },
+              {
+                "x": 5,
+                "row": "0050",
+                "y": 3,
+                "column": "0040",
+                "datapoint": 470528,
+                "operand_reference_id": 272697
+              },
+              {
+                "x": 5,
+                "row": "0050",
+                "y": 4,
+                "column": "0050",
+                "datapoint": 470538,
+                "operand_reference_id": 272701
+              },
+              {
+                "x": 5,
+                "row": "0050",
+                "y": 5,
+                "column": "0060",
+                "datapoint": 470539,
+                "operand_reference_id": 272705
+              },
+              {
+                "x": 5,
+                "row": "0050",
+                "y": 6,
+                "column": "0070",
+                "datapoint": 470549,
+                "operand_reference_id": 272709
+              },
+              {
+                "x": 5,
+                "row": "0050",
+                "y": 7,
+                "column": "0080",
+                "datapoint": 470548,
+                "operand_reference_id": 272713
+              },
+              {
+                "x": 5,
+                "row": "0050",
+                "y": 8,
+                "column": "0090",
+                "datapoint": 470558,
+                "operand_reference_id": 272717
+              }
+            ],
+            "table": "R_06.00.b",
+            "default": 0,
+            "interval": false
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 1
+          }
+        },
+        "from_submission_date": "2023-12-31",
+        "severity": "warning"
+      },
+      "v12670_m": {
+        "version_id": 6723,
+        "code": "v12670_m",
+        "expression": "with {tR_06.00.b, r*, default: 0, interval: true}: {c0040} + {c0050} = 1",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "BinOp",
+            "op": "+",
+            "left": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "x": 1,
+                  "row": "0010",
+                  "datapoint": 470521,
+                  "operand_reference_id": 233209
+                },
+                {
+                  "x": 2,
+                  "row": "0020",
+                  "datapoint": 470523,
+                  "operand_reference_id": 233215
+                },
+                {
+                  "x": 3,
+                  "row": "0030",
+                  "datapoint": 470525,
+                  "operand_reference_id": 233220
+                },
+                {
+                  "x": 4,
+                  "row": "0040",
+                  "datapoint": 470527,
+                  "operand_reference_id": 233226
+                },
+                {
+                  "x": 5,
+                  "row": "0050",
+                  "datapoint": 470528,
+                  "operand_reference_id": 233232
+                }
+              ],
+              "table": "R_06.00.b",
+              "column": "0040",
+              "default": 0,
+              "interval": true
+            },
+            "right": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "x": 1,
+                  "row": "0010",
+                  "datapoint": 470531,
+                  "operand_reference_id": 233236
+                },
+                {
+                  "x": 2,
+                  "row": "0020",
+                  "datapoint": 470533,
+                  "operand_reference_id": 233240
+                },
+                {
+                  "x": 3,
+                  "row": "0030",
+                  "datapoint": 470535,
+                  "operand_reference_id": 233244
+                },
+                {
+                  "x": 4,
+                  "row": "0040",
+                  "datapoint": 470537,
+                  "operand_reference_id": 233247
+                },
+                {
+                  "x": 5,
+                  "row": "0050",
+                  "datapoint": 470538,
+                  "operand_reference_id": 233251
+                }
+              ],
+              "table": "R_06.00.b",
+              "column": "0050",
+              "default": 0,
+              "interval": true
+            }
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 1
+          }
+        },
+        "from_submission_date": "2023-12-31",
+        "severity": "warning"
+      },
+      "v12673_m": {
+        "version_id": 6724,
+        "code": "v12673_m",
+        "expression": "with {tR_06.01.b, r*, default: 0, interval: true}: {c0020} + {c0030} = 1",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "BinOp",
+            "op": "+",
+            "left": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "x": 1,
+                  "row": "0030",
+                  "datapoint": 470520,
+                  "operand_reference_id": 233388
+                },
+                {
+                  "x": 2,
+                  "row": "0040",
+                  "datapoint": 470522,
+                  "operand_reference_id": 233391
+                },
+                {
+                  "x": 3,
+                  "row": "0050",
+                  "datapoint": 470524,
+                  "operand_reference_id": 233395
+                },
+                {
+                  "x": 4,
+                  "row": "0060",
+                  "datapoint": 470526,
+                  "operand_reference_id": 233398
+                },
+                {
+                  "x": 5,
+                  "row": "0070",
+                  "datapoint": 470519,
+                  "operand_reference_id": 233401
+                }
+              ],
+              "table": "R_06.01.b",
+              "column": "0020",
+              "default": 0,
+              "interval": true
+            },
+            "right": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "x": 1,
+                  "row": "0030",
+                  "datapoint": 470530,
+                  "operand_reference_id": 233405
+                },
+                {
+                  "x": 2,
+                  "row": "0040",
+                  "datapoint": 470532,
+                  "operand_reference_id": 233410
+                },
+                {
+                  "x": 3,
+                  "row": "0050",
+                  "datapoint": 470534,
+                  "operand_reference_id": 233413
+                },
+                {
+                  "x": 4,
+                  "row": "0060",
+                  "datapoint": 470536,
+                  "operand_reference_id": 233417
+                },
+                {
+                  "x": 5,
+                  "row": "0070",
+                  "datapoint": 470529,
+                  "operand_reference_id": 233421
+                }
+              ],
+              "table": "R_06.01.b",
+              "column": "0030",
+              "default": 0,
+              "interval": true
+            }
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 1
+          }
+        },
+        "from_submission_date": "2023-12-31",
+        "severity": "warning"
+      },
+      "v12674_m": {
+        "version_id": 6725,
+        "code": "v12674_m",
+        "expression": "with {tR_06.01.b, r*, default: 0, interval: true}: {c0040} + {c0050} = 1",
+        "root_operator_id": 13,
+        "ast": {
+          "class_name": "BinOp",
+          "op": "=",
+          "left": {
+            "class_name": "BinOp",
+            "op": "+",
+            "left": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "x": 1,
+                  "row": "0030",
+                  "datapoint": 470521,
+                  "operand_reference_id": 233552
+                },
+                {
+                  "x": 2,
+                  "row": "0040",
+                  "datapoint": 470523,
+                  "operand_reference_id": 233558
+                },
+                {
+                  "x": 3,
+                  "row": "0050",
+                  "datapoint": 470525,
+                  "operand_reference_id": 233565
+                },
+                {
+                  "x": 4,
+                  "row": "0060",
+                  "datapoint": 470527,
+                  "operand_reference_id": 233573
+                },
+                {
+                  "x": 5,
+                  "row": "0070",
+                  "datapoint": 470528,
+                  "operand_reference_id": 233581
+                }
+              ],
+              "table": "R_06.01.b",
+              "column": "0040",
+              "default": 0,
+              "interval": true
+            },
+            "right": {
+              "class_name": "VarID",
+              "data": [
+                {
+                  "x": 1,
+                  "row": "0030",
+                  "datapoint": 470531,
+                  "operand_reference_id": 233586
+                },
+                {
+                  "x": 2,
+                  "row": "0040",
+                  "datapoint": 470533,
+                  "operand_reference_id": 233591
+                },
+                {
+                  "x": 3,
+                  "row": "0050",
+                  "datapoint": 470535,
+                  "operand_reference_id": 233596
+                },
+                {
+                  "x": 4,
+                  "row": "0060",
+                  "datapoint": 470537,
+                  "operand_reference_id": 233599
+                },
+                {
+                  "x": 5,
+                  "row": "0070",
+                  "datapoint": 470538,
+                  "operand_reference_id": 233602
+                }
+              ],
+              "table": "R_06.01.b",
+              "column": "0050",
+              "default": 0,
+              "interval": true
+            }
+          },
+          "right": {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 1
+          }
+        },
+        "from_submission_date": "2023-12-31",
+        "severity": "warning"
+      }
+    },
+    "variables": {
+      "469984": "i",
+      "470124": "i",
+      "470519": "p",
+      "470520": "p",
+      "470521": "p",
+      "470522": "p",
+      "470523": "p",
+      "470524": "p",
+      "470525": "p",
+      "470526": "p",
+      "470527": "p",
+      "470528": "p",
+      "470529": "p",
+      "470530": "p",
+      "470531": "p",
+      "470532": "p",
+      "470533": "p",
+      "470534": "p",
+      "470535": "p",
+      "470536": "p",
+      "470537": "p",
+      "470538": "p",
+      "470539": "p",
+      "470540": "p",
+      "470541": "p",
+      "470542": "p",
+      "470543": "p",
+      "470544": "p",
+      "470545": "p",
+      "470546": "p",
+      "470547": "p",
+      "470548": "p",
+      "470549": "p",
+      "470550": "p",
+      "470551": "p",
+      "470552": "p",
+      "470553": "p",
+      "470554": "p",
+      "470555": "p",
+      "470556": "p",
+      "470557": "p",
+      "470558": "p"
+    },
+    "tables": {
+      "R_06.00.a": {
+        "variables": {
+          "469984": "i",
+          "470124": "i"
+        },
+        "open_keys": {}
+      },
+      "R_06.00.b": {
+        "variables": {
+          "470519": "p",
+          "470520": "p",
+          "470521": "p",
+          "470522": "p",
+          "470523": "p",
+          "470524": "p",
+          "470525": "p",
+          "470526": "p",
+          "470527": "p",
+          "470528": "p",
+          "470529": "p",
+          "470530": "p",
+          "470531": "p",
+          "470532": "p",
+          "470533": "p",
+          "470534": "p",
+          "470535": "p",
+          "470536": "p",
+          "470537": "p",
+          "470538": "p",
+          "470539": "p",
+          "470540": "p",
+          "470541": "p",
+          "470542": "p",
+          "470543": "p",
+          "470544": "p",
+          "470545": "p",
+          "470546": "p",
+          "470547": "p",
+          "470548": "p",
+          "470549": "p",
+          "470550": "p",
+          "470551": "p",
+          "470552": "p",
+          "470553": "p",
+          "470554": "p",
+          "470555": "p",
+          "470556": "p",
+          "470557": "p",
+          "470558": "p"
+        },
+        "open_keys": {}
+      },
+      "R_06.01.a": {
+        "variables": {
+          "469984": "i",
+          "470124": "i"
+        },
+        "open_keys": {}
+      },
+      "R_06.01.b": {
+        "variables": {
+          "470519": "p",
+          "470520": "p",
+          "470521": "p",
+          "470522": "p",
+          "470523": "p",
+          "470524": "p",
+          "470525": "p",
+          "470526": "p",
+          "470527": "p",
+          "470528": "p",
+          "470529": "p",
+          "470530": "p",
+          "470531": "p",
+          "470532": "p",
+          "470533": "p",
+          "470534": "p",
+          "470535": "p",
+          "470536": "p",
+          "470537": "p",
+          "470538": "p",
+          "470539": "p",
+          "470540": "p",
+          "470541": "p",
+          "470542": "p",
+          "470543": "p",
+          "470544": "p",
+          "470545": "p",
+          "470546": "p",
+          "470547": "p",
+          "470548": "p",
+          "470549": "p",
+          "470550": "p",
+          "470551": "p",
+          "470552": "p",
+          "470553": "p",
+          "470554": "p",
+          "470555": "p",
+          "470556": "p",
+          "470557": "p",
+          "470558": "p"
+        },
+        "open_keys": {}
+      }
+    },
+    "preconditions": {
+      "p_696": {
+        "ast": {
+          "class_name": "PreconditionItem",
+          "variable_id": 395607,
+          "variable_code": "R_06.00"
+        },
+        "affected_operations": [
+          "v12124_s",
+          "v12141_s",
+          "v12532_m",
+          "v12670_m"
+        ],
+        "version_id": 8466,
+        "code": "p_696"
+      },
+      "p_699": {
+        "ast": {
+          "class_name": "PreconditionItem",
+          "variable_id": 395610,
+          "variable_code": "R_06.01"
+        },
+        "affected_operations": [
+          "v12152_s",
+          "v12153_s",
+          "v12673_m",
+          "v12674_m"
+        ],
+        "version_id": 8469,
+        "code": "p_699"
+      }
+    },
+    "precondition_variables": {
+      "395607": "b",
+      "395610": "b"
+    },
+    "dependency_information": {
+      "intra_instance_validations": [
+        "v12124_s",
+        "v12141_s",
+        "v12152_s",
+        "v12153_s",
+        "v12532_m",
+        "v12670_m",
+        "v12673_m",
+        "v12674_m"
+      ],
+      "cross_instance_dependencies": []
+    },
+    "dependency_modules": {}
+  }
+}
