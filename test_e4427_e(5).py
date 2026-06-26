@@ -1,5 +1,4 @@
-"""
-test_e4427_e.py
+"""test_e4427_e.py
 ===============
 Prueba QA para la operación e4427_e del módulo AE 1.2.0.
 
@@ -18,10 +17,10 @@ import sys
 # CONFIGURACIÓN
 # ─────────────────────────────────────────────────────────────────────────────
 
-DB_URL      = "sqlite:///dpm_4.2.1_20260624.db"
+DB_URL = "sqlite:///dpm_4.2.1_20260624.db"
 MODULE_CODE = "AE"
-MODULE_VER  = "1.2.0"
-OP_CODE     = "e4427_e"
+MODULE_VER = "1.2.0"
+OP_CODE = "e4427_e"
 
 EXPRESSION = (
     "with {tA_00.01, default: null, interval: false}: "
@@ -40,7 +39,7 @@ MDPM_REFERENCE = {
     "operations": {
         OP_CODE: {
             "expression": EXPRESSION,
-            "severity":   "error",
+            "severity": "error",
         }
     },
     "tables": {
@@ -60,7 +59,7 @@ MDPM_REFERENCE = {
         "395001": "b",
     },
     "dependency_information": {
-        "intra_must_contain":     OP_CODE,
+        "intra_must_contain": OP_CODE,
         "cross_must_not_contain": OP_CODE,
     },
 }
@@ -70,9 +69,9 @@ MDPM_REFERENCE = {
 # LLAMADA A DPMCORE
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def run_dpmcore() -> tuple[dict, str]:
-    """
-    Devuelve (módulo_dict, uri_clave).
+    """Devuelve (módulo_dict, uri_clave).
     enriched_ast tiene la forma  { "<URI>": { operations, tables, ... } }
     """
     try:
@@ -80,7 +79,7 @@ def run_dpmcore() -> tuple[dict, str]:
     except ImportError:
         sys.exit("ERROR: no se puede importar dpmcore.")
 
-    db  = dpmcore.connect(DB_URL)
+    db = dpmcore.connect(DB_URL)
     raw = db.services.ast_generator.script(
         expressions=[
             (EXPRESSION, OP_CODE),
@@ -117,8 +116,9 @@ def run_dpmcore() -> tuple[dict, str]:
 # IMPRESIÓN LEGIBLE
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _sec(title: str) -> None:
-    print(f"\n{'═'*60}\n  {title}\n{'═'*60}")
+    print(f"\n{'═' * 60}\n  {title}\n{'═' * 60}")
 
 
 def print_result(mod: dict, uri: str) -> None:
@@ -153,8 +153,10 @@ def print_result(mod: dict, uri: str) -> None:
 # COMPARACIÓN
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _norm(v):
     return json.loads(json.dumps(v))
+
 
 def _chk(label: str, expected, actual) -> bool:
     if _norm(expected) == _norm(actual):
@@ -167,7 +169,7 @@ def _chk(label: str, expected, actual) -> bool:
 
 
 def compare(mod: dict) -> bool:
-    ref    = MDPM_REFERENCE
+    ref = MDPM_REFERENCE
     all_ok = True
 
     _sec("COMPARACIÓN  DPMcore  vs  MDPM")
@@ -175,7 +177,9 @@ def compare(mod: dict) -> bool:
     # ── 0. dpm_release ───────────────────────────────────────────────────
     print("\n▸ dpm_release  (informativo)")
     dpm_rel = mod.get("dpm_release", {}).get("release")
-    print(f"  ℹ  MDPM usa release 4.2.1 — BD solo tiene hasta release {dpm_rel!r} para AE 1.2.0")
+    print(
+        f"  ℹ  MDPM usa release 4.2.1 — BD solo tiene hasta release {dpm_rel!r} para AE 1.2.0"
+    )
 
     # ── 1. operations ────────────────────────────────────────────────────
     print("\n▸ operations")
@@ -200,14 +204,18 @@ def compare(mod: dict) -> bool:
     # ── 2. preconditions ─────────────────────────────────────────────────
     # DPMcore devuelve preconditions={} cuando se pasan manualmente.
     # Lo marcamos como informativo, no bloqueante.
-    print("\n▸ preconditions  (informativo — DPMcore no enriquece precondiciones manuales)")
+    print(
+        "\n▸ preconditions  (informativo — DPMcore no enriquece precondiciones manuales)"
+    )
     dpm_pcs = mod.get("preconditions", {})
     if dpm_pcs:
         print(f"  ℹ  DPMcore devolvió {len(dpm_pcs)} precondición(es)")
         pprint.pprint(dpm_pcs, indent=4)
     else:
-        print(f"  ℹ  DPMcore devolvió preconditions={{}}  "
-              f"(esperado cuando se pasa precondición manual)")
+        print(
+            "  ℹ  DPMcore devolvió preconditions={}  "
+            "(esperado cuando se pasa precondición manual)"
+        )
 
     # ── 3. tables ────────────────────────────────────────────────────────
     print("\n▸ tables")
@@ -217,8 +225,10 @@ def compare(mod: dict) -> bool:
         print("  ✗  'A_00.01' no está en tables")
         all_ok = False
     else:
-        dpm_t    = dpm_tables["A_00.01"]
-        dpm_vars = dpm_t.get("variables", {}) if isinstance(dpm_t, dict) else {}
+        dpm_t = dpm_tables["A_00.01"]
+        dpm_vars = (
+            dpm_t.get("variables", {}) if isinstance(dpm_t, dict) else {}
+        )
         for var_id, var_type in ref["tables"]["A_00.01"]["variables"].items():
             all_ok &= _chk(
                 f"tables[A_00.01].variables[{var_id}]",
@@ -250,13 +260,15 @@ def compare(mod: dict) -> bool:
         if actual == var_type:
             print(f"  ✓  precondition_variables[{var_id}] = {var_type!r}")
         else:
-            print(f"  ℹ  precondition_variables[{var_id}]: "
-                  f"MDPM={var_type!r}  DPMcore={actual!r}  "
-                  f"(DPMcore no enriquece precondiciones manuales)")
+            print(
+                f"  ℹ  precondition_variables[{var_id}]: "
+                f"MDPM={var_type!r}  DPMcore={actual!r}  "
+                f"(DPMcore no enriquece precondiciones manuales)"
+            )
 
     # ── 6. dependency_information ─────────────────────────────────────────
     print("\n▸ dependency_information")
-    dpm_dep   = mod.get("dependency_information", {})
+    dpm_dep = mod.get("dependency_information", {})
     dpm_intra = dpm_dep.get("intra_instance_validations", [])
     dpm_cross = dpm_dep.get("cross_instance_dependencies", [])
 
@@ -274,16 +286,22 @@ def compare(mod: dict) -> bool:
             cross_ops.append(entry)
 
     if OP_CODE not in cross_ops:
-        print(f"  ✓  '{OP_CODE}' correctamente ausente en cross_instance_dependencies")
+        print(
+            f"  ✓  '{OP_CODE}' correctamente ausente en cross_instance_dependencies"
+        )
     else:
-        print(f"  ✗  '{OP_CODE}' NO debería estar en cross_instance_dependencies")
+        print(
+            f"  ✗  '{OP_CODE}' NO debería estar en cross_instance_dependencies"
+        )
         all_ok = False
 
     # ── Resumen ───────────────────────────────────────────────────────────
     _sec("RESULTADO FINAL")
     if all_ok:
         print("  ✅  TODAS LAS COMPROBACIONES PASARON")
-        print("      DPMcore genera una operación equivalente a MDPM para e4427_e")
+        print(
+            "      DPMcore genera una operación equivalente a MDPM para e4427_e"
+        )
     else:
         print("  ❌  HAY DIFERENCIAS — revisa los ✗ anteriores")
 

@@ -28,11 +28,9 @@ import sys
 import traceback
 from pathlib import Path
 
+from generate_module_from_db import generate_module
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
-
-from generate_module_from_db import generate_module
-
 
 _REFERENCES_DIR = Path("scripts/mdpm_references")
 _DEFAULT_DB = "sqlite:///dpm_4.2.1_20260624.db"
@@ -63,6 +61,7 @@ def _diff_preconditions(ref_pc: dict, new_pc: dict) -> dict:
     """MDPM keys are p_<OperationID>; dpmcore keys are p_<variable_vid>.
     Compare on (variable_id, variable_code) instead — that's the AST identity.
     """
+
     def fingerprint(pc_dict):
         out = {}
         for k, v in pc_dict.items():
@@ -96,8 +95,12 @@ def _diff_preconditions(ref_pc: dict, new_pc: dict) -> dict:
         "ref_count": len(ref_pc),
         "new_count": len(new_pc),
         "ast_matched": len(matched_ast),
-        "only_in_ref_ast": [list(k) for k in sorted(ref_keys - new_keys, key=lambda x: str(x))],
-        "only_in_new_ast": [list(k) for k in sorted(new_keys - ref_keys, key=lambda x: str(x))],
+        "only_in_ref_ast": [
+            list(k) for k in sorted(ref_keys - new_keys, key=lambda x: str(x))
+        ],
+        "only_in_new_ast": [
+            list(k) for k in sorted(new_keys - ref_keys, key=lambda x: str(x))
+        ],
         "naming_mismatches": naming_mismatches,
         "affected_operations_mismatches": affected_op_mismatches,
     }
@@ -105,7 +108,8 @@ def _diff_preconditions(ref_pc: dict, new_pc: dict) -> dict:
 
 def _classify(module_result: dict) -> list[str]:
     """Tag each module with the known finding labels that explain its deltas.
-    Anything left unexplained surfaces as 'unclassified'."""
+    Anything left unexplained surfaces as 'unclassified'.
+    """
     tags: list[str] = []
     cmp = module_result.get("comparison") or {}
     ops = cmp.get("operations") or {}
@@ -129,7 +133,7 @@ def _classify(module_result: dict) -> list[str]:
 
     # Anything else weird → unclassified
     unexplained = (
-        bool(ops.get("only_in_ref"))   # MDPM-only ops (dpmcore should have ALL)
+        bool(ops.get("only_in_ref"))  # MDPM-only ops (dpmcore should have ALL)
         or bool(tabs.get("only_in_new"))  # dpmcore-only tables (unexpected)
         or pcs.get("only_in_new_ast")
         or pcs.get("only_in_ref_ast")
@@ -179,7 +183,7 @@ def check_module(session: Session, ref_path: Path) -> dict:
         # validation ops in the DB. If the MDPM reference also has zero ops,
         # this is parity-clean, not an error.
         ref_has_no_ops = not (ref_root.get("operations") or {})
-        msg = (result.get("error") or "")
+        msg = result.get("error") or ""
         if ref_has_no_ops and "No validations found" in msg:
             return {
                 "file": ref_path.name,
@@ -282,7 +286,9 @@ def main() -> int:
     parser.add_argument("--out-json", default="scripts/parity_report.json")
     parser.add_argument("--out-txt", default="scripts/parity_report.txt")
     parser.add_argument(
-        "--limit", type=int, default=None,
+        "--limit",
+        type=int,
+        default=None,
         help="Process only the first N reference files (for quick iteration)",
     )
     args = parser.parse_args()

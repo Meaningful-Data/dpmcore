@@ -1,5 +1,4 @@
-"""
-test_all_modules.py
+"""test_all_modules.py
 ===================
 QA completo: procesa todos los ficheros JSON de MDPM en scripts/mdpm_references/,
 llama a DPMcore con todas las operaciones y precondiciones de cada módulo,
@@ -22,19 +21,19 @@ from pathlib import Path
 # CONFIGURACIÓN
 # ─────────────────────────────────────────────────────────────────────────────
 
-DB_URL         = "sqlite:///dpm_4.2.1_20260624.db"
+DB_URL = "sqlite:///dpm_4.2.1_20260624.db"
 REFERENCES_DIR = Path("scripts/mdpm_references")
-REPORT_JSON    = Path("scripts/qa_report.json")
-REPORT_TXT     = Path("scripts/qa_report.txt")
+REPORT_JSON = Path("scripts/qa_report.json")
+REPORT_TXT = Path("scripts/qa_report.txt")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # EXTRACCIÓN DEL JSON DE MDPM
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def ast_to_precond_items(ast: dict) -> list:
-    """
-    Extrae todas las PreconditionItem del AST como lista de expresiones simples
+    """Extrae todas las PreconditionItem del AST como lista de expresiones simples
     'X := true'. DPMcore las combina internamente al recibir varias tuplas
     para la misma operación — no acepta expresiones compuestas con 'and'/'or'.
     """
@@ -42,7 +41,9 @@ def ast_to_precond_items(ast: dict) -> list:
     if cn == "PreconditionItem":
         return [f"{ast['variable_code']} := true"]
     elif cn == "BinOp":
-        return ast_to_precond_items(ast["left"]) + ast_to_precond_items(ast["right"])
+        return ast_to_precond_items(ast["left"]) + ast_to_precond_items(
+            ast["right"]
+        )
     elif cn == "ParExpr":
         return ast_to_precond_items(ast["expression"])
     return []
@@ -53,14 +54,14 @@ def extract_mdpm(path: Path) -> dict:
         raw = json.load(f)
 
     root_key = list(raw.keys())[0]
-    mod      = raw[root_key]
+    mod = raw[root_key]
 
     operations = {
         code: {
-            "expression":           op["expression"],
-            "severity":             op["severity"],
+            "expression": op["expression"],
+            "severity": op["severity"],
             "from_submission_date": op.get("from_submission_date"),
-            "version_id":           op.get("version_id"),
+            "version_id": op.get("version_id"),
         }
         for code, op in mod.get("operations", {}).items()
     }
@@ -69,20 +70,20 @@ def extract_mdpm(path: Path) -> dict:
     # Una precondición compuesta (A and B) se desglosa en dos tuplas separadas:
     #   ("A := true", [ops])
     #   ("B := true", [ops])
-    precondition_tuples = []   # lista final para DPMcore
+    precondition_tuples = []  # lista final para DPMcore
     for pc in mod.get("preconditions", {}).values():
         items = ast_to_precond_items(pc["ast"])
         for item_expr in items:
             precondition_tuples.append((item_expr, pc["affected_operations"]))
 
     return {
-        "module_code":       mod["module_code"],
-        "module_version":    mod["module_version"],
-        "operations":        operations,
+        "module_code": mod["module_code"],
+        "module_version": mod["module_version"],
+        "operations": operations,
         "precondition_tuples": precondition_tuples,
         # referencia MDPM para comparar
-        "mdpm_tables":                 mod.get("tables", {}),
-        "mdpm_variables":              mod.get("variables", {}),
+        "mdpm_tables": mod.get("tables", {}),
+        "mdpm_variables": mod.get("variables", {}),
         "mdpm_precondition_variables": mod.get("precondition_variables", {}),
         "mdpm_dependency_information": mod.get("dependency_information", {}),
     }
@@ -92,10 +93,10 @@ def extract_mdpm(path: Path) -> dict:
 # LLAMADA A DPMCORE
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def call_dpmcore(db, mdpm: dict) -> tuple:
     expressions = [
-        (op["expression"], code)
-        for code, op in mdpm["operations"].items()
+        (op["expression"], code) for code, op in mdpm["operations"].items()
     ]
 
     severities = {
@@ -108,8 +109,10 @@ def call_dpmcore(db, mdpm: dict) -> tuple:
         expressions=expressions,
         module_code=mdpm["module_code"],
         module_version=mdpm["module_version"],
-        preconditions=mdpm["precondition_tuples"] if mdpm["precondition_tuples"] else None,
-        severities=severities if severities else None,
+        preconditions=mdpm["precondition_tuples"]
+        if mdpm["precondition_tuples"]
+        else None,
+        severities=severities or None,
     )
 
     if not raw.get("success"):
@@ -126,11 +129,12 @@ def call_dpmcore(db, mdpm: dict) -> tuple:
 # COMPARACIÓN
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def compare_module(mdpm: dict, dpm_mod: dict) -> dict:
-    ops_ok        = []
+    ops_ok = []
     ops_diff_expr = []
-    ops_diff_sev  = []
-    ops_missing   = []
+    ops_diff_sev = []
+    ops_missing = []
 
     dpm_ops = dpm_mod.get("operations", {})
 
@@ -139,53 +143,60 @@ def compare_module(mdpm: dict, dpm_mod: dict) -> dict:
             ops_missing.append(code)
             continue
 
-        dpm_op  = dpm_ops[code]
-        expr_ok = ref_op["expression"].strip() == (dpm_op.get("expression") or "").strip()
-        sev_ok  = ref_op["severity"] == dpm_op.get("severity")
+        dpm_op = dpm_ops[code]
+        expr_ok = (
+            ref_op["expression"].strip()
+            == (dpm_op.get("expression") or "").strip()
+        )
+        sev_ok = ref_op["severity"] == dpm_op.get("severity")
 
         if expr_ok and sev_ok:
             ops_ok.append(code)
         else:
             if not expr_ok:
-                ops_diff_expr.append({
-                    "code":    code,
-                    "mdpm":    ref_op["expression"],
-                    "dpmcore": dpm_op.get("expression"),
-                })
+                ops_diff_expr.append(
+                    {
+                        "code": code,
+                        "mdpm": ref_op["expression"],
+                        "dpmcore": dpm_op.get("expression"),
+                    }
+                )
             if not sev_ok:
-                ops_diff_sev.append({
-                    "code":    code,
-                    "mdpm":    ref_op["severity"],
-                    "dpmcore": dpm_op.get("severity"),
-                })
+                ops_diff_sev.append(
+                    {
+                        "code": code,
+                        "mdpm": ref_op["severity"],
+                        "dpmcore": dpm_op.get("severity"),
+                    }
+                )
 
-    mdpm_tables    = mdpm["mdpm_tables"]
-    dpm_tables     = dpm_mod.get("tables", {})
+    mdpm_tables = mdpm["mdpm_tables"]
+    dpm_tables = dpm_mod.get("tables", {})
     tables_missing = [t for t in mdpm_tables if t not in dpm_tables]
 
     mdpm_vars = mdpm["mdpm_variables"]
-    dpm_vars  = dpm_mod.get("variables", {})
+    dpm_vars = dpm_mod.get("variables", {})
     vars_diff = {
         k: {"mdpm": v, "dpmcore": dpm_vars.get(k)}
         for k, v in mdpm_vars.items()
         if dpm_vars.get(k) != v
     }
 
-    mdpm_dep   = mdpm["mdpm_dependency_information"]
-    dpm_dep    = dpm_mod.get("dependency_information", {})
+    mdpm_dep = mdpm["mdpm_dependency_information"]
+    dpm_dep = dpm_mod.get("dependency_information", {})
     mdpm_intra = set(mdpm_dep.get("intra_instance_validations", []))
-    dpm_intra  = set(dpm_dep.get("intra_instance_validations", []))
+    dpm_intra = set(dpm_dep.get("intra_instance_validations", []))
     intra_missing = sorted(mdpm_intra - dpm_intra)
 
     return {
-        "total_ops":      len(mdpm["operations"]),
-        "ops_ok":         len(ops_ok),
-        "ops_diff_expr":  ops_diff_expr,
-        "ops_diff_sev":   ops_diff_sev,
-        "ops_missing":    ops_missing,
+        "total_ops": len(mdpm["operations"]),
+        "ops_ok": len(ops_ok),
+        "ops_diff_expr": ops_diff_expr,
+        "ops_diff_sev": ops_diff_sev,
+        "ops_missing": ops_missing,
         "tables_missing": tables_missing,
-        "vars_diff":      vars_diff,
-        "intra_missing":  intra_missing,
+        "vars_diff": vars_diff,
+        "intra_missing": intra_missing,
         "passed": (
             len(ops_diff_expr) == 0
             and len(ops_diff_sev) == 0
@@ -200,6 +211,7 @@ def compare_module(mdpm: dict, dpm_mod: dict) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 # INFORME
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def write_report(results: list, txt_path: Path, json_path: Path):
     lines = []
@@ -219,43 +231,65 @@ def write_report(results: list, txt_path: Path, json_path: Path):
 
     for r in results:
         tag = "✅" if r.get("passed") else ("💥" if r.get("error") else "❌")
-        lines.append(f"\n{tag}  {r['module_code']} {r['module_version']}  ({r['file']})")
+        lines.append(
+            f"\n{tag}  {r['module_code']} {r['module_version']}  ({r['file']})"
+        )
 
         if r.get("error"):
             lines.append(f"     ERROR: {r['error']}")
             continue
 
         cmp = r["comparison"]
-        lines.append(f"     Operaciones : {cmp['ops_ok']}/{cmp['total_ops']} OK")
+        lines.append(
+            f"     Operaciones : {cmp['ops_ok']}/{cmp['total_ops']} OK"
+        )
 
         if cmp["ops_missing"]:
-            lines.append(f"     Ops ausentes en DPMcore ({len(cmp['ops_missing'])}):")
+            lines.append(
+                f"     Ops ausentes en DPMcore ({len(cmp['ops_missing'])}):"
+            )
             for c in cmp["ops_missing"]:
                 lines.append(f"       - {c}")
 
         if cmp["ops_diff_expr"]:
-            lines.append(f"     Ops con expresión diferente ({len(cmp['ops_diff_expr'])}):")
+            lines.append(
+                f"     Ops con expresión diferente ({len(cmp['ops_diff_expr'])}):"
+            )
             for d in cmp["ops_diff_expr"]:
                 lines.append(f"       - {d['code']}")
                 lines.append(f"           MDPM   : {d['mdpm'][:120]}")
-                lines.append(f"           DPMcore: {(d['dpmcore'] or 'None')[:120]}")
+                lines.append(
+                    f"           DPMcore: {(d['dpmcore'] or 'None')[:120]}"
+                )
 
         if cmp["ops_diff_sev"]:
-            lines.append(f"     Ops con severidad diferente ({len(cmp['ops_diff_sev'])}):")
+            lines.append(
+                f"     Ops con severidad diferente ({len(cmp['ops_diff_sev'])}):"
+            )
             for d in cmp["ops_diff_sev"]:
-                lines.append(f"       - {d['code']}: MDPM={d['mdpm']}  DPMcore={d['dpmcore']}")
+                lines.append(
+                    f"       - {d['code']}: MDPM={d['mdpm']}  DPMcore={d['dpmcore']}"
+                )
 
         if cmp["tables_missing"]:
-            lines.append(f"     Tablas ausentes en DPMcore ({len(cmp['tables_missing'])}):")
+            lines.append(
+                f"     Tablas ausentes en DPMcore ({len(cmp['tables_missing'])}):"
+            )
             lines.append(f"       {cmp['tables_missing'][:10]}")
 
         if cmp["vars_diff"]:
-            lines.append(f"     Variables con tipo diferente ({len(cmp['vars_diff'])}):")
+            lines.append(
+                f"     Variables con tipo diferente ({len(cmp['vars_diff'])}):"
+            )
             for var_id, diff in list(cmp["vars_diff"].items())[:5]:
-                lines.append(f"       - {var_id}: MDPM={diff['mdpm']}  DPMcore={diff['dpmcore']}")
+                lines.append(
+                    f"       - {var_id}: MDPM={diff['mdpm']}  DPMcore={diff['dpmcore']}"
+                )
 
         if cmp["intra_missing"]:
-            lines.append(f"     Ops ausentes en intra_instance_validations ({len(cmp['intra_missing'])}):")
+            lines.append(
+                f"     Ops ausentes en intra_instance_validations ({len(cmp['intra_missing'])}):"
+            )
             lines.append(f"       {cmp['intra_missing'][:10]}")
 
     lines.append("\n" + "=" * 70)
@@ -275,6 +309,7 @@ def write_report(results: list, txt_path: Path, json_path: Path):
 # MAIN
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def main():
     try:
         import dpmcore
@@ -293,39 +328,56 @@ def main():
     results = []
 
     for i, path in enumerate(json_files, 1):
-        print(f"[{i:>3}/{len(json_files)}] {path.name} ... ", end="", flush=True)
+        print(
+            f"[{i:>3}/{len(json_files)}] {path.name} ... ", end="", flush=True
+        )
 
         try:
             mdpm = extract_mdpm(path)
         except Exception as e:
             print(f"ERROR al leer JSON: {e}")
-            results.append({
-                "file": path.name, "module_code": path.stem,
-                "module_version": "", "passed": False,
-                "error": f"Error al leer JSON: {e}",
-            })
+            results.append(
+                {
+                    "file": path.name,
+                    "module_code": path.stem,
+                    "module_version": "",
+                    "passed": False,
+                    "error": f"Error al leer JSON: {e}",
+                }
+            )
             continue
 
         try:
             dpm_mod, uri = call_dpmcore(db, mdpm)
         except Exception as e:
             print(f"ERROR DPMcore: {e}")
-            results.append({
-                "file": path.name, "module_code": mdpm["module_code"],
-                "module_version": mdpm["module_version"],
-                "passed": False, "error": str(e), "comparison": None,
-            })
+            results.append(
+                {
+                    "file": path.name,
+                    "module_code": mdpm["module_code"],
+                    "module_version": mdpm["module_version"],
+                    "passed": False,
+                    "error": str(e),
+                    "comparison": None,
+                }
+            )
             continue
 
         cmp = compare_module(mdpm, dpm_mod)
         tag = "✅" if cmp["passed"] else "❌"
         print(f"{tag}  {cmp['ops_ok']}/{cmp['total_ops']} ops OK")
 
-        results.append({
-            "file": path.name, "module_code": mdpm["module_code"],
-            "module_version": mdpm["module_version"], "uri": uri,
-            "passed": cmp["passed"], "error": None, "comparison": cmp,
-        })
+        results.append(
+            {
+                "file": path.name,
+                "module_code": mdpm["module_code"],
+                "module_version": mdpm["module_version"],
+                "uri": uri,
+                "passed": cmp["passed"],
+                "error": None,
+                "comparison": cmp,
+            }
+        )
 
     print()
     write_report(results, REPORT_TXT, REPORT_JSON)

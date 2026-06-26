@@ -55,9 +55,11 @@ def _load_module(session: Session, module_code: str, module_version: str):
         ORDER BY o.Code, ov.OperationVID
         """
     )
-    return session.execute(
-        sql, {"code": module_code, "version": module_version}
-    ).mappings().all()
+    return (
+        session.execute(sql, {"code": module_code, "version": module_version})
+        .mappings()
+        .all()
+    )
 
 
 def generate_module(
@@ -91,9 +93,9 @@ def generate_module(
         if r["precond_vid"] is None or not r["precond_expression"]:
             continue
         precond_to_codes[r["precond_expression"]].append(r["code"])
-    preconditions = (
-        [(expr, codes) for expr, codes in precond_to_codes.items()] or None
-    )
+    preconditions = [
+        (expr, codes) for expr, codes in precond_to_codes.items()
+    ] or None
 
     svc = ASTGeneratorService(session)
     result = svc.script(
@@ -152,7 +154,9 @@ def main() -> int:
     )
 
     if not result.get("success"):
-        print(f"Script generation failed: {result.get('error')}", file=sys.stderr)
+        print(
+            f"Script generation failed: {result.get('error')}", file=sys.stderr
+        )
         return 2
 
     out_path.write_text(
