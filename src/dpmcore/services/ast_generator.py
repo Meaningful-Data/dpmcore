@@ -181,7 +181,7 @@ class ASTGeneratorService:
                 # conflicts between two expressions in this same script.
                 result = self._semantic.validate(expr, release_id=release_id)
                 if not result.is_valid:
-                    failed_operations[code] = result.error_message
+                    failed_operations[code] = result.error_message or ""
                     continue
 
                 ast = self._semantic.ast
