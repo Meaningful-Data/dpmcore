@@ -790,9 +790,13 @@ class TimeShiftOp(AST):
         return {
             "class_name": self.__class__.__name__,
             "operand": self.operand,
-            "period_indicator": self.period_indicator,
-            "component": self.component,
+            "period_indicator": {
+                "class_name": "Constant",
+                "type_": "String",
+                "value": self.period_indicator,
+            },
             "shift_number": self.shift_number.toJSON(),
+            "reference_period": self.component,
         }
 
 
