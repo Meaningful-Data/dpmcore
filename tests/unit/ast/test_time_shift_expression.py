@@ -126,3 +126,33 @@ def test_tojson_period_indicator_is_constant_node():
     }
     assert out["reference_period"] == "refPeriod"
     assert "component" not in out
+
+
+def test_serializer_scalar_form_reference_period_is_null():
+    # The 3-argument form has no reference-period selector; the key is
+    # still emitted, as null, and period_indicator stays a Constant node.
+    from dpmcore.dpm_xl.utils.serialization import serialize_ast
+
+    node = SyntaxService().parse("time_shift({tT1}, A, 1)").children[0]
+    out = serialize_ast(node)
+
+    assert out["period_indicator"] == {
+        "class_name": "Constant",
+        "type_": "String",
+        "value": "A",
+    }
+    assert out["reference_period"] is None
+    assert "component" not in out
+
+
+def test_tojson_scalar_form_reference_period_is_null():
+    node = SyntaxService().parse("time_shift({tT1}, A, 1)").children[0]
+    out = node.toJSON()
+
+    assert out["period_indicator"] == {
+        "class_name": "Constant",
+        "type_": "String",
+        "value": "A",
+    }
+    assert out["reference_period"] is None
+    assert "component" not in out
