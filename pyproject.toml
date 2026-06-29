@@ -93,9 +93,15 @@ django-stubs = ">=6.0.6"
 pandas-stubs = ">=2.2.2,<3.0"
 
 [tool.poetry.group.docs.dependencies]
-sphinx = ">=7.4"
+# sphinx-multiversion 0.2.4 (unmaintained since 2022) calls Sphinx's internal
+# Config.read() with the old positional signature, which Sphinx >= 7.2 broke
+# (overrides/tags became keyword-only). Sphinx is therefore capped at the last
+# 7.1.x, which in turn caps sphinx-autodoc-typehints at the 2.0.x line
+# (>= 2.1 requires sphinx >= 7.3.5). Lift all three together if/when the docs
+# move off sphinx-multiversion.
+sphinx = ">=7.1.2,<7.2"
 sphinx-rtd-theme = ">=3.0"
-sphinx-autodoc-typehints = ">=2.3"
+sphinx-autodoc-typehints = ">=2.0,<2.1"
 sphinx-multiversion = ">=0.2.4"
 
 [build-system]
