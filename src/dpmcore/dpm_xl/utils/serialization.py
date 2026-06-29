@@ -596,13 +596,22 @@ class ASTToJSONVisitor(NodeVisitor):
         }
 
     def visit_TimeShiftOp(self, node: Any) -> NodeDict:
-        """Visit TimeShiftOp nodes."""
+        """Visit TimeShiftOp nodes.
+
+        ``period_indicator`` is wrapped in a ``Constant`` node so it matches
+        how every other scalar literal is serialized, and the reference-period
+        selector is emitted under ``reference_period``.
+        """
         return {
             "class_name": "TimeShiftOp",
             "operand": self.visit(node.operand),
-            "component": node.component,
-            "period_indicator": node.period_indicator,
+            "period_indicator": {
+                "class_name": "Constant",
+                "type_": "String",
+                "value": node.period_indicator,
+            },
             "shift_number": self.visit(node.shift_number),
+            "reference_period": node.component,
         }
 
     def visit_AnnualiseOp(self, node: Any) -> NodeDict:
