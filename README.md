@@ -293,11 +293,13 @@ republished across releases.
 
 > **How range comparisons work.** From DPM **4.2.1** onwards EBA
 > assigns opaque `ReleaseID` values (`4.2.1` is `1010000003`, while
-> older releases are still 1..5). dpmcore therefore compares ranges
-> against `Release.sort_order` — a synthetic integer derived from the
-> parsed semver `code` and auto-populated by an ORM listener
-> (backfilled by `MigrationService` after bulk loads). This means
-> both forms work correctly: `release_id=1010000003` and
+> older releases are still 1..5), so release-range comparisons cannot
+> rely on numeric ID ordering. dpmcore instead parses `Release.code`
+> as a semver tuple and packs it into a single sortable integer **in
+> Python at query time**
+> (`dpmcore.orm.release_sort_order.compute_sort_order`) — there is no
+> persisted `sort_order` column, ORM listener, or migration backfill.
+> This means both forms work correctly: `release_id=1010000003` and
 > `release_code="4.2.1"` resolve identically, and a hypothetical
 > backport like `4.0.1` shipped after `4.2.1` is correctly placed
 > inside the `4.0` lineage. Prefer `release_code` for human input
@@ -606,6 +608,10 @@ src/dpmcore/
 │   └── calculations_graph/ CalculationsGraphService (CSV → HTML graph, no DB)
 ├── loaders/               data-loading (mutates the DB)
 │   └── migration.py       MigrationService (Access import)
+├── server/                FastAPI REST app (optional, [server] extra)
+│   ├── app.py             ASGI app factory + SDMX-inspired endpoints
+│   └── routers/           scope, scripts, structure
+├── django/                Django integration app (models, admin, views)
 ├── cli/
 │   └── main.py            Click CLI (migrate, export-csv, build-meili-json, update-db, serve, generate-script, export-layout)
 └── dpm_xl/                DPM-XL engine internals
