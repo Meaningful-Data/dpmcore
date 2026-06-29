@@ -310,12 +310,10 @@ class ScopeCalculatorService:
             scope_result, primary_module_vid
         )
         if not valid_vids:
-            return {
-                **empty_result,
-                "intra_instance_validations": (
-                    [operation_code] if operation_code else []
-                ),
-            }
+            # Scopes exist, but the primary module hosts none of the
+            # referenced tables and so participates in none of them: it is
+            # neither the intra-instance owner nor a cross-instance partner.
+            return {**empty_result}
 
         # Build cross_instance_dependencies and dependency_modules
         cross_deps: List[Dict[str, Any]] = []

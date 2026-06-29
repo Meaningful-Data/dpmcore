@@ -377,7 +377,14 @@ class OperationScopeService:
                 )
             )
             if tables_modules_info_dataframe.empty:
-                raise errors.SemanticError("1-13", table_codes=table_codes)
+                # The "1-13" template is keyed on ``table_version_ids``; pass
+                # the table codes under that name (codes ARE table-version
+                # identifiers) so the message formats instead of raising a
+                # KeyError. Reached now that single-day module versions are
+                # excluded from scope and a release may host none.
+                raise errors.SemanticError(
+                    "1-13", table_version_ids=list(table_codes)
+                )
             modules_info_lst.append(tables_modules_info_dataframe)
         # Otherwise use the traditional table VID approach
         elif len(tables_vids):

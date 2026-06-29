@@ -408,6 +408,64 @@ class TestBuildPreconditionsBlock:
             "v3",
         ]
 
+    def test_dict_format_with_custom_code_and_version_id(self, monkeypatch):
+        """Dict format allows overriding code and version_id"""
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+
+        fake_query = MagicMock()
+        fake_query.get_variable_vids_by_codes.return_value = {
+            "C_01.00": {"variable_id": 11, "variable_vid": 110}
+        }
+        monkeypatch.setitem(
+            sys.modules,
+            "dpmcore.dpm_xl.model_queries",
+            SimpleNamespace(VariableVersionQuery=fake_query),
+        )
+
+        preconds, vars_ = svc._build_preconditions_block(
+            [
+                {
+                    "expression": "{v_C_01.00}",
+                    "affected_operations": ["v1", "v2"],
+                    "code": "P_571",  # Override default p_110
+                    "version_id": 8341,  # Override default 110
+                }
+            ],
+            release_id=5,
+        )
+        assert "P_571" in preconds
+        entry = preconds["P_571"]
+        assert entry["code"] == "P_571"
+        assert entry["version_id"] == 8341
+        assert entry["affected_operations"] == ["v1", "v2"]
+        assert vars_ == {"110": "b"}
+
+    def test_backward_compat_tuple_format_still_works(self, monkeypatch):
+        """Tuple format (old) still works for backward compatibility."""
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+
+        fake_query = MagicMock()
+        fake_query.get_variable_vids_by_codes.return_value = {
+            "C_01.00": {"variable_id": 11, "variable_vid": 110}
+        }
+        monkeypatch.setitem(
+            sys.modules,
+            "dpmcore.dpm_xl.model_queries",
+            SimpleNamespace(VariableVersionQuery=fake_query),
+        )
+
+        # Old tuple format should still work
+        preconds, vars_ = svc._build_preconditions_block(
+            [("{v_C_01.00}", ["v1", "v2"])],
+            release_id=5,
+        )
+        assert "p_110" in preconds
+        entry = preconds["p_110"]
+        assert entry["code"] == "p_110"
+        assert entry["version_id"] == 110
+
 
 # ------------------------------------------------------------------ #
 # _resolve_root_operator_id
@@ -488,6 +546,34 @@ class TestResolveRootOperatorId:
         )
         assert Cls._resolve_root_operator_id(pa, MagicMock()) == 33
 
+    def test_condexpr_root_resolves_to_if_then_else(self, monkeypatch):
+        # A CondExpr root has no 'op'; it resolves to the if-then-else
+        # operator instead of raising.
+        _, Cls, _ = _bare_svc()
+        CondExpr = type("CondExpr", (), {})
+        node = CondExpr()
+        node.op = None
+
+        WithExpression = type("WithExpression", (), {})
+        with_expr = WithExpression()
+        with_expr.expression = node
+
+        class FakeOperatorQuery:
+            @staticmethod
+            def get_operators(session):  # noqa: ARG004
+                import pandas as pd
+
+                return pd.DataFrame(
+                    [{"Symbol": "if-then-else", "OperatorID": 30}]
+                )
+
+        monkeypatch.setitem(
+            sys.modules,
+            "dpmcore.dpm_xl.model_queries",
+            SimpleNamespace(OperatorQuery=FakeOperatorQuery),
+        )
+        assert Cls._resolve_root_operator_id(with_expr, MagicMock()) == 30
+
     def test_unresolvable_root_raises(self, monkeypatch):
         _, Cls, _ = _bare_svc()
         # No 'op' attribute anywhere.
@@ -544,66 +630,10 @@ class TestResolveRelease:
         with pytest.raises(ValueError, match="ModuleVersion not found"):
             svc._resolve_release("X", "1.0", None)
 
-    def test_explicit_release_returns_match(self, monkeypatch):
-        svc, _, _ = _bare_svc()
-        svc.session = MagicMock()
-        mv = SimpleNamespace(
-            module_vid=1,
-            start_release_id=3,
-            end_release_id=None,
-            from_reference_date=None,
-            to_reference_date=None,
-            code="X",
-            version_number="1",
-            module=None,
-        )
-        svc._resolve_module_version = lambda c, v: mv
-
-        rr = SimpleNamespace(release_id=5, code="4.2", date=None)
-        svc.session.query.return_value.filter.return_value.first.return_value = rr  # noqa: E501
-
-        # Stub out the Release symbol used in the dynamic import.
-        infra = sys.modules["dpmcore.orm.infrastructure"]
-        infra.Release = MagicMock()
-
-        out_mv, out_rr = svc._resolve_release("X", "1", "4.2")
-        assert out_mv is mv
-        assert out_rr is rr
-
-    def test_explicit_release_before_window_raises(self):
-        svc, _, _ = _bare_svc()
-        svc.session = MagicMock()
-        mv = SimpleNamespace(
-            module_vid=1, start_release_id=10, end_release_id=None
-        )
-        svc._resolve_module_version = lambda c, v: mv
-        rr = SimpleNamespace(release_id=5, code="4.0", date=None)
-        svc.session.query.return_value.filter.return_value.first.return_value = rr  # noqa: E501
-        with pytest.raises(ValueError, match="predates module"):
-            svc._resolve_release("X", "1", "4.0")
-
-    def test_explicit_release_after_end_raises(self):
-        svc, _, _ = _bare_svc()
-        svc.session = MagicMock()
-        mv = SimpleNamespace(
-            module_vid=1, start_release_id=1, end_release_id=5
-        )
-        svc._resolve_module_version = lambda c, v: mv
-        rr = SimpleNamespace(release_id=5, code="4.2", date=None)
-        svc.session.query.return_value.filter.return_value.first.return_value = rr  # noqa: E501
-        with pytest.raises(ValueError, match="past the end"):
-            svc._resolve_release("X", "1", "4.2")
-
-    def test_unknown_release_raises(self):
-        svc, _, _ = _bare_svc()
-        svc.session = MagicMock()
-        mv = SimpleNamespace(
-            module_vid=1, start_release_id=1, end_release_id=None
-        )
-        svc._resolve_module_version = lambda c, v: mv
-        svc.session.query.return_value.filter.return_value.first.return_value = None  # noqa: E501
-        with pytest.raises(ValueError, match="Release not found"):
-            svc._resolve_release("X", "1", "ZZZ")
+    # Explicit-release window checks now compare semver sort orders, which
+    # need real Release rows. They are covered against the EBA fixture DB in
+    # tests/integration/services/test_scope_release_axis.py rather than with
+    # blanket ORM mocks (see issue #151).
 
 
 # ------------------------------------------------------------------ #
@@ -846,6 +876,29 @@ class TestBuildPreconditionIndex:
         with pytest.raises(ValueError, match="Invalid precondition"):
             svc._build_precondition_index([("bad", ["v"])])
 
+    def test_dict_format_builds_index_correctly(self):
+        """Dict format in _build_precondition_index works like tuple format."""
+        svc, _, _ = _bare_svc()
+        svc._syntax = MagicMock()
+        svc._syntax.parse.side_effect = lambda expr: f"AST_{expr}"
+        svc._extract_precondition_codes = lambda ast: (
+            ["P1"] if ast == "AST_expr1" else ["P2"]
+        )
+        idx = svc._build_precondition_index(
+            [
+                {
+                    "expression": "expr1",
+                    "affected_operations": ["v1", "v2"],
+                    "code": "P_571",  # Custom fields ignored by index builder
+                    "version_id": 8341,
+                },
+                ("expr2", ["v2", "v3"]),  # Tuple format still works
+            ]
+        )
+        assert idx["v1"] == ["P1"]
+        assert idx["v2"] == ["P1", "P2"]
+        assert idx["v3"] == ["P2"]
+
 
 # ------------------------------------------------------------------ #
 # script() — integration of helpers
@@ -934,18 +987,55 @@ class TestScript:
         assert out["success"] is False
         assert "ModuleVersion not found" in out["error"]
 
-    def test_validation_error_short_circuits(self, monkeypatch):
+    def test_validation_error_goes_to_failed_operations(self, monkeypatch):
         svc, *_ = self._build_svc()
         svc._semantic.validate.return_value = SimpleNamespace(
-            is_valid=False, error_message="bad expr"
+            is_valid=False,
+            error_message="Grey cells {F_32.03.a, r0040, c0010} were found.",
         )
         out = svc.script(
             expressions=[("x", "v1")],
             module_code="MOD",
             module_version="1.0",
         )
-        assert out["success"] is False
-        assert out["error"] == "bad expr"
+        assert out["success"] is True
+        assert out["failed_operations"] == {
+            "v1": "Grey cells {F_32.03.a, r0040, c0010} were found."
+        }
+
+    def test_grey_cell_skips_op_preserves_others(self, monkeypatch):
+        """A grey-cell failure must skip that op, not abort the module."""
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+
+        svc._semantic.validate.side_effect = lambda expr, release_id=None: (
+            SimpleNamespace(
+                is_valid=False,
+                error_message="Grey cells {F_32.03.a, r0040, c0010} were found.",
+            )
+            if expr == "e_bad"
+            else SimpleNamespace(
+                is_valid=True, error_message=None, parameters=()
+            )
+        )
+        svc._semantic.ast = "AST"
+
+        out = svc.script(
+            expressions=[("e_bad", "v1"), ("e2", "v2"), ("e3", "v3")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+        assert out["success"] is True
+        ns = next(iter(out["enriched_ast"].values()))
+        assert "v1" not in ns["operations"]
+        assert "v2" in ns["operations"]
+        assert "v3" in ns["operations"]
+        assert out["failed_operations"] == {
+            "v1": "Grey cells {F_32.03.a, r0040, c0010} were found."
+        }
 
     def test_scope_error_fails_generation(self, monkeypatch):
         """Regression for #122: a scope-calculation error must fail the
@@ -1042,9 +1132,41 @@ class TestScript:
         # AST stripped
         ast_data = ns_block["operations"]["v1"]["ast"]["data"][0]
         assert "data_type" not in ast_data
-        # tables/variables filtered to referenced
+        # tables/variables seeded from the module composition
         assert "C_01.00" in ns_block["tables"]
         assert ns_block["variables"] == {"100": "m"}
+
+    def test_tables_block_includes_unreferenced_module_tables(
+        self, monkeypatch
+    ):
+        """#158: module-composition tables appear even when no expression
+        references them; abstract (empty-variable) tables stay excluded.
+        """
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+        svc._scope_calc._get_module_tables.return_value = {
+            "C_01.00": {"variables": {"100": "m"}, "open_keys": {}},
+            "C_99.00": {"variables": {"900": "m"}, "open_keys": {}},
+            "C_ABS.00": {"variables": {}, "open_keys": {}},
+        }
+        out = svc.script(
+            expressions=[("e1", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+        assert out["success"] is True
+        ns = next(iter(out["enriched_ast"].values()))
+        # Referenced (C_01.00) AND unreferenced-with-variables (C_99.00)
+        # are present; the empty-variable (abstract) table is dropped.
+        assert set(ns["tables"]) == {"C_01.00", "C_99.00"}
+        assert ns["variables"] == {"100": "m", "900": "m"}
 
     def test_default_severity_is_warning(self, monkeypatch):
         self._stub_serialize_ast(

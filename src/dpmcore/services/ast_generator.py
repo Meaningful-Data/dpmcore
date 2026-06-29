@@ -14,6 +14,7 @@ from typing import (
     List,
     Optional,
     Tuple,
+    Union,
 )
 
 from dpmcore.dpm_xl.utils.tokens import (
@@ -88,7 +89,9 @@ class ASTGeneratorService:
         expressions: List[Tuple[str, str]],
         module_code: str,
         module_version: str,
-        preconditions: Optional[List[Tuple[str, List[str]]]] = None,
+        preconditions: Optional[
+            List[Union[Tuple[str, List[str]], Dict[str, Any]]]
+        ] = None,
         severity: Optional[str] = None,
         severities: Optional[Dict[str, str]] = None,
         release: Optional[str] = None,
@@ -100,8 +103,11 @@ class ASTGeneratorService:
             module_code: Code of the primary module (e.g. ``"COREP_Con"``).
             module_version: Version of the primary module
                 (e.g. ``"2.0.1"``).
-            preconditions: Optional list of
-                ``(precondition_expression, [validation_codes])`` tuples.
+            preconditions: Optional list of precondition specs:
+                - Tuples: ``(precondition_expression, [validation_codes])``
+                - Dicts: ``{"expression": "...",
+                  "affected_operations": [...], "code": "P_571",
+                  "version_id": 8341}`` (code and version_id optional)
                 A precondition can guard many validation codes; a
                 validation may have no precondition.
             severity: Optional global default severity tag
@@ -133,6 +139,7 @@ class ASTGeneratorService:
                 "success": False,
                 "enriched_ast": None,
                 "error": "No database session — cannot generate script.",
+                "failed_operations": {},
             }
 
         try:
@@ -158,6 +165,7 @@ class ASTGeneratorService:
                     "success": False,
                     "enriched_ast": None,
                     "error": str(exc),
+                    "failed_operations": {},
                 }
 
             from_submission_date = _format_date(
@@ -165,6 +173,7 @@ class ASTGeneratorService:
             )
 
             operations: Dict[str, Dict[str, Any]] = {}
+            failed_operations: Dict[str, str] = {}
             scope_pairs: List[
                 Tuple[Tuple[str, str], "ScopeResult", Dict[str, str]]
             ] = []
@@ -180,11 +189,8 @@ class ASTGeneratorService:
                 # conflicts between two expressions in this same script.
                 result = self._semantic.validate(expr, release_id=release_id)
                 if not result.is_valid:
-                    return {
-                        "success": False,
-                        "enriched_ast": None,
-                        "error": result.error_message,
-                    }
+                    failed_operations[code] = result.error_message or ""
+                    continue
 
                 ast = self._semantic.ast
                 ast_dict = serialize_ast(ast)
@@ -225,6 +231,7 @@ class ASTGeneratorService:
                             f"Scope calculation failed for operation "
                             f"'{code}': {sr.error_message}"
                         ),
+                        "failed_operations": failed_operations,
                     }
                 ts = self._extract_time_shifts(ast)
                 scope_pairs.append((item, sr, ts))
@@ -232,10 +239,25 @@ class ASTGeneratorService:
             primary_tables_full = self._scope_calc._get_module_tables(
                 primary_module_vid, release_id=release_id
             )
-            tables_block: Dict[str, Any] = {
-                code: primary_tables_full[code]
-                for code in sorted(referenced_table_codes)
+            # Seed from every module-composition table that carries
+            # variables — i.e. the non-abstract tables; abstract templates
+            # have no cells, and the engine schema forbids an empty
+            # variables map — then union in anything the expressions
+            # reference. MDPM lists all such tables even when no validation
+            # touches them (#158). The union keeps this additive: a
+            # referenced table is never dropped.
+            seed_codes = {
+                code
+                for code, data in primary_tables_full.items()
+                if data.get("variables")
+            }
+            seed_codes |= {
+                code
+                for code in referenced_table_codes
                 if code in primary_tables_full
+            }
+            tables_block: Dict[str, Any] = {
+                code: primary_tables_full[code] for code in sorted(seed_codes)
             }
             variables_block: Dict[str, str] = {}
             for tbl in tables_block.values():
@@ -303,6 +325,7 @@ class ASTGeneratorService:
                 "success": True,
                 "enriched_ast": {namespace: ns_block},
                 "error": None,
+                "failed_operations": failed_operations,
             }
 
         except ValueError as exc:
@@ -310,12 +333,14 @@ class ASTGeneratorService:
                 "success": False,
                 "enriched_ast": None,
                 "error": str(exc),
+                "failed_operations": {},
             }
         except Exception as exc:
             return {
                 "success": False,
                 "enriched_ast": None,
                 "error": str(exc),
+                "failed_operations": {},
             }
 
     # ------------------------------------------------------------------ #
@@ -386,11 +411,15 @@ class ASTGeneratorService:
         """Resolve and window-check an explicit release.
 
         Looks up ``Release.code == release`` and validates that the
-        release_id sits inside ``mv``'s window. Raises ``ValueError``
-        if the release is unknown, predates ``start_release_id``, or
-        is past ``end_release_id``.
+        release sits inside ``mv``'s window. Comparison runs against the
+        semver-parsed sort order of each release ``code`` (the DPM
+        ``ReleaseID`` FK is no longer monotonic — see
+        :mod:`dpmcore.orm.release_sort_order`), not the raw id. Raises
+        ``ValueError`` if the release is unknown, predates
+        ``start_release_id``, or is past ``end_release_id``.
         """
         from dpmcore.orm.infrastructure import Release
+        from dpmcore.orm.release_sort_order import resolve_sort_order
 
         if self.session is None:
             raise RuntimeError("session required")
@@ -399,16 +428,22 @@ class ASTGeneratorService:
         )
         if release_row is None:
             raise ValueError(f"Release not found: {release}")
-        rid = release_row.release_id
+        target = resolve_sort_order(
+            self.session, release_row.release_id, role=f"release {release}"
+        )
         start = mv.start_release_id
         end = mv.end_release_id
-        if start is not None and rid < start:
+        if start is not None and target < resolve_sort_order(
+            self.session, start, role="module version start release"
+        ):
             raise ValueError(
                 f"Release {release} predates module version "
                 f"{module_code} {module_version} "
                 f"(starts at release_id={start})."
             )
-        if end is not None and rid >= end:
+        if end is not None and target >= resolve_sort_order(
+            self.session, end, role="module version end release"
+        ):
             raise ValueError(
                 f"Release {release} is past the end of module "
                 f"version {module_code} {module_version} "
@@ -555,6 +590,9 @@ class ASTGeneratorService:
             break
 
         op_symbol = getattr(node, "op", None)
+        if not op_symbol and type(node).__name__ == "CondExpr":
+            # CondExpr carries no ``op`` attribute; its operator is fixed.
+            op_symbol = "if-then-else"
         if not op_symbol:
             raise RuntimeError(
                 f"Cannot resolve root operator: AST root "
@@ -641,7 +679,7 @@ class ASTGeneratorService:
 
     def _build_preconditions_block(
         self,
-        preconditions: List[Tuple[str, List[str]]],
+        preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
         release_id: Optional[int],
     ) -> Tuple[Dict[str, Any], Dict[str, str]]:
         """Build the ``preconditions`` and ``precondition_variables`` blocks.
@@ -661,8 +699,15 @@ class ASTGeneratorService:
             return preconditions_dict, precondition_variables
 
         all_codes: List[str] = []
-        for precondition_expr, _ in preconditions:
-            for raw in _VAR_REF_PATTERN.findall(precondition_expr):
+        for precond_spec in preconditions:
+            precond_expr = (
+                precond_spec.get("expression")
+                if isinstance(precond_spec, dict)
+                else precond_spec[0]
+            )
+            if not precond_expr:
+                continue
+            for raw in _VAR_REF_PATTERN.findall(precond_expr):
                 normalized = _normalize_variable_code(raw)
                 if normalized not in all_codes:
                     all_codes.append(normalized)
@@ -673,14 +718,24 @@ class ASTGeneratorService:
             self.session, all_codes, release_id=release_id
         )
 
-        for precondition_expr, validation_codes in preconditions:
+        for precond_spec in preconditions:
+            if isinstance(precond_spec, dict):
+                precond_expr = precond_spec["expression"]
+                validation_codes = precond_spec["affected_operations"]
+                provided_code = precond_spec.get("code")
+                provided_version_id = precond_spec.get("version_id")
+            else:
+                precond_expr, validation_codes = precond_spec
+                provided_code = None
+                provided_version_id = None
+
             var_infos = self._collect_precondition_var_infos(
-                precondition_expr, resolved, precondition_variables
+                precond_expr, resolved, precondition_variables
             )
             if not var_infos:
                 continue
             key, entry = self._build_precondition_entry(
-                var_infos, validation_codes
+                var_infos, validation_codes, provided_code, provided_version_id
             )
             self._merge_precondition_entry(preconditions_dict, key, entry)
 
@@ -742,29 +797,46 @@ class ASTGeneratorService:
     def _build_precondition_entry(
         var_infos: List[Dict[str, Any]],
         validation_codes: List[str],
+        provided_code: Optional[str] = None,
+        provided_version_id: Optional[int] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """Assemble a single ``preconditions[key]`` entry.
 
         Single-variable case → ``p_<vid>`` with a ``PreconditionItem``
         AST. Compound case → ``p_<sorted_vids>`` with a left-folded
         chain of ``BinOp(op="and")`` nodes.
+
+        When provided_code or provided_version_id are supplied, they override
+        the auto-generated values.
         """
         if len(var_infos) == 1:
             vi = var_infos[0]
-            key = f"p_{vi['variable_vid']}"
-            return key, {
+            default_key = f"p_{vi['variable_vid']}"
+            code = provided_code if provided_code is not None else default_key
+            version_id = (
+                provided_version_id
+                if provided_version_id is not None
+                else vi["variable_vid"]
+            )
+            return code, {
                 "ast": {
                     "class_name": "PreconditionItem",
                     "variable_id": vi["variable_id"],
                     "variable_code": vi["variable_code"],
                 },
                 "affected_operations": list(validation_codes),
-                "version_id": vi["variable_vid"],
-                "code": key,
+                "version_id": version_id,
+                "code": code,
             }
 
         sorted_vids = sorted(vi["variable_vid"] for vi in var_infos)
-        key = "p_" + "_".join(str(v) for v in sorted_vids)
+        default_key = "p_" + "_".join(str(v) for v in sorted_vids)
+        code = provided_code if provided_code is not None else default_key
+        version_id = (
+            provided_version_id
+            if provided_version_id is not None
+            else sorted_vids[0]
+        )
         ast_node: Dict[str, Any] = {
             "class_name": "PreconditionItem",
             "variable_id": var_infos[0]["variable_id"],
@@ -781,11 +853,11 @@ class ASTGeneratorService:
                     "variable_code": vi["variable_code"],
                 },
             }
-        return key, {
+        return code, {
             "ast": ast_node,
             "affected_operations": list(validation_codes),
-            "version_id": sorted_vids[0],
-            "code": key,
+            "version_id": version_id,
+            "code": code,
         }
 
     # ------------------------------------------------------------------ #
@@ -878,22 +950,28 @@ class ASTGeneratorService:
 
     def _build_precondition_index(
         self,
-        preconditions: List[Tuple[str, List[str]]],
+        preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
     ) -> Dict[str, List[str]]:
         """Map each validation code → unioned precondition variable codes.
 
         Parses each precondition expression once and extracts variable
         codes that act as precondition items. Raises ``ValueError`` if
         a precondition expression cannot be parsed.
+        Supports both tuple and dict formats.
         """
         index: Dict[str, List[str]] = {}
-        for precondition_expr, validation_codes in preconditions:
+        for precond_spec in preconditions:
+            if isinstance(precond_spec, dict):
+                precond_expr = precond_spec["expression"]
+                validation_codes = precond_spec["affected_operations"]
+            else:
+                precond_expr, validation_codes = precond_spec
+
             try:
-                ast = self._syntax.parse(precondition_expr)
+                ast = self._syntax.parse(precond_expr)
             except Exception as exc:
                 raise ValueError(
-                    f"Invalid precondition expression "
-                    f"{precondition_expr!r}: {exc}"
+                    f"Invalid precondition expression {precond_expr!r}: {exc}"
                 ) from exc
             codes = self._extract_precondition_codes(ast)
             for vc in validation_codes:

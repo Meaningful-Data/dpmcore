@@ -15,6 +15,7 @@ from dpmcore.dpm_xl.model_queries import (
     ModuleVersionQuery,
     VariableVersionQuery,
 )
+from dpmcore.orm.infrastructure import Release
 from dpmcore.orm.packaging import ModuleParameters, ModuleVersion
 from dpmcore.orm.variables import Variable, VariableVersion
 
@@ -31,6 +32,9 @@ def _seed(session):
     """
     session.add_all(
         [
+            # Release-axis filtering resolves sort order from Release.code,
+            # so the target release must exist as a real row.
+            Release(release_id=1, code="3.4", date=datetime.date(2022, 12, 1)),
             Variable(variable_id=1, type="filingindicator"),
             Variable(variable_id=2, type="Filing Indicator"),
             Variable(variable_id=3, type="fact"),

@@ -396,7 +396,9 @@ class TestDetectCrossModuleDependencies:
         assert dep["modules"][0]["URI"] == ("http://uri/mod_20")
         assert dep["affected_operations"] == ["v1234"]
 
-    def test_no_valid_deps_returns_intra(self):
+    def test_primary_in_no_scope_is_not_intra(self):
+        # Primary module 10 is in no scope (the cross-module scope is
+        # 20+30), so it must not be classified intra-instance.
         svc, SR = self._make_svc()
         sr = SR(
             scopes=[_scope([20, 30])],
@@ -407,7 +409,7 @@ class TestDetectCrossModuleDependencies:
             primary_module_vid=10,
             operation_code="v1234",
         )
-        assert info["intra_instance_validations"] == ["v1234"]
+        assert info["intra_instance_validations"] == []
         assert info["cross_instance_dependencies"] == []
 
     def test_alternative_deps_included(self):

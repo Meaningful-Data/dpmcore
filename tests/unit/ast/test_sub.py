@@ -6,7 +6,7 @@ The sub clause accepts one or more comma-separated substitutions:
 
 import pytest
 
-from dpmcore.dpm_xl.ast.nodes import SubAssignment, SubOp
+from dpmcore.dpm_xl.ast.nodes import Scalar, SubAssignment, SubOp
 from dpmcore.dpm_xl.utils.serialization import ASTToJSONVisitor
 from dpmcore.services.syntax import SyntaxService
 
@@ -78,8 +78,8 @@ def test_multiple_sub_produces_multiple_substitutions():
 def test_single_sub_serializes_as_one_subclause_op():
     """Single-sub JSON is one SubClauseOp wrapping the recordset directly.
 
-    Backwards-compatibility check: adam-engine's existing scripts use this
-    shape, so the wire format must be unchanged for the single-sub case.
+    Backwards-compatibility check: the wire format must be unchanged for
+    the single-sub case.
     """
     ast = SyntaxService().parse('{tT, r010}[sub c0010 = "ES"]')
     sub_op = ast.children[0]
@@ -97,9 +97,8 @@ def test_single_sub_serializes_as_one_subclause_op():
 def test_multi_sub_serializes_as_chained_subclause_ops():
     """Multi-sub JSON nests one SubClauseOp per substitution (left-deep).
 
-    Locks the wire-format contract with adam-engine, whose ``SubClauseOp``
-    schema accepts a single ``condition`` per node. The outermost node
-    wraps the LAST substitution; the original recordset sits at the
+    ``SubClauseOp`` accepts a single ``condition`` per node. The outermost
+    node wraps the LAST substitution; the original recordset sits at the
     deepest level. Order matches the left-to-right reading of the
     source: ``c0010`` is applied first, ``c0020`` second.
     """
@@ -118,6 +117,38 @@ def test_multi_sub_serializes_as_chained_subclause_ops():
 
     # Original recordset sits at the deepest level.
     assert inner["operand"]["class_name"] != "SubClauseOp"
+
+
+@pytest.mark.parametrize(
+    "item_code",
+    [
+        "eba_qEC:qx01",
+        "eba_qAE:qx2023",
+        "eba_qLR:qx10",
+        "eba_EC:qx01",
+        "ns:code",
+    ],
+)
+def test_scalar_item_serialized_verbatim(item_code):
+    """A Scalar item code is serialized exactly as authored."""
+    serialized = ASTToJSONVisitor().visit(
+        Scalar(item=item_code, scalar_type="Item")
+    )
+
+    assert serialized["class_name"] == "Scalar"
+    assert serialized["item"] == item_code
+    assert serialized["scalar_type"] == "Item"
+
+
+def test_sub_clause_preserves_eba_q_item_namespace():
+    """``[sub key = [eba_qEC:qx01]]`` keeps the ``q`` in the item code."""
+    ast = SyntaxService().parse("{tT, r010}[sub c0010 = [eba_qEC:qx01]]")
+    sub_op = ast.children[0]
+    serialized = ASTToJSONVisitor().visit(sub_op)
+
+    right = serialized["condition"]["right"]
+    assert right["class_name"] == "Scalar"
+    assert right["item"] == "eba_qEC:qx01"
 
 
 def test_three_subs_serialize_as_three_chained_subclause_ops():
