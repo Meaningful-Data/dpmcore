@@ -3,6 +3,16 @@
 import pytest
 
 from dpmcore.dpm_xl.ast.nodes import DateConstructorOp
+from dpmcore.dpm_xl.operators.time import DateConstructor
+from dpmcore.dpm_xl.symbols import (
+    FactComponent,
+    KeyComponent,
+    RecordSet,
+    Scalar,
+    Structure,
+)
+from dpmcore.dpm_xl.types.scalar import Date, Integer, Number
+from dpmcore.dpm_xl.utils.tokens import STANDARD
 from dpmcore.services.syntax import SyntaxService
 
 VALID_FORMS = [
@@ -65,3 +75,39 @@ def test_constructor_node_op_is_date():
     assert isinstance(node, DateConstructorOp)
     assert node.op == "date"
     assert node.toJSON()["op"] == "date"
+
+
+# Operator validation: any combination of Scalar and Recordset operands is allowed
+
+
+def _int_scalar(name: str) -> Scalar:
+    return Scalar(type_=Integer(), name=name, origin=name)
+
+
+def _int_recordset() -> RecordSet:
+    structure = Structure(
+        [
+            KeyComponent("r", Number(), STANDARD, "test"),
+            FactComponent(Integer(), "test"),
+        ]
+    )
+    return RecordSet(structure, "test", "test")
+
+
+@pytest.mark.parametrize(
+    ("operands", "expects_recordset"),
+    [
+        ((_int_scalar("y"), _int_scalar("m"), _int_scalar("d")), False),
+        ((_int_recordset(), _int_scalar("m"), _int_scalar("d")), True),
+    ],
+)
+def test_date_constructor_validate_scalar_and_recordset(
+    operands, expects_recordset
+):
+    result = DateConstructor.validate(*operands)
+    if expects_recordset:
+        assert isinstance(result, RecordSet)
+        assert isinstance(result.get_fact_component().type, Date)
+    else:
+        assert isinstance(result, Scalar)
+        assert isinstance(result.type, Date)
