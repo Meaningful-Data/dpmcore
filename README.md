@@ -177,6 +177,25 @@ curl -X POST http://localhost:8000/api/v1/scripts \
         }'
 ```
 
+**Calculations dependency graph:**
+
+Turn DPM-XL operations into a single self-contained HTML dependency graph —
+one node per operation, one arrow per dependency, roots highlighted,
+click-to-inspect, search and re-layout. The rendering libraries are embedded
+inline so the file opens offline. Three input sources:
+
+```bash
+# A Code,Expression CSV (no database; dependencies from the DPM-XL AST)
+dpmcore generate-graph calculations_script.csv -o graph.html
+
+# Inline expressions (no file needed)
+dpmcore generate-graph -e "calc1={tA, r1, c1} <- {tB, r1, c1}" -o graph.html
+
+# Engine mode: read the DPM dictionary directly, using the engine's resolved
+# operand cells (recommended for real data — filter to keep it readable)
+dpmcore generate-graph --database sqlite:///dpm.db --table C_01.00 -o graph.html
+```
+
 **Data dictionary queries:**
 
 Release-aware methods accept `release_id` (integer ID) or
@@ -585,7 +604,8 @@ src/dpmcore/
 │   ├── meili_build.py     MeiliBuildService (end-to-end pipeline)
 │   ├── meili_json.py      MeiliJsonService (JSON generation)
 │   ├── database_update.py DatabaseUpdateService (atomic DB update)
-│   └── layout_exporter/   LayoutExporterService (tables → .xlsx)
+│   ├── layout_exporter/   LayoutExporterService (tables → .xlsx)
+│   └── calculations_graph/ CalculationsGraphService (CSV → HTML graph, no DB)
 ├── loaders/               data-loading (mutates the DB)
 │   └── migration.py       MigrationService (Access import)
 ├── server/                FastAPI REST app (optional, [server] extra)

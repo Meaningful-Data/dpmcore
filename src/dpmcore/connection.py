@@ -29,6 +29,7 @@ import dpmcore.orm  # noqa: F401
 if TYPE_CHECKING:
     from dpmcore.loaders.migration import MigrationService
     from dpmcore.services.ast_generator import ASTGeneratorService
+    from dpmcore.services.calculations_graph import CalculationsGraphService
     from dpmcore.services.data_dictionary import DataDictionaryService
     from dpmcore.services.dpm_xl import DpmXlService
     from dpmcore.services.explorer import ExplorerService
@@ -72,6 +73,17 @@ class _ServiceAccessor:
         if "syntax" not in self._cache:
             self._cache["syntax"] = SyntaxService()
         service: SyntaxService = self._cache["syntax"]
+        return service
+
+    @property
+    def calculations_graph(self) -> CalculationsGraphService:
+        from dpmcore.services.calculations_graph import (
+            CalculationsGraphService,
+        )
+
+        if "calculations_graph" not in self._cache:
+            self._cache["calculations_graph"] = CalculationsGraphService()
+        service: CalculationsGraphService = self._cache["calculations_graph"]
         return service
 
     @property
