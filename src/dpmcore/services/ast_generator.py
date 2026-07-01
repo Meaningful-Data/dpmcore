@@ -103,13 +103,14 @@ class ASTGeneratorService:
             module_code: Code of the primary module (e.g. ``"COREP_Con"``).
             module_version: Version of the primary module
                 (e.g. ``"2.0.1"``).
-            preconditions: Optional list of precondition specs:
-                - Tuples: ``(precondition_expression, [validation_codes])``
-                - Dicts: ``{"expression": "...",
-                  "affected_operations": [...], "code": "P_571",
-                  "version_id": 8341}`` (code and version_id optional)
-                A precondition can guard many validation codes; a
-                validation may have no precondition.
+            preconditions: Optional list of precondition specs. Each
+                entry is either a tuple
+                ``(precondition_expression, [validation_codes])`` or a
+                dict with keys ``expression`` and
+                ``affected_operations`` (optional ``code`` and
+                ``version_id`` are also accepted). A precondition can
+                guard many validation codes; a validation may have no
+                precondition.
             severity: Optional global default severity tag
                 (``"error"``, ``"warning"``, ``"info"``). Defaults to
                 ``"warning"``.
@@ -125,9 +126,12 @@ class ASTGeneratorService:
                 downstream DB filter.
 
         Returns:
-            ``{"success": bool, "enriched_ast": <namespaced dict>,
-            "error": <str | None>}``. The namespaced dict mirrors the
-            shape pydpm's ``generate_validations_script`` produces.
+            A dict with keys ``success`` (bool), ``enriched_ast`` (the
+            namespaced dict, or ``None`` on failure), ``error`` (str or
+            ``None``), and ``failed_operations`` (a
+            ``{validation_code: error_message}`` map of expressions
+            skipped due to semantic errors). The namespaced dict mirrors
+            the shape pydpm's ``generate_validations_script`` produces.
         """
         session = self.session
         if (

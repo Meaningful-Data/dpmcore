@@ -95,7 +95,7 @@ Standalone (without ``DpmConnection``)
 .. code-block:: python
 
    from sqlalchemy import create_engine
-   from dpmcore.services.migration import MigrationService
+   from dpmcore.loaders.migration import MigrationService
 
    engine = create_engine("sqlite:///dpm.db")
    service = MigrationService(engine)
@@ -104,7 +104,7 @@ Standalone (without ``DpmConnection``)
 MigrationResult
 ~~~~~~~~~~~~~~~
 
-The :class:`~dpmcore.services.migration.MigrationResult` dataclass contains:
+The :class:`~dpmcore.loaders.migration.MigrationResult` dataclass contains:
 
 .. list-table::
    :header-rows: 1
@@ -156,6 +156,6 @@ Error handling
 ~~~~~~~~~~~~~~
 
 - If neither mdb-tools nor pyodbc can read the file, a
-  :class:`~dpmcore.services.migration.MigrationError` is raised.
+  :class:`~dpmcore.loaders.migration.MigrationError` is raised.
 - If individual tables fail to load, a warning is recorded in
   ``result.warnings`` but the migration continues.

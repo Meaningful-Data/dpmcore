@@ -1,5 +1,5 @@
 ``dpmcore.connection``
-=====================
+======================
 
 .. module:: dpmcore.connection
 

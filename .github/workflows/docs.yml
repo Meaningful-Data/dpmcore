@@ -38,7 +38,11 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: poetry install --with docs
+        # --all-extras is required: importing any dpmcore.services.* module
+        # pulls in optional deps (pandas via the DPM-XL engine, openpyxl for
+        # the layout exporter, ...). Without them autodoc fails to import the
+        # modules and the API pages render empty.
+        run: poetry install --all-extras --with docs
       - name: Build with Sphinx Multi-Version
         run: poetry run sphinx-multiversion docs _site
       - name: Generate root redirect
