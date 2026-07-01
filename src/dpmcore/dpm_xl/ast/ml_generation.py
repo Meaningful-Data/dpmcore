@@ -33,6 +33,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     SetOfOp,
     Start,
     SubOp,
+    SubstrOp,
     SymdiffOp,
     TemporaryAssignment,
     TimeShiftOp,
@@ -470,6 +471,14 @@ class MLGeneration(ASTTemplate):
             field.parent = op_node
             field.argument = arg_name
             self.visit(field)
+
+    def visit_SubstrOp(self, node: SubstrOp) -> None:
+        # `node.op` is "substr" from construction (see SubstrOp);
+        # `start`/`length` are literal integers, not operand nodes.
+        op_node = self.create_operation_node(node)
+        node.operand.parent = op_node
+        node.operand.argument = "operand"
+        self.visit(node.operand)
 
     def visit_WhereClauseOp(self, node: WhereClauseOp) -> None:
         node.op = "where"

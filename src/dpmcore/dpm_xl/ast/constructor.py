@@ -46,6 +46,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     Start,
     SubAssignment,
     SubOp,
+    SubstrOp,
     SymdiffOp,
     TemporaryAssignment,
     TemporaryIdentifier,
@@ -512,6 +513,21 @@ class ASTVisitor(dpm_xlParserVisitor):
         op = self._symbol_text(ctx_list[0])
         operand: AST = self._visit(ctx_list[2])
         return UnaryOp(op=op, operand=operand)
+
+    def visitSubstrFunction(
+        self, ctx: dpm_xlParser.SubstrFunctionContext
+    ) -> SubstrOp:
+        ctx_list = list(ctx.getChildren())
+        # SUBSTR ( operand , start , length )
+        #   0    1    2    3   4   5   6    7
+        operand: AST = self._visit(ctx_list[2])
+        start = (
+            int(self._symbol_text(ctx_list[4])) if len(ctx_list) >= 6 else None
+        )
+        length = (
+            int(self._symbol_text(ctx_list[6])) if len(ctx_list) >= 8 else None
+        )
+        return SubstrOp(operand=operand, start=start, length=length)
 
     def visitClauseExpr(
         self, ctx: dpm_xlParser.ClauseExprContext

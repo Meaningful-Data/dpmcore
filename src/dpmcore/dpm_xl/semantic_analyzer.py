@@ -30,6 +30,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     SetOfOp,
     Start,
     SubOp,
+    SubstrOp,
     SymdiffOp,
     TemporaryAssignment,
     TimeShiftOp,
@@ -78,6 +79,7 @@ from dpmcore.dpm_xl.utils.operator_mapping import (
     COMPLEX_OP_MAPPING,
     CONDITIONAL_OP_MAPPING,
     RANK_OP_MAPPING,
+    STRING_OPERATORS,
     TIME_OPERATORS,
     UNARY_OP_MAPPING,
 )
@@ -91,6 +93,7 @@ from dpmcore.dpm_xl.utils.tokens import (
     RENAME,
     STANDARD,
     SUB,
+    SUBSTR,
     TIME_SHIFT,
     WHERE,
 )
@@ -715,6 +718,17 @@ class InputAnalyzer(ASTTemplate, ABC):
         day_sym = self.visit(node.day)
         result = cast(Any, TIME_OPERATORS[DATE]).validate(
             year_sym, month_sym, day_sym
+        )
+        return cast(Operand, result)
+
+    def visit_SubstrOp(  # type: ignore[override]
+        self, node: SubstrOp
+    ) -> Operand:
+        operand = self.visit(node.operand)
+        if not isinstance(operand, (RecordSet, Scalar, ConstantOperand)):
+            raise errors.SemanticError("4-7-1", op=SUBSTR)
+        result = cast(Any, STRING_OPERATORS[SUBSTR]).validate(
+            operand, node.start, node.length
         )
         return cast(Operand, result)
 

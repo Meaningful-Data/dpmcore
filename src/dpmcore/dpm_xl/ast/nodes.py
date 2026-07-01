@@ -870,6 +870,43 @@ class DateConstructorOp(AST):
         }
 
 
+class SubstrOp(AST):
+    """AST node for the substr(op, start, length) string operator.
+
+    :parameter operand: String expression the substring is extracted from.
+    :parameter start: 1-based start position (optional integer).
+    :parameter length: number of characters to extract (optional integer).
+    """
+
+    def __init__(
+        self, operand: "AST", start: int | None, length: int | None
+    ) -> None:
+        super().__init__()
+        self.op: str = "substr"
+        self.operand: "AST" = operand
+        self.start: int | None = start
+        self.length: int | None = length
+
+    def __str__(self) -> str:
+        return "<AST(name='{name}', operand={operand}, start={start}, length={length})>".format(
+            name=self.__class__.__name__,
+            operand=self.operand,
+            start=self.start,
+            length=self.length,
+        )
+
+    __repr__ = __str__
+
+    def toJSON(self) -> "dict[str, Any]":
+        return {
+            "class_name": self.__class__.__name__,
+            "op": self.op,
+            "operand": self.operand,
+            "start": self.start,
+            "length": self.length,
+        }
+
+
 class WhereClauseOp(AST):
     """AST object for the Where clause.
 
