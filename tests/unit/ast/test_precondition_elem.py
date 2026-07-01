@@ -23,7 +23,6 @@ INVALID_VAR_REF_FORMS = [
     "{v_123}",  # code starts with digit
     "{v_Some-Table}",  # dash not allowed in VAR_CODE — use backtick: v`Some-Table`
     "with {v_Z101}: {tT1, c0010}",  # v not valid as cell ref in with-clause
-    "{v_Z101} <- 1",  # v cannot be LHS of persistent assignment
 ]
 
 
