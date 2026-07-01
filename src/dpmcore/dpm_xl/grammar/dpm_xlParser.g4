@@ -14,6 +14,7 @@ statements:
 statement:
     expressionWithoutAssignment                                                                      #exprWithoutAssignment
     | temporaryAssignmentExpression                                                                  #assignmentExpr
+    | persistentAssignmentExpression                                                                 #persistentAssignExpr
     ;
 
 persistentExpression:
@@ -37,7 +38,7 @@ temporaryAssignmentExpression:
     ;
 
 persistentAssignmentExpression:
-    varID PERSISTENT_ASSIGN expressionWithoutAssignment
+    select PERSISTENT_ASSIGN expressionWithoutAssignment
     ;
 
 expression:
