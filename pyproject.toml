@@ -57,7 +57,7 @@ sqlserver = ["pyodbc>=5.0"]
 # dpmcore + vtlengine can be co-installed without resolver conflicts.
 migration = ["pandas>=2.1.4,<3.0", "numpy>=2.2.0,<2.3"]
 data = ["pandas>=2.1.4,<3.0", "numpy>=2.2.0,<2.3"]
-cli = ["click>=8.4.1", "rich>=13.7"]
+cli = ["click>=8.4.2", "rich>=13.7"]
 export = ["openpyxl>=3.1"]
 all = [
     "fastapi>=0.138.0",
@@ -68,7 +68,7 @@ all = [
     "pyodbc>=5.0",
     "pandas>=2.1.4,<3.0",
     "numpy>=2.2.0,<2.3",
-    "click>=8.4.1",
+    "click>=8.4.2",
     "rich>=13.7",
     "openpyxl>=3.1",
 ]
