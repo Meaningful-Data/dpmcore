@@ -46,27 +46,34 @@ How range comparison works
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 DPM ``ReleaseID`` values are no longer monotonic — from 4.2.1 onwards
-EBA assigns opaque IDs like ``1010000003``. ``Release`` therefore
-carries a synthetic ``sort_order`` column derived from the parsed
-semver ``code`` (``"4.2.1" → (4, 2, 1)``), populated automatically by
-the :mod:`dpmcore.orm.release_sort_order` insert/update listeners and
-backfilled by :class:`MigrationService` after bulk loads.
+EBA assigns opaque IDs like ``1010000003`` while older releases are
+still ``1..5``, so release-range comparisons cannot rely on numeric ID
+ordering. Instead dpmcore parses ``Release.code`` as a semver tuple
+(``"4.2.1" → (4, 2, 1)``) and packs it into a single sortable integer
+**in Python at query time**
+(:func:`dpmcore.orm.release_sort_order.compute_sort_order`). There is
+**no** persisted ``sort_order`` column, ORM event listener, or
+migration backfill — the packed value is recomputed on demand from
+the release code and held as a plain ``int``.
 
 All range comparisons (``filter_by_release``, ``filter_item_version``,
 the inline ``Release.release_id >= …`` patterns in
 :class:`ASTGeneratorService` and the ECB-validations importer) compare
-``sort_order`` values, not the raw ``ReleaseID``. Two consequences
-worth being aware of:
+these packed values, not the raw ``ReleaseID``. Two consequences worth
+being aware of:
 
-* A backport published chronologically after a higher-numbered
-  release — e.g. a future ``4.0.1`` shipped after ``4.2.1`` — is
-  correctly placed inside the ``4.0`` lineage. A module version
-  declared "valid from 4.0 to 4.2" includes the ``4.0.1`` backport.
+* Both filter forms resolve identically: ``release_id=1010000003`` and
+  ``release_code="4.2.1"`` select the same release. A backport
+  published chronologically after a higher-numbered release — e.g. a
+  future ``4.0.1`` shipped after ``4.2.1`` — is still correctly placed
+  inside the ``4.0`` lineage, so a module version declared "valid from
+  4.0 to 4.2" includes the ``4.0.1`` backport.
 * If a ``Release.code`` cannot be parsed as ``MAJOR.MINOR[.PATCH]``,
-  ``sort_order`` is left ``NULL`` and any range filter passing that
-  release as the target raises a clear :class:`ValueError` rather
-  than silently returning wrong rows. Releases with unparseable codes
-  simply do not participate in range filters.
+  :func:`~dpmcore.orm.release_sort_order.compute_sort_order` returns
+  ``None`` and any range filter passing that release as the target
+  raises a clear :class:`ValueError` rather than silently returning
+  wrong rows. Releases with unparseable codes simply do not
+  participate in range filters.
 
 HierarchyService
 ----------------
