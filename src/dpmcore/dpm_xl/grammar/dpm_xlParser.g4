@@ -118,7 +118,8 @@ conditionalOperators:
     ;
 
 stringOperators:
-    LEN LPAREN expression RPAREN          #unaryStringFunction
+    LEN LPAREN expression RPAREN                                              #unaryStringFunction
+    | SUBSTR LPAREN expression (COMMA INTEGER_LITERAL (COMMA INTEGER_LITERAL)?)? RPAREN #substrFunction
     ;
 
 aggregateOperators:
