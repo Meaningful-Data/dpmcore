@@ -279,6 +279,11 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by dpm_xlParser#substrFunction.
+    def visitSubstrFunction(self, ctx:dpm_xlParser.SubstrFunctionContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by dpm_xlParser#commonAggrOp.
     def visitCommonAggrOp(self, ctx:dpm_xlParser.CommonAggrOpContext):
         return self.visitChildren(ctx)

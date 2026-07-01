@@ -214,22 +214,36 @@ class DateConstructor(Operator):
     @classmethod
     def validate(
         cls,
-        year_sym: Union[Scalar, ConstantOperand],
-        month_sym: Union[Scalar, ConstantOperand],
-        day_sym: Union[Scalar, ConstantOperand],
-    ) -> "Scalar":
+        year_sym: Union[Scalar, RecordSet, ConstantOperand],
+        month_sym: Union[Scalar, RecordSet, ConstantOperand],
+        day_sym: Union[Scalar, RecordSet, ConstantOperand],
+    ) -> "Scalar | RecordSet":
+        # Scalar and/or Recordset operands are allowed
         op_type = ScalarFactory().scalar_factory(Integer.__name__)
-        for sym in (year_sym, month_sym, day_sym):
-            if isinstance(sym, RecordSet):
-                raise errors.SemanticError("4-7-1", op=cls.op)
+        operands = (year_sym, month_sym, day_sym)
+        for sym in operands:
+            sym_type = (
+                sym.get_fact_component().type
+                if isinstance(sym, RecordSet)
+                else sym.type
+            )
             error_info: dict[str, object] = {
                 "operand_name": sym.name,
                 "op": cls.op,
             }
             unary_implicit_type_promotion(
-                sym.type, op_type, error_info=error_info
+                sym_type, op_type, error_info=error_info
             )
         origin = (
             f"date({year_sym.origin}, {month_sym.origin}, {day_sym.origin})"
         )
+        recordsets = [s for s in operands if isinstance(s, RecordSet)]
+        if recordsets:
+            # Result keys come from the reference: the widest key set.
+            reference = max(
+                recordsets, key=lambda rs: len(rs.get_key_components())
+            )
+            return cls._create_labeled_recordset(
+                origin, Date(), reference.structure, reference.records
+            )
         return cls._create_labeled_scalar(origin, result_type=Date())
