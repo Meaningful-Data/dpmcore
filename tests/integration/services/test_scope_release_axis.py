@@ -1,6 +1,6 @@
-"""Regression tests for issue #151: release-axis scope selection + single-day exclusion.
+"""Regression tests for issue #151 (release axis) + #182 (ghost fallback).
 
-Two rules are pinned here, both verified against EBA's own pre-calculated
+Rules pinned here, verified against EBA's own pre-calculated
 ``OperationScope`` / ``OperationScopeComposition`` shipped in the dictionary
 (an oracle straight from the data, not hand-built fixtures):
 
@@ -10,15 +10,23 @@ Two rules are pinned here, both verified against EBA's own pre-calculated
    could substitute a version absent from R -- e.g. ``FINREP9DP 1.1.0`` (a 4.2.1
    version) leaking into release 4.2 -- producing an invalid scope and the
    downstream ``Release X predates module version ...`` error a consumer hit.
+   The #182 fallback is still bound by this: it only ever reaches *backward*
+   (a version whose release window starts on or before R), never forward.
 
-2. **Single-day module versions are excluded (EBA business rule).** A module
-   version whose reference-date window is collapsed (``FromReferenceDate ==
-   ToReferenceDate``) describes one reporting date and is never in scope, even
-   when it is the only version valid in a release -- that release then has no
-   scope and reports a clean "no module versions found" error.
+2. **Ghost (single-day) versions are never scoped as-is.** A module version
+   whose reference-date window is collapsed (``FromReferenceDate ==
+   ToReferenceDate``) describes one reporting date and is never placed in scope.
 
-So the release-R oracle is the operation's persisted module versions, filtered
-to R by the release axis, minus any collapsed-window version.
+3. **#182 ghost fallback.** When the only version whose release window covers R
+   is a ghost, the scope falls back to the most recent *prior* non-collapsed
+   version of the same module (e.g. release 4.0/4.1 for F_01.02 fall back to
+   ``FINREP9 3.1.0``). When no such prior version exists -- the ghost is the
+   earliest usable version of its module (e.g. ``FINREP9DP 1.0.0`` at 4.2) --
+   the release keeps the clean "no module versions found" error (rule 2 wins).
+
+So the release-R oracle is: the operation's persisted versions valid in R by
+the release axis and not collapsed, plus -- for a module whose only R-covering
+version is a ghost -- that module's latest prior non-collapsed version.
 """
 
 from __future__ import annotations
@@ -107,6 +115,39 @@ def _is_collapsed(mv):
     )
 
 
+def _starts_on_or_before(mv, target_sort, sort_by_id):
+    """Whether ``mv``'s release window starts on or before ``target_sort``.
+
+    The #182 fallback may return a version whose window ended before R (it
+    reaches backward), but it must *never* return one that begins after R --
+    that is the #151 guarantee. This is the weakened form of
+    :func:`_valid_in_release` used by the invariant sweep.
+    """
+    if mv.start_release_id is None:
+        return False
+    start = sort_by_id.get(mv.start_release_id)
+    return start is not None and start <= target_sort
+
+
+def _latest_prior_non_collapsed(module_versions, target_sort, sort_by_id):
+    """Oracle mirror of ``_latest_prior_non_collapsed_vids`` for one module.
+
+    Returns the ``ModuleVID`` of the newest non-collapsed version whose
+    release-window start sort order is ``<= target_sort`` (strictly backward),
+    or ``None`` when the module has no such version.
+    """
+    best = None  # (start_sort, module_vid)
+    for mv in module_versions:
+        if _is_collapsed(mv) or mv.start_release_id is None:
+            continue
+        order = sort_by_id.get(mv.start_release_id)
+        if order is None or order > target_sort:
+            continue
+        if best is None or (order, mv.module_vid) > best:
+            best = (order, mv.module_vid)
+    return None if best is None else best[1]
+
+
 def _latest_expression(session, op_code):
     """Return the open (current) operation version's expression text."""
     expr = session.execute(
@@ -156,13 +197,13 @@ def _f0102_operation_codes(session, limit):
 
 
 def test_scope_matches_eba_persisted_scope_per_release(fixture_session):
-    """Computed scope == persisted scope per release, minus single-day versions.
+    """Computed scope == persisted scope per release, with #182 ghost fallback.
 
-    The exact #151 scenario plus the business rule: release 4.2 yields
-    ``FINREP9 3.3.0`` only -- never the 4.2.1 version ``1.1.0`` (release axis)
-    and never the single-day ``FINREP9DP 1.0.0`` (exclusion rule). Releases
-    4.0/4.1, whose only FINREP9 version (``3.2.0``) is single-day, end up with
-    no scope at all.
+    The #151 scenario plus the #182 rule: release 4.2 yields ``FINREP9 3.3.0``
+    only -- never the 4.2.1 version ``1.1.0`` (release axis), and the ghost
+    ``FINREP9DP 1.0.0`` is dropped with no prior to fall back to. Releases
+    4.0/4.1, whose only FINREP9 version (``3.2.0``) is a ghost, now fall back
+    to the prior non-collapsed ``FINREP9 3.1.0`` instead of ending up empty.
     """
     session = fixture_session
     expression = _latest_expression(session, _ISSUE_OPERATION)
@@ -179,17 +220,50 @@ def test_scope_matches_eba_persisted_scope_per_release(fixture_session):
     collapsed = {vid for vid, mv in versions.items() if _is_collapsed(mv)}
     assert collapsed, "oracle should include collapsed versions to exercise"
 
+    # Every module version of every module hosting this operation, so the
+    # oracle can reproduce the fallback's backward search across versions EBA
+    # never persisted for the operation.
+    module_ids = {mv.module_id for mv in versions.values()}
+    all_by_module: dict[int, list] = {}
+    for mv in (
+        session.query(ModuleVersion)
+        .filter(ModuleVersion.module_id.in_(module_ids))
+        .all()
+    ):
+        all_by_module.setdefault(mv.module_id, []).append(mv)
+
     svc = ScopeCalculatorService(session)
 
-    saw_empty_release = False
+    saw_fallback = False
     for rel in _ordered_releases(session):
         target_sort = compute_sort_order(rel.code)
-        oracle = {
+        base = {
             vid
             for vid, mv in versions.items()
             if _valid_in_release(mv, target_sort, sort_by_id)
             and not _is_collapsed(mv)
         }
+        base_modules = {versions[v].module_id for v in base}
+        # Modules whose only R-covering version is a ghost -> need a fallback.
+        ghost_only_modules = {
+            mv.module_id
+            for mv in versions.values()
+            if _valid_in_release(mv, target_sort, sort_by_id)
+            and _is_collapsed(mv)
+        } - base_modules
+
+        oracle = set(base)
+        for module_id in ghost_only_modules:
+            cand = _latest_prior_non_collapsed(
+                all_by_module.get(module_id, []), target_sort, sort_by_id
+            )
+            # The resolver re-fetches the fallback version's tables and keeps
+            # it only if it still hosts the operation; persisted membership is
+            # that guarantee for this single-table operation.
+            if cand is not None and cand in persisted:
+                oracle.add(cand)
+                saw_fallback = True
+
         result = svc.calculate_from_expression(
             expression=expression, release_code=rel.code
         )
@@ -198,27 +272,29 @@ def test_scope_matches_eba_persisted_scope_per_release(fixture_session):
             f"{sorted(result.module_versions)} != oracle {sorted(oracle)} "
             f"(has_error={result.has_error}, msg={result.error_message})"
         )
-        # A single-day version must never be selected, in any release.
+        # A ghost (single-day) version must never be selected, in any release.
         assert not (set(result.module_versions) & collapsed)
         if not oracle:
-            # No eligible module version -> clean "no module versions" error.
-            saw_empty_release = True
+            # No eligible version and no prior -> clean "no modules" error.
             assert result.has_error
             assert "No module versions found" in (result.error_message or "")
 
-    assert saw_empty_release, (
-        "expected a release whose only module version is single-day "
-        "(4.0/4.1 for F_01.02) to end up with no scope"
+    assert saw_fallback, (
+        "expected a release (4.0/4.1 for F_01.02) whose only covering version "
+        "is a ghost to fall back to a prior non-collapsed version"
     )
 
 
-def test_scoped_versions_are_release_valid_and_not_single_day(fixture_session):
-    """No computed scope returns a release-invalid or single-day version.
+def test_scoped_versions_are_backward_only_and_not_single_day(fixture_session):
+    """No computed scope returns a forward or single-day version.
 
     The two invariants, swept across a sample of real F_01.02 operations:
-    every module version in a computed scope must (a) satisfy
-    ``start <= release < end`` on the semver sort order and (b) have a
-    non-collapsed reference-date window.
+    every module version in a computed scope must (a) start on or before the
+    target release on the semver sort order (never forward -- the #151
+    guarantee, which the #182 fallback must not break; the fallback may reach
+    backward past the release window, so full ``start <= release < end``
+    validity is not required) and (b) have a non-collapsed reference-date
+    window (the #182 fallback always resolves to a genuine version).
     """
     session = fixture_session
     sort_by_id = _release_sort_by_id(session)
@@ -242,10 +318,10 @@ def test_scoped_versions_are_release_valid_and_not_single_day(fixture_session):
             for vid in result.module_versions:
                 checks += 1
                 mv = versions[vid]
-                assert _valid_in_release(mv, target_sort, sort_by_id), (
+                assert _starts_on_or_before(mv, target_sort, sort_by_id), (
                     f"{code} @ {rel.code}: module version {vid} "
-                    f"({mv.code} {mv.version_number}) is not valid in "
-                    f"release {rel.code}"
+                    f"({mv.code} {mv.version_number}) begins after "
+                    f"release {rel.code} (forward selection, #151)"
                 )
                 assert not _is_collapsed(mv), (
                     f"{code} @ {rel.code}: single-day module version {vid} "
@@ -253,6 +329,41 @@ def test_scoped_versions_are_release_valid_and_not_single_day(fixture_session):
                 )
 
     assert checks, "invariant swept zero module versions"
+
+
+def test_ghost_only_release_falls_back_to_prior_version(fixture_session):
+    """#182 reproduction: F_01.02 @ 4.1 falls back to FINREP9 3.1.0.
+
+    Release 4.1's only covering FINREP9 version is the ghost ``3.2.0`` (VID
+    404). Before the fix this errored ``No module versions found``; now it
+    resolves to the prior non-collapsed ``3.1.0`` (VID 356) and never the
+    ghost.
+    """
+    svc = ScopeCalculatorService(fixture_session)
+    result = svc.calculate_from_expression(
+        expression="{tF_01.02, r0010, c0010} >= 0", release_code="4.1"
+    )
+    assert not result.has_error, result.error_message
+    assert 356 in result.module_versions, result.module_versions
+    assert 404 not in result.module_versions, "ghost 3.2.0 must not be scoped"
+
+
+def test_no_prior_non_ghost_keeps_clean_no_scope_error(fixture_session):
+    """#182 no-prior case: a ghost with no prior non-collapsed version errors.
+
+    ``SEPA_IPR 1.0.0`` is the earliest version of its module, is a ghost, and
+    covers release 4.1; its only sibling ``1.1.0`` starts later (4.2), so there
+    is nothing to fall back to. ``S_01.01`` is hosted only by SEPA_IPR, so the
+    release keeps the clean "no module versions found" error rather than
+    scoping the ghost.
+    """
+    svc = ScopeCalculatorService(fixture_session)
+    result = svc.calculate_from_expression(
+        expression="{tS_01.01, r0010, c0010} >= 0", release_code="4.1"
+    )
+    assert result.has_error
+    assert "No module versions found" in (result.error_message or "")
+    assert not result.module_versions
 
 
 class TestResolveExplicitRelease:

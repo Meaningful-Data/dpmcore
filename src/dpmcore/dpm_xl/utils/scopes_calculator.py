@@ -380,8 +380,10 @@ class OperationScopeService:
                 # The "1-13" template is keyed on ``table_version_ids``; pass
                 # the table codes under that name (codes ARE table-version
                 # identifiers) so the message formats instead of raising a
-                # KeyError. Reached now that single-day module versions are
-                # excluded from scope and a release may host none.
+                # KeyError.
+                # a release hosts none only when its sole covering version
+                # is a single-day (ghost) module version AND no prior
+                # non-collapsed version exists to fall back to.
                 raise errors.SemanticError(
                     "1-13", table_version_ids=list(table_codes)
                 )
