@@ -64,6 +64,11 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by dpm_xlParser#assignmentTarget.
+    def visitAssignmentTarget(self, ctx:dpm_xlParser.AssignmentTargetContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by dpm_xlParser#funcExpr.
     def visitFuncExpr(self, ctx:dpm_xlParser.FuncExprContext):
         return self.visitChildren(ctx)

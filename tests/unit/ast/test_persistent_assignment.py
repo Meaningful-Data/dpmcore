@@ -25,6 +25,7 @@ INVALID_PERSISTENT_ASSIGNMENTS = [
     "<- {tC_01.00, r0020, c0010}",
     # literal on LHS, not a valid selection
     "1 <- {tC_01.00, r0020, c0010}",
+    "{p_x, number} <- 1",  # parameter ref as LHS
 ]
 
 

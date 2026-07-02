@@ -162,6 +162,11 @@ class ASTVisitor(dpm_xlParserVisitor):
     ) -> VarID:
         return cast(VarID, self._visit(ctx.getChild(1)))
 
+    def visitAssignmentTarget(
+        self, ctx: dpm_xlParser.AssignmentTargetContext
+    ) -> AST:
+        return self._visit(ctx.getChild(1))
+
     def visitPersistentAssignmentExpression(
         self, ctx: dpm_xlParser.PersistentAssignmentExpressionContext
     ) -> PersistentAssignment:

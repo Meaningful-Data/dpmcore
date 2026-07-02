@@ -107,6 +107,15 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by dpm_xlParser#assignmentTarget.
+    def enterAssignmentTarget(self, ctx:dpm_xlParser.AssignmentTargetContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#assignmentTarget.
+    def exitAssignmentTarget(self, ctx:dpm_xlParser.AssignmentTargetContext):
+        pass
+
+
     # Enter a parse tree produced by dpm_xlParser#funcExpr.
     def enterFuncExpr(self, ctx:dpm_xlParser.FuncExprContext):
         pass
