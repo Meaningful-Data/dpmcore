@@ -29,6 +29,11 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by dpm_xlParser#persistentAssignExpr.
+    def visitPersistentAssignExpr(self, ctx:dpm_xlParser.PersistentAssignExprContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by dpm_xlParser#persistentExpression.
     def visitPersistentExpression(self, ctx:dpm_xlParser.PersistentExpressionContext):
         return self.visitChildren(ctx)
@@ -56,6 +61,11 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by dpm_xlParser#persistentAssignmentExpression.
     def visitPersistentAssignmentExpression(self, ctx:dpm_xlParser.PersistentAssignmentExpressionContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#assignmentTarget.
+    def visitAssignmentTarget(self, ctx:dpm_xlParser.AssignmentTargetContext):
         return self.visitChildren(ctx)
 
 
