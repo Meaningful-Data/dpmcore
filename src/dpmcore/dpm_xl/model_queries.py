@@ -13,6 +13,7 @@ import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Hashable,
     Sequence,
 )
@@ -45,6 +46,11 @@ from dpmcore.orm.packaging import (
     ModuleVersionComposition,
 )
 from dpmcore.orm.query_utils import chunked_in
+from dpmcore.orm.release_sort_order import (
+    load_release_sort_orders,
+    release_ids_for_sort_order,
+    resolve_sort_order,
+)
 from dpmcore.orm.rendering import (
     Cell,
     HeaderVersion,
@@ -720,6 +726,225 @@ def _exclude_collapsed_reference_window(query: Any) -> Any:
     )
 
 
+# ------------------------------------------------------------------ #
+# Ghost-module-version fallback (issue #182)
+# ------------------------------------------------------------------ #
+#
+# Some module versions carry a *collapsed* reference-date window
+# (``FromReferenceDate == ToReferenceDate``) even though their release
+# window genuinely spans several releases -- a known, un-fixable source
+# data error. These "ghost" versions are never usable for scope, so when
+# the only version whose release window covers a target release is a
+# ghost the release would otherwise resolve to an empty scope. Instead we
+# fall back to the most recent *prior* non-collapsed version of the same
+# module. The search is strictly backward, so it never selects a version
+# whose release window begins after the target release (#151 safety).
+
+_MODULE_VID_COL = "ModuleVID"
+_FROM_REF_COL = "FromReferenceDate"
+_TO_REF_COL = "ToReferenceDate"
+
+
+def _collapsed_mask(df: pd.DataFrame) -> "pd.Series[bool]":
+    """Boolean mask of rows whose reference-date window is collapsed.
+
+    DataFrame-level mirror of :func:`_exclude_collapsed_reference_window`:
+    a row is collapsed only when both reference dates are present and
+    equal. Open-ended windows (``None``/``NaT`` on either bound) are
+    genuine ranges, not collapsed.
+
+    Args:
+        df: A module-version DataFrame with ``FromReferenceDate`` and
+            ``ToReferenceDate`` columns.
+
+    Returns:
+        Boolean Series aligned with ``df``; ``True`` marks a ghost row.
+    """
+    frm = df[_FROM_REF_COL]
+    to = df[_TO_REF_COL]
+    return frm.notna() & to.notna() & (frm == to)
+
+
+def _drop_collapsed_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Return ``df`` without its collapsed (ghost) reference-date rows."""
+    if df.empty:
+        return df
+    return df[~_collapsed_mask(df)]
+
+
+def _module_ids_for_vids(
+    session: "Session", vids: Sequence[int]
+) -> dict[int, int]:
+    """Map module-version VIDs to their owning module id.
+
+    Args:
+        session: SQLAlchemy session.
+        vids: Module-version ids to resolve.
+
+    Returns:
+        Mapping ``{module_vid: module_id}`` for VIDs that exist and carry
+        a module id.
+    """
+    if not vids:
+        return {}
+    rows = (
+        session.query(ModuleVersion.module_vid, ModuleVersion.module_id)
+        .filter(ModuleVersion.module_vid.in_(list(set(vids))))
+        .all()
+    )
+    return {vid: mid for vid, mid in rows if mid is not None}
+
+
+def _latest_prior_non_collapsed_vids(
+    session: "Session",
+    module_ids: set[int],
+    release_id: int,
+) -> dict[int, int]:
+    """Latest prior non-ghost version per module for a target release.
+
+    For each module id, return the ``ModuleVID`` of the most recent
+    module version that (a) has a genuine (non-collapsed) reference-date
+    window and (b) whose release-window start is on or before the target
+    release on the semver sort order. The search is strictly backward: a
+    version whose release window begins *after* the target is never
+    chosen, preserving the #151 release-axis safety constraint. Modules
+    with no such version are omitted, so the caller keeps the clean
+    "no module versions" outcome for them.
+
+    Args:
+        session: SQLAlchemy session.
+        module_ids: Modules whose sole release-covering version is a
+            ghost.
+        release_id: Target release id.
+
+    Returns:
+        Mapping ``{module_id: fallback_module_vid}``.
+    """
+    if not module_ids:
+        return {}
+    target = resolve_sort_order(session, release_id)
+    sort_orders = load_release_sort_orders(session)
+    prior_start_ids = release_ids_for_sort_order(sort_orders, le=target)
+    if not prior_start_ids:
+        return {}
+    query = session.query(
+        ModuleVersion.module_id,
+        ModuleVersion.module_vid,
+        ModuleVersion.start_release_id,
+    ).filter(
+        ModuleVersion.module_id.in_(module_ids),
+        ModuleVersion.start_release_id.in_(prior_start_ids),
+    )
+    query = _exclude_collapsed_reference_window(query)
+    best: dict[int, tuple[int, int]] = {}
+    for module_id, vid, start_id in query.all():
+        order = sort_orders.get(start_id)
+        if order is None:
+            continue
+        current = best.get(module_id)
+        if current is None or (order, vid) > current:
+            best[module_id] = (order, vid)
+    return {module_id: vid for module_id, (_, vid) in best.items()}
+
+
+def _release_filter(release_id: int | None) -> Callable[[Any], Any]:
+    """Return a module filter narrowing to the target release window."""
+
+    def apply(query: Any) -> Any:
+        return filter_by_release(
+            query,
+            start_col=ModuleVersion.start_release_id,
+            end_col=ModuleVersion.end_release_id,
+            release_id=release_id,
+        )
+
+    return apply
+
+
+def _vids_filter(vids: Sequence[int]) -> Callable[[Any], Any]:
+    """Return a module filter narrowing to an explicit set of VIDs."""
+
+    def apply(query: Any) -> Any:
+        return query.filter(ModuleVersion.module_vid.in_(list(vids)))
+
+    return apply
+
+
+def _resolve_with_ghost_fallback(
+    session: "Session",
+    build_query: Callable[[Callable[[Any], Any]], Any],
+    materialize: Callable[[Any], list[Any]],
+    cols: list[str],
+    release_id: int | None,
+) -> pd.DataFrame:
+    """Resolve module versions for a release, applying ghost fallback.
+
+    Runs the caller's release-filtered lookup, then for any module whose
+    sole release-covering version is a ghost substitutes the latest prior
+    non-collapsed version of that module (see
+    :func:`_latest_prior_non_collapsed_vids`). Modules with no prior
+    non-ghost version are left out, so the caller still reports the clean
+    "no module versions" outcome for them. Re-fetching the fallback
+    version's operand rows (rather than rewriting the ghost row) means a
+    fallback row appears only if that version genuinely contains the
+    requested table / precondition.
+
+    Args:
+        session: SQLAlchemy session.
+        build_query: Builds the lookup's joined query given a
+            ``module_filter`` callable that narrows ``ModuleVersion`` to
+            either the target release or an explicit set of VIDs.
+        materialize: Executes a built query and returns its rows (e.g.
+            ``chunked_in`` over the operand column, or ``query.all()``).
+        cols: Output DataFrame column names.
+        release_id: Target release id, or ``None`` for no release filter.
+
+    Returns:
+        DataFrame of resolved module versions, ghosts replaced by their
+        prior non-collapsed fallback where one exists.
+    """
+    covering = pd.DataFrame(
+        materialize(build_query(_release_filter(release_id))),
+        columns=cols,
+    )
+    # Without a target release there is no "prior" to fall back to;
+    # keep the historical behaviour of simply dropping ghosts.
+    if release_id is None or covering.empty:
+        return _drop_collapsed_rows(covering)
+
+    ghost = _collapsed_mask(covering)
+    non_ghost = covering[~ghost]
+    vid_to_module = _module_ids_for_vids(
+        session, covering[_MODULE_VID_COL].tolist()
+    )
+    ghost_modules = {
+        vid_to_module[v]
+        for v in covering.loc[ghost, _MODULE_VID_COL]
+        if v in vid_to_module
+    }
+    kept_modules = {
+        vid_to_module[v]
+        for v in non_ghost[_MODULE_VID_COL]
+        if v in vid_to_module
+    }
+    need = ghost_modules - kept_modules
+    fallback = _latest_prior_non_collapsed_vids(session, need, release_id)
+    if not fallback:
+        return non_ghost
+
+    fallback_rows = _drop_collapsed_rows(
+        pd.DataFrame(
+            materialize(build_query(_vids_filter(list(fallback.values())))),
+            columns=cols,
+        )
+    )
+    # The fallback version may not actually host the requested operand (its
+    # composition can differ from the ghost's), leaving nothing to add.
+    if fallback_rows.empty:
+        return non_ghost
+    return pd.concat([non_ghost, fallback_rows], ignore_index=True)
+
+
 class ModuleVersionQuery:
     """Query helpers around ModuleVersion."""
 
@@ -769,30 +994,31 @@ class ModuleVersionQuery:
         if not tables_vids:
             return pd.DataFrame(columns=cols)
 
-        query = session.query(
-            ModuleVersion.module_vid.label("ModuleVID"),
-            ModuleVersionComposition.table_vid.label("variable_vid"),
-            ModuleVersion.code.label("ModuleCode"),
-            ModuleVersion.version_number.label("VersionNumber"),
-            ModuleVersion.from_reference_date.label("FromReferenceDate"),
-            ModuleVersion.to_reference_date.label("ToReferenceDate"),
-            ModuleVersion.start_release_id.label("StartReleaseID"),
-            ModuleVersion.end_release_id.label("EndReleaseID"),
-        ).join(
-            ModuleVersionComposition,
-            ModuleVersion.module_vid == ModuleVersionComposition.module_vid,
+        def build_query(module_filter: Callable[[Any], Any]) -> Any:
+            query = session.query(
+                ModuleVersion.module_vid.label("ModuleVID"),
+                ModuleVersionComposition.table_vid.label("variable_vid"),
+                ModuleVersion.code.label("ModuleCode"),
+                ModuleVersion.version_number.label("VersionNumber"),
+                ModuleVersion.from_reference_date.label("FromReferenceDate"),
+                ModuleVersion.to_reference_date.label("ToReferenceDate"),
+                ModuleVersion.start_release_id.label("StartReleaseID"),
+                ModuleVersion.end_release_id.label("EndReleaseID"),
+            ).join(
+                ModuleVersionComposition,
+                ModuleVersion.module_vid
+                == ModuleVersionComposition.module_vid,
+            )
+            return module_filter(query)
+
+        def materialize(query: Any) -> list[Any]:
+            return chunked_in(
+                query, ModuleVersionComposition.table_vid, tables_vids
+            )
+
+        return _resolve_with_ghost_fallback(
+            session, build_query, materialize, cols, release_id
         )
-        query = filter_by_release(
-            query,
-            start_col=ModuleVersion.start_release_id,
-            end_col=ModuleVersion.end_release_id,
-            release_id=release_id,
-        )
-        query = _exclude_collapsed_reference_window(query)
-        results = chunked_in(
-            query, ModuleVersionComposition.table_vid, tables_vids
-        )
-        return pd.DataFrame(results, columns=cols)
 
     @staticmethod
     def get_from_table_codes(
@@ -824,37 +1050,40 @@ class ModuleVersionQuery:
         if not table_codes:
             return pd.DataFrame(columns=cols)
 
-        query = (
-            session.query(
-                ModuleVersion.module_vid.label("ModuleVID"),
-                ModuleVersionComposition.table_vid.label("variable_vid"),
-                ModuleVersion.code.label("ModuleCode"),
-                ModuleVersion.version_number.label("VersionNumber"),
-                ModuleVersion.from_reference_date.label("FromReferenceDate"),
-                ModuleVersion.to_reference_date.label("ToReferenceDate"),
-                ModuleVersion.start_release_id.label("StartReleaseID"),
-                ModuleVersion.end_release_id.label("EndReleaseID"),
-                TableVersion.code.label("TableCode"),
+        def build_query(module_filter: Callable[[Any], Any]) -> Any:
+            query = (
+                session.query(
+                    ModuleVersion.module_vid.label("ModuleVID"),
+                    ModuleVersionComposition.table_vid.label("variable_vid"),
+                    ModuleVersion.code.label("ModuleCode"),
+                    ModuleVersion.version_number.label("VersionNumber"),
+                    ModuleVersion.from_reference_date.label(
+                        "FromReferenceDate"
+                    ),
+                    ModuleVersion.to_reference_date.label("ToReferenceDate"),
+                    ModuleVersion.start_release_id.label("StartReleaseID"),
+                    ModuleVersion.end_release_id.label("EndReleaseID"),
+                    TableVersion.code.label("TableCode"),
+                )
+                .join(
+                    ModuleVersionComposition,
+                    ModuleVersion.module_vid
+                    == ModuleVersionComposition.module_vid,
+                )
+                .join(
+                    TableVersion,
+                    ModuleVersionComposition.table_vid
+                    == TableVersion.table_vid,
+                )
             )
-            .join(
-                ModuleVersionComposition,
-                ModuleVersion.module_vid
-                == ModuleVersionComposition.module_vid,
-            )
-            .join(
-                TableVersion,
-                ModuleVersionComposition.table_vid == TableVersion.table_vid,
-            )
+            return module_filter(query)
+
+        def materialize(query: Any) -> list[Any]:
+            return chunked_in(query, TableVersion.code, table_codes)
+
+        return _resolve_with_ghost_fallback(
+            session, build_query, materialize, cols, release_id
         )
-        query = filter_by_release(
-            query,
-            start_col=ModuleVersion.start_release_id,
-            end_col=ModuleVersion.end_release_id,
-            release_id=release_id,
-        )
-        query = _exclude_collapsed_reference_window(query)
-        results = chunked_in(query, TableVersion.code, table_codes)
-        return pd.DataFrame(results, columns=cols)
 
     @staticmethod
     def get_precondition_module_versions(
@@ -886,42 +1115,45 @@ class ModuleVersionQuery:
         if not precondition_items:
             return pd.DataFrame(columns=cols)
 
-        query = (
-            session.query(
-                ModuleVersion.module_vid.label("ModuleVID"),
-                VariableVersion.variable_vid.label("variable_vid"),
-                ModuleVersion.code.label("ModuleCode"),
-                ModuleVersion.version_number.label("VersionNumber"),
-                ModuleVersion.from_reference_date.label("FromReferenceDate"),
-                ModuleVersion.to_reference_date.label("ToReferenceDate"),
-                ModuleVersion.start_release_id.label("StartReleaseID"),
-                ModuleVersion.end_release_id.label("EndReleaseID"),
-                VariableVersion.code.label("Code"),
+        def build_query(module_filter: Callable[[Any], Any]) -> Any:
+            query = (
+                session.query(
+                    ModuleVersion.module_vid.label("ModuleVID"),
+                    VariableVersion.variable_vid.label("variable_vid"),
+                    ModuleVersion.code.label("ModuleCode"),
+                    ModuleVersion.version_number.label("VersionNumber"),
+                    ModuleVersion.from_reference_date.label(
+                        "FromReferenceDate"
+                    ),
+                    ModuleVersion.to_reference_date.label("ToReferenceDate"),
+                    ModuleVersion.start_release_id.label("StartReleaseID"),
+                    ModuleVersion.end_release_id.label("EndReleaseID"),
+                    VariableVersion.code.label("Code"),
+                )
+                .join(
+                    ModuleParameters,
+                    ModuleVersion.module_vid == ModuleParameters.module_vid,
+                )
+                .join(
+                    VariableVersion,
+                    ModuleParameters.variable_vid
+                    == VariableVersion.variable_vid,
+                )
+                .join(
+                    Variable,
+                    VariableVersion.variable_id == Variable.variable_id,
+                )
+                .filter(VariableVersion.code.in_(precondition_items))
+                .filter(_is_filing_indicator())
             )
-            .join(
-                ModuleParameters,
-                ModuleVersion.module_vid == ModuleParameters.module_vid,
-            )
-            .join(
-                VariableVersion,
-                ModuleParameters.variable_vid == VariableVersion.variable_vid,
-            )
-            .join(
-                Variable,
-                VariableVersion.variable_id == Variable.variable_id,
-            )
-            .filter(VariableVersion.code.in_(precondition_items))
-            .filter(_is_filing_indicator())
+            return module_filter(query)
+
+        def materialize(query: Any) -> list[Any]:
+            return query.all()
+
+        return _resolve_with_ghost_fallback(
+            session, build_query, materialize, cols, release_id
         )
-        query = filter_by_release(
-            query,
-            start_col=ModuleVersion.start_release_id,
-            end_col=ModuleVersion.end_release_id,
-            release_id=release_id,
-        )
-        query = _exclude_collapsed_reference_window(query)
-        results = query.all()
-        return pd.DataFrame(results, columns=cols)
 
     @staticmethod
     def get_module_version_by_vid(
