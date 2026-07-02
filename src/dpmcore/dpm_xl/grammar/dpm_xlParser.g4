@@ -14,6 +14,7 @@ statements:
 statement:
     expressionWithoutAssignment                                                                      #exprWithoutAssignment
     | temporaryAssignmentExpression                                                                  #assignmentExpr
+    | persistentAssignmentExpression                                                                 #persistentAssignExpr
     ;
 
 persistentExpression:
@@ -37,7 +38,11 @@ temporaryAssignmentExpression:
     ;
 
 persistentAssignmentExpression:
-    varID PERSISTENT_ASSIGN expressionWithoutAssignment
+    assignmentTarget PERSISTENT_ASSIGN expressionWithoutAssignment
+    ;
+
+assignmentTarget:
+    CURLY_BRACKET_LEFT (cellRef | varRef) CURLY_BRACKET_RIGHT
     ;
 
 expression:

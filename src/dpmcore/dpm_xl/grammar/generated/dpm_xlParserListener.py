@@ -44,6 +44,15 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by dpm_xlParser#persistentAssignExpr.
+    def enterPersistentAssignExpr(self, ctx:dpm_xlParser.PersistentAssignExprContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#persistentAssignExpr.
+    def exitPersistentAssignExpr(self, ctx:dpm_xlParser.PersistentAssignExprContext):
+        pass
+
+
     # Enter a parse tree produced by dpm_xlParser#persistentExpression.
     def enterPersistentExpression(self, ctx:dpm_xlParser.PersistentExpressionContext):
         pass
@@ -95,6 +104,15 @@ class dpm_xlParserListener(ParseTreeListener):
 
     # Exit a parse tree produced by dpm_xlParser#persistentAssignmentExpression.
     def exitPersistentAssignmentExpression(self, ctx:dpm_xlParser.PersistentAssignmentExpressionContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#assignmentTarget.
+    def enterAssignmentTarget(self, ctx:dpm_xlParser.AssignmentTargetContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#assignmentTarget.
+    def exitAssignmentTarget(self, ctx:dpm_xlParser.AssignmentTargetContext):
         pass
 
 
