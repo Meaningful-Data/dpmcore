@@ -136,8 +136,9 @@ def filter_by_release(
             ``(end IS NULL OR sort_order(end) > sort_order(target))``,
             where ``sort_order`` is the release's ``Release.date``. This
             works for every ``code`` format — a ``"Playground"``/working
-            release orders by its (latest) date like any other, so a
-            request for it naturally resolves to the current rows.
+            release orders by its date like any other, and an undated
+            working release ranks as the latest, so a request for it
+            naturally resolves to the current rows.
         If release_id is None:
             * ``active_only_fallback=True`` → ``end_col IS NULL`` only
               (currently-active rows). Useful for callers that want a
@@ -163,7 +164,7 @@ def filter_by_release(
         TypeError: If ``query`` is not a session-bound SQLAlchemy
             ``Query`` (e.g. a Core ``Select`` was passed).
         ValueError: If ``release_id`` does not correspond to a known
-            ``Release`` row, or that release has no ``date``.
+            ``Release`` row.
     """
     if release_id is None:
         if active_only_fallback:
@@ -180,8 +181,9 @@ def filter_by_release(
         )
 
     # Order releases by date. A "Playground"/working release orders by
-    # its date like any other, so no code parsing and no special-casing
-    # is needed; an unknown release_id (or one with no date) raises.
+    # its date like any other (an undated one ranks as the latest), so no
+    # code parsing and no special-casing is needed; an unknown release_id
+    # raises.
     target_sort_order = resolve_sort_order(session, release_id)
     sort_orders = load_release_sort_orders(session)
     start_ids = release_ids_for_sort_order(sort_orders, le=target_sort_order)
@@ -224,8 +226,9 @@ def filter_item_version(
         sort_orders: Pre-loaded mapping from
             :func:`load_release_sort_orders`.
         ref_sort_order: Reference release's pre-resolved sort order.
-            ``None`` (no date / unknown release) collapses to a condition
-            that never matches.
+            ``None`` (an unknown/absent release) collapses to a condition
+            that never matches; an undated release is not ``None`` (it
+            ranks as the latest).
         item_start_col: Item's start-release ID column.
         item_end_col: Item's end-release ID column.
 

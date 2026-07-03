@@ -459,7 +459,8 @@ class ASTGeneratorService:
         """Pick the latest ``released`` Release covering *mv*'s window.
 
         Comparison runs against the date-based sort order of each
-        candidate (``Release.date``), not the opaque ``ReleaseID`` FK.
+        candidate (``Release.date``), not the opaque ``ReleaseID`` FK; an
+        undated (unpublished) release ranks as the latest candidate.
         Falls back to the latest of any status if no released row
         matches.
         """
@@ -491,8 +492,6 @@ class ASTGeneratorService:
         candidates: List[tuple[int, Any]] = []
         for r in rows:
             so = compute_sort_order(r.date)
-            if so is None:
-                continue
             if start_sort is not None and so < start_sort:
                 continue
             if end_sort is not None and so >= end_sort:

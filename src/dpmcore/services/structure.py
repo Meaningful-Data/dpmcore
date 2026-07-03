@@ -181,10 +181,10 @@ class StructureService:
         ``_version_at_release`` monotonic for every ``code`` format
         without parsing the code.
 
-        Releases with no ``date`` (``sort_order`` is ``None``) cannot be
-        ordered, so they sort *first* and are skipped by the version
-        walks. ``sort_order`` is computed from the same query that loads
-        the releases, so this adds no extra round-trip.
+        A release with no ``date`` is an unpublished working release; it
+        sorts *last* (as the latest) and participates in the version
+        walks like any other. ``sort_order`` is computed from the same
+        query that loads the releases, so this adds no extra round-trip.
         """
         if self._releases_cache is None:
             releases = self.session.query(Release).all()
@@ -222,8 +222,9 @@ class StructureService:
         opaque ``release_id`` FK. The end bound is **inclusive** — the
         convention the category/context virtual-versioning walks have
         always used (this intentionally differs from
-        ``filter_by_release``'s exclusive end). Returns ``False`` for
-        any release with no date (unrankable).
+        ``filter_by_release``'s exclusive end). Returns ``False`` only
+        for a release_id absent from the release set (orphan FK); an
+        undated release ranks as the latest.
         """
         target_so = self._sort_order(target_release_id)
         start_so = self._sort_order(start_release_id)

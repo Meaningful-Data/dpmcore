@@ -952,30 +952,29 @@ class ModuleVersionQuery:
     def get_last_release(
         session: "Session",
     ) -> int | None:
-        """Return the ID of the most recent release, ordered by date.
+        """Return the ID of the latest release by the date sort order.
 
-        Releases are ordered by ``Release.date`` (descending), not the
-        opaque ``release_id`` FK, which is non-monotonic from DPM 4.2.1
-        onwards (e.g. ``4.2.1`` is ``ReleaseID 1010000003``), so the
-        highest id is not necessarily the latest release. Releases with
-        no date are unrankable and excluded.
+        Releases are ranked by :func:`compute_sort_order` (from
+        ``Release.date``), not the opaque ``release_id`` FK, which is
+        non-monotonic from DPM 4.2.1 onwards (e.g. ``4.2.1`` is
+        ``ReleaseID 1010000003``), so the highest id is not necessarily
+        the latest release. An undated (unpublished) release sorts as the
+        latest; ties are broken by ``release_id`` for determinism.
 
         Args:
             session: SQLAlchemy session.
 
         Returns:
-            Integer release ID of the latest dated release, or ``None``
-            when there is no dated release.
+            Integer release ID of the latest release, or ``None`` when
+            there are no releases.
         """
-        result = (
-            session.query(Release.release_id)
-            .filter(Release.date.isnot(None))
-            .order_by(Release.date.desc())
-            .first()
-        )
-        if result is None:
+        sort_orders = load_release_sort_orders(session)
+        ranked = [
+            (so, rid) for rid, so in sort_orders.items() if so is not None
+        ]
+        if not ranked:
             return None
-        return int(result[0])
+        return max(ranked)[1]
 
     @staticmethod
     def get_from_tables_vids(

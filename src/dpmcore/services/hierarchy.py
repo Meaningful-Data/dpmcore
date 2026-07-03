@@ -46,8 +46,9 @@ def _most_recent_by_release(
 ) -> Optional[Any]:
     """Pick the row whose start-release sorts last by date order.
 
-    Rows whose release has no parseable sort order lose to any
-    parseable row, mirroring ``NULLS LAST`` ordering.
+    Rows whose start-release is absent from the release set (an orphan
+    FK) lose to any ranked row, mirroring ``NULLS LAST`` ordering. An
+    undated (unpublished) release is ranked as the latest, so it wins.
     """
     if not rows:
         return None

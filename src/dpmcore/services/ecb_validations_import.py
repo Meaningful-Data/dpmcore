@@ -217,7 +217,7 @@ class EcbValidationsImportService:
         if start_sort is None:
             raise EcbValidationsImportError(
                 f"Release {start_release_id} has no sort_order — "
-                "it has no date or does not exist."
+                "no Release row matches that ID."
             )
         if end_release_id is None:
             return release_ids_for_sort_order(sort_orders, ge=start_sort)
@@ -225,7 +225,7 @@ class EcbValidationsImportService:
         if end_sort is None:
             raise EcbValidationsImportError(
                 f"Release {end_release_id} has no sort_order — "
-                "it has no date or does not exist."
+                "no Release row matches that ID."
             )
         return release_ids_for_sort_order(
             sort_orders, ge=start_sort, lt=end_sort
