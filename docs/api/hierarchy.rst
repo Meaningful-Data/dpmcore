@@ -28,11 +28,10 @@ The supported filter set varies by method:
     Restrict to entities valid at the given DPM release.
 
 ``release_code`` (``str``)
-    Restrict by release code (e.g. ``"3.4"``, ``"4.2.1"``). Resolved
-    against :class:`Release.code` to its numeric ``ReleaseID``.
-    Raises :class:`ValueError` if the code does not match any release.
-    Preferred for user-facing input — ``"4.2.1"`` is more readable
-    than the opaque ``ReleaseID = 1010000003`` EBA assigns.
+    Restrict by release code (e.g. ``"3.4"``, ``"4.2.1"``). Raises
+    :class:`ValueError` if the code does not match any release.
+    Preferred for user-facing input, since ``ReleaseID`` values are
+    opaque from DPM 4.2.1 onwards. Any release code format is accepted.
 
 ``date`` (``str``, ``YYYY-MM-DD``)
     Restrict via ``ModuleVersion.from_reference_date`` /
@@ -42,38 +41,9 @@ The supported filter set varies by method:
 When none is supplied, the active (non-ended) module versions are
 returned. Passing more than one raises :class:`ValueError`.
 
-How range comparison works
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-DPM ``ReleaseID`` values are no longer monotonic — from 4.2.1 onwards
-EBA assigns opaque IDs like ``1010000003`` while older releases are
-still ``1..5``, so release-range comparisons cannot rely on numeric ID
-ordering. Instead dpmcore parses ``Release.code`` as a semver tuple
-(``"4.2.1" → (4, 2, 1)``) and packs it into a single sortable integer
-**in Python at query time**
-(:func:`dpmcore.orm.release_sort_order.compute_sort_order`). There is
-**no** persisted ``sort_order`` column, ORM event listener, or
-migration backfill — the packed value is recomputed on demand from
-the release code and held as a plain ``int``.
-
-All range comparisons (``filter_by_release``, ``filter_item_version``,
-the inline ``Release.release_id >= …`` patterns in
-:class:`ASTGeneratorService` and the ECB-validations importer) compare
-these packed values, not the raw ``ReleaseID``. Two consequences worth
-being aware of:
-
-* Both filter forms resolve identically: ``release_id=1010000003`` and
-  ``release_code="4.2.1"`` select the same release. A backport
-  published chronologically after a higher-numbered release — e.g. a
-  future ``4.0.1`` shipped after ``4.2.1`` — is still correctly placed
-  inside the ``4.0`` lineage, so a module version declared "valid from
-  4.0 to 4.2" includes the ``4.0.1`` backport.
-* If a ``Release.code`` cannot be parsed as ``MAJOR.MINOR[.PATCH]``,
-  :func:`~dpmcore.orm.release_sort_order.compute_sort_order` returns
-  ``None`` and any range filter passing that release as the target
-  raises a clear :class:`ValueError` rather than silently returning
-  wrong rows. Releases with unparseable codes simply do not
-  participate in range filters.
+Releases are ordered chronologically by publication date, so a release
+filter returns the entities whose release-validity window contains the
+target release.
 
 HierarchyService
 ----------------
