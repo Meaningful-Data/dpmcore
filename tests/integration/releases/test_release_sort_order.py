@@ -43,12 +43,13 @@ from dpmcore.services.hierarchy import HierarchyService
 
 
 def test_compute_sort_order_from_date() -> None:
-    assert compute_sort_order(None) is None
     assert compute_sort_order(date(2025, 3, 4)) == date(2025, 3, 4).toordinal()
     # Earlier date sorts before a later one.
     assert compute_sort_order(date(2024, 1, 1)) < compute_sort_order(
         date(2024, 6, 1)
     )
+    # An undated (unpublished) release sorts after every real date.
+    assert compute_sort_order(None) > compute_sort_order(date(9999, 12, 31))
 
 
 def test_compute_sort_order_is_monotone_in_date() -> None:
@@ -68,14 +69,19 @@ def test_compute_sort_order_is_monotone_in_date() -> None:
     assert len(set(orders)) == len(orders)
 
 
-def test_resolve_sort_order_raises_for_undated_and_unknown(memory_session):
-    """resolve_sort_order raises on a missing date or an unknown id."""
+def test_resolve_sort_order_undated_is_latest_unknown_raises(memory_session):
+    """resolve_sort_order ranks an undated release as the latest.
+
+    An undated (unpublished) release resolves to the "latest" sentinel,
+    sorting after every dated release; only a genuinely unknown id (no
+    Release row) raises.
+    """
     session = memory_session
-    session.add(Release(release_id=1, code="4.2", date=None))
+    session.add(Release(release_id=1, code="4.2", date=date(2025, 10, 31)))
+    session.add(Release(release_id=2, code="Playground", date=None))
     session.commit()
 
-    with pytest.raises(ValueError, match="has no date"):
-        resolve_sort_order(session, 1)
+    assert resolve_sort_order(session, 2) > resolve_sort_order(session, 1)
     with pytest.raises(ValueError, match="no Release row matches"):
         resolve_sort_order(session, 999)
 
@@ -459,12 +465,66 @@ def test_get_last_release_orders_by_date_not_id(memory_session):
     assert ModuleVersionQuery.get_last_release(session) == 1010000003
 
 
-def test_get_last_release_none_when_no_dated_release(memory_session):
-    """``get_last_release`` returns ``None`` when no release has a date."""
+def test_get_last_release_undated_release_is_latest(memory_session):
+    """An undated (unpublished) release is the latest, beating dated ones."""
     from dpmcore.dpm_xl.model_queries import ModuleVersionQuery
 
     session = memory_session
-    session.add(Release(release_id=1, code="4.2", date=None))
+    session.add_all(
+        [
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(release_id=2, code="4.2.1", date=date(2026, 2, 15)),
+            Release(release_id=9999, code="Playground", date=None),
+        ]
+    )
     session.commit()
 
-    assert ModuleVersionQuery.get_last_release(session) is None
+    assert ModuleVersionQuery.get_last_release(session) == 9999
+
+
+def test_get_last_release_none_when_no_releases(memory_session):
+    """``get_last_release`` returns ``None`` when there are no releases."""
+    from dpmcore.dpm_xl.model_queries import ModuleVersionQuery
+
+    assert ModuleVersionQuery.get_last_release(memory_session) is None
+
+
+def test_undated_release_resolves_to_current_rows(memory_session):
+    """An undated working release range-filters to the current rows.
+
+    The real issue #185 scenario: an unpublished "Playground" release
+    with no date. It ranks as the latest, so ``filter_by_release`` at it
+    keeps rows live from the last dated release and drops those already
+    superseded — with no code parsing and no crash.
+    """
+    from dpmcore.dpm_xl.utils.filters import filter_by_release
+
+    session = memory_session
+    session.add_all(
+        [
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(release_id=9999, code="Playground", date=None),
+            # Live from 4.2, never ended -> active at Playground.
+            TableVersion(
+                table_vid=1,
+                table_id=1,
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            # Ended at 4.2 -> superseded before Playground.
+            TableVersion(
+                table_vid=2, table_id=2, start_release_id=1, end_release_id=1
+            ),
+        ]
+    )
+    session.commit()
+
+    q = session.query(TableVersion)
+    filtered = filter_by_release(
+        q,
+        start_col=TableVersion.start_release_id,
+        end_col=TableVersion.end_release_id,
+        release_id=9999,
+    )
+    vids = {tv.table_vid for tv in filtered.all()}
+    assert vids == {1}, "undated Playground (latest) yields the current rows"
