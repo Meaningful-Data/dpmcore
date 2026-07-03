@@ -642,30 +642,31 @@ class TestResolveRelease:
 
 
 class TestLatestReleaseInWindow:
-    def test_undated_start_release_raises(self):
+    def test_unknown_start_release_raises(self):
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
         mv = SimpleNamespace(start_release_id=42, end_release_id=None)
         # resolve_sort_order issues session.query(Release.date).filter(
-        # Release.release_id == ...).first(); a release with no date has
-        # no sort order, so the helper raises.
+        # Release.release_id == ...).first(); no matching Release row
+        # (first() returns None) has no sort order, so the helper raises.
+        # An undated release, by contrast, resolves to the latest sentinel.
         svc.session.query.return_value.filter.return_value.first.return_value = (  # noqa: E501
-            None,
+            None
         )
         with pytest.raises(
             ValueError, match="window start release 42 has no sort_order"
         ):
             svc._latest_release_in_window(mv)
 
-    def test_undated_end_release_raises(self):
+    def test_unknown_end_release_raises(self):
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
         mv = SimpleNamespace(start_release_id=1, end_release_id=99)
         # Two resolve_sort_order calls: first returns a dated release,
-        # second returns an undated one so the end-bound resolver raises.
+        # second finds no Release row so the end-bound resolver raises.
         svc.session.query.return_value.filter.return_value.first.side_effect = [  # noqa: E501
             (date(2024, 1, 1),),
-            (None,),
+            None,
         ]
         with pytest.raises(
             ValueError, match="window end release 99 has no sort_order"

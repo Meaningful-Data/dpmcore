@@ -312,17 +312,37 @@ class TestEcbValidationsImport:
         finally:
             session.close()
 
-    def test_get_valid_release_ids_undated_start_raises(
+    def test_get_valid_release_ids_undated_start_is_latest(
         self, sqlite_engine_with_schema
     ):
         from dpmcore.orm.infrastructure import Release
 
         session = sessionmaker(bind=sqlite_engine_with_schema)()
         try:
-            # Release order is by date; a release with no date cannot be
-            # placed, so a window bound on it raises rather than silently
-            # dropping rows.
-            session.add(Release(release_id=1, code="4.0", date=None))
+            # An undated (unpublished) release ranks as the latest, so a
+            # range starting at it is valid and contains just itself.
+            session.add(
+                Release(release_id=1, code="4.0", date=date(2024, 1, 1))
+            )
+            session.add(Release(release_id=2, code="Playground", date=None))
+            session.flush()
+
+            result = EcbValidationsImportService._get_valid_release_ids(
+                session, start_release_id=2, end_release_id=None
+            )
+            assert result == [2]
+        finally:
+            session.close()
+
+    def test_get_valid_release_ids_unknown_start_raises(
+        self, sqlite_engine_with_schema
+    ):
+        from dpmcore.orm.infrastructure import Release
+
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            # A window bound with no matching Release row cannot be placed,
+            # so it raises rather than silently dropping rows.
             session.add(
                 Release(release_id=2, code="4.1", date=date(2024, 2, 1))
             )
@@ -337,7 +357,7 @@ class TestEcbValidationsImport:
         finally:
             session.close()
 
-    def test_get_valid_release_ids_undated_end_raises(
+    def test_get_valid_release_ids_unknown_end_raises(
         self, sqlite_engine_with_schema
     ):
         from dpmcore.orm.infrastructure import Release
@@ -347,7 +367,6 @@ class TestEcbValidationsImport:
             session.add(
                 Release(release_id=1, code="4.0", date=date(2024, 1, 1))
             )
-            session.add(Release(release_id=2, code="4.1", date=None))
             session.flush()
 
             with pytest.raises(
