@@ -416,8 +416,8 @@ class ASTGeneratorService:
 
         Looks up ``Release.code == release`` and validates that the
         release sits inside ``mv``'s window. Comparison runs against the
-        semver-parsed sort order of each release ``code`` (the DPM
-        ``ReleaseID`` FK is no longer monotonic — see
+        date-based sort order of each release (the DPM ``ReleaseID`` FK
+        is no longer monotonic — see
         :mod:`dpmcore.orm.release_sort_order`), not the raw id. Raises
         ``ValueError`` if the release is unknown, predates
         ``start_release_id``, or is past ``end_release_id``.
@@ -458,11 +458,10 @@ class ASTGeneratorService:
     def _latest_release_in_window(self, mv: Any) -> Any:
         """Pick the latest ``released`` Release covering *mv*'s window.
 
-        Comparison runs against the semver-parsed sort order of each
-        candidate's ``code`` so a hypothetical backport like ``4.0.1``
-        published after ``4.2.1`` is correctly placed inside the
-        ``4.0`` lineage. Falls back to the latest of any status if no
-        released row matches.
+        Comparison runs against the date-based sort order of each
+        candidate (``Release.date``), not the opaque ``ReleaseID`` FK.
+        Falls back to the latest of any status if no released row
+        matches.
         """
         from dpmcore.orm.infrastructure import Release
         from dpmcore.orm.release_sort_order import (
@@ -491,7 +490,7 @@ class ASTGeneratorService:
         rows = self.session.query(Release).all()
         candidates: List[tuple[int, Any]] = []
         for r in rows:
-            so = compute_sort_order(r.code)
+            so = compute_sort_order(r.date)
             if so is None:
                 continue
             if start_sort is not None and so < start_sort:

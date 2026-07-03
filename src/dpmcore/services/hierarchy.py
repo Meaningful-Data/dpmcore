@@ -44,7 +44,7 @@ def _most_recent_by_release(
     rows: List[Any],
     release_key: Any,
 ) -> Optional[Any]:
-    """Pick the row whose start-release sorts last by semver order.
+    """Pick the row whose start-release sorts last by date order.
 
     Rows whose release has no parseable sort order lose to any
     parseable row, mirroring ``NULLS LAST`` ordering.
@@ -645,7 +645,7 @@ class HierarchyService:
         Joins through ModuleVersionComposition + ModuleVersion so that
         the date filter (which is tracked on ModuleVersion) applies
         consistently. Falls back to the most recent module-version
-        match (by semver-parsed sort order of ``start_release_id``)
+        match (by date-based sort order of ``start_release_id``)
         when several rows survive the filter.
         """
         q = (

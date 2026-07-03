@@ -3,13 +3,13 @@
 Provides composable SQLAlchemy filter conditions for
 release-based versioning and date-range queries.
 
-Release-range comparisons compare against the semver-parsed sort order
-of ``Release.code`` (computed in Python via
-:func:`dpmcore.orm.release_sort_order.compute_sort_order`) rather than
-against the raw ``Release.release_id`` FK, because EBA's post-4.2.1 ID
-scheme is no longer monotonic (4.2.1 has ``ReleaseID = 1010000003``).
-A hypothetical backport ``4.0.1`` is correctly placed inside the
-``4.0`` lineage even when published chronologically after ``4.2.1``.
+Release-range comparisons order releases by ``Release.date`` (via
+:func:`dpmcore.orm.release_sort_order.resolve_sort_order`) rather than
+by the raw ``Release.release_id`` FK, because EBA's post-4.2.1 ID scheme
+is no longer monotonic (4.2.1 has ``ReleaseID = 1010000003``). Dates are
+unique and follow the version lineage, so ordering by date works for
+every ``code`` format — including EBA's four-segment codes and
+non-versioned working releases — without parsing the code.
 """
 
 from datetime import datetime
@@ -130,10 +130,14 @@ def filter_by_release(
 ) -> Any:
     """Filter a query by DPM release versioning logic.
 
-    Logic (semver-aware):
+    Logic (date-ordered):
         If release_id provided:
-            sort_order(start) <= sort_order(target) AND
-            (end IS NULL OR sort_order(end) > sort_order(target))
+            ``sort_order(start) <= sort_order(target)`` AND
+            ``(end IS NULL OR sort_order(end) > sort_order(target))``,
+            where ``sort_order`` is the release's ``Release.date``. This
+            works for every ``code`` format — a ``"Playground"``/working
+            release orders by its (latest) date like any other, so a
+            request for it naturally resolves to the current rows.
         If release_id is None:
             * ``active_only_fallback=True`` → ``end_col IS NULL`` only
               (currently-active rows). Useful for callers that want a
@@ -159,8 +163,7 @@ def filter_by_release(
         TypeError: If ``query`` is not a session-bound SQLAlchemy
             ``Query`` (e.g. a Core ``Select`` was passed).
         ValueError: If ``release_id`` does not correspond to a known
-            ``Release`` row, or that release's code is not parseable
-            as ``MAJOR.MINOR[.PATCH]``.
+            ``Release`` row, or that release has no ``date``.
     """
     if release_id is None:
         if active_only_fallback:
@@ -176,6 +179,9 @@ def filter_by_release(
             "Select statements are not supported.",
         )
 
+    # Order releases by date. A "Playground"/working release orders by
+    # its date like any other, so no code parsing and no special-casing
+    # is needed; an unknown release_id (or one with no date) raises.
     target_sort_order = resolve_sort_order(session, release_id)
     sort_orders = load_release_sort_orders(session)
     start_ids = release_ids_for_sort_order(sort_orders, le=target_sort_order)
@@ -209,7 +215,7 @@ def filter_item_version(
 ) -> Any:
     """Build a version-range join condition.
 
-    Pattern (semver-aware):
+    Pattern (date-ordered):
 
         sort_order(item_start) <= ref_sort_order
         AND (item_end IS NULL OR ref_sort_order < sort_order(item_end))
@@ -218,8 +224,8 @@ def filter_item_version(
         sort_orders: Pre-loaded mapping from
             :func:`load_release_sort_orders`.
         ref_sort_order: Reference release's pre-resolved sort order.
-            ``None`` (unparseable code) collapses to a condition that
-            never matches.
+            ``None`` (no date / unknown release) collapses to a condition
+            that never matches.
         item_start_col: Item's start-release ID column.
         item_end_col: Item's end-release ID column.
 

@@ -805,7 +805,7 @@ def _latest_prior_non_collapsed_vids(
     For each module id, return the ``ModuleVID`` of the most recent
     module version that (a) has a genuine (non-collapsed) reference-date
     window and (b) whose release-window start is on or before the target
-    release on the semver sort order. The search is strictly backward: a
+    release on the date-based sort order. The search is strictly backward: a
     version whose release window begins *after* the target is never
     chosen, preserving the #151 release-axis safety constraint. Modules
     with no such version are omitted, so the caller keeps the clean
