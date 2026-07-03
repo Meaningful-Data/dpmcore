@@ -21,11 +21,11 @@ from dpmcore.services.explorer import ExplorerService
 
 
 def _seed_two_releases(session) -> None:
-    """Create release_id 1 and 2 with parseable semver codes.
+    """Create release_id 1 and 2 with dates.
 
     The release-range filter resolves the target release's
-    ``sort_order`` (parsed from ``code``), so any ``release_id`` used
-    in a filter must correspond to a real ``Release`` row.
+    ``sort_order`` from ``Release.date``, so any ``release_id`` used
+    in a filter must correspond to a real, dated ``Release`` row.
     """
     session.add(Release(release_id=1, code="1.0", date=date(2024, 1, 1)))
     session.add(Release(release_id=2, code="2.0", date=date(2025, 1, 1)))

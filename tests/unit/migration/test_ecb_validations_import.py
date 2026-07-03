@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -268,9 +269,15 @@ class TestEcbValidationsImport:
 
         session = sessionmaker(bind=sqlite_engine_with_schema)()
         try:
-            session.add(Release(release_id=1, code="4.0"))
-            session.add(Release(release_id=2, code="4.1"))
-            session.add(Release(release_id=3, code="4.2"))
+            session.add(
+                Release(release_id=1, code="4.0", date=date(2024, 1, 1))
+            )
+            session.add(
+                Release(release_id=2, code="4.1", date=date(2024, 2, 1))
+            )
+            session.add(
+                Release(release_id=3, code="4.2", date=date(2024, 3, 1))
+            )
             session.flush()
 
             result = EcbValidationsImportService._get_valid_release_ids(
@@ -287,9 +294,15 @@ class TestEcbValidationsImport:
 
         session = sessionmaker(bind=sqlite_engine_with_schema)()
         try:
-            session.add(Release(release_id=1, code="4.0"))
-            session.add(Release(release_id=2, code="4.1"))
-            session.add(Release(release_id=3, code="4.2"))
+            session.add(
+                Release(release_id=1, code="4.0", date=date(2024, 1, 1))
+            )
+            session.add(
+                Release(release_id=2, code="4.1", date=date(2024, 2, 1))
+            )
+            session.add(
+                Release(release_id=3, code="4.2", date=date(2024, 3, 1))
+            )
             session.flush()
 
             result = EcbValidationsImportService._get_valid_release_ids(
@@ -299,15 +312,20 @@ class TestEcbValidationsImport:
         finally:
             session.close()
 
-    def test_get_valid_release_ids_unparseable_start_raises(
+    def test_get_valid_release_ids_undated_start_raises(
         self, sqlite_engine_with_schema
     ):
         from dpmcore.orm.infrastructure import Release
 
         session = sessionmaker(bind=sqlite_engine_with_schema)()
         try:
-            session.add(Release(release_id=1, code="garbage"))
-            session.add(Release(release_id=2, code="4.1"))
+            # Release order is by date; a release with no date cannot be
+            # placed, so a window bound on it raises rather than silently
+            # dropping rows.
+            session.add(Release(release_id=1, code="4.0", date=None))
+            session.add(
+                Release(release_id=2, code="4.1", date=date(2024, 2, 1))
+            )
             session.flush()
 
             with pytest.raises(
@@ -319,15 +337,17 @@ class TestEcbValidationsImport:
         finally:
             session.close()
 
-    def test_get_valid_release_ids_unparseable_end_raises(
+    def test_get_valid_release_ids_undated_end_raises(
         self, sqlite_engine_with_schema
     ):
         from dpmcore.orm.infrastructure import Release
 
         session = sessionmaker(bind=sqlite_engine_with_schema)()
         try:
-            session.add(Release(release_id=1, code="4.0"))
-            session.add(Release(release_id=2, code="garbage"))
+            session.add(
+                Release(release_id=1, code="4.0", date=date(2024, 1, 1))
+            )
+            session.add(Release(release_id=2, code="4.1", date=None))
             session.flush()
 
             with pytest.raises(

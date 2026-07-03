@@ -1,16 +1,16 @@
-"""Tests for semver-based release range comparison.
+"""Tests for date-based release range comparison.
 
 DPM ``ReleaseID`` values are no longer monotonic (4.2.1 has
 ``ReleaseID = 1010000003`` while older releases are still 1..5), so
-range filters must compare against a semver-parsed sort order rather
-than against the raw integer ID.
+range filters must compare against a ``Release.date``-based sort order
+rather than against the raw integer ID.
 
-The headline scenario is a *backport*: a hypothetical ``4.0.1``
-published chronologically after ``4.2.1`` but semantically belonging
-to the ``4.0`` lineage.
-
-Pre-fix this looked broken in two distinct ways depending on which
-ID the backport got, and both are exercised here.
+The headline scenario is a *backport*: a ``4.0.1`` release that carries
+a high ``ReleaseID`` (assigned after ``4.2.1``) but a date that follows
+its ``4.0`` lineage. Ordering by date places it correctly; ordering by
+id would not. Ordering never parses ``Release.code``, so non-versioned
+codes (``"Playground"``) and four-segment codes (``4.2.1.3``) order the
+same way — the regression that motivated issue #185.
 """
 
 from datetime import date
@@ -31,65 +31,57 @@ from dpmcore.orm.packaging import (
 )
 from dpmcore.orm.release_sort_order import (
     compute_sort_order,
-    parse_version,
+    resolve_sort_order,
 )
 from dpmcore.orm.rendering import Table, TableVersion
 from dpmcore.services.data_dictionary import DataDictionaryService
 from dpmcore.services.hierarchy import HierarchyService
 
 # --------------------------------------------------------------------- #
-# parse_version / compute_sort_order
+# compute_sort_order / resolve_sort_order
 # --------------------------------------------------------------------- #
 
 
-def test_parse_version_padding() -> None:
-    assert parse_version("4.2") == (4, 2, 0)
-    assert parse_version("4.2.1") == (4, 2, 1)
-    assert parse_version("3") == (3, 0, 0)
+def test_compute_sort_order_from_date() -> None:
+    assert compute_sort_order(None) is None
+    assert compute_sort_order(date(2025, 3, 4)) == date(2025, 3, 4).toordinal()
+    # Earlier date sorts before a later one.
+    assert compute_sort_order(date(2024, 1, 1)) < compute_sort_order(
+        date(2024, 6, 1)
+    )
 
 
-def test_parse_version_unparseable_returns_none() -> None:
-    assert parse_version(None) is None
-    assert parse_version("") is None
-    assert parse_version("draft") is None
-    assert parse_version("4.2-rc1") is None
-
-
-def test_compute_sort_order_requires_bigint() -> None:
-    # Values like 4.2.1 produce sort_order=4_000_002_000_001, which exceeds
-    # PostgreSQL/SQL Server INTEGER (max 2_147_483_647). The ORM column must
-    # use BigInteger; this test fails if _SEGMENT_BITS is ever shrunk enough
-    # to sneak under the 32-bit cap.
-    _INT32_MAX = 2_147_483_647
-    assert compute_sort_order("4.2.1") > _INT32_MAX
-
-
-def test_compute_sort_order_is_monotone() -> None:
-    """If parse_version(a) < parse_version(b) then sort_order(a) < sort_order(b)."""
-    samples = [
-        "1.0",
-        "3.4",
-        "3.5",
-        "4.0",
-        "4.0.1",  # backport
-        "4.1",
-        "4.2",
-        "4.2.1",
-        "4.2.10",  # multi-digit segment — lexical comparison would break
+def test_compute_sort_order_is_monotone_in_date() -> None:
+    """Chronological dates map to strictly increasing sort orders."""
+    dates = [
+        date(2024, 2, 6),
+        date(2024, 7, 11),
+        date(2024, 12, 19),
+        date(2025, 2, 1),  # a backport, published within the 4.0 lineage
+        date(2025, 4, 28),
+        date(2025, 10, 31),
+        date(2026, 2, 15),
     ]
-    parsed = [parse_version(s) for s in samples]
-    sorts = [compute_sort_order(s) for s in samples]
-    pairs = list(zip(parsed, sorts, strict=True))
-    assert sorted(pairs) == pairs
-    # And specifically: 4.2.10 sorts after 4.2.1 (lexical would say opposite).
-    assert compute_sort_order("4.2.10") > compute_sort_order("4.2.1")
-    # Backport sits between 4.0 and 4.1.
-    assert compute_sort_order("4.0") < compute_sort_order("4.0.1")
-    assert compute_sort_order("4.0.1") < compute_sort_order("4.1")
+    orders = [compute_sort_order(d) for d in dates]
+    assert orders == sorted(orders)
+    # Distinct dates → distinct keys, so no tiebreak is ever needed.
+    assert len(set(orders)) == len(orders)
 
 
-def test_load_release_sort_orders_from_code() -> None:
-    """``load_release_sort_orders`` parses ``Release.code`` per row."""
+def test_resolve_sort_order_raises_for_undated_and_unknown(memory_session):
+    """resolve_sort_order raises on a missing date or an unknown id."""
+    session = memory_session
+    session.add(Release(release_id=1, code="4.2", date=None))
+    session.commit()
+
+    with pytest.raises(ValueError, match="has no date"):
+        resolve_sort_order(session, 1)
+    with pytest.raises(ValueError, match="no Release row matches"):
+        resolve_sort_order(session, 999)
+
+
+def test_load_release_sort_orders_from_date() -> None:
+    """``load_release_sort_orders`` derives order from ``Release.date``."""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
 
@@ -109,24 +101,24 @@ def test_load_release_sort_orders_from_code() -> None:
         )
         session.commit()
         rows = load_release_sort_orders(session)
-    # 4.2 → (4, 2, 0); 4.2.1 → (4, 2, 1) — the latter must compare greater.
+    # 4.2 (Oct 2025) must sort before 4.2.1 (Feb 2026), despite the huge id.
     assert rows[1] is not None
     assert rows[1010000003] is not None
     assert rows[1] < rows[1010000003]
 
 
 # --------------------------------------------------------------------- #
-# Backport scenario — the whole reason for this refactor
+# Backport scenario — high id, in-lineage date
 # --------------------------------------------------------------------- #
 
 
 @pytest.fixture
 def backport_session(memory_session):
-    """A DB where 4.0.1 has a higher ID than 4.2.1.
+    """A DB where 4.0.1 has a higher ID than 4.2.1 but an in-lineage date.
 
     Layout::
 
-        ReleaseID  Code    Date         (chronology)
+        ReleaseID  Code    Date         (id vs lineage)
         --------   -----   ----------   ------------
         1          3.4     2024-02-06
         2          3.5     2024-07-11
@@ -134,12 +126,12 @@ def backport_session(memory_session):
         4          4.1     2025-04-28
         5          4.2     2025-10-31
         1010000003 4.2.1   2026-02-15
-        1010000004 4.0.1   2026-06-30   <- backport, post-4.2.1 by date
+        1010000004 4.0.1   2025-02-01   <- highest id, date within 4.0 lineage
 
     A module version valid from ``4.0`` to ``4.2`` (start_release_id=3,
     end_release_id=5) should be considered valid at ``4.0.1`` because
-    4.0.1 ∈ [4.0, 4.2). ID-based comparison says no (1010000004 > 5);
-    code-based comparison says yes.
+    4.0.1's date (2025-02-01) falls in [4.0, 4.2). ID-based comparison
+    says no (1010000004 > 5); date-based comparison says yes.
     """
     session = memory_session
     session.add_all(
@@ -157,7 +149,7 @@ def backport_session(memory_session):
             Release(
                 release_id=1010000004,
                 code="4.0.1",
-                date=date(2026, 6, 30),
+                date=date(2025, 2, 1),
             ),
             Framework(framework_id=1, code="FW"),
             Module(module_id=1, framework_id=1),
@@ -232,7 +224,7 @@ def test_backport_release_excludes_pre_4_0(backport_session):
 
 
 def test_get_tables_at_backport_release(backport_session):
-    """DataDictionary.get_tables filters TableVersions by code-version."""
+    """DataDictionary.get_tables filters TableVersions by date-version."""
     svc = DataDictionaryService(backport_session)
     tables = svc.get_tables(release_code="4.0.1")
     assert "T1" in tables, (
@@ -240,30 +232,120 @@ def test_get_tables_at_backport_release(backport_session):
     )
 
 
-def test_unparseable_release_code_excluded(memory_session):
-    """A Release whose code can't be parsed has no sort_order.
+def test_nonsemver_release_code_orders_by_date(memory_session):
+    """A non-versioned working release (``"Playground"``) orders by date.
 
-    Filtering against such a release_id raises a clear error rather
-    than silently mis-counting rows.
+    Regression for issue #185: exporting/scoping at a release whose code
+    is not ``MAJOR.MINOR[.PATCH]`` used to crash. With date ordering the
+    code is never parsed — a "Playground" release published last simply
+    resolves to the current rows, with no special-casing and no crash.
     """
     from dpmcore.dpm_xl.utils.filters import filter_by_release
 
     session = memory_session
-    session.add(Release(release_id=1, code="draft", date=date(2024, 1, 1)))
+    session.add_all(
+        [
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(release_id=9999, code="Playground", date=date(2026, 9, 1)),
+            # Live from 4.2, never ended -> active at Playground.
+            TableVersion(
+                table_vid=1,
+                table_id=1,
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            # Ended at 4.2 -> superseded before Playground.
+            TableVersion(
+                table_vid=2, table_id=2, start_release_id=1, end_release_id=1
+            ),
+        ]
+    )
     session.commit()
 
     q = session.query(TableVersion)
-    with pytest.raises(ValueError, match="could not be parsed"):
+    filtered = filter_by_release(
+        q,
+        start_col=TableVersion.start_release_id,
+        end_col=TableVersion.end_release_id,
+        release_id=9999,
+    )
+    vids = {tv.table_vid for tv in filtered.all()}
+    assert vids == {1}, "Playground (latest date) yields the current rows"
+
+
+def test_four_segment_release_orders_by_date(memory_session):
+    """A four-segment EBA code (``4.2.1.3``) range-filters its lineage.
+
+    Regression for the CODIS export at release ``4.2.1.3``: the code has
+    too many segments to parse as semver, but date ordering never parses
+    it, so it behaves as a real release sitting just after ``4.2.1``.
+    """
+    from dpmcore.dpm_xl.utils.filters import filter_by_release
+
+    session = memory_session
+    session.add_all(
+        [
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(release_id=2, code="4.2.1", date=date(2026, 2, 15)),
+            Release(release_id=3, code="4.2.1.3", date=date(2026, 6, 11)),
+            Release(release_id=4, code="4.3", date=date(2026, 10, 1)),
+            # Live from 4.2, never ended -> active at 4.2.1.3.
+            TableVersion(
+                table_vid=1,
+                table_id=1,
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            # Window [4.2, 4.3) -> covers 4.2.1.3.
+            TableVersion(
+                table_vid=2, table_id=2, start_release_id=1, end_release_id=4
+            ),
+            # Window [4.2, 4.2.1) -> ended before 4.2.1.3.
+            TableVersion(
+                table_vid=3, table_id=3, start_release_id=1, end_release_id=2
+            ),
+            # Starts at 4.3 -> after the target.
+            TableVersion(
+                table_vid=4,
+                table_id=4,
+                start_release_id=4,
+                end_release_id=None,
+            ),
+        ]
+    )
+    session.commit()
+
+    q = session.query(TableVersion)
+    filtered = filter_by_release(
+        q,
+        start_col=TableVersion.start_release_id,
+        end_col=TableVersion.end_release_id,
+        release_id=3,
+    )
+    vids = {tv.table_vid for tv in filtered.all()}
+    assert vids == {1, 2}, (
+        "4.2.1.3 range-filters its lineage: includes rows live across it, "
+        "excludes rows that ended before it or start after it"
+    )
+
+
+def test_unknown_release_id_still_raises(memory_session):
+    """An unknown release_id (no Release row) still raises loudly."""
+    from dpmcore.dpm_xl.utils.filters import filter_by_release
+
+    session = memory_session
+    q = session.query(TableVersion)
+    with pytest.raises(ValueError, match="no Release row matches"):
         filter_by_release(
             q,
             start_col=TableVersion.start_release_id,
             end_col=TableVersion.end_release_id,
-            release_id=1,
+            release_id=424242,
         )
 
 
 # --------------------------------------------------------------------- #
-# filter_item_version (IN-list expanded from semver-parsed sort order)
+# filter_item_version (IN-list expanded from date-based sort order)
 # --------------------------------------------------------------------- #
 
 
@@ -272,9 +354,9 @@ def test_filter_item_version_handles_backport(backport_session):
 
     The query joins TableVersion to ItemCategory using
     ``filter_item_version`` — the JOIN condition expands into
-    ``release_id IN (...)`` lists built from the semver-parsed sort
-    order of each release's ``code``. An ItemCategory valid 4.0..4.2
-    (FK start=3 end=5) must match a TableVersion at the 4.0.1 backport.
+    ``release_id IN (...)`` lists built from the date-based sort order of
+    each release's ``date``. An ItemCategory valid 4.0..4.2 (FK start=3
+    end=5) must match a TableVersion at the 4.0.1 backport.
     """
     session = backport_session
     session.add(Category(category_id=1, code="C1"))

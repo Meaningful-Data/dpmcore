@@ -6,7 +6,7 @@ Rules pinned here, verified against EBA's own pre-calculated
 
 1. **Release axis only.** A module version is in scope for release R purely
    on the release-validity axis (``StartReleaseID``..``EndReleaseID``, compared
-   on the semver sort order). The old reference-date ``_apply_fallback_for_equal_dates``
+   on the date sort order). The old reference-date ``_apply_fallback_for_equal_dates``
    could substitute a version absent from R -- e.g. ``FINREP9DP 1.1.0`` (a 4.2.1
    version) leaking into release 4.2 -- producing an invalid scope and the
    downstream ``Release X predates module version ...`` error a consumer hit.
@@ -55,27 +55,27 @@ _INVARIANT_SAMPLE = 15
 
 
 def _ordered_releases(session):
-    """All releases, sorted by semver sort order (not the opaque ID)."""
+    """All releases, sorted by date sort order (not the opaque ID)."""
     return sorted(
         session.query(Release).all(),
-        key=lambda r: compute_sort_order(r.code) or 0,
+        key=lambda r: compute_sort_order(r.date) or 0,
     )
 
 
 def _release_sort_by_id(session):
     """``{release_id: sort_order}`` for window/release-axis comparisons.
 
-    Asserts every ``Release.code`` parses, so ``target_sort`` is always an
-    ``int`` downstream: an unparseable code would otherwise make the oracle
+    Asserts every release has a date, so ``target_sort`` is always an
+    ``int`` downstream: a missing date would otherwise make the oracle
     crash with a ``TypeError`` (``int <= None``) instead of failing clearly.
     """
     sort_by_id = {
-        r.release_id: compute_sort_order(r.code)
+        r.release_id: compute_sort_order(r.date)
         for r in session.query(Release).all()
     }
     assert all(v is not None for v in sort_by_id.values()), (
-        "fixture has an unparseable Release.code; the oracle assumes every "
-        "release code parses as MAJOR.MINOR[.PATCH]"
+        "fixture has a Release with no date; the oracle assumes every "
+        "release has a date to order by"
     )
     return sort_by_id
 
@@ -84,9 +84,9 @@ def _valid_in_release(mv, target_sort, sort_by_id):
     """Whether ``mv``'s release window contains ``target_sort``.
 
     Faithful mirror of ``filter_by_release`` (``start <= target`` and
-    ``(end is open or target < end)`` on the semver sort order), including
+    ``(end is open or target < end)`` on the date sort order), including
     its handling of unresolved bounds: a start/end whose release yields no
-    sort order (unparseable code or orphan FK) excludes the row, exactly as
+    sort order (no date or orphan FK) excludes the row, exactly as
     ``release_ids_for_sort_order`` drops ``None`` sort orders from the
     in-lists. Only a NULL ``end_release_id`` is a genuinely open window.
     """
@@ -236,7 +236,7 @@ def test_scope_matches_eba_persisted_scope_per_release(fixture_session):
 
     saw_fallback = False
     for rel in _ordered_releases(session):
-        target_sort = compute_sort_order(rel.code)
+        target_sort = compute_sort_order(rel.date)
         base = {
             vid
             for vid, mv in versions.items()
@@ -290,7 +290,7 @@ def test_scoped_versions_are_backward_only_and_not_single_day(fixture_session):
 
     The two invariants, swept across a sample of real F_01.02 operations:
     every module version in a computed scope must (a) start on or before the
-    target release on the semver sort order (never forward -- the #151
+    target release on the date sort order (never forward -- the #151
     guarantee, which the #182 fallback must not break; the fallback may reach
     backward past the release window, so full ``start <= release < end``
     validity is not required) and (b) have a non-collapsed reference-date
@@ -309,7 +309,7 @@ def test_scoped_versions_are_backward_only_and_not_single_day(fixture_session):
     for code in codes:
         expression = _latest_expression(session, code)
         for rel in releases:
-            target_sort = compute_sort_order(rel.code)
+            target_sort = compute_sort_order(rel.date)
             result = svc.calculate_from_expression(
                 expression=expression, release_code=rel.code
             )
@@ -401,16 +401,16 @@ class TestResolveExplicitRelease:
             svc._resolve_release("FINREP9DP", "1.0.0", "9.9.9")
 
 
-class TestResolveExplicitReleaseSemverOrder:
+class TestResolveExplicitReleaseDateOrder:
     """Window checks against an in-memory schema (no optional fixture DB).
 
     ``TestResolveExplicitRelease`` above skips whenever ``test_data.db`` is
-    absent, so on a bare checkout / CI the semver sort-order branches of
+    absent, so on a bare checkout / CI the date sort-order branches of
     ``_resolve_explicit_release`` would go uncovered. These tests seed a tiny
     schema with a deliberately NON-monotonic ``ReleaseID`` layout -- release
-    4.2 is given a larger id than 4.2.1 -- so each one fails if the window
-    check ever compares the raw ``release_id`` instead of the semver sort
-    order derived from ``Release.code``.
+    4.2 is given a larger id than 4.2.1, while the dates follow the lineage --
+    so each one fails if the window check ever compares the raw ``release_id``
+    instead of the ``Release.date`` sort order.
     """
 
     @pytest.fixture
@@ -453,16 +453,17 @@ class TestResolveExplicitReleaseSemverOrder:
         memory_session.flush()
         return ASTGeneratorService(memory_session)
 
-    def test_before_window_predates_by_semver(self, svc):
+    def test_before_window_predates_by_date(self, svc):
         # MODX starts at 4.2.1 (id 5); request 4.2 (id 1010000003). Raw-id
-        # compare (1010000003 < 5) would NOT predate; semver (4.2 < 4.2.1) does.
+        # compare (1010000003 < 5) would NOT predate; by date (4.2 < 4.2.1)
+        # it does.
         with pytest.raises(ValueError, match="predates module version"):
             svc._resolve_release("MODX", "1.0.0", "4.2")
 
-    def test_past_end_by_semver(self, svc):
+    def test_past_end_by_date(self, svc):
         # MODY ends at 4.2 (id 1010000003); request 4.2.1 (id 5). Raw-id
-        # compare (5 >= 1010000003) would say in-window; semver (4.2.1 >= 4.2)
-        # is past the end.
+        # compare (5 >= 1010000003) would say in-window; by date (4.2.1 >= 4.2)
+        # it is past the end.
         with pytest.raises(ValueError, match="past the end"):
             svc._resolve_release("MODY", "1.0.0", "4.2.1")
 
