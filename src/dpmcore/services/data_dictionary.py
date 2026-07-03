@@ -18,6 +18,7 @@ from dpmcore.orm.packaging import (
     ModuleVersion,
     ModuleVersionComposition,
 )
+from dpmcore.orm.release_sort_order import compute_sort_order
 from dpmcore.orm.rendering import TableVersion
 
 if TYPE_CHECKING:
@@ -40,8 +41,18 @@ class DataDictionaryService:
     # ------------------------------------------------------------------ #
 
     def get_releases(self) -> List[Dict[str, Any]]:
-        """Return all releases ordered by date descending."""
-        rows = self.session.query(Release).order_by(Release.date.desc()).all()
+        """Return all releases, latest first.
+
+        Ordered by the date-based sort order (see
+        :func:`compute_sort_order`), so an undated (unpublished) working
+        release ranks as the latest and comes first; ties break by
+        ``release_id`` for determinism.
+        """
+        rows = self.session.query(Release).all()
+        rows.sort(
+            key=lambda r: (compute_sort_order(r.date), r.release_id),
+            reverse=True,
+        )
         return [r.to_dict() for r in rows]
 
     def get_release_by_id(self, release_id: int) -> Optional[Dict[str, Any]]:
@@ -65,9 +76,18 @@ class DataDictionaryService:
         return row.to_dict() if row else None
 
     def get_latest_release(self) -> Optional[Dict[str, Any]]:
-        """Return the most recent release."""
-        row = self.session.query(Release).order_by(Release.date.desc()).first()
-        return row.to_dict() if row else None
+        """Return the latest release by the date-based sort order.
+
+        An undated (unpublished) working release ranks as the latest;
+        ties break by ``release_id`` for determinism.
+        """
+        rows = self.session.query(Release).all()
+        if not rows:
+            return None
+        row = max(
+            rows, key=lambda r: (compute_sort_order(r.date), r.release_id)
+        )
+        return row.to_dict()
 
     # ------------------------------------------------------------------ #
     # Tables

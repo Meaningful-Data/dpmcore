@@ -14,7 +14,7 @@ from typing import (
     cast,
 )
 
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import joinedload
 
 from dpmcore.orm.glossary import (
@@ -288,8 +288,14 @@ class StructureService:
         # Count before pagination/limiting
         total = q.count()
 
-        # Latest → order by date desc, take first
-        q = q.order_by(Release.date.desc())
+        # Latest first: an undated (unpublished) working release ranks as
+        # the latest, then dated releases descending. The explicit
+        # NULL-first CASE keeps this uniform across backends (SQLite and
+        # SQL Server otherwise sort NULLs last in DESC).
+        q = q.order_by(
+            case((Release.date.is_(None), 1), else_=0).desc(),
+            Release.date.desc(),
+        )
 
         if latest or latest_stable:
             q = q.limit(1)
