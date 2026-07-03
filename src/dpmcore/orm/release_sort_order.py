@@ -10,6 +10,11 @@ form, EBA's four-segment codes (e.g. ``4.2.1.3``) and non-versioned
 working releases like ``"Playground"`` — uniformly, without parsing the
 code. Release dates are unique, so no tiebreak is needed.
 
+A release with **no publication date** is an unpublished working release,
+which represents the current in-progress state; it therefore sorts *after*
+every dated release — i.e. it is the latest. This is expressed by mapping a
+missing date to a sentinel ordinal greater than any real date's.
+
 The order key is the date's proleptic-Gregorian ordinal, computed in
 Python at query time and held as a plain ``int`` — there is no persisted
 SQL column; only its ordering is ever used.
@@ -23,8 +28,13 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
+# Sentinel sort order for a release with no publication date: it sorts
+# after every real date (which cannot exceed ``date.max``), so an
+# unpublished working release ranks as the latest.
+_UNDATED_SORT_ORDER = date.max.toordinal() + 1
 
-def compute_sort_order(release_date: Optional[date]) -> Optional[int]:
+
+def compute_sort_order(release_date: Optional[date]) -> int:
     """Return a sortable integer for a release's publication date.
 
     Ordering is purely chronological: an earlier ``Release.date`` sorts
@@ -32,16 +42,16 @@ def compute_sort_order(release_date: Optional[date]) -> Optional[int]:
     total order and needs no tiebreak.
 
     Args:
-        release_date: The release's ``Release.date``. ``None`` returns
-            ``None`` so callers can skip an unorderable row; in practice
-            every release carries a date.
+        release_date: The release's ``Release.date``. ``None`` (an
+            unpublished working release) sorts as the latest release.
 
     Returns:
-        The date's ordinal (days since 0001-01-01), or ``None`` when
-        ``release_date`` is missing.
+        The date's ordinal (days since 0001-01-01), or the "latest"
+        sentinel (:data:`_UNDATED_SORT_ORDER`) when ``release_date`` is
+        missing.
     """
     if release_date is None:
-        return None
+        return _UNDATED_SORT_ORDER
     return release_date.toordinal()
 
 
@@ -50,8 +60,10 @@ def load_release_sort_orders(
 ) -> Dict[int, Optional[int]]:
     """Return ``{release_id: sort_order}`` derived from ``Release.date``.
 
-    Rows with no date map to ``None`` so callers can skip them; every
-    release is expected to carry a date in practice.
+    Every release maps to an ``int``: dated releases to their date's
+    ordinal, and an undated (unpublished) release to the "latest"
+    sentinel. Only a ``.get()`` miss on a release_id absent from the
+    mapping (an orphan FK) yields ``None`` for a caller.
     """
     from dpmcore.orm.infrastructure import Release
 
@@ -73,9 +85,11 @@ def resolve_sort_order(
             don't have to wrap the call in their own try/except just to
             customise wording.
 
+    An undated (unpublished) release is *not* an error — it resolves to
+    the "latest" sentinel like any other release.
+
     Raises:
-        ValueError: If no Release row matches ``release_id`` or that
-            release has no ``date``.
+        ValueError: If no Release row matches ``release_id``.
     """
     from dpmcore.orm.infrastructure import Release
 
@@ -89,12 +103,7 @@ def resolve_sort_order(
             f"{role} {release_id} has no sort_order — "
             "no Release row matches that ID."
         )
-    sort_order = compute_sort_order(row[0])
-    if sort_order is None:
-        raise ValueError(
-            f"{role} {release_id} has no sort_order — the release has no date."
-        )
-    return sort_order
+    return compute_sort_order(row[0])
 
 
 def release_ids_for_sort_order(
@@ -107,9 +116,10 @@ def release_ids_for_sort_order(
 ) -> List[int]:
     """Filter ``{release_id: sort_order}`` by inequality predicates.
 
-    Releases whose ``sort_order`` is ``None`` (no date, or an orphan FK
-    absent from the mapping) are always excluded — they cannot satisfy a
-    comparison either way.
+    Releases whose ``sort_order`` is ``None`` (an orphan FK absent from
+    the mapping) are always excluded — they cannot satisfy a comparison
+    either way. Undated releases are *not* ``None``: they carry the
+    "latest" sentinel and rank above every dated release.
 
     Args:
         sort_orders: Mapping from :func:`load_release_sort_orders`.

@@ -421,3 +421,50 @@ def test_filter_item_version_handles_backport(backport_session):
         "ItemCategory valid 4.0..4.2 must match a TableVersion at the "
         "4.0.1 backport via filter_item_version's IN-list filter."
     )
+
+
+# --------------------------------------------------------------------- #
+# get_last_release — latest by date, not by opaque id
+# --------------------------------------------------------------------- #
+
+
+def test_get_last_release_orders_by_date_not_id(memory_session):
+    """``get_last_release`` returns the latest release by date, not max id.
+
+    Regression for the non-monotonic ``ReleaseID`` scheme: the backport
+    ``4.0.1`` carries the highest id (``1010000004``) but an in-lineage
+    date, so ``max(release_id)`` would wrongly pick it as "latest". The
+    true latest by date is ``4.2.1``.
+    """
+    from dpmcore.dpm_xl.model_queries import ModuleVersionQuery
+
+    session = memory_session
+    session.add_all(
+        [
+            Release(release_id=5, code="4.2", date=date(2025, 10, 31)),
+            Release(
+                release_id=1010000003,
+                code="4.2.1",
+                date=date(2026, 2, 15),
+            ),
+            Release(
+                release_id=1010000004,
+                code="4.0.1",
+                date=date(2025, 2, 1),
+            ),
+        ]
+    )
+    session.commit()
+
+    assert ModuleVersionQuery.get_last_release(session) == 1010000003
+
+
+def test_get_last_release_none_when_no_dated_release(memory_session):
+    """``get_last_release`` returns ``None`` when no release has a date."""
+    from dpmcore.dpm_xl.model_queries import ModuleVersionQuery
+
+    session = memory_session
+    session.add(Release(release_id=1, code="4.2", date=None))
+    session.commit()
+
+    assert ModuleVersionQuery.get_last_release(session) is None

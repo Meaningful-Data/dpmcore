@@ -952,18 +952,30 @@ class ModuleVersionQuery:
     def get_last_release(
         session: "Session",
     ) -> int | None:
-        """Return the highest release ID.
+        """Return the ID of the most recent release, ordered by date.
+
+        Releases are ordered by ``Release.date`` (descending), not the
+        opaque ``release_id`` FK, which is non-monotonic from DPM 4.2.1
+        onwards (e.g. ``4.2.1`` is ``ReleaseID 1010000003``), so the
+        highest id is not necessarily the latest release. Releases with
+        no date are unrankable and excluded.
 
         Args:
             session: SQLAlchemy session.
 
         Returns:
-            Integer release ID, or None.
+            Integer release ID of the latest dated release, or ``None``
+            when there is no dated release.
         """
-        result = session.query(func.max(Release.release_id)).scalar()
+        result = (
+            session.query(Release.release_id)
+            .filter(Release.date.isnot(None))
+            .order_by(Release.date.desc())
+            .first()
+        )
         if result is None:
             return None
-        return int(result)
+        return int(result[0])
 
     @staticmethod
     def get_from_tables_vids(
