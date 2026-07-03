@@ -43,7 +43,9 @@ returned. Passing more than one raises :class:`ValueError`.
 
 Releases are ordered chronologically by publication date, so a release
 filter returns the entities whose release-validity window contains the
-target release.
+target release. An unpublished working release has no publication date
+and is treated as the latest, so filtering at it returns the current
+(non-ended) entities.
 
 HierarchyService
 ----------------
