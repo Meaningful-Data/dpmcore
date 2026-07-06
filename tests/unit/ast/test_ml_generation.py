@@ -11,7 +11,7 @@ from dpmcore.dpm_xl.ast.nodes import Constant, SubstrOp
 @pytest.fixture
 def ml_generation(monkeypatch):
     monkeypatch.setattr(MLGeneration, "__init__", lambda self, **kwargs: None)
-    instance = MLGeneration()
+    instance = MLGeneration(session=MagicMock())
     instance.create_operation_node = MagicMock(
         side_effect=lambda node, is_leaf=False: node
     )
