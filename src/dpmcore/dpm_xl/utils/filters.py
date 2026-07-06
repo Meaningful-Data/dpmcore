@@ -210,7 +210,7 @@ def filter_active_only(query: Any, end_col: Any) -> Any:
 
 
 def filter_item_version(
-    sort_orders: Dict[int, Optional[int]],
+    sort_orders: Dict[int, int],
     ref_sort_order: Optional[int],
     item_start_col: Any,
     item_end_col: Any,
