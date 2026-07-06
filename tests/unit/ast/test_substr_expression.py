@@ -1,5 +1,6 @@
 """Syntax, AST and validation tests for the substr string operator."""
 
+import pandas as pd
 import pytest
 
 from dpmcore.dpm_xl.ast.nodes import SubstrOp
@@ -12,9 +13,10 @@ from dpmcore.dpm_xl.symbols import (
     Scalar,
     Structure,
 )
-from dpmcore.dpm_xl.types.scalar import Number, String
+from dpmcore.dpm_xl.types.scalar import Mixed, Number, String
 from dpmcore.dpm_xl.utils.serialization import ASTToJSONVisitor
 from dpmcore.dpm_xl.utils.tokens import STANDARD
+from dpmcore.errors import SemanticError
 from dpmcore.services.syntax import SyntaxService
 
 # ---------------------------------------------------------------------------
@@ -127,6 +129,36 @@ def test_substr_recordset_returns_string_recordset():
     assert isinstance(result.get_fact_component().type, String)
 
 
+def _make_mixed_recordset() -> RecordSet:
+    """Recordset with Mixed type and compatible row types."""
+    structure = Structure(
+        [
+            KeyComponent("r", Number(), STANDARD, "test"),
+            FactComponent(Mixed(), "test"),
+        ]
+    )
+    recordset = RecordSet(structure, "test", "test")
+    recordset.records = pd.DataFrame(
+        {"r": [1, 2], "data_type": [String(), String()]}
+    )
+    return recordset
+
+
+def test_substr_mixed_recordset_does_not_crash():
+    """Mixed typed recordset with compatible rows must succeed."""
+    result = Substr.validate(_make_mixed_recordset(), start=1)
+    assert isinstance(result, RecordSet)
+
+
+def test_substr_mixed_recordset_without_records_raises():
+    """Malformed Mixed recordset (no .records) must raise error, not KeyError."""
+    recordset = _make_mixed_recordset()
+    recordset.records = None
+    with pytest.raises(Exception) as exc_info:
+        Substr.validate(recordset, start=1)
+    assert not isinstance(exc_info.value, KeyError)
+
+
 def _make_constant(value: str) -> ConstantOperand:
     return ConstantOperand(
         type_=String(), name=value, origin=f'"{value}"', value=value
@@ -134,20 +166,42 @@ def _make_constant(value: str) -> ConstantOperand:
 
 
 @pytest.mark.parametrize(
-    ("value", "start", "length", "expected"),
+    ("source", "value", "start", "length", "expected"),
     [
-        ("Hello", 2, None, "ello"),
-        ("Hello", 5, 3, "o"),
-        ("Hello World", 7, None, "World"),
-        ("Hello World", 1, 5, "Hello"),
-        ("Hello World", None, None, "Hello World"),
-        ("Hello World", 20, None, ""),
+        ('substr("Hello", 2)', "Hello", 2, None, "ello"),
+        ('substr("Hello", 5, 3)', "Hello", 5, 3, "o"),
+        ('substr("Hello World", 7)', "Hello World", 7, None, "World"),
+        ('substr("Hello World", 1, 5)', "Hello World", 1, 5, "Hello"),
+        ('substr("Hello World")', "Hello World", None, None, "Hello World"),
+        ('substr("Hello World", 20)', "Hello World", 20, None, ""),
+        ('substr("Hello", 2, 0)', "Hello", 2, 0, ""),
     ],
 )
-def test_substr_constant_folds_value(value, start, length, expected):
+def test_substr_constant_folds_value(source, value, start, length, expected):
+    syntax = SyntaxService()
+    assert syntax.is_valid(source)
+    syntax.parse(source)
+
     result = Substr.validate(_make_constant(value), start=start, length=length)
     assert isinstance(result, ConstantOperand)
     assert result.value == expected
+
+
+@pytest.mark.parametrize(
+    ("source", "start", "length"),
+    [
+        ('substr("Hello", (-5))', -5, None),
+        ('substr("Hello", 0)', 0, None),
+        ('substr("Hello", 2, (-1))', 2, -1),
+    ],
+)
+def test_substr_invalid_parameters_rejected(source, start, length):
+    syntax = SyntaxService()
+    assert syntax.is_valid(source)
+    syntax.parse(source)
+
+    with pytest.raises(SemanticError):
+        Substr.validate(_make_constant("Hello"), start=start, length=length)
 
 
 def test_substr_constant_relabels_origin_instead_of_reusing_operand():
