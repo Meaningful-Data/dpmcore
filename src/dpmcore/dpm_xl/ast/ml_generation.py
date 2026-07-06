@@ -473,12 +473,23 @@ class MLGeneration(ASTTemplate):
             self.visit(field)
 
     def visit_SubstrOp(self, node: SubstrOp) -> None:
-        # `node.op` is "substr" from construction (see SubstrOp);
-        # `start`/`length` are literal integers, not operand nodes.
+        # `node.op` is "substr" from construction (see SubstrOp).
         op_node = self.create_operation_node(node)
         node.operand.parent = op_node
         node.operand.argument = "operand"
         self.visit(node.operand)
+
+        for arg_name, value in (
+            ("start", node.start),
+            ("length", node.length),
+        ):
+            if value is None:
+                continue
+            literal_node = AST()
+            literal_node.parent = op_node
+            literal_node.argument = arg_name
+            literal_node.scalar = value
+            self.create_operation_node(literal_node, is_leaf=True)
 
     def visit_WhereClauseOp(self, node: WhereClauseOp) -> None:
         node.op = "where"
