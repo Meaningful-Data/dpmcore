@@ -14,7 +14,7 @@ from typing import (
     cast,
 )
 
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import joinedload
 
 from dpmcore.orm.glossary import (
@@ -171,26 +171,25 @@ class StructureService:
     # ------------------------------------------------------------------ #
 
     def _get_all_releases(self) -> List[Release]:
-        """Return all releases ordered by semver-parsed sort order.
+        """Return all releases ordered by ``Release.date``.
 
-        Releases are ordered ascending by ``compute_sort_order(code)``
+        Releases are ordered ascending by ``compute_sort_order(date)``
         (NOT the opaque ``release_id`` FK, which is non-monotonic from
-        DPM 4.2.1 onwards — e.g. ``4.2.1`` is ``ReleaseID 1010000003`` —
-        nor by ``date``). This keeps the version walks in
-        ``_compute_*_versions`` / ``_version_at_release`` monotonic and
-        places a chronological backport (e.g. ``4.0.1`` published after
-        ``4.2.1``) inside its own lineage.
+        DPM 4.2.1 onwards — e.g. ``4.2.1`` is ``ReleaseID 1010000003``).
+        Dates are unique and follow the version lineage, so this keeps
+        the version walks in ``_compute_*_versions`` /
+        ``_version_at_release`` monotonic for every ``code`` format
+        without parsing the code.
 
-        Releases whose ``code`` is unparseable (``sort_order`` is
-        ``None`` — e.g. a ``3.5-draft`` pre-release) cannot be placed in
-        semver space, so they sort *first* and are skipped by the
-        version walks. ``sort_order`` is computed from the same query
-        that loads the releases, so this adds no extra round-trip.
+        A release with no ``date`` is an unpublished working release; it
+        sorts *last* (as the latest) and participates in the version
+        walks like any other. ``sort_order`` is computed from the same
+        query that loads the releases, so this adds no extra round-trip.
         """
         if self._releases_cache is None:
             releases = self.session.query(Release).all()
             self._sort_orders_cache = {
-                r.release_id: compute_sort_order(r.code) for r in releases
+                r.release_id: compute_sort_order(r.date) for r in releases
             }
             sort_orders = self._sort_orders_cache
             releases.sort(
@@ -203,12 +202,12 @@ class StructureService:
         return self._releases_cache
 
     def _release_sort_orders(self) -> Dict[int, Optional[int]]:
-        """Cached ``{release_id: sort_order}`` map (semver-parsed)."""
+        """Cached ``{release_id: sort_order}`` map (date-based)."""
         self._get_all_releases()  # populates _sort_orders_cache
         return self._sort_orders_cache or {}
 
     def _sort_order(self, release_id: int) -> Optional[int]:
-        """Semver sort order of a release_id, or ``None`` if unrankable."""
+        """Date-based sort order of a release_id, or ``None`` if unrankable."""
         return self._release_sort_orders().get(release_id)
 
     def _window_alive(
@@ -219,12 +218,13 @@ class StructureService:
     ) -> bool:
         """Whether a ``[start, end]`` release window covers the target.
 
-        Comparisons use the semver-parsed sort order rather than the
+        Comparisons use the date-based sort order rather than the
         opaque ``release_id`` FK. The end bound is **inclusive** — the
         convention the category/context virtual-versioning walks have
         always used (this intentionally differs from
-        ``filter_by_release``'s exclusive end). Returns ``False`` for
-        any release whose code is unrankable.
+        ``filter_by_release``'s exclusive end). Returns ``False`` only
+        for a release_id absent from the release set (orphan FK); an
+        undated release ranks as the latest.
         """
         target_so = self._sort_order(target_release_id)
         start_so = self._sort_order(start_release_id)
@@ -288,8 +288,14 @@ class StructureService:
         # Count before pagination/limiting
         total = q.count()
 
-        # Latest → order by date desc, take first
-        q = q.order_by(Release.date.desc())
+        # Latest first: an undated (unpublished) working release ranks as
+        # the latest, then dated releases descending. The explicit
+        # NULL-first CASE keeps this uniform across backends (SQLite and
+        # SQL Server otherwise sort NULLs last in DESC).
+        q = q.order_by(
+            case((Release.date.is_(None), 1), else_=0).desc(),
+            Release.date.desc(),
+        )
 
         if latest or latest_stable:
             q = q.limit(1)
@@ -500,7 +506,7 @@ class StructureService:
     ) -> Optional[Dict[str, Any]]:
         """Find the version active at *target_release*.
 
-        Returns the last version whose semver sort order does not
+        Returns the last version whose date-based sort order does not
         exceed the target's. ``versions`` is produced in ascending
         sort order, so the walk stops at the first version that
         overshoots.

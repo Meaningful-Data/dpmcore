@@ -32,8 +32,8 @@ def _seed(session):
     """
     session.add_all(
         [
-            # Release-axis filtering resolves sort order from Release.code,
-            # so the target release must exist as a real row.
+            # Release-axis filtering resolves sort order from Release.date,
+            # so the target release must exist as a real, dated row.
             Release(release_id=1, code="3.4", date=datetime.date(2022, 12, 1)),
             Variable(variable_id=1, type="filingindicator"),
             Variable(variable_id=2, type="Filing Indicator"),

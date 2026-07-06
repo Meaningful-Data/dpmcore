@@ -205,7 +205,7 @@ class SemanticService:
             expression: The DPM-XL expression to validate.
             release_id: Optional release ID filter. When neither this nor
                 ``release_code`` is given, defaults to the latest release.
-            release_code: Optional release semver code (mutually exclusive
+            release_code: Optional release code (mutually exclusive
                 with ``release_id``).
         """
         try:

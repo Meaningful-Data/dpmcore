@@ -200,11 +200,12 @@ class EcbValidationsImportService:
         start_release_id: int,
         end_release_id: Optional[int],
     ) -> List[int]:
-        """Release IDs in [start, end) ordered by semver sort order.
+        """Release IDs in [start, end) ordered by ``Release.date``.
 
-        Comparison runs against the semver-parsed sort order of each
-        release's ``code`` so backports (e.g. a hypothetical ``4.0.1``
-        post-``4.2.1``) place correctly within their version lineage.
+        Comparison runs against the date-based sort order of each release
+        (``Release.date``), not the opaque ``ReleaseID`` FK, so releases
+        place correctly within their version lineage regardless of the
+        ``code`` format.
         """
         from dpmcore.orm.release_sort_order import (
             load_release_sort_orders,
@@ -215,8 +216,8 @@ class EcbValidationsImportService:
         start_sort = sort_orders.get(start_release_id)
         if start_sort is None:
             raise EcbValidationsImportError(
-                f"Release {start_release_id} has no sort_order — its "
-                "code could not be parsed as MAJOR.MINOR[.PATCH]."
+                f"Release {start_release_id} has no sort_order — "
+                "no Release row matches that ID."
             )
         if end_release_id is None:
             return release_ids_for_sort_order(sort_orders, ge=start_sort)
@@ -224,8 +225,7 @@ class EcbValidationsImportService:
         if end_sort is None:
             raise EcbValidationsImportError(
                 f"Release {end_release_id} has no sort_order — "
-                "its code could not be parsed as "
-                "MAJOR.MINOR[.PATCH]."
+                "no Release row matches that ID."
             )
         return release_ids_for_sort_order(
             sort_orders, ge=start_sort, lt=end_sort

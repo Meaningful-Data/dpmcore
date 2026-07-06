@@ -1,95 +1,81 @@
-"""Compute release sort order from ``Release.code`` at query time.
+"""Compute release sort order from ``Release.date`` at query time.
 
 DPM ``ReleaseID`` values are no longer monotonic (4.2.1 has
 ``ReleaseID = 1010000003`` while older releases are still 1..5), so
-release-range comparisons cannot rely on numeric ID ordering. Instead
-we parse ``Release.code`` as a semver-style version tuple and pack it
-into a single sortable integer. Backports — e.g. a hypothetical
-``4.0.1`` published after ``4.2.1`` — still slot correctly into the
-``4.0`` lineage because comparison runs against the parsed semver, not
-the FK ID.
+release-range comparisons cannot rely on numeric ID ordering. They order
+by ``Release.date`` instead: EBA publishes releases chronologically in
+lineage order, and the date is present regardless of the ``code`` format,
+so date ordering handles every code — the classic ``MAJOR.MINOR[.PATCH]``
+form, EBA's four-segment codes (e.g. ``4.2.1.3``) and non-versioned
+working releases like ``"Playground"`` — uniformly, without parsing the
+code. Release dates are unique, so no tiebreak is needed.
+
+A release with **no publication date** is an unpublished working release,
+which represents the current in-progress state; it therefore sorts *after*
+every dated release — i.e. it is the latest. This is expressed by mapping a
+missing date to a sentinel ordinal greater than any real date's.
+
+The order key is the date's proleptic-Gregorian ordinal, computed in
+Python at query time and held as a plain ``int`` — there is no persisted
+SQL column; only its ordering is ever used.
 """
 
 from __future__ import annotations
 
+from datetime import date
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
-# Three 6-digit slots per version segment → can hold 999999.999999.999999.
-# The packed value is computed in Python at query time and held as a
-# plain ``int`` — there is no persisted SQL column. Python ints are
-# arbitrary-precision so the >32-bit packed value needs no special
-# column type; if this ever moves to a stored column it must be BIGINT.
-_SEGMENT_BITS = 1_000_000
+# Sentinel sort order for a release with no publication date: it sorts
+# after every real date (which cannot exceed ``date.max``), so an
+# unpublished working release ranks as the latest.
+_UNDATED_SORT_ORDER = date.max.toordinal() + 1
 
 
-def parse_version(code: Optional[str]) -> Optional[tuple[int, int, int]]:
-    """Parse a release code into a ``(major, minor, patch)`` tuple.
+def compute_sort_order(release_date: Optional[date]) -> int:
+    """Return a sortable integer for a release's publication date.
+
+    Ordering is purely chronological: an earlier ``Release.date`` sorts
+    before a later one. Dates are unique per release, so the ordinal is a
+    total order and needs no tiebreak.
 
     Args:
-        code: Release code such as ``"4.2"`` or ``"4.2.1"``. ``None``
-            and unparseable codes return ``None`` so the caller can
-            decide whether to exclude or fall back.
+        release_date: The release's ``Release.date``. ``None`` (an
+            unpublished working release) sorts as the latest release.
 
     Returns:
-        A 3-tuple of integers, or ``None`` when ``code`` is missing or
-        cannot be parsed as ``MAJOR.MINOR[.PATCH]``.
+        The date's ordinal (days since 0001-01-01), or the "latest"
+        sentinel (:data:`_UNDATED_SORT_ORDER`) when ``release_date`` is
+        missing.
     """
-    if not code:
-        return None
-    parts = code.split(".")
-    if not (1 <= len(parts) <= 3):
-        return None
-    try:
-        ints = [int(p) for p in parts]
-    except ValueError:
-        return None
-    while len(ints) < 3:
-        ints.append(0)
-    if any(p < 0 or p >= _SEGMENT_BITS for p in ints):
-        return None
-    return (ints[0], ints[1], ints[2])
-
-
-def compute_sort_order(code: Optional[str]) -> Optional[int]:
-    """Pack a release code into a single sortable integer.
-
-    ``"4.2.1"`` packs to ``4_000002_000001``. The packing is monotone:
-    if ``parse_version(a) < parse_version(b)`` then
-    ``compute_sort_order(a) < compute_sort_order(b)``.
-
-    Returns ``None`` when the code is missing or unparseable so callers
-    can decide whether to skip or fail for that release.
-    """
-    parsed = parse_version(code)
-    if parsed is None:
-        return None
-    major, minor, patch = parsed
-    return (
-        major * _SEGMENT_BITS * _SEGMENT_BITS + minor * _SEGMENT_BITS + patch
-    )
+    if release_date is None:
+        return _UNDATED_SORT_ORDER
+    return release_date.toordinal()
 
 
 def load_release_sort_orders(
     session: "Session",
-) -> Dict[int, Optional[int]]:
-    """Return ``{release_id: sort_order}`` parsed from ``Release.code``.
+) -> Dict[int, int]:
+    """Return ``{release_id: sort_order}`` derived from ``Release.date``.
 
-    Rows whose code is unparseable map to ``None`` so callers can fail
-    loudly when one of them is named as a bound.
+    Every release maps to an ``int``: dated releases to their date's
+    ordinal, and an undated (unpublished) release to the "latest"
+    sentinel. The mapping never holds ``None`` values; only a ``.get()``
+    miss on a release_id absent from the mapping (an orphan FK) yields
+    ``None`` for a caller.
     """
     from dpmcore.orm.infrastructure import Release
 
-    rows = session.query(Release.release_id, Release.code).all()
-    return {rid: compute_sort_order(code) for rid, code in rows}
+    rows = session.query(Release.release_id, Release.date).all()
+    return {rid: compute_sort_order(d) for rid, d in rows}
 
 
 def resolve_sort_order(
     session: "Session", release_id: int, *, role: str = "release"
 ) -> int:
-    """Return the parsed sort order for ``release_id`` or raise.
+    """Return the date-based sort order for ``release_id`` or raise.
 
     Args:
         session: Open SQLAlchemy session.
@@ -100,14 +86,16 @@ def resolve_sort_order(
             don't have to wrap the call in their own try/except just to
             customise wording.
 
+    An undated (unpublished) release is *not* an error — it resolves to
+    the "latest" sentinel like any other release.
+
     Raises:
-        ValueError: If no Release row matches ``release_id`` or its
-            code cannot be parsed as ``MAJOR.MINOR[.PATCH]``.
+        ValueError: If no Release row matches ``release_id``.
     """
     from dpmcore.orm.infrastructure import Release
 
     row = (
-        session.query(Release.code)
+        session.query(Release.date)
         .filter(Release.release_id == release_id)
         .first()
     )
@@ -116,17 +104,11 @@ def resolve_sort_order(
             f"{role} {release_id} has no sort_order — "
             "no Release row matches that ID."
         )
-    sort_order = compute_sort_order(row[0])
-    if sort_order is None:
-        raise ValueError(
-            f"{role} {release_id} has no sort_order — its "
-            "code could not be parsed as MAJOR.MINOR[.PATCH]."
-        )
-    return sort_order
+    return compute_sort_order(row[0])
 
 
 def release_ids_for_sort_order(
-    sort_orders: Dict[int, Optional[int]],
+    sort_orders: Dict[int, int],
     *,
     le: Optional[int] = None,
     lt: Optional[int] = None,
@@ -135,8 +117,9 @@ def release_ids_for_sort_order(
 ) -> List[int]:
     """Filter ``{release_id: sort_order}`` by inequality predicates.
 
-    Releases whose ``sort_order`` is ``None`` (unparseable code) are
-    always excluded — they cannot satisfy a comparison either way.
+    Every mapped release carries an ``int`` sort order, so all releases
+    are candidates. Undated releases carry the "latest" sentinel and rank
+    above every dated release.
 
     Args:
         sort_orders: Mapping from :func:`load_release_sort_orders`.
@@ -152,8 +135,6 @@ def release_ids_for_sort_order(
     """
     matches: List[tuple[int, int]] = []
     for rid, so in sort_orders.items():
-        if so is None:
-            continue
         if le is not None and not so <= le:
             continue
         if lt is not None and not so < lt:

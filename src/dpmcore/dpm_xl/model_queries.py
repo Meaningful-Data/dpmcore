@@ -805,7 +805,7 @@ def _latest_prior_non_collapsed_vids(
     For each module id, return the ``ModuleVID`` of the most recent
     module version that (a) has a genuine (non-collapsed) reference-date
     window and (b) whose release-window start is on or before the target
-    release on the semver sort order. The search is strictly backward: a
+    release on the date-based sort order. The search is strictly backward: a
     version whose release window begins *after* the target is never
     chosen, preserving the #151 release-axis safety constraint. Modules
     with no such version are omitted, so the caller keeps the clean
@@ -952,18 +952,26 @@ class ModuleVersionQuery:
     def get_last_release(
         session: "Session",
     ) -> int | None:
-        """Return the highest release ID.
+        """Return the ID of the latest release by the date sort order.
+
+        Releases are ranked by :func:`compute_sort_order` (from
+        ``Release.date``), not the opaque ``release_id`` FK, which is
+        non-monotonic from DPM 4.2.1 onwards (e.g. ``4.2.1`` is
+        ``ReleaseID 1010000003``), so the highest id is not necessarily
+        the latest release. An undated (unpublished) release sorts as the
+        latest; ties are broken by ``release_id`` for determinism.
 
         Args:
             session: SQLAlchemy session.
 
         Returns:
-            Integer release ID, or None.
+            Integer release ID of the latest release, or ``None`` when
+            there are no releases.
         """
-        result = session.query(func.max(Release.release_id)).scalar()
-        if result is None:
+        sort_orders = load_release_sort_orders(session)
+        if not sort_orders:
             return None
-        return int(result)
+        return max((so, rid) for rid, so in sort_orders.items())[1]
 
     @staticmethod
     def get_from_tables_vids(

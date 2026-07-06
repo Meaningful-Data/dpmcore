@@ -180,7 +180,7 @@ curl -X POST http://localhost:8000/api/v1/scripts \
 **Data dictionary queries:**
 
 Release-aware methods accept `release_id` (integer ID) or
-`release_code` (semver string like `"4.2.1"`). At most one may be
+`release_code` (a code string like `"4.2.1"`). At most one may be
 supplied; passing both raises `ValueError`.
 
 ```python
@@ -238,9 +238,8 @@ with connect("sqlite:///dpm.db") as db:
     # Deep tree: framework -> module_versions -> table_versions
     tree       = hierarchy.get_all_frameworks(deep=True)
 
-    # Filter by release code — preferred over numeric release_id since
-    # IDs became opaque from DPM 4.2.1 onwards (e.g. release "4.2.1"
-    # has ReleaseID=1010000003, not 6).
+    # Filter by release code — preferred over numeric release_id,
+    # which is opaque from DPM 4.2.1 onwards.
     by_code    = hierarchy.get_all_frameworks(
         deep=True, release_code="4.2.1"
     )
@@ -272,20 +271,9 @@ fall back to the currently-active (`end_release_id IS NULL`) module
 versions, so results stay deterministic when a module has been
 republished across releases.
 
-> **How range comparisons work.** From DPM **4.2.1** onwards EBA
-> assigns opaque `ReleaseID` values (`4.2.1` is `1010000003`, while
-> older releases are still 1..5), so release-range comparisons cannot
-> rely on numeric ID ordering. dpmcore instead parses `Release.code`
-> as a semver tuple and packs it into a single sortable integer **in
-> Python at query time**
-> (`dpmcore.orm.release_sort_order.compute_sort_order`) — there is no
-> persisted `sort_order` column, ORM listener, or migration backfill.
-> This means both forms work correctly: `release_id=1010000003` and
-> `release_code="4.2.1"` resolve identically, and a hypothetical
-> backport like `4.0.1` shipped after `4.2.1` is correctly placed
-> inside the `4.0` lineage. Prefer `release_code` for human input
-> because the codes are readable; `release_id` is for cases where
-> you already have the resolved integer in hand.
+> **Tip.** Prefer `release_code` for human input — the numeric
+> `ReleaseID` is opaque from DPM 4.2.1 onwards. Both resolve to the
+> same release, and any release code format is accepted.
 
 **Migration — import from Access:**
 

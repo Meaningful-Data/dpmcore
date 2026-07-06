@@ -2,12 +2,11 @@
 
 Covers two correctness fixes:
 
-* Release ordering must use the semver-parsed ``sort_order`` of
-  ``Release.code``, NOT the opaque ``release_id`` FK (non-monotonic
-  from DPM 4.2.1) nor ``date``. A chronological backport published
-  with a high id / late date must still sort inside its semver
-  lineage. (``_get_all_releases`` / ``_window_alive`` /
-  ``_version_at_release``.)
+* Release ordering must use the ``Release.date``-based ``sort_order``,
+  NOT the opaque ``release_id`` FK (non-monotonic from DPM 4.2.1). A
+  backport carries a high id but a date that follows its lineage, so
+  ordering by date places it correctly where ordering by id would not.
+  (``_get_all_releases`` / ``_window_alive`` / ``_version_at_release``.)
 * At ``release=*`` a property's enumeration window is keyed per
   ItemCategory *version*, not per ``property_id`` — so two versions of
   the same property each surface the enumeration valid at their own
@@ -51,20 +50,20 @@ def engine():
 # Fixture 1 — non-monotonic release ids (backport scenario)
 # ------------------------------------------------------------------ #
 #
-# Three releases whose release_id AND date order disagree with semver:
+# Three releases whose release_id order disagrees with the lineage,
+# while the dates follow it:
 #   code 4.0 -> release_id 100, date 2024-01
-#   code 4.2 -> release_id 101, date 2024-06
-#   code 4.1 -> release_id 200, date 2024-09   (a backport: highest id
-#                                                and latest date, but
-#                                                semver-wise between).
+#   code 4.1 -> release_id 200, date 2024-06   (a backport: highest id,
+#                                                but a date in lineage).
+#   code 4.2 -> release_id 101, date 2024-09
 #
 # Category MC (created at 4.0) with two items:
 #   A: alive from 4.0 onward.
 #   B: added at 4.1 (release_id 200) onward.
 #
-# Correct (sort_order) walk => versions {A} @4.0, {A,B} @4.1, and the
-# version active at 4.2 is {A,B}. A release_id/date walk would break
-# early and report {A} at 4.2.
+# Correct (date sort_order) walk => versions {A} @4.0, {A,B} @4.1, and
+# the version active at 4.2 is {A,B}. A release_id walk would break
+# early (200 > 101) and report {A} at 4.2.
 # ------------------------------------------------------------------ #
 
 
@@ -90,14 +89,14 @@ def backport_engine(engine):
             Release(
                 release_id=101,
                 code="4.2",
-                date=date(2024, 6, 1),
+                date=date(2024, 9, 1),
                 status="Final",
                 is_current=True,
             ),
             Release(
                 release_id=200,
                 code="4.1",
-                date=date(2024, 9, 1),
+                date=date(2024, 6, 1),
                 status="Final",
                 is_current=False,
             ),
@@ -178,12 +177,12 @@ def backport_client(backport_engine):
 
 
 class TestSortOrderNotReleaseId:
-    def test_versions_listed_in_semver_order(self, backport_client):
+    def test_versions_listed_in_date_order(self, backport_client):
         resp = backport_client.get("/api/v1/structure/category/*/1/*")
         assert resp.status_code == 200
         cats = resp.json()["data"]["categories"]
         releases = [c["release"] for c in cats]
-        # Semver order, not release_id (100,101,200) order.
+        # Lineage/date order, not release_id (100,101,200) order.
         assert releases == ["4.0", "4.1"]
 
     def test_item_added_by_backport_visible_at_later_release(
@@ -207,11 +206,11 @@ class TestSortOrderNotReleaseId:
         item_ids = {i["id"] for i in cat["items"]}
         assert item_ids == {10}
 
-    def test_latest_resolves_to_highest_semver(self, backport_client):
+    def test_latest_resolves_to_highest_date(self, backport_client):
         resp = backport_client.get("/api/v1/structure/category/*/1/~")
         assert resp.status_code == 200
         cat = resp.json()["data"]["categories"][0]
-        # Latest semver is 4.2; active version there was created at 4.1.
+        # Latest by date is 4.2; active version there was created at 4.1.
         assert cat["release"] == "4.1"
         assert {i["id"] for i in cat["items"]} == {10, 11}
 
