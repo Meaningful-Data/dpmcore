@@ -5,21 +5,25 @@ from dpmcore.dpm_xl.operators.base import (
     Binary as _BaseBinary,
 )
 from dpmcore.dpm_xl.operators.base import (
-    Operator,
     PyOp,
 )
 from dpmcore.dpm_xl.operators.base import (
     Unary as _BaseUnary,
 )
 from dpmcore.dpm_xl.symbols import ConstantOperand, RecordSet, Scalar
-from dpmcore.dpm_xl.types.promotion import unary_implicit_type_promotion
+from dpmcore.dpm_xl.types.promotion import (
+    unary_implicit_type_promotion,
+    unary_implicit_type_promotion_with_mixed_types,
+)
 from dpmcore.dpm_xl.types.scalar import (
     Integer,
+    Mixed,
     ScalarFactory,
     ScalarType,
     String,
 )
 from dpmcore.dpm_xl.utils import tokens
+from dpmcore.errors import SemanticError
 
 
 class Unary(_BaseUnary):
@@ -47,15 +51,23 @@ class Concatenate(Binary):
     return_type: ClassVar[type[ScalarType] | None] = String
 
 
-class Substr(Operator):
+class Substr(Unary):
     """substr(op, {start}, {length}) -> String.
 
     ``start`` and ``length`` are optional integer literals.
     Accepts a Scalar or a Recordset operand (String -> String).
+
+    A ``Unary`` subclass so it's grouped with the other unary string
+    operators; ``validate`` stays fully custom (rather than delegating to
+    ``Unary.validate_types``/``create_labeled_scalar``) because those
+    assume a plain 1-argument ``py_op`` and don't know about ``start``/
+    ``length``. The Mixed-typed-recordset branch below mirrors
+    ``Unary.validate_types`` exactly, reusing the same promotion helper,
+    so a recordset with a ``Mixed`` fact type doesn't crash with a
+    ``KeyError`` (``Mixed`` has no entry in ``implicit_type_promotion_dict``).
     """
 
     op: ClassVar[str | None] = tokens.SUBSTR
-    type_to_check: ClassVar[type[ScalarType] | None] = String
     return_type: ClassVar[type[ScalarType] | None] = String
 
     @classmethod
@@ -65,6 +77,21 @@ class Substr(Operator):
         start: int | None = None,
         length: int | None = None,
     ) -> "Scalar | RecordSet":
+        if start is not None and start < 1:
+            raise SemanticError(
+                "4-8-1",
+                op=cls.op,
+                parameter_name="start",
+                constraint="a positive integer (>= 1)",
+            )
+        if length is not None and length < 0:
+            raise SemanticError(
+                "4-8-1",
+                op=cls.op,
+                parameter_name="length",
+                constraint="a non-negative integer (>= 0)",
+            )
+
         op_type = ScalarFactory().scalar_factory(String.__name__)
         error_info: dict[str, object] = {
             "operand_name": operand.name,
@@ -76,11 +103,24 @@ class Substr(Operator):
         origin = f"{cls.op}({', '.join(args)})"
 
         if isinstance(operand, RecordSet):
-            unary_implicit_type_promotion(
-                operand.get_fact_component().type,
-                op_type,
-                error_info=error_info,
-            )
+            fact_type = operand.get_fact_component().type
+            if isinstance(fact_type, Mixed):
+                if operand.records is None:
+                    raise Exception(
+                        "Mixed type promotion requires operand records"
+                    )
+                _, operand.records = (
+                    unary_implicit_type_promotion_with_mixed_types(
+                        operand.records,
+                        op_type,
+                        op_type,
+                        error_info=error_info,
+                    )
+                )
+            else:
+                unary_implicit_type_promotion(
+                    fact_type, op_type, error_info=error_info
+                )
             return cls._create_labeled_recordset(
                 origin, String(), operand.structure, operand.records
             )
@@ -97,7 +137,8 @@ class Substr(Operator):
 
     @staticmethod
     def _substring(text: str, start: int | None, length: int | None) -> str:
-        start_index = max(start - 1, 0) if start is not None else 0
+        # ``start`` is already validated to be >= 1 (or None) by ``validate``.
+        start_index = start - 1 if start is not None else 0
         if length is None:
             return text[start_index:]
         return text[start_index : start_index + length]
