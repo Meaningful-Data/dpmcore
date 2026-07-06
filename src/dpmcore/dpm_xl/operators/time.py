@@ -243,6 +243,18 @@ class DateConstructor(Operator):
             reference = max(
                 recordsets, key=lambda rs: len(rs.get_key_components())
             )
+            reference_keys = set(reference.get_key_components_names())
+            for rs in recordsets:
+                if rs is reference:
+                    continue
+                if not set(rs.get_key_components_names()) <= reference_keys:
+                    raise errors.SemanticError(
+                        "2-3",
+                        op=cls.op,
+                        structure_1=rs.get_key_components_names(),
+                        structure_2=reference.get_key_components_names(),
+                        origin=origin,
+                    )
             return cls._create_labeled_recordset(
                 origin, Date(), reference.structure, reference.records
             )

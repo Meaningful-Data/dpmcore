@@ -13,6 +13,7 @@ from dpmcore.dpm_xl.symbols import (
 )
 from dpmcore.dpm_xl.types.scalar import Date, Integer, Number
 from dpmcore.dpm_xl.utils.tokens import STANDARD
+from dpmcore.errors import SemanticError
 from dpmcore.services.syntax import SyntaxService
 
 VALID_FORMS = [
@@ -84,14 +85,14 @@ def _int_scalar(name: str) -> Scalar:
     return Scalar(type_=Integer(), name=name, origin=name)
 
 
-def _int_recordset() -> RecordSet:
+def _int_recordset(key_code: str = "r", name: str = "test") -> RecordSet:
     structure = Structure(
         [
-            KeyComponent("r", Number(), STANDARD, "test"),
+            KeyComponent(key_code, Number(), STANDARD, "test"),
             FactComponent(Integer(), "test"),
         ]
     )
-    return RecordSet(structure, "test", "test")
+    return RecordSet(structure, name, name)
 
 
 @pytest.mark.parametrize(
@@ -111,3 +112,27 @@ def test_date_constructor_validate_scalar_and_recordset(
     else:
         assert isinstance(result, Scalar)
         assert isinstance(result.type, Date)
+
+
+def test_date_constructor_incompatible_recordset_key_sets_rejected():
+    """date({cellA}, {cellB}, 1) with disjoint key sets ('r' vs 'c') must
+    be rejected instead of silently discarding one operand's keys
+    """
+    year_sym = _int_recordset(key_code="r", name="cellA")
+    month_sym = _int_recordset(key_code="c", name="cellB")
+    day_sym = _int_scalar("d")
+
+    with pytest.raises(SemanticError) as exc_info:
+        DateConstructor.validate(year_sym, month_sym, day_sym)
+    assert exc_info.value.code == "2-3"
+
+
+def test_date_constructor_subset_recordset_key_sets_accepted():
+    """Accept date({cellA}, {cellB}, 1) when both have compatible keys"""
+    year_sym = _int_recordset(key_code="r", name="cellA")
+    month_sym = _int_recordset(key_code="r", name="cellB")
+    day_sym = _int_scalar("d")
+
+    result = DateConstructor.validate(year_sym, month_sym, day_sym)
+    assert isinstance(result, RecordSet)
+    assert result.get_key_components_names() == ["r"]
