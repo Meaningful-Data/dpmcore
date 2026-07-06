@@ -105,7 +105,7 @@ def get_module_metadata(session, module_vid):
 
 def get_release_info(session, release_id, publication_date=None):
     """Get DPM release information."""
-    pub_date = publication_date or str(date.today())
+    pub_date = publication_date or str(date.today())  # noqa: DTZ011
     release_code = None
     if release_id is not None:
         release = (
@@ -289,6 +289,7 @@ class OutputExtractor(ASTTemplate):
     """
 
     def __init__(self, data=None):
+        """Track outputs, optionally resolving VarID cells via *data*."""
         super().__init__()
         self.data = data
         # From VarRef assignments
@@ -298,6 +299,7 @@ class OutputExtractor(ASTTemplate):
         self.output_table_variables = {}
 
     def visit_PersistentAssignment(self, node):
+        """Collect the assignment's LHS, then walk its RHS."""
         if isinstance(node.left, VarRef):
             self.output_variables.append(node.left.variable)
         elif isinstance(node.left, VarID) and self.data is not None:
@@ -305,6 +307,7 @@ class OutputExtractor(ASTTemplate):
         self.visit(node.right)
 
     def visit_TemporaryAssignment(self, node):
+        """Walk the RHS only (temporaries produce no output)."""
         self.visit(node.right)
 
     def _extract_varid_outputs(self, varid_node):
@@ -336,6 +339,7 @@ class DependencyTableExtractor(ASTTemplate):
     """Extract tables and their datapoints from expressions."""
 
     def __init__(self, session, release_id=None):
+        """Collect dependency tables using *session* for lookups."""
         super().__init__()
         self.session = session
         self.release_id = release_id
@@ -357,6 +361,7 @@ class DependencyTableExtractor(ASTTemplate):
         )
 
     def visit_VarID(self, node):
+        """Register the node's table and its filtered datapoints."""
         table = node.table
         if not table:
             return
@@ -449,6 +454,7 @@ class VarIDDataEnricher(ASTTemplate):
     """
 
     def __init__(self, data):
+        """Enrich against the operands *data* DataFrame."""
         super().__init__()
         self.data = data
         self._ref_counter = 0
@@ -458,6 +464,7 @@ class VarIDDataEnricher(ASTTemplate):
         return 100000 + self._ref_counter
 
     def visit_VarID(self, node):
+        """Attach the EBA-format dict to the node (eba_varid_json)."""
         if self.data is None or self.data.empty:
             return
         try:
