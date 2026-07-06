@@ -70,7 +70,10 @@ class Substr(Operator):
             "operand_name": operand.name,
             "op": cls.op,
         }
-        origin = f"{cls.op}({operand.origin}, {start}, {length})"
+        args = [
+            str(v) for v in (operand.origin, start, length) if v is not None
+        ]
+        origin = f"{cls.op}({', '.join(args)})"
 
         if isinstance(operand, RecordSet):
             unary_implicit_type_promotion(
@@ -86,5 +89,15 @@ class Substr(Operator):
             operand.type, op_type, error_info=error_info
         )
         if isinstance(operand, ConstantOperand):
-            return operand
+            value = cls._substring(str(operand.value), start, length)
+            return ConstantOperand(
+                type_=String(), name=value, origin=origin, value=value
+            )
         return cls._create_labeled_scalar(origin, result_type=String())
+
+    @staticmethod
+    def _substring(text: str, start: int | None, length: int | None) -> str:
+        start_index = max(start - 1, 0) if start is not None else 0
+        if length is None:
+            return text[start_index:]
+        return text[start_index : start_index + length]
