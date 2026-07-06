@@ -7,26 +7,21 @@ so the main script mirrors the EBA original file-for-file.
 
 Contents:
 
-- The EBA numeric release/date filters (``filter_by_release_eba`` and
-  friends) — dpmcore's semver-aware filters both reject 4-segment
-  release codes (e.g. "4.2.1.3") and treat the ghost release (9999)
-  differently, which breaks output parity.
+- The EBA numeric release filters (``filter_by_release_eba`` and
+  friends), used by the queries ported below.
 - A port of the ``drr_datapoints`` SQL view (``eba_get_table_data``)
   and of the ``drr_calculations`` / ``drr_data_types`` view queries.
 - CodeDRR's ``DAGAnalyzer`` (pure-Python topological sort).
 - ``EBAOperandsChecking`` and ``CalculationsJSONVisitor``: dpmcore's
   operand checker and serializer adjusted to CodeDRR behaviour.
-- The parity shim: importing this module monkeypatches the dpmcore
-  internals the pipeline calls (see the shim section at the bottom).
+- The parity shim: importing this module replaces
+  ``ViewDatapointsQuery.get_table_data`` (see the bottom of the file).
 
 If dpmcore ever absorbs these semantics natively, this module is what
 gets deleted — re-run the KRI/CODIS parity diff to prove it.
 """
 
 from __future__ import annotations
-
-import sys
-from datetime import datetime
 
 import pandas as pd
 from sqlalchemy import or_
@@ -44,6 +39,7 @@ from dpmcore.dpm_xl.model_queries import (
     compile_query_for_pandas,
     read_sql_with_connection,
 )
+from dpmcore.dpm_xl.utils.filters import filter_by_date
 from dpmcore.dpm_xl.utils.serialization import ASTToJSONVisitor
 from dpmcore.orm.glossary import Property
 from dpmcore.orm.infrastructure import DataType
@@ -62,18 +58,12 @@ from dpmcore.orm.variables import VariableVersion
 # ---------------------------------------------------------------------------
 
 
-def filter_by_release_eba(
-    query, start_col, end_col, release_id=None, active_only_fallback=False
-):
+def filter_by_release_eba(query, start_col, end_col, release_id=None):
     """Live release: (end IS NULL or end = 9999) and start != 9999.
 
     Specific release: start <= id and (end > id or end IS NULL or
     end = 9999) — the ghost release (9999) counts as still-live, per
     drr_operations' fix-implicit-open-keys branch.
-
-    ``active_only_fallback`` is accepted for signature compatibility
-    with dpmcore's filter (see the parity shim below) but ignored: the
-    EBA numeric semantics apply in both branches.
     """
     if release_id is None:
         return query.filter(
@@ -87,15 +77,6 @@ def filter_by_release_eba(
             end_col.is_(None),
             end_col == 9999,
         ),
-    )
-
-
-def filter_by_date_eba(query, start_col, end_col, ref_date):
-    """Start <= date and (end > date or end IS NULL)."""
-    d = datetime.strptime(ref_date, "%Y-%m-%d").date()
-    return query.filter(
-        start_col <= d,
-        or_(end_col > d, end_col.is_(None)),
     )
 
 
@@ -228,11 +209,11 @@ def get_module_version_id(session, module_code, reference_date):
     query = session.query(ModuleVersion.module_vid).filter(
         ModuleVersion.code == module_code
     )
-    query = filter_by_date_eba(
+    query = filter_by_date(
         query,
+        reference_date,
         ModuleVersion.from_reference_date,
         ModuleVersion.to_reference_date,
-        reference_date,
     )
     return query.one()
 
@@ -563,18 +544,11 @@ class CalculationsJSONVisitor(ASTToJSONVisitor):
 
 
 # ---------------------------------------------------------------------------
-# Parity shim: force the EBA numeric release-window semantics on the
-# dpmcore internals this pipeline calls (OperandsChecking and the model
-# queries). dpmcore's semver-aware filter both rejects release codes
-# with four segments (e.g. "4.2.1.3", present in the EBA TEST
-# databases) and treats ghost releases (9999) differently from the EBA
-# numeric filter, either of which breaks output parity. The table-data
-# query is replaced whole (see eba_get_table_data above). Applied on
+# Parity shim: replace dpmcore's table-data query with the
+# drr_datapoints port above — dpmcore's version lacks the view's
+# live-TableVersion filter and adds a sort/dedup pass the EBA pipeline
+# does not have, either of which breaks output parity. Applied on
 # import; process-local — the library on disk is untouched.
 # ---------------------------------------------------------------------------
 
-_model_queries_mod = sys.modules["dpmcore.dpm_xl.model_queries"]
-_operands_mod = sys.modules["dpmcore.dpm_xl.ast.operands"]
-_model_queries_mod.filter_by_release = filter_by_release_eba
-_operands_mod.filter_by_release = filter_by_release_eba
 ViewDatapointsQuery.get_table_data = eba_get_table_data
