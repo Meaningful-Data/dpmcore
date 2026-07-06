@@ -969,12 +969,9 @@ class ModuleVersionQuery:
             there are no releases.
         """
         sort_orders = load_release_sort_orders(session)
-        ranked = [
-            (so, rid) for rid, so in sort_orders.items() if so is not None
-        ]
-        if not ranked:
+        if not sort_orders:
             return None
-        return max(ranked)[1]
+        return max((so, rid) for rid, so in sort_orders.items())[1]
 
     @staticmethod
     def get_from_tables_vids(

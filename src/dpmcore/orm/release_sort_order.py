@@ -57,13 +57,14 @@ def compute_sort_order(release_date: Optional[date]) -> int:
 
 def load_release_sort_orders(
     session: "Session",
-) -> Dict[int, Optional[int]]:
+) -> Dict[int, int]:
     """Return ``{release_id: sort_order}`` derived from ``Release.date``.
 
     Every release maps to an ``int``: dated releases to their date's
     ordinal, and an undated (unpublished) release to the "latest"
-    sentinel. Only a ``.get()`` miss on a release_id absent from the
-    mapping (an orphan FK) yields ``None`` for a caller.
+    sentinel. The mapping never holds ``None`` values; only a ``.get()``
+    miss on a release_id absent from the mapping (an orphan FK) yields
+    ``None`` for a caller.
     """
     from dpmcore.orm.infrastructure import Release
 
@@ -107,7 +108,7 @@ def resolve_sort_order(
 
 
 def release_ids_for_sort_order(
-    sort_orders: Dict[int, Optional[int]],
+    sort_orders: Dict[int, int],
     *,
     le: Optional[int] = None,
     lt: Optional[int] = None,
@@ -116,10 +117,9 @@ def release_ids_for_sort_order(
 ) -> List[int]:
     """Filter ``{release_id: sort_order}`` by inequality predicates.
 
-    Releases whose ``sort_order`` is ``None`` (an orphan FK absent from
-    the mapping) are always excluded — they cannot satisfy a comparison
-    either way. Undated releases are *not* ``None``: they carry the
-    "latest" sentinel and rank above every dated release.
+    Every mapped release carries an ``int`` sort order, so all releases
+    are candidates. Undated releases carry the "latest" sentinel and rank
+    above every dated release.
 
     Args:
         sort_orders: Mapping from :func:`load_release_sort_orders`.
@@ -135,8 +135,6 @@ def release_ids_for_sort_order(
     """
     matches: List[tuple[int, int]] = []
     for rid, so in sort_orders.items():
-        if so is None:
-            continue
         if le is not None and not so <= le:
             continue
         if lt is not None and not so < lt:
