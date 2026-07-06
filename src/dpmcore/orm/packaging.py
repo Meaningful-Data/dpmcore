@@ -26,7 +26,10 @@ from dpmcore.orm.base import Base
 from dpmcore.orm.infrastructure import Concept, Organisation, Release
 
 if TYPE_CHECKING:
-    from dpmcore.orm.operations import OperationScopeComposition
+    from dpmcore.orm.operations import (
+        OperationOutput,
+        OperationScopeComposition,
+    )
     from dpmcore.orm.rendering import Table, TableVersion
     from dpmcore.orm.variables import (
         CompoundKey,
@@ -246,6 +249,10 @@ class ModuleVersion(Base):
             "OperationScopeComposition",
             back_populates="module_version",
         )
+    )
+    operation_outputs: Mapped[List["OperationOutput"]] = relationship(
+        "OperationOutput",
+        back_populates="module_version",
     )
     module_parameters: Mapped[List["ModuleParameters"]] = relationship(
         "ModuleParameters",

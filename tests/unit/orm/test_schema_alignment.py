@@ -36,6 +36,13 @@ EXCLUDED_TABLES: Set[str] = {
     "VarGeneration_Summary",
 }
 
+# Tables modelled in the ORM that exist only in the EBA SQL Server DPM
+# databases (bacpacs), not in the Access DPM 2.0 distribution. They are
+# skipped when validating the ORM against the Access reference schema.
+SQLSERVER_ONLY_ORM_TABLES: Set[str] = {
+    "OperationOutput",
+}
+
 # ORM columns that are synthetic (e.g. surrogate PKs added because
 # the Access table has no natural primary key).  {table: {col, …}}
 SYNTHETIC_ORM_COLUMNS: Dict[str, Set[str]] = {
@@ -136,13 +143,15 @@ def test_orm_tables_exist_in_db(
     orm_schema: Dict[str, Set[str]],
 ) -> None:
     """Every ORM table must correspond to a real Access DB table."""
-    extra = set(orm_schema) - set(accdb_schema)
+    extra = set(orm_schema) - set(accdb_schema) - SQLSERVER_ONLY_ORM_TABLES
     assert not extra, f"ORM tables not present in Access DB: {sorted(extra)}"
 
 
 @pytest.mark.parametrize(
     "table_name",
-    sorted(set(Base.metadata.tables) - EXCLUDED_TABLES),
+    sorted(
+        set(Base.metadata.tables) - EXCLUDED_TABLES - SQLSERVER_ONLY_ORM_TABLES
+    ),
 )
 def test_columns_match(
     table_name: str,
