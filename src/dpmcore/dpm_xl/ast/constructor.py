@@ -118,6 +118,16 @@ class ASTVisitor(dpm_xlParserVisitor):
         """
         return str(cast(TerminalNodeImpl, node).symbol.text)
 
+    @staticmethod
+    def _int_literal_value(text: str) -> int:
+        """Parse both INTEGER_LITERAL formats (plain or parenthesized negatives).
+
+        int() fails on (-5), so this handles both forms.
+        """
+        if text.startswith("(") and text.endswith(")"):
+            return int(text[1:-1])
+        return int(text)
+
     def visitStart(self, ctx: dpm_xlParser.StartContext) -> Start:
         ctx_list = list(ctx.getChildren())
 
@@ -527,10 +537,14 @@ class ASTVisitor(dpm_xlParserVisitor):
         #   0    1    2    3   4   5   6    7
         operand: AST = self._visit(ctx_list[2])
         start = (
-            int(self._symbol_text(ctx_list[4])) if len(ctx_list) >= 6 else None
+            self._int_literal_value(self._symbol_text(ctx_list[4]))
+            if len(ctx_list) >= 6
+            else None
         )
         length = (
-            int(self._symbol_text(ctx_list[6])) if len(ctx_list) >= 8 else None
+            self._int_literal_value(self._symbol_text(ctx_list[6]))
+            if len(ctx_list) >= 8
+            else None
         )
         return SubstrOp(operand=operand, start=start, length=length)
 
