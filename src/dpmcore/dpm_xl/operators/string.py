@@ -56,15 +56,6 @@ class Substr(Unary):
 
     ``start`` and ``length`` are optional integer literals.
     Accepts a Scalar or a Recordset operand (String -> String).
-
-    A ``Unary`` subclass so it's grouped with the other unary string
-    operators; ``validate`` stays fully custom (rather than delegating to
-    ``Unary.validate_types``/``create_labeled_scalar``) because those
-    assume a plain 1-argument ``py_op`` and don't know about ``start``/
-    ``length``. The Mixed-typed-recordset branch below mirrors
-    ``Unary.validate_types`` exactly, reusing the same promotion helper,
-    so a recordset with a ``Mixed`` fact type doesn't crash with a
-    ``KeyError`` (``Mixed`` has no entry in ``implicit_type_promotion_dict``).
     """
 
     op: ClassVar[str | None] = tokens.SUBSTR
