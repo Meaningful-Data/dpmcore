@@ -3,10 +3,14 @@ from typing import ClassVar, Union
 from dpmcore import errors
 from dpmcore.dpm_xl.operators.base import Operator, Unary
 from dpmcore.dpm_xl.symbols import ConstantOperand, RecordSet, Scalar
-from dpmcore.dpm_xl.types.promotion import unary_implicit_type_promotion
+from dpmcore.dpm_xl.types.promotion import (
+    unary_implicit_type_promotion,
+    unary_implicit_type_promotion_with_mixed_types,
+)
 from dpmcore.dpm_xl.types.scalar import (
     Date,
     Integer,
+    Mixed,
     Number,
     ScalarFactory,
     ScalarType,
@@ -222,18 +226,33 @@ class DateConstructor(Operator):
         op_type = ScalarFactory().scalar_factory(Integer.__name__)
         operands = (year_sym, month_sym, day_sym)
         for sym in operands:
-            sym_type = (
-                sym.get_fact_component().type
-                if isinstance(sym, RecordSet)
-                else sym.type
-            )
             error_info: dict[str, object] = {
                 "operand_name": sym.name,
                 "op": cls.op,
             }
-            unary_implicit_type_promotion(
-                sym_type, op_type, error_info=error_info
-            )
+            if isinstance(sym, RecordSet):
+                fact_type = sym.get_fact_component().type
+                if isinstance(fact_type, Mixed):
+                    if sym.records is None:
+                        raise Exception(
+                            "Mixed type promotion requires operand records"
+                        )
+                    _, sym.records = (
+                        unary_implicit_type_promotion_with_mixed_types(
+                            sym.records,
+                            op_type,
+                            op_type,
+                            error_info=error_info,
+                        )
+                    )
+                else:
+                    unary_implicit_type_promotion(
+                        fact_type, op_type, error_info=error_info
+                    )
+            else:
+                unary_implicit_type_promotion(
+                    sym.type, op_type, error_info=error_info
+                )
         origin = (
             f"date({year_sym.origin}, {month_sym.origin}, {day_sym.origin})"
         )
