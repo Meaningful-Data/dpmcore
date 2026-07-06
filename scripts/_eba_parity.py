@@ -23,7 +23,6 @@ gets deleted — re-run the KRI/CODIS parity diff to prove it.
 
 from __future__ import annotations
 
-import pandas as pd
 from sqlalchemy import or_
 
 from dpmcore.dpm_xl.ast.nodes import (
@@ -49,6 +48,7 @@ from dpmcore.orm.operations import (
     OperationVersion,
 )
 from dpmcore.orm.packaging import ModuleVersion
+from dpmcore.orm.query_utils import chunked_in
 from dpmcore.orm.rendering import TableVersion, TableVersionCell
 from dpmcore.orm.variables import VariableVersion
 
@@ -291,49 +291,33 @@ def get_eba_data_types(session, datapoints, release_id=None):
     """Data types per datapoint (VariableID), as {str(id): type_code}.
 
     Port of the ``drr_data_types`` view: VariableVersion ⨝ Property ⨝
-    DataType, batched like the EBA original.
+    DataType, batched via ``chunked_in`` (SQL Server parameter limit).
     """
     if not datapoints:
         return {}
     ids = sorted({int(dp) for dp in datapoints})
-    frames = []
-    batch_size = 2000
-    for start in range(0, len(ids), batch_size):
-        batch = ids[start : start + batch_size]
-        query = (
-            session.query(
-                VariableVersion.variable_id.label("datapoint"),
-                DataType.code.label("data_type"),
-            )
-            .join(
-                Property,
-                Property.property_id == VariableVersion.property_id,
-            )
-            .join(
-                DataType,
-                DataType.data_type_id == Property.data_type_id,
-            )
-            .filter(VariableVersion.variable_id.in_(batch))
+    query = (
+        session.query(
+            VariableVersion.variable_id.label("datapoint"),
+            DataType.code.label("data_type"),
         )
-        query = filter_by_release_eba(
-            query,
-            VariableVersion.start_release_id,
-            VariableVersion.end_release_id,
-            release_id,
+        .join(
+            Property,
+            Property.property_id == VariableVersion.property_id,
         )
-        frames.append(
-            read_sql_with_connection(
-                compile_query_for_pandas(query.statement, session), session
-            )
-        )
-    data = pd.concat(frames, axis=0)
-    return dict(
-        zip(
-            data["datapoint"].astype(str),
-            data["data_type"],
-            strict=False,
+        .join(
+            DataType,
+            DataType.data_type_id == Property.data_type_id,
         )
     )
+    query = filter_by_release_eba(
+        query,
+        VariableVersion.start_release_id,
+        VariableVersion.end_release_id,
+        release_id,
+    )
+    rows = chunked_in(query, VariableVersion.variable_id, ids)
+    return {str(row.datapoint): row.data_type for row in rows}
 
 
 def get_output_variable_ids(session, variable_codes, release_id=None):
