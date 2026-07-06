@@ -630,8 +630,8 @@ class TestResolveRelease:
         with pytest.raises(ValueError, match="ModuleVersion not found"):
             svc._resolve_release("X", "1.0", None)
 
-    # Explicit-release window checks now compare semver sort orders, which
-    # need real Release rows. They are covered against the EBA fixture DB in
+    # Explicit-release window checks now compare date-based sort orders,
+    # which need real Release rows. They are covered against the EBA DB in
     # tests/integration/services/test_scope_release_axis.py rather than with
     # blanket ORM mocks (see issue #151).
 
@@ -642,31 +642,31 @@ class TestResolveRelease:
 
 
 class TestLatestReleaseInWindow:
-    def test_unparseable_start_release_raises(self):
+    def test_unknown_start_release_raises(self):
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
         mv = SimpleNamespace(start_release_id=42, end_release_id=None)
-        # resolve_sort_order issues session.query(Release.code).filter(
-        # Release.release_id == ...).first(); return an unparseable code
-        # so compute_sort_order produces None and the helper raises.
+        # resolve_sort_order issues session.query(Release.date).filter(
+        # Release.release_id == ...).first(); no matching Release row
+        # (first() returns None) has no sort order, so the helper raises.
+        # An undated release, by contrast, resolves to the latest sentinel.
         svc.session.query.return_value.filter.return_value.first.return_value = (  # noqa: E501
-            "garbage",
+            None
         )
         with pytest.raises(
             ValueError, match="window start release 42 has no sort_order"
         ):
             svc._latest_release_in_window(mv)
 
-    def test_unparseable_end_release_raises(self):
+    def test_unknown_end_release_raises(self):
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
         mv = SimpleNamespace(start_release_id=1, end_release_id=99)
-        # Two resolve_sort_order calls: first returns a parseable code,
-        # second returns an unparseable one so the end-bound resolver
-        # raises.
+        # Two resolve_sort_order calls: first returns a dated release,
+        # second finds no Release row so the end-bound resolver raises.
         svc.session.query.return_value.filter.return_value.first.side_effect = [  # noqa: E501
-            ("4.0",),
-            ("garbage",),
+            (date(2024, 1, 1),),
+            None,
         ]
         with pytest.raises(
             ValueError, match="window end release 99 has no sort_order"

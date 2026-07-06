@@ -27,7 +27,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import inspect, select, text
+from sqlalchemy import case, inspect, select, text
 from sqlalchemy.engine import Engine
 
 from dpmcore.orm.base import Base
@@ -368,18 +368,25 @@ class MigrationService:
         """Return a filename-safe code for the current release."""
         from sqlalchemy.orm import Session
 
+        # Latest first: an undated (unpublished) working release ranks as
+        # the latest. The NULL-first CASE keeps this uniform across
+        # backends (SQLite/SQL Server otherwise sort NULLs last in DESC).
+        latest_first = (
+            case((Release.date.is_(None), 1), else_=0).desc(),
+            Release.date.desc(),
+        )
         with Session(self._engine) as session:
             stmt = (
                 select(Release.code)
                 .where(Release.is_current.is_(True))
-                .order_by(Release.date.desc())
+                .order_by(*latest_first)
             )
             code = session.scalars(stmt).first()
             if code is None:
                 code = session.scalars(
                     select(Release.code)
                     .where(Release.code.is_not(None))
-                    .order_by(Release.date.desc())
+                    .order_by(*latest_first)
                 ).first()
 
         if not code:

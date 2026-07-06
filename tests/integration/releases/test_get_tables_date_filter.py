@@ -30,8 +30,8 @@ def service_with_dates(memory_session):
     """
     session = memory_session
 
-    # release_id=1 must correspond to a real Release row with a
-    # parseable code so the new sort_order-based filter can resolve it.
+    # release_id=1 must correspond to a real Release row with a date so
+    # the date-based sort_order filter can resolve it.
     session.add(Release(release_id=1, code="1.0", date=date(2023, 1, 1)))
 
     session.add_all([Table(table_id=1), Table(table_id=2), Table(table_id=3)])

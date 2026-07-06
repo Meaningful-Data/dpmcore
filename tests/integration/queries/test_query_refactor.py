@@ -21,9 +21,9 @@ from dpmcore.services.data_dictionary import DataDictionaryService
 def service_with_data(memory_session):
     """Insert three TableVersions spanning three releases."""
     session = memory_session
-    # Release-range filter resolves the target's sort_order (parsed
-    # from semver code), so each release_id used in a filter must
-    # correspond to a real Release row with a parseable code.
+    # Release-range filter resolves the target's sort_order from
+    # Release.date, so each release_id used in a filter must correspond
+    # to a real, dated Release row.
     session.add_all(
         [
             Release(release_id=1, code="1.0", date=date(2024, 1, 1)),

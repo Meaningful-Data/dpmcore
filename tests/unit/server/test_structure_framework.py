@@ -174,7 +174,7 @@ def seeded_engine(engine):
                 end_release_id=None,
             ),
             # COREP modules — only at release 4.0 (end_release_id=2 →
-            # excluded from 4.1 by the semver-aware filter).
+            # excluded from 4.1 by the date-based filter).
             ModuleVersion(
                 module_vid=20000,
                 module_id=200,
