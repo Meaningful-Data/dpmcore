@@ -343,6 +343,28 @@ class TestRenameWithMetadata:
         assert result.database_path is not None
         assert "3.9" in result.database_path.name
 
+    def test_undated_current_release_is_latest(self, tmp_path):
+        db_path = tmp_path / "dpm.db"
+        engine = create_engine(f"sqlite:///{db_path}", future=True)
+        service = MigrationService(engine)
+
+        csv_dir = tmp_path / "csv"
+        csv_dir.mkdir()
+        # Two current releases: a dated 4.2 and an undated working
+        # release. The undated one ranks as the latest, so its code
+        # names the exported file.
+        (csv_dir / "Release.csv").write_text(
+            "ReleaseID,Code,Date,IsCurrent\n"
+            "1,4.2,2026-01-01,1\n"
+            "2,Playground,,1\n",
+            encoding="utf-8",
+        )
+
+        result = service.migrate_from_csv_dir(str(csv_dir))
+
+        assert result.database_path is not None
+        assert "Playground" in result.database_path.name
+
     def test_sanitises_unsafe_characters_in_release_code(self, tmp_path):
         db_path = tmp_path / "dpm.db"
         engine = create_engine(f"sqlite:///{db_path}", future=True)

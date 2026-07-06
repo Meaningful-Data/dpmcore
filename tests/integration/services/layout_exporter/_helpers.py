@@ -7,6 +7,8 @@ individual tests can pick exactly the shape they need.
 
 from __future__ import annotations
 
+from datetime import date
+
 from sqlalchemy.orm import Session
 
 from dpmcore.orm.glossary import (
@@ -43,8 +45,8 @@ from dpmcore.orm.variables import Variable, VariableVersion
 
 
 def seed_releases(session: Session) -> None:
-    session.add(Release(release_id=1, code="1.0"))
-    session.add(Release(release_id=2, code="2.0"))
+    session.add(Release(release_id=1, code="1.0", date=date(2020, 1, 1)))
+    session.add(Release(release_id=2, code="2.0", date=date(2021, 1, 1)))
 
 
 def seed_data_types(session: Session) -> None:
