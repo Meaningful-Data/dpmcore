@@ -23,7 +23,7 @@ gets deleted — re-run the KRI/CODIS parity diff to prove it.
 
 from __future__ import annotations
 
-from sqlalchemy import or_
+from sqlalchemy import column, or_, table
 
 from dpmcore.dpm_xl.ast.nodes import (
     Constant,
@@ -42,11 +42,7 @@ from dpmcore.dpm_xl.utils.filters import filter_by_date
 from dpmcore.dpm_xl.utils.serialization import ASTToJSONVisitor
 from dpmcore.orm.glossary import Property
 from dpmcore.orm.infrastructure import DataType
-from dpmcore.orm.operations import (
-    Operation,
-    OperationOutput,
-    OperationVersion,
-)
+from dpmcore.orm.operations import Operation, OperationVersion
 from dpmcore.orm.packaging import ModuleVersion
 from dpmcore.orm.query_utils import chunked_in
 from dpmcore.orm.rendering import TableVersion, TableVersionCell
@@ -199,6 +195,16 @@ def eba_get_table_data(
 # Queries the EBA script gets from CodeDRR's models.py
 # ---------------------------------------------------------------------------
 
+# OperationOutput links an OperationVersion to the ModuleVersion it
+# outputs to. The table exists only in the EBA SQL Server DPM databases
+# (bacpacs), not in the Access DPM 2.0 distribution that dpmcore.orm
+# models, so it is declared here instead of in the ORM.
+operation_output = table(
+    "OperationOutput",
+    column("OperationVID"),
+    column("ModuleVID"),
+)
+
 
 def get_module_version_id(session, module_code, reference_date):
     """ModuleVID for a module code valid at *reference_date*.
@@ -232,12 +238,12 @@ def get_calculations(session, module_vid):
         )
         .select_from(ModuleVersion)
         .join(
-            OperationOutput,
-            OperationOutput.module_vid == ModuleVersion.module_vid,
+            operation_output,
+            operation_output.c.ModuleVID == ModuleVersion.module_vid,
         )
         .join(
             OperationVersion,
-            OperationVersion.operation_vid == OperationOutput.operation_vid,
+            OperationVersion.operation_vid == operation_output.c.OperationVID,
         )
         .filter(ModuleVersion.module_vid == module_vid)
     )
@@ -257,20 +263,20 @@ def get_operation_codes_for_module(session, module_vid, release_id=None):
     """Operation codes for a module via the OperationOutput link."""
     query = (
         session.query(
-            OperationOutput.operation_vid.label("OperationVID"),
+            operation_output.c.OperationVID.label("OperationVID"),
             Operation.code.label("operation_code"),
             OperationVersion.expression.label("expression"),
         )
         .join(
             OperationVersion,
-            OperationVersion.operation_vid == OperationOutput.operation_vid,
+            OperationVersion.operation_vid == operation_output.c.OperationVID,
         )
         .join(
             Operation,
             Operation.operation_id == OperationVersion.operation_id,
         )
         .filter(
-            OperationOutput.module_vid == module_vid,
+            operation_output.c.ModuleVID == module_vid,
             Operation.type == "calculation",
         )
     )

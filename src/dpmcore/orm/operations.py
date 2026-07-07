@@ -1,9 +1,9 @@
 """ORM models for DPM Operations domain.
 
 This module defines Operation, OperationVersion, OperationVersionData,
-OperationNode, OperationScope, OperationScopeComposition,
-OperationOutput, Operator, OperatorArgument, OperandReference, and
-OperandReferenceLocation models.
+OperationNode, OperationScope, OperationScopeComposition, Operator,
+OperatorArgument, OperandReference, and OperandReferenceLocation
+models.
 """
 
 from __future__ import annotations
@@ -216,10 +216,6 @@ class OperationVersion(Base):
     )
     operation_scopes: Mapped[List["OperationScope"]] = relationship(
         "OperationScope",
-        back_populates="operation_version",
-    )
-    operation_outputs: Mapped[List["OperationOutput"]] = relationship(
-        "OperationOutput",
         back_populates="operation_version",
     )
     operation_version_data: Mapped[Optional["OperationVersionData"]] = (
@@ -443,49 +439,6 @@ class OperationScopeComposition(Base):
     )
     module_version: Mapped["ModuleVersion"] = relationship(
         "ModuleVersion", back_populates="operation_scope_compositions"
-    )
-
-
-# ------------------------------------------------------------------
-# OperationOutput
-# ------------------------------------------------------------------
-
-
-class OperationOutput(Base):
-    """Association between an OperationVersion and an output ModuleVersion.
-
-    Links calculation operations to the module they output to.
-    Present in the EBA SQL Server DPM databases; absent from the Access
-    DPM 2.0 distribution (see SQLSERVER_ONLY_ORM_TABLES in the schema
-    alignment test).
-
-    Attributes:
-        operation_vid: FK to OperationVersion (composite PK).
-        module_vid: FK to ModuleVersion (composite PK).
-        row_guid: Row GUID.
-    """
-
-    __tablename__ = "OperationOutput"
-
-    operation_vid: Mapped[int] = mapped_column(
-        "OperationVID",
-        Integer,
-        ForeignKey("OperationVersion.OperationVID"),
-        primary_key=True,
-    )
-    module_vid: Mapped[int] = mapped_column(
-        "ModuleVID",
-        Integer,
-        ForeignKey("ModuleVersion.ModuleVID"),
-        primary_key=True,
-    )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
-
-    operation_version: Mapped["OperationVersion"] = relationship(
-        "OperationVersion", back_populates="operation_outputs"
-    )
-    module_version: Mapped["ModuleVersion"] = relationship(
-        "ModuleVersion", back_populates="operation_outputs"
     )
 
 

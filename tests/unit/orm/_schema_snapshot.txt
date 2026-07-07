@@ -310,11 +310,6 @@ TABLE OperationNode
   COL Scalar pg=TEXT mssql=TEXT null=True pk=False ai=auto fks=
   COL UseIntervalArithmetics pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
   PK NodeID
-TABLE OperationOutput
-  COL ModuleVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=ModuleVersion.ModuleVID
-  COL OperationVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=OperationVersion.OperationVID
-  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
-  PK OperationVID,ModuleVID
 TABLE OperationScope
   COL FromSubmissionDate pg=DATE mssql=DATETIME null=True pk=False ai=auto fks=
   COL IsActive pg=SMALLINT mssql=SMALLINT null=True pk=False ai=auto fks=
