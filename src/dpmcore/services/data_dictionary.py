@@ -98,9 +98,23 @@ class DataDictionaryService:
         release_id: Optional[int] = None,
         date: Optional[str] = None,
         release_code: Optional[str] = None,
-    ) -> List[str]:
-        """Return available table codes."""
-        q = self.session.query(TableVersion.code)
+        verbose: bool = False,
+    ) -> List[Any]:
+        """Return available tables.
+
+        When ``verbose`` is ``False`` (default) returns a list of table
+        codes. When ``verbose`` is ``True`` returns a list of dicts with
+        ``{code, name, description}`` for each active table version.
+        """
+        q: Any
+        if verbose:
+            q = self.session.query(
+                TableVersion.code,
+                TableVersion.name,
+                TableVersion.description,
+            )
+        else:
+            q = self.session.query(TableVersion.code)
 
         if date:
             if release_id is not None or release_code is not None:
@@ -135,6 +149,11 @@ class DataDictionaryService:
                 )
 
         q = q.order_by(TableVersion.code)
+        if verbose:
+            return [
+                {"code": r[0], "name": r[1], "description": r[2]}
+                for r in q.all()
+            ]
         return [row[0] for row in q.all()]
 
     def get_table_version(
@@ -159,6 +178,41 @@ class DataDictionaryService:
             )
         row = q.first()
         return row.to_dict() if row else None
+
+    def get_open_keys_for_tables(
+        self,
+        table_codes: List[str],
+        release_id: Optional[int] = None,
+        release_code: Optional[str] = None,
+    ) -> Dict[str, Dict[str, str]]:
+        """Return ``{table_code: {property_code: data_type_code}}``.
+
+        Identifies the open-key (compound-key) variables of each table
+        by walking ``TableVersion`` → ``KeyComposition`` →
+        ``VariableVersion`` → ``Property`` → ``ItemCategory`` (for the
+        property code) → ``DataType`` (for the type code).
+        """
+        release_id = resolve_release_id(
+            self.session, release_id=release_id, release_code=release_code
+        )
+        from dpmcore.services.scope_calculator import ScopeCalculatorService
+
+        return ScopeCalculatorService(self.session)._get_open_keys_for_tables(
+            table_codes, release_id=release_id
+        )
+
+    def get_open_keys_for_table(
+        self,
+        table_code: str,
+        release_id: Optional[int] = None,
+        release_code: Optional[str] = None,
+    ) -> Dict[str, str]:
+        """Return ``{property_code: data_type_code}`` for one table."""
+        return self.get_open_keys_for_tables(
+            [table_code],
+            release_id=release_id,
+            release_code=release_code,
+        ).get(table_code, {})
 
     # ------------------------------------------------------------------ #
     # Items

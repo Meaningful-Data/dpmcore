@@ -15,6 +15,7 @@ All services are accessible through :attr:`DpmConnection.services`:
        db.services.semantic         # SemanticService
        db.services.ast_generator    # ASTGeneratorService
        db.services.scope_calculator # ScopeCalculatorService
+       db.services.expression_metadata # ExpressionMetadataService
        db.services.data_dictionary  # DataDictionaryService
        db.services.explorer         # ExplorerService
        db.services.hierarchy        # HierarchyService
@@ -52,6 +53,7 @@ Read-only service references
    semantic
    ast_generator
    scope_calculator
+   expression_metadata
    data_dictionary
    explorer
    hierarchy
