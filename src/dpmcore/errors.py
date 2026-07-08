@@ -289,6 +289,10 @@ centralised_messages: Dict[str, str] = {
         "For time_shift operator,"
         " shift_number must evaluate to an integer scalar"
     ),
+    # - String Operators
+    "4-8-1": (
+        "Invalid {op} parameter: {parameter_name} must be {constraint}."
+    ),
     # Generation of validations
     "5-0-1": ("This expression doesn't generate any correct validation."),
     "5-0-2": ("This expression can't be used for the generation of children."),

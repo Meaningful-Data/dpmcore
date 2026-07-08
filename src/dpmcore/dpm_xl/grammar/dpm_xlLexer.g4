@@ -128,6 +128,7 @@ DATE:                   'date';
 // String
 LEN:                    'len';
 CONCAT:                 '&';
+SUBSTR:                 'substr';
 
 // Time periods
 
@@ -429,6 +430,7 @@ CLAUSE_SYMDIFF:                'symdiff'   -> type(SYMDIFF);
 
 // String
 CLAUSE_LEN:                    'len' -> type(LEN);
+CLAUSE_SUBSTR:                 'substr' -> type(SUBSTR);
 CLAUSE_CONCAT:                 '&' -> type(CONCAT);
 
 // Regex

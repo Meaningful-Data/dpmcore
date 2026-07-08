@@ -46,6 +46,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     Start,
     SubAssignment,
     SubOp,
+    SubstrOp,
     SymdiffOp,
     TemporaryAssignment,
     TemporaryIdentifier,
@@ -116,6 +117,16 @@ class ASTVisitor(dpm_xlParserVisitor):
         read — cast once here so call sites stay readable.
         """
         return str(cast(TerminalNodeImpl, node).symbol.text)
+
+    @staticmethod
+    def _int_literal_value(text: str) -> int:
+        """Parse both INTEGER_LITERAL formats (plain or parenthesized negatives).
+
+        int() fails on (-5), so this handles both forms.
+        """
+        if text.startswith("(") and text.endswith(")"):
+            return int(text[1:-1])
+        return int(text)
 
     def visitStart(self, ctx: dpm_xlParser.StartContext) -> Start:
         ctx_list = list(ctx.getChildren())
@@ -517,6 +528,25 @@ class ASTVisitor(dpm_xlParserVisitor):
         op = self._symbol_text(ctx_list[0])
         operand: AST = self._visit(ctx_list[2])
         return UnaryOp(op=op, operand=operand)
+
+    def visitSubstrFunction(
+        self, ctx: dpm_xlParser.SubstrFunctionContext
+    ) -> SubstrOp:
+        ctx_list = list(ctx.getChildren())
+        # SUBSTR ( operand , start , length )
+        #   0    1    2    3   4   5   6    7
+        operand: AST = self._visit(ctx_list[2])
+        start = (
+            self._int_literal_value(self._symbol_text(ctx_list[4]))
+            if len(ctx_list) >= 6
+            else None
+        )
+        length = (
+            self._int_literal_value(self._symbol_text(ctx_list[6]))
+            if len(ctx_list) >= 8
+            else None
+        )
+        return SubstrOp(operand=operand, start=start, length=length)
 
     def visitClauseExpr(
         self, ctx: dpm_xlParser.ClauseExprContext

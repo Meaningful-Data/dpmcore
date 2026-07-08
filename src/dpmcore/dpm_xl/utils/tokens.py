@@ -51,6 +51,7 @@ RANK = "rank"
 # String operators
 LENGTH = "len"
 CONCATENATE = "&"
+SUBSTR = "substr"
 
 # Set operators
 SET_OF = "set_of"

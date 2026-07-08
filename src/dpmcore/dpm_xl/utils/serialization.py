@@ -624,6 +624,19 @@ class ASTToJSONVisitor(NodeVisitor):
             "component": node.component,
         }
 
+    def visit_SubstrOp(self, node: Any) -> NodeDict:
+        """Visit SubstrOp nodes.
+
+        ``start``/``length`` are optional integer literals emitted directly.
+        """
+        return {
+            "class_name": "SubstrOp",
+            "op": node.op,
+            "operand": self.visit(node.operand),
+            "start": node.start,
+            "length": node.length,
+        }
+
     def visit_RenameOp(self, node: Any) -> NodeDict:
         """Visit RenameOp nodes and serialize as RenameClauseOp."""
         return {

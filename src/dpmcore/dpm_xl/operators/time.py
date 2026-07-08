@@ -3,10 +3,14 @@ from typing import ClassVar, Union
 from dpmcore import errors
 from dpmcore.dpm_xl.operators.base import Operator, Unary
 from dpmcore.dpm_xl.symbols import ConstantOperand, RecordSet, Scalar
-from dpmcore.dpm_xl.types.promotion import unary_implicit_type_promotion
+from dpmcore.dpm_xl.types.promotion import (
+    unary_implicit_type_promotion,
+    unary_implicit_type_promotion_with_mixed_types,
+)
 from dpmcore.dpm_xl.types.scalar import (
     Date,
     Integer,
+    Mixed,
     Number,
     ScalarFactory,
     ScalarType,
@@ -214,22 +218,63 @@ class DateConstructor(Operator):
     @classmethod
     def validate(
         cls,
-        year_sym: Union[Scalar, ConstantOperand],
-        month_sym: Union[Scalar, ConstantOperand],
-        day_sym: Union[Scalar, ConstantOperand],
-    ) -> "Scalar":
+        year_sym: Union[Scalar, RecordSet, ConstantOperand],
+        month_sym: Union[Scalar, RecordSet, ConstantOperand],
+        day_sym: Union[Scalar, RecordSet, ConstantOperand],
+    ) -> "Scalar | RecordSet":
+        # Scalar and/or Recordset operands are allowed
         op_type = ScalarFactory().scalar_factory(Integer.__name__)
-        for sym in (year_sym, month_sym, day_sym):
-            if isinstance(sym, RecordSet):
-                raise errors.SemanticError("4-7-1", op=cls.op)
+        operands = (year_sym, month_sym, day_sym)
+        for sym in operands:
             error_info: dict[str, object] = {
                 "operand_name": sym.name,
                 "op": cls.op,
             }
-            unary_implicit_type_promotion(
-                sym.type, op_type, error_info=error_info
-            )
+            if isinstance(sym, RecordSet):
+                fact_type = sym.get_fact_component().type
+                if isinstance(fact_type, Mixed):
+                    if sym.records is None:
+                        raise Exception(
+                            "Mixed type promotion requires operand records"
+                        )
+                    _, sym.records = (
+                        unary_implicit_type_promotion_with_mixed_types(
+                            sym.records,
+                            op_type,
+                            op_type,
+                            error_info=error_info,
+                        )
+                    )
+                else:
+                    unary_implicit_type_promotion(
+                        fact_type, op_type, error_info=error_info
+                    )
+            else:
+                unary_implicit_type_promotion(
+                    sym.type, op_type, error_info=error_info
+                )
         origin = (
             f"date({year_sym.origin}, {month_sym.origin}, {day_sym.origin})"
         )
+        recordsets = [s for s in operands if isinstance(s, RecordSet)]
+        if recordsets:
+            # Result keys come from the reference: the widest key set.
+            reference = max(
+                recordsets, key=lambda rs: len(rs.get_key_components())
+            )
+            reference_keys = set(reference.get_key_components_names())
+            for rs in recordsets:
+                if rs is reference:
+                    continue
+                if not set(rs.get_key_components_names()) <= reference_keys:
+                    raise errors.SemanticError(
+                        "2-3",
+                        op=cls.op,
+                        structure_1=rs.get_key_components_names(),
+                        structure_2=reference.get_key_components_names(),
+                        origin=origin,
+                    )
+            return cls._create_labeled_recordset(
+                origin, Date(), reference.structure, reference.records
+            )
         return cls._create_labeled_scalar(origin, result_type=Date())

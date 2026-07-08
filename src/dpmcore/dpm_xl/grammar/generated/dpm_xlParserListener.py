@@ -512,6 +512,15 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by dpm_xlParser#substrFunction.
+    def enterSubstrFunction(self, ctx:dpm_xlParser.SubstrFunctionContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#substrFunction.
+    def exitSubstrFunction(self, ctx:dpm_xlParser.SubstrFunctionContext):
+        pass
+
+
     # Enter a parse tree produced by dpm_xlParser#commonAggrOp.
     def enterCommonAggrOp(self, ctx:dpm_xlParser.CommonAggrOpContext):
         pass
