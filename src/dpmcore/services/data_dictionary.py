@@ -113,7 +113,8 @@ class DataDictionaryService:
         date: Optional[str] = ...,
         release_code: Optional[str] = ...,
         verbose: Literal[False] = ...,
-    ) -> List[str]: ...
+    ) -> List[str]:
+        pass
 
     @overload
     def get_tables(
@@ -123,7 +124,8 @@ class DataDictionaryService:
         release_code: Optional[str] = ...,
         *,
         verbose: Literal[True],
-    ) -> List[Dict[str, Optional[str]]]: ...
+    ) -> List[Dict[str, Optional[str]]]:
+        pass
 
     def get_tables(
         self,

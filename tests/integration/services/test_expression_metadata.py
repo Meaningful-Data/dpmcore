@@ -80,6 +80,19 @@ def test_get_referenced_headers_reflects_syntax_usage(
     row_labels = {h["header_type"] for h in headers if h["code"] == "0010"}
     assert {"Row", "Column"}.issubset(row_labels)
 
+    # No duplicates: (table_vid, code, header_type) must be unique.
+    triples = [(h["table_vid"], h["code"], h["header_type"]) for h in headers]
+    assert len(triples) == len(set(triples)), (
+        f"duplicate (table_vid, code, header_type) entries: {triples}"
+    )
+
+    # Only the axes the expression actually uses show up.
+    assert {h["header_type"] for h in headers}.issubset(
+        {"Row", "Column", "Sheet"}
+    )
+    # Every "0010" entry must carry a table_vid that we can trace back.
+    assert all(h["table_vid"] for h in headers if h["code"] == "0010")
+
 
 def test_get_referenced_headers_filters_by_table_vid(service, fixture_session):
     release_id = _release_id(fixture_session, _RELEASE_CODE)

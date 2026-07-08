@@ -42,7 +42,6 @@ from dpmcore.orm.packaging import (
     ModuleVersionComposition,
 )
 from dpmcore.orm.rendering import (
-    Header,
     HeaderVersion,
     TableVersion,
     TableVersionHeader,
@@ -53,12 +52,6 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
-
-
-# Mapping from DPM ``Header.direction`` to the header-usage label the
-# expression syntax uses ("r*"→Row, "c*"→Column, "s*"→Sheet). Kept in
-# sync with the label emitted by :meth:`get_referenced_headers`.
-_DIRECTION_TO_USAGE = {"X": "Row", "Y": "Column", "Z": "Sheet"}
 
 
 class ExpressionMetadataService:
@@ -214,7 +207,6 @@ class ExpressionMetadataService:
                 HeaderVersion.code,
                 HeaderVersion.label,
                 TableVersionHeader.table_vid,
-                Header.direction,
                 TableVersion.code.label("table_code"),
                 TableVersion.name.label("table_name"),
             )
@@ -222,7 +214,6 @@ class ExpressionMetadataService:
                 TableVersionHeader,
                 TableVersionHeader.header_vid == HeaderVersion.header_vid,
             )
-            .join(Header, Header.header_id == HeaderVersion.header_id)
             .join(
                 TableVersion,
                 TableVersion.table_vid == TableVersionHeader.table_vid,
@@ -243,17 +234,10 @@ class ExpressionMetadataService:
             usages = code_usage.get(row.code or "")
             if not usages:
                 continue
-            # Prefer the usage whose axis matches the catalog direction
-            # when the header is used on multiple axes in the same
-            # expression: this makes the round-trip deterministic and
-            # keeps the (code, header_type) pair singular per table.
-            catalog_usage = _DIRECTION_TO_USAGE.get(row.direction or "")
-            ordered = (
-                [catalog_usage] + [u for u in usages if u != catalog_usage]
-                if catalog_usage and catalog_usage in usages
-                else list(usages)
-            )
-            for usage in ordered:
+            # Emit one row per axis the expression uses (Row/Column/Sheet)
+            # for this (code, table_vid). `seen` prevents duplicates when
+            # the DB has multiple header versions for the same code.
+            for usage in usages:
                 key = (row.code or "", usage, row.table_vid)
                 if key in seen:
                     continue
@@ -269,7 +253,6 @@ class ExpressionMetadataService:
                         "table_name": row.table_name or "",
                     }
                 )
-                break
 
         result.sort(
             key=lambda r: (
