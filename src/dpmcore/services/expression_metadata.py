@@ -28,7 +28,7 @@ service holds no state beyond its SQLAlchemy session.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, or_
 
@@ -99,17 +99,14 @@ class ExpressionMetadataService:
         On a syntax/semantic error (or when the expression references
         nothing that resolves), returns ``[]``.
         """
-        oc = self._prepare_operands(expression, release_id, release_code)
-        if oc is None:
+        prepared = self._prepare_operands(expression, release_id, release_code)
+        if prepared is None:
             return []
+        oc, release_id = prepared
 
         table_vids = self._extract_table_vids(oc)
         if not table_vids:
             return []
-
-        release_id = resolve_release_id(
-            self.session, release_id=release_id, release_code=release_code
-        )
 
         query = (
             self.session.query(
@@ -194,8 +191,11 @@ class ExpressionMetadataService:
 
         On a syntax/semantic error, returns ``[]``.
         """
-        oc = self._prepare_operands(expression, release_id, release_code)
-        if oc is None or oc.data is None or oc.data.empty:
+        prepared = self._prepare_operands(expression, release_id, release_code)
+        if prepared is None:
+            return []
+        oc, _ = prepared
+        if oc.data is None or oc.data.empty:
             return []
 
         table_vids = self._extract_table_vids(oc)
@@ -295,17 +295,14 @@ class ExpressionMetadataService:
 
         On a syntax/semantic error, returns ``[]``.
         """
-        oc = self._prepare_operands(expression, release_id, release_code)
-        if oc is None:
+        prepared = self._prepare_operands(expression, release_id, release_code)
+        if prepared is None:
             return []
+        oc, release_id = prepared
 
         table_vids = self._extract_table_vids(oc)
         if not table_vids:
             return []
-
-        release_id = resolve_release_id(
-            self.session, release_id=release_id, release_code=release_code
-        )
 
         query = (
             self.session.query(Framework)
@@ -350,25 +347,29 @@ class ExpressionMetadataService:
         expression: str,
         release_id: Optional[int],
         release_code: Optional[str],
-    ) -> Optional[OperandsChecking]:
+    ) -> Optional[Tuple[OperandsChecking, Optional[int]]]:
         """Parse ``expression`` and run ``OperandsChecking``.
 
-        Returns ``None`` when the expression cannot be parsed or when
-        the semantic pass raises — callers use that to return ``[]``.
+        Returns ``(operands, resolved_release_id)`` on success. Callers
+        can reuse ``resolved_release_id`` to avoid resolving the release
+        again downstream. Returns ``None`` when the expression cannot
+        be parsed or when the semantic pass raises — callers use that
+        to return ``[]``.
         """
         try:
-            release_id = resolve_release_id(
+            resolved_release_id = resolve_release_id(
                 self.session,
                 release_id=release_id,
                 release_code=release_code,
             )
             ast = self._syntax.parse(expression)
-            return OperandsChecking(
+            oc = OperandsChecking(
                 session=self.session,
                 expression=expression,
                 ast=ast,
-                release_id=release_id,
+                release_id=resolved_release_id,
             )
+            return oc, resolved_release_id
         except SemanticError as exc:
             logger.debug("Expression rejected by semantics: %s", exc)
             return None

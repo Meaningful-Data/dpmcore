@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union, overload
 
 from sqlalchemy import distinct
 
@@ -20,6 +20,9 @@ from dpmcore.orm.packaging import (
 )
 from dpmcore.orm.release_sort_order import compute_sort_order
 from dpmcore.orm.rendering import TableVersion
+from dpmcore.services._open_keys import (
+    get_open_keys_for_tables as _get_open_keys_for_tables,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -93,13 +96,32 @@ class DataDictionaryService:
     # Tables
     # ------------------------------------------------------------------ #
 
+    @overload
+    def get_tables(
+        self,
+        release_id: Optional[int] = ...,
+        date: Optional[str] = ...,
+        release_code: Optional[str] = ...,
+        verbose: Literal[False] = ...,
+    ) -> List[str]: ...
+
+    @overload
+    def get_tables(
+        self,
+        release_id: Optional[int] = ...,
+        date: Optional[str] = ...,
+        release_code: Optional[str] = ...,
+        *,
+        verbose: Literal[True],
+    ) -> List[Dict[str, Optional[str]]]: ...
+
     def get_tables(
         self,
         release_id: Optional[int] = None,
         date: Optional[str] = None,
         release_code: Optional[str] = None,
         verbose: bool = False,
-    ) -> List[Any]:
+    ) -> Union[List[str], List[Dict[str, Optional[str]]]]:
         """Return available tables.
 
         When ``verbose`` is ``False`` (default) returns a list of table
@@ -195,10 +217,8 @@ class DataDictionaryService:
         release_id = resolve_release_id(
             self.session, release_id=release_id, release_code=release_code
         )
-        from dpmcore.services.scope_calculator import ScopeCalculatorService
-
-        return ScopeCalculatorService(self.session)._get_open_keys_for_tables(
-            table_codes, release_id=release_id
+        return _get_open_keys_for_tables(
+            self.session, table_codes, release_id=release_id
         )
 
     def get_open_keys_for_table(

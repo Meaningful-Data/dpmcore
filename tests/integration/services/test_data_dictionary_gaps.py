@@ -16,7 +16,6 @@ from __future__ import annotations
 import pytest
 
 from dpmcore.services.data_dictionary import DataDictionaryService
-from dpmcore.services.scope_calculator import ScopeCalculatorService
 
 _RELEASE_CODE = "4.2.1"
 
@@ -63,19 +62,20 @@ def test_get_tables_verbose_returns_names(service, fixture_session):
     assert by_code["F_01.01"]["name"], "expected non-empty name for F_01.01"
 
 
-def test_get_open_keys_for_table_matches_private_helper(
+def test_get_open_keys_for_table_matches_shared_helper(
     service, fixture_session
 ):
-    """The public method must return the same dict as the private helper."""
+    """The public method must return the same dict as the shared helper."""
     release_id = _release_id(fixture_session, _RELEASE_CODE)
 
-    scope_svc = ScopeCalculatorService(fixture_session)
-    private = scope_svc._get_open_keys_for_tables(
-        ["F_01.01"], release_id=release_id
+    from dpmcore.services._open_keys import get_open_keys_for_tables
+
+    shared = get_open_keys_for_tables(
+        fixture_session, ["F_01.01"], release_id=release_id
     ).get("F_01.01", {})
 
     public = service.get_open_keys_for_table("F_01.01", release_id=release_id)
-    assert public == private
+    assert public == shared
 
 
 def test_get_open_keys_for_tables_batch(service, fixture_session):
