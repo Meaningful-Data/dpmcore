@@ -210,6 +210,24 @@ with connect("sqlite:///dpm.db") as db:
     print(result.module_versions)
 ```
 
+**Expression metadata — tables / headers / frameworks touched by an expression:**
+
+```python
+from dpmcore import connect
+
+with connect("sqlite:///dpm.db") as db:
+    meta = db.services.expression_metadata
+    expr = "{tF_01.01, r0010, c0010} = 100"
+
+    tables = meta.get_referenced_tables(expr, release_code="4.2.1")
+    headers = meta.get_referenced_headers(expr, release_code="4.2.1")
+    frameworks = meta.get_referenced_frameworks(expr, release_code="4.2.1")
+
+    # Each entry is a plain dict — no ORM instances leak.
+    # header_type reflects the axis USED in the expression
+    # (r*→"Row", c*→"Column", s*→"Sheet"), not Header.direction.
+```
+
 **Explorer — reverse lookups:**
 
 ```python
@@ -565,6 +583,7 @@ src/dpmcore/
 │   ├── semantic.py        SemanticService
 │   ├── ast_generator.py   ASTGeneratorService (engine-ready)
 │   ├── scope_calculator.py ScopeCalculatorService
+│   ├── expression_metadata.py ExpressionMetadataService
 │   ├── data_dictionary.py DataDictionaryService
 │   ├── explorer.py        ExplorerService
 │   ├── hierarchy.py       HierarchyService

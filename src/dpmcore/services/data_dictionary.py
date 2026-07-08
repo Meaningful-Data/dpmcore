@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+    overload,
+)
 
 from sqlalchemy import distinct
 
@@ -20,6 +30,9 @@ from dpmcore.orm.packaging import (
 )
 from dpmcore.orm.release_sort_order import compute_sort_order
 from dpmcore.orm.rendering import TableVersion
+from dpmcore.services._open_keys import (
+    get_open_keys_for_tables as _get_open_keys_for_tables,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -93,14 +106,49 @@ class DataDictionaryService:
     # Tables
     # ------------------------------------------------------------------ #
 
+    @overload
+    def get_tables(
+        self,
+        release_id: Optional[int] = ...,
+        date: Optional[str] = ...,
+        release_code: Optional[str] = ...,
+        verbose: Literal[False] = ...,
+    ) -> List[str]:
+        pass
+
+    @overload
+    def get_tables(
+        self,
+        release_id: Optional[int] = ...,
+        date: Optional[str] = ...,
+        release_code: Optional[str] = ...,
+        *,
+        verbose: Literal[True],
+    ) -> List[Dict[str, Optional[str]]]:
+        pass
+
     def get_tables(
         self,
         release_id: Optional[int] = None,
         date: Optional[str] = None,
         release_code: Optional[str] = None,
-    ) -> List[str]:
-        """Return available table codes."""
-        q = self.session.query(TableVersion.code)
+        verbose: bool = False,
+    ) -> Union[List[str], List[Dict[str, Optional[str]]]]:
+        """Return available tables.
+
+        When ``verbose`` is ``False`` (default) returns a list of table
+        codes. When ``verbose`` is ``True`` returns a list of dicts with
+        ``{code, name, description}`` for each active table version.
+        """
+        q: Any
+        if verbose:
+            q = self.session.query(
+                TableVersion.code,
+                TableVersion.name,
+                TableVersion.description,
+            )
+        else:
+            q = self.session.query(TableVersion.code)
 
         if date:
             if release_id is not None or release_code is not None:
@@ -135,6 +183,11 @@ class DataDictionaryService:
                 )
 
         q = q.order_by(TableVersion.code)
+        if verbose:
+            return [
+                {"code": r[0], "name": r[1], "description": r[2]}
+                for r in q.all()
+            ]
         return [row[0] for row in q.all()]
 
     def get_table_version(
@@ -159,6 +212,39 @@ class DataDictionaryService:
             )
         row = q.first()
         return row.to_dict() if row else None
+
+    def get_open_keys_for_tables(
+        self,
+        table_codes: List[str],
+        release_id: Optional[int] = None,
+        release_code: Optional[str] = None,
+    ) -> Dict[str, Dict[str, str]]:
+        """Return ``{table_code: {property_code: data_type_code}}``.
+
+        Identifies the open-key (compound-key) variables of each table
+        by walking ``TableVersion`` → ``KeyComposition`` →
+        ``VariableVersion`` → ``Property`` → ``ItemCategory`` (for the
+        property code) → ``DataType`` (for the type code).
+        """
+        release_id = resolve_release_id(
+            self.session, release_id=release_id, release_code=release_code
+        )
+        return _get_open_keys_for_tables(
+            self.session, table_codes, release_id=release_id
+        )
+
+    def get_open_keys_for_table(
+        self,
+        table_code: str,
+        release_id: Optional[int] = None,
+        release_code: Optional[str] = None,
+    ) -> Dict[str, str]:
+        """Return ``{property_code: data_type_code}`` for one table."""
+        return self.get_open_keys_for_tables(
+            [table_code],
+            release_id=release_id,
+            release_code=release_code,
+        ).get(table_code, {})
 
     # ------------------------------------------------------------------ #
     # Items

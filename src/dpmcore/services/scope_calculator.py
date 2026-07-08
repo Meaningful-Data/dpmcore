@@ -14,15 +14,13 @@ from typing import (
     Tuple,
 )
 
-from sqlalchemy import or_
-
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
 from dpmcore.dpm_xl.utils.filters import resolve_release_id
 from dpmcore.dpm_xl.utils.scopes_calculator import (
     OperationScopeService,
 )
 from dpmcore.errors import SemanticError
-from dpmcore.orm.glossary import ItemCategory, Property
+from dpmcore.orm.glossary import Property
 from dpmcore.orm.infrastructure import DataType, Release
 from dpmcore.orm.packaging import (
     ModuleVersion,
@@ -33,7 +31,10 @@ from dpmcore.orm.rendering import (
     TableVersion,
     TableVersionCell,
 )
-from dpmcore.orm.variables import KeyComposition, Variable, VariableVersion
+from dpmcore.orm.variables import Variable, VariableVersion
+from dpmcore.services._open_keys import (
+    get_open_keys_for_tables as _get_open_keys_for_tables,
+)
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -629,8 +630,10 @@ class ScopeCalculatorService:
                     variables_by_tvid[tvid][var_id] = type_code
 
         # Open keys per table_code
-        open_keys_by_code = self._get_open_keys_for_tables(
-            list(vid_to_code.values()), release_id=release_id
+        open_keys_by_code = _get_open_keys_for_tables(
+            self.session,
+            list(vid_to_code.values()),
+            release_id=release_id,
         )
 
         tables: Dict[str, Any] = {}
@@ -640,66 +643,6 @@ class ScopeCalculatorService:
                 "open_keys": open_keys_by_code.get(code, {}),
             }
         return tables
-
-    def _get_open_keys_for_tables(
-        self,
-        table_codes: List[str],
-        release_id: Optional[int] = None,
-    ) -> Dict[str, Dict[str, str]]:
-        """Return ``{table_code: {property_code: data_type_code}}``.
-
-        Identifies the open-key (compound-key) variables of each table
-        by walking ``TableVersion`` → ``KeyComposition`` →
-        ``VariableVersion`` → ``Property`` → ``ItemCategory`` (for the
-        property code) → ``DataType`` (for the type code). When
-        ``release_id`` is given the query restricts to ``TableVersion``
-        rows whose release window contains it.
-        """
-        result: Dict[str, Dict[str, str]] = {code: {} for code in table_codes}
-        if not table_codes:
-            return result
-
-        query = (
-            self.session.query(
-                TableVersion.code.label("table_code"),
-                ItemCategory.code.label("property_code"),
-                DataType.code.label("data_type_code"),
-            )
-            .select_from(DataType)
-            .join(Property, DataType.data_type_id == Property.data_type_id)
-            .join(ItemCategory, Property.property_id == ItemCategory.item_id)
-            .join(
-                VariableVersion,
-                ItemCategory.item_id == VariableVersion.property_id,
-            )
-            .join(
-                KeyComposition,
-                VariableVersion.variable_vid == KeyComposition.variable_vid,
-            )
-            .join(
-                TableVersion,
-                KeyComposition.key_id == TableVersion.key_id,
-            )
-        )
-
-        if release_id is not None:
-            query = query.filter(
-                or_(
-                    TableVersion.end_release_id.is_(None),
-                    TableVersion.end_release_id > release_id,
-                ),
-                TableVersion.start_release_id <= release_id,
-            )
-
-        query = query.distinct().order_by(TableVersion.code, ItemCategory.code)
-        rows = chunked_in(query, TableVersion.code, table_codes)
-        for row in rows:
-            tcode = row.table_code
-            pcode = row.property_code
-            dcode = row.data_type_code or ""
-            if tcode and pcode:
-                result.setdefault(tcode, {})[pcode] = dcode
-        return result
 
     def _get_module_uri(
         self,
