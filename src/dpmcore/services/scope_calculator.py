@@ -686,9 +686,7 @@ class ScopeCalculatorService:
             if not framework or not framework.code:
                 return None
 
-            csv_or_release_id = self._resolve_uri_release_id(
-                mv, module_code
-            )
+            csv_or_release_id = self._resolve_uri_release_id(mv, module_code)
             if isinstance(csv_or_release_id, str):
                 return csv_or_release_id  # CSV hit (already final URI).
             if csv_or_release_id is None:
