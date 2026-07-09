@@ -48,6 +48,7 @@ class Operator:
         do_not_check_with_return_type: On Comparison operators, we enforce only that operands involved have the same data type
         return_type: Data type to be checked. Operands must comply with this Data type by having it or by applying the Type Promotion.
         accepts_scalar_set_rhs: Operator accepts a ``ScalarSet`` as the right-hand operand (membership operators only).
+        accepts_scalar_set_pair: Operator accepts ``ScalarSet`` on both sides (set equality ``=``/``!=`` only, per §13.7).
     """
 
     op: ClassVar[str | None] = None
@@ -58,6 +59,7 @@ class Operator:
     propagate_attributes: ClassVar[bool] = False
     interval_allowed: ClassVar[bool] = False
     accepts_scalar_set_rhs: ClassVar[bool] = False
+    accepts_scalar_set_pair: ClassVar[bool] = False
 
     @staticmethod
     def _create_labeled_scalar(origin: str, result_type: ScalarType) -> Scalar:
@@ -265,13 +267,17 @@ class Binary(Operator):
         elif isinstance(left, RecordSet) and isinstance(right, ScalarSet):
             fact_component = left.get_fact_component()
             return fact_component.type, right.type, op_type_to_check
-        elif (isinstance(left, Scalar) and isinstance(right, ScalarSet)) or (
-            isinstance(left, ScalarSet) and isinstance(right, ScalarSet)
-        ):
+        elif isinstance(left, Scalar) and isinstance(right, ScalarSet):
             return left.type, right.type, op_type_to_check
-        elif isinstance(left, ScalarSet) and isinstance(right, RecordSet):
-            fact_component = right.get_fact_component()
-            return left.type, fact_component.type, op_type_to_check
+        elif cls.accepts_scalar_set_pair and isinstance(left, ScalarSet):
+            # §13.7 set equality: `=`/`!=` accept ScalarSet on both sides,
+            # with a RecordSet coerced to its Fact Component's ScalarSet.
+            if isinstance(right, ScalarSet):
+                return left.type, right.type, op_type_to_check
+            if isinstance(right, RecordSet):
+                fact_component = right.get_fact_component()
+                return left.type, fact_component.type, op_type_to_check
+            raise NotImplementedError
         else:
             raise NotImplementedError
 
@@ -558,9 +564,27 @@ class Binary(Operator):
         # ``accepts_scalar_set_rhs`` (currently only the ``in`` membership
         # operator). Any other shape — notably a bare RecordSet leaking past
         # validate_structures — is a real bug and gets a precise rejection.
-        if isinstance(left, ScalarSet) and isinstance(right, ScalarSet):
+        if (
+            cls.accepts_scalar_set_pair
+            and isinstance(left, ScalarSet)
+            and isinstance(right, (ScalarSet, RecordSet))
+        ):
+            # §13.7: set equality accepts ScalarSet on both sides, and also
+            # a RecordSet on the RHS (coerced upstream in types_given_structures).
+            # ``create_labeled_scalar`` only accepts ScalarSet/Scalar/Constant on
+            # the RHS; a RecordSet is folded into a ScalarSet placeholder that
+            # carries the fact type resolved above.
+            right_operand: ScalarSet
+            if isinstance(right, RecordSet):
+                right_operand = ScalarSet(
+                    type_=right.get_fact_component().type,
+                    name=None,
+                    origin=right.origin,
+                )
+            else:
+                right_operand = right
             labeled_scalar = cls.create_labeled_scalar(
-                left, right, result_type=rslt_type
+                left, right_operand, result_type=rslt_type
             )
             return labeled_scalar
         if not isinstance(left, (Scalar, ConstantOperand)):
