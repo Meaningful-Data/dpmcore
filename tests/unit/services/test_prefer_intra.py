@@ -41,9 +41,7 @@ def svc(monkeypatch):
         lambda session, release_id=None, release_code=None: release_id,
     )
     service = ScopeCalculatorService(MagicMock())
-    service._get_module_uri = lambda module_vid, release_id=None, mv=None: (
-        f"uri/{module_vid}"
-    )
+    service._get_module_uri = lambda module_vid, mv=None: f"uri/{module_vid}"
     service._get_module_tables = lambda module_vid, release_id=None: {
         "T_01": {"variables": {"v1": "x"}, "open_keys": {}},
     }
