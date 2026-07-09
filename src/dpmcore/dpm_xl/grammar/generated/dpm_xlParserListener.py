@@ -1,4 +1,4 @@
-# Generated from dpm_xlParser.g4 by ANTLR 4.9.2
+# Generated from /home/victorp/dpmcore/src/dpmcore/dpm_xl/grammar/dpm_xlParser.g4 by ANTLR 4.9.2
 from antlr4 import *
 if __name__ is not None and "." in __name__:
     from .dpm_xlParser import dpm_xlParser
@@ -260,6 +260,15 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by dpm_xlParser#setExpr.
+    def enterSetExpr(self, ctx:dpm_xlParser.SetExprContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#setExpr.
+    def exitSetExpr(self, ctx:dpm_xlParser.SetExprContext):
+        pass
+
+
     # Enter a parse tree produced by dpm_xlParser#setOperand.
     def enterSetOperand(self, ctx:dpm_xlParser.SetOperandContext):
         pass
@@ -329,15 +338,6 @@ class dpm_xlParserListener(ParseTreeListener):
 
     # Exit a parse tree produced by dpm_xlParser#symdiffSetExpr.
     def exitSymdiffSetExpr(self, ctx:dpm_xlParser.SymdiffSetExprContext):
-        pass
-
-
-    # Enter a parse tree produced by dpm_xlParser#subcategorySelectExpr.
-    def enterSubcategorySelectExpr(self, ctx:dpm_xlParser.SubcategorySelectExprContext):
-        pass
-
-    # Exit a parse tree produced by dpm_xlParser#subcategorySelectExpr.
-    def exitSubcategorySelectExpr(self, ctx:dpm_xlParser.SubcategorySelectExprContext):
         pass
 
 
@@ -536,15 +536,6 @@ class dpm_xlParserListener(ParseTreeListener):
 
     # Exit a parse tree produced by dpm_xlParser#rankOp.
     def exitRankOp(self, ctx:dpm_xlParser.RankOpContext):
-        pass
-
-
-    # Enter a parse tree produced by dpm_xlParser#countSetOp.
-    def enterCountSetOp(self, ctx:dpm_xlParser.CountSetOpContext):
-        pass
-
-    # Exit a parse tree produced by dpm_xlParser#countSetOp.
-    def exitCountSetOp(self, ctx:dpm_xlParser.CountSetOpContext):
         pass
 
 

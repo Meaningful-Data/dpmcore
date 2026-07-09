@@ -267,6 +267,11 @@ class Binary(Operator):
             return fact_component.type, right.type, op_type_to_check
         elif isinstance(left, Scalar) and isinstance(right, ScalarSet):
             return left.type, right.type, op_type_to_check
+        elif isinstance(left, ScalarSet) and isinstance(right, ScalarSet):
+            return left.type, right.type, op_type_to_check
+        elif isinstance(left, ScalarSet) and isinstance(right, RecordSet):
+            fact_component = right.get_fact_component()
+            return left.type, fact_component.type, op_type_to_check
         else:
             raise NotImplementedError
 
@@ -553,6 +558,11 @@ class Binary(Operator):
         # ``accepts_scalar_set_rhs`` (currently only the ``in`` membership
         # operator). Any other shape — notably a bare RecordSet leaking past
         # validate_structures — is a real bug and gets a precise rejection.
+        if isinstance(left, ScalarSet) and isinstance(right, ScalarSet):
+            labeled_scalar = cls.create_labeled_scalar(
+                left, right, result_type=rslt_type
+            )
+            return labeled_scalar
         if not isinstance(left, (Scalar, ConstantOperand)):
             raise Exception(
                 f"Operator {cls.op}: invalid left operand type "

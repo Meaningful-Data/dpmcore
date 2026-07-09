@@ -524,6 +524,9 @@ class InputAnalyzer(ASTTemplate, ABC):
     ) -> ScalarSet:
 
         common_type_code: str
+        if not node.children:
+            common_type = ScalarFactory().scalar_factory("Item")
+            return ScalarSet(type_=common_type, name=None, origin="{}")
         if isinstance(node.children[0], Constant):
             # ``Constant.type`` is stored as a str (see visit_Constant); the
             # shared AST annotation is ScalarType | None, so narrow at use.
@@ -848,6 +851,11 @@ class InputAnalyzer(ASTTemplate, ABC):
         symbols: list[ScalarSet] = []
         for op in operands:
             result = self.visit(op)
+            # §13.1.5: a RecordSet operand is implicitly treated as the
+            # ScalarSet of its Fact Component values, as if wrapped in set_of.
+            if isinstance(result, RecordSet):
+                fact_type = result.get_fact_component().type
+                result = ScalarSet(type_=fact_type, name=None, origin="set_of")
             if not isinstance(result, ScalarSet):
                 raise errors.SemanticError(
                     "3-3",
