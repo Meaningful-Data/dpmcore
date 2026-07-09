@@ -59,32 +59,41 @@ def filter_data_by_cell_element(
     cell_elements: Sequence[str],
     element_name: str,
     table_code: str,
+    valid_codes: set[str] | None = None,
 ) -> pd.DataFrame:
-    """Filter data by cell elements
+    """Filter data by cell elements.
+
     :param series: data to be filtered
     :param cell_elements: rows, columns or sheets using to filter data
     :param element_name: name of cell elements using to filter data
+    :param table_code: table code, echoed in "cell not found" errors
+    :param valid_codes: the full set of codes defined for ``element_name``
+        in the table, used only to validate range endpoints. When ``None``
+        the codes present in ``series`` are used. Callers that narrow one
+        axis after another (see :func:`filter_all_data`) must pass the
+        table-wide set, so a range endpoint that is a real code but does
+        not intersect the already-selected cells is not misreported as a
+        missing cell.
     :return: filtered data.
     """
+    if valid_codes is None:
+        valid_codes = set(series[element_name])
     if len(cell_elements) == 1 and "-" not in cell_elements[0]:
         series = series[series[element_name] == cell_elements[0]]
     elif len(cell_elements) == 1 and "-" in cell_elements[0]:
         limits = cell_elements[0].split("-")
-        _check_range_endpoints(
-            set(series[element_name]), limits, element_name, table_code
-        )
+        _check_range_endpoints(valid_codes, limits, element_name, table_code)
         series = series[series[element_name].between(limits[0], limits[1])]
     else:
         range_control = any("-" in x for x in cell_elements)
         if range_control:  # Range in cell elements, we must separate them
-            available = set(series[element_name])
             data_range = []
             data_single = []
             for x in cell_elements:
                 if "-" in x:
                     limits = x.split("-")
                     _check_range_endpoints(
-                        available, limits, element_name, table_code
+                        valid_codes, limits, element_name, table_code
                     )
                     data_range += list(
                         series[
@@ -114,12 +123,26 @@ def filter_all_data(
     sheets: Sequence[str],
 ) -> pd.DataFrame:
     df = data[data["table_code"] == table_code].reset_index(drop=True)
+    # Capture each axis's full code universe from the table-scoped frame
+    # before any narrowing, so range endpoints are validated against every
+    # code defined for the table -- not just the codes that survive the
+    # preceding axis filters, which would reject a valid endpoint that does
+    # not intersect the already-selected cells in a sparse table.
+    row_codes = set(df[ROW_CODE])
+    col_codes = set(df[COLUMN_CODE])
+    sheet_codes = set(df[SHEET_CODE])
     if rows and rows[0] != "*":
-        df = filter_data_by_cell_element(df, rows, ROW_CODE, table_code)
+        df = filter_data_by_cell_element(
+            df, rows, ROW_CODE, table_code, row_codes
+        )
     if cols and cols[0] != "*":
-        df = filter_data_by_cell_element(df, cols, COLUMN_CODE, table_code)
+        df = filter_data_by_cell_element(
+            df, cols, COLUMN_CODE, table_code, col_codes
+        )
     if sheets and sheets[0] != "*":
-        df = filter_data_by_cell_element(df, sheets, SHEET_CODE, table_code)
+        df = filter_data_by_cell_element(
+            df, sheets, SHEET_CODE, table_code, sheet_codes
+        )
     df = df.reset_index(drop=True)
     return df
 
