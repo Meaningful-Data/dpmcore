@@ -7,6 +7,53 @@ from dpmcore.dpm_xl.utils.tokens import *
 from dpmcore.errors import SemanticError
 
 
+def _raise_cells_not_found(
+    cells_not_found: Sequence[str],
+    element_name: str,
+    table_code: str,
+) -> None:
+    """Raise a ``1-2`` (cell not found) error for missing selector codes.
+
+    The codes are echoed in selector notation (``c0040``, ``r0010``, ...) so
+    the message mirrors how the codes are written in a DPM-XL expression.
+    """
+    header = (
+        "rows"
+        if element_name == ROW_CODE
+        else "columns"
+        if element_name == COLUMN_CODE
+        else "sheets"
+    )
+    not_found_expr = ", ".join([f"{header[0]}{x}" for x in cells_not_found])
+    op_pos: list[str | None] = [table_code, not_found_expr]
+    cell_exp = ", ".join(x for x in op_pos if x is not None)
+    raise SemanticError("1-2", cell_expression=cell_exp)
+
+
+def _check_range_endpoints(
+    available: set[str],
+    limits: Sequence[str],
+    element_name: str,
+    table_code: str,
+) -> None:
+    """Verify both endpoints of a range exist among ``available`` codes.
+
+    A range such as ``c0010-0030`` resolves via a between-comparison, which
+    silently accepts a bogus endpoint (e.g. the typo ``c0010-c0030`` reads the
+    second endpoint as code ``c0030``): the comparison still spans the real
+    codes in between, so no cell is missing and the mistake goes unnoticed.
+    Checking the endpoints themselves — the same existence check already
+    applied to the table code and to listed cells — surfaces the error.
+    """
+    missing = [
+        endpoint
+        for endpoint in dict.fromkeys((limits[0], limits[1]))
+        if endpoint not in available
+    ]
+    if missing:
+        _raise_cells_not_found(missing, element_name, table_code)
+
+
 def filter_data_by_cell_element(
     series: pd.DataFrame,
     cell_elements: Sequence[str],
@@ -23,15 +70,22 @@ def filter_data_by_cell_element(
         series = series[series[element_name] == cell_elements[0]]
     elif len(cell_elements) == 1 and "-" in cell_elements[0]:
         limits = cell_elements[0].split("-")
+        _check_range_endpoints(
+            set(series[element_name]), limits, element_name, table_code
+        )
         series = series[series[element_name].between(limits[0], limits[1])]
     else:
         range_control = any("-" in x for x in cell_elements)
         if range_control:  # Range in cell elements, we must separate them
+            available = set(series[element_name])
             data_range = []
             data_single = []
             for x in cell_elements:
                 if "-" in x:
                     limits = x.split("-")
+                    _check_range_endpoints(
+                        available, limits, element_name, table_code
+                    )
                     data_range += list(
                         series[
                             series[element_name].between(limits[0], limits[1])
@@ -48,21 +102,7 @@ def filter_data_by_cell_element(
         ]
 
         if cells_not_found:
-            header = (
-                "rows"
-                if element_name == ROW_CODE
-                else "columns"
-                if element_name == COLUMN_CODE
-                else "sheets"
-            )
-            not_found_expr: str | None = (
-                ", ".join([f"{header[0]}{x}" for x in cells_not_found])
-                if cells_not_found
-                else None
-            )
-            op_pos: list[str | None] = [table_code, not_found_expr]
-            cell_exp = ", ".join(x for x in op_pos if x is not None)
-            raise SemanticError("1-2", cell_expression=cell_exp)
+            _raise_cells_not_found(cells_not_found, element_name, table_code)
     return series
 
 
