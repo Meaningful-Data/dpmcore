@@ -1066,10 +1066,14 @@ class ASTGeneratorService:
                 current.get("dependency_modules", {}),
             )
 
+        # Restrict alternatives to the script's genuine dependency modules
+        # so the pairs can never name a module absent from
+        # ``dependency_modules`` (#202 dangling references).
         alt_deps = self._scope_calc.detect_alternative_dependencies(
             scope_results=all_scope_results,
             primary_module_vid=primary_module_vid,
             release_id=release_id,
+            valid_module_uris=set(all_dep_modules),
         )
 
         deduped_intra: List[str] = list(dict.fromkeys(all_intra))
