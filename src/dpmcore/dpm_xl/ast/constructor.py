@@ -800,7 +800,9 @@ class ASTVisitor(dpm_xlParserVisitor):
         type_ = token.type
 
         if type_ == dpm_xlParser.INTEGER_LITERAL:
-            return Constant(type_="Integer", value=int(value))
+            return Constant(
+                type_="Integer", value=self._int_literal_value(value)
+            )
         elif type_ == dpm_xlParser.DECIMAL_LITERAL:
             return Constant(type_="Number", value=float(value))
         elif type_ == dpm_xlParser.PERCENT_LITERAL:

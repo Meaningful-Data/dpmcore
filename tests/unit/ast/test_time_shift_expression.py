@@ -49,6 +49,15 @@ def test_negative_shift_produces_unary_ast_node():
     assert node.shift_number.operand.value == 5
 
 
+def test_parenthesized_negative_shift_produces_constant_ast_node():
+    ast = SyntaxService().parse("time_shift({tT1}, Q, (-5))")
+    node = ast.children[0]
+    assert isinstance(node, TimeShiftOp)
+    assert isinstance(node.shift_number, Constant)
+    assert node.shift_number.type == "Integer"
+    assert node.shift_number.value == -5
+
+
 def test_arithmetic_shift_produces_ast_node():
     ast = SyntaxService().parse("time_shift({tT1}, Q, 5 * 12)")
     node = ast.children[0]
