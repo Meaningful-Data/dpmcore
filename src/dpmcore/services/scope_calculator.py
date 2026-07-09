@@ -652,24 +652,19 @@ class ScopeCalculatorService:
     ) -> Optional[str]:
         """Resolve a module VID to its EBA taxonomy URI.
 
-        Resolution order:
+        The URI's release segment always comes from the release in which
+        the module version was introduced (its start release), resolved
+        via :meth:`_resolve_uri_release_id`. A module version's taxonomy
+        is published under that release, so an unchanged module keeps its
+        original release segment even inside a later report: e.g. an
+        unchanged ``ae`` stays at ``.../ae/4.2/mod/ae`` in a 4.2.1 report,
+        because no ``ae`` taxonomy exists at 4.2.1. The ``release_id``
+        argument only selects which module version is active; it does not
+        set the release segment.
 
-        - When ``release_id`` is supplied (the script-generation path),
-          build the URI dynamically using *that* release's code as the
-          release segment, regardless of when the module version
-          itself was introduced. This matches what the EBA taxonomy
-          package writers do: every module shipped inside a given
-          taxonomy release is rooted at ``.../{release}/mod/...``,
-          even when the underlying module version's start release is
-          older. Sharing the release segment across all modules in a
-          script is what lets the engine resolve cross-instance
-          dependencies against the matching XBRL Report Packages.
-
-        - When ``release_id`` is not supplied (ad-hoc lookups outside
-          script generation), try the static CSV mapping by
-          ``(module_code, version_number)`` first; on a miss, fall
-          back to the dynamic builder using the module version's
-          start release.
+        Resolution order (in :meth:`_resolve_uri_release_id`): the static
+        CSV mapping by ``(module_code, version_number)`` first; on a miss,
+        the module version's ``start_release_id``.
 
         When *mv* is supplied the initial DB lookup is skipped.
         """
@@ -692,7 +687,7 @@ class ScopeCalculatorService:
                 return None
 
             csv_or_release_id = self._resolve_uri_release_id(
-                mv, module_code, release_id
+                mv, module_code
             )
             if isinstance(csv_or_release_id, str):
                 return csv_or_release_id  # CSV hit (already final URI).
@@ -727,30 +722,29 @@ class ScopeCalculatorService:
     def _resolve_uri_release_id(
         mv: Any,
         module_code: str,
-        release_id: Optional[int],
     ) -> Optional[Any]:
-        """Pick the release_id that seeds the URL's release segment.
+        """Pick the release that seeds the URL's release segment.
+
+        A module version's taxonomy is published under the release in
+        which that version was introduced (its ``start_release_id``), not
+        under the report release. Seeding the segment from the report
+        release would build URIs like ``.../ae/4.2.1/mod/ae`` for modules
+        that did not change since 4.2 and therefore have no taxonomy at
+        4.2.1. So the segment is resolved from the module version itself,
+        the same way for every caller.
 
         Returns one of:
 
-        - ``int`` — the release_id whose ``Release.code`` should fill
-          the ``/{release}/`` segment.
         - ``str`` — a final URI (CSV hit, ``.json`` suffix already
           stripped). The caller must short-circuit and return it.
-        - ``None`` — no release_id resolvable; caller returns ``None``.
-
-        The script-generation path passes ``release_id`` and skips the
-        CSV mapping entirely so every module in a script shares the
-        same target release in its URI. Ad-hoc callers (no
-        ``release_id``) get the legacy resolution: CSV first, then
-        ``mv.start_release_id``.
+        - ``int`` — the release_id whose ``Release.code`` should fill
+          the ``/{release}/`` segment.
+        - ``None`` — nothing resolvable; caller returns ``None``.
         """
         from dpmcore.data import (
             get_module_schema_ref_by_version,
         )
 
-        if release_id is not None:
-            return release_id
         if mv.version_number:
             static = get_module_schema_ref_by_version(
                 module_code, mv.version_number
