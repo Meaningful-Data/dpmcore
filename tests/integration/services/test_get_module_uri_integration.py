@@ -98,18 +98,19 @@ class TestGetModuleUriIntegration:
             "made_up_mod"
         )
 
-    def test_release_id_segment_overrides_start_release(
+    def test_start_release_seeds_segment_not_release_id(
         self, populated_session
     ):
-        """Cross-module fix: target release wins over ``start_release_id``.
+        """Taxonomy-URL fix: start release wins over the report release_id.
 
-        Two modules in the same script may have different
-        ``start_release_id`` values (one introduced earlier, one
-        later). When generating a script for a given target release,
-        every URI must root at the target release's segment so they
-        match the matching XBRL Report Package's ``extends`` URLs.
+        A module version's taxonomy is published under the release it
+        was introduced in. An unchanged module keeps its original
+        release segment even inside a later report, because no taxonomy
+        exists for it at the report release. So the URI must root at the
+        module version's ``start_release_id``, and the report
+        ``release_id`` must not touch the segment.
         """
-        # Add a second release (4.2.1) and a module whose start
+        # Add a later report release (4.2.1) and a module whose start
         # release is the older 3.4 (release_id=5).
         populated_session.add(
             Release(release_id=12, code="4.2.1", date=date(2026, 4, 28)),
@@ -126,12 +127,12 @@ class TestGetModuleUriIntegration:
         populated_session.commit()
 
         svc = ScopeCalculatorService(populated_session)
-        # Generating the script under release 4.2.1 must use 4.2.1
-        # in the URI even though the module was introduced in 3.4.
+        # Even when the report release_id is 4.2.1, the URI keeps the
+        # module's introducing release (3.4) in its segment.
         uri = svc._get_module_uri(module_vid=300, release_id=12)
 
         assert uri == (
-            "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/corep/4.2.1/mod/ae"
+            "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/corep/3.4/mod/ae"
         )
 
     def test_no_release_id_falls_back_to_start_release(

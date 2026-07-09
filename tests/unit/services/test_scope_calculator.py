@@ -823,11 +823,10 @@ class TestGetModuleUri:
     def test_static_csv_miss_falls_through_to_dynamic(self):
         """When the static lookup returns ``None`` the dynamic path runs.
 
-        ``release_id`` is intentionally omitted here so that the
-        ad-hoc-lookup branch (which still consults the CSV) is
-        exercised. The script-generation path bypasses the CSV
-        entirely; that contract is pinned by
-        ``test_release_id_bypasses_static_csv``.
+        On a CSV miss the release segment falls through to the module
+        version's ``start_release_id``. The CSV is always consulted
+        first regardless of ``release_id``; that contract is pinned by
+        ``test_release_id_does_not_bypass_static_csv``.
         """
         Svc, _ = _load_module()
         svc = Svc(MagicMock())
@@ -857,14 +856,14 @@ class TestGetModuleUri:
             "COREP", "2.0.1"
         )
 
-    def test_release_id_bypasses_static_csv(self):
-        """When ``release_id`` is given the CSV mapping is *not* consulted.
+    def test_release_id_does_not_bypass_static_csv(self):
+        """Passing ``release_id`` still consults the CSV, and its hit wins.
 
-        The script-generation path must always root URIs at the target
-        release's segment so every module in a script shares the same
-        ``/{release}/`` segment as the matching XBRL Report Packages.
-        Letting CSV intercept the lookup would reintroduce the skew
-        that breaks cross-instance dependency resolution.
+        ``release_id`` only selects which module version is active; it
+        never sets the URI's release segment. A module version's
+        taxonomy is published under the release it was introduced in, so
+        the static CSV mapping is consulted first for every caller. When
+        it hits, that final URI wins regardless of ``release_id``.
         """
         Svc, _ = _load_module()
         svc = Svc(MagicMock())
@@ -878,30 +877,28 @@ class TestGetModuleUri:
         mv.module.framework.code = "CRR"
 
         data_stub = sys.modules["dpmcore.data"]
-        # If the CSV were consulted, this would short-circuit the URI.
+        # The CSV is consulted even though release_id is supplied, and
+        # its hit short-circuits the URI (``.json`` suffix stripped).
         data_stub.get_module_schema_ref_by_version = MagicMock(
             return_value="http://example.org/corep_con.json",
         )
 
-        release = MagicMock()
-        release.code = "4.2.1"
-        q = svc.session.query.return_value
-        q.filter.return_value.first.return_value = release
-
         uri = svc._get_module_uri(10, release_id=42, mv=mv)
-        assert uri == (
-            "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/crr/4.2.1/mod/"
-            "corep_con"
+        assert uri == "http://example.org/corep_con"
+        data_stub.get_module_schema_ref_by_version.assert_called_once_with(
+            "COREP_Con", "2.0.1"
         )
-        data_stub.get_module_schema_ref_by_version.assert_not_called()
 
-    def test_release_id_overrides_module_start_release(self):
-        """The URI's release segment uses ``release_id``, not start_release.
+    def test_start_release_seeds_segment_not_release_id(self):
+        """The URI's release segment uses start_release, not ``release_id``.
 
-        Pins the cross-module fix: a module version whose
-        ``start_release_id`` predates the script's target release must
-        still be rendered with the *target* release in its URI so it
-        matches the engine's package URIs.
+        Pins the taxonomy-URL fix: a module version whose
+        ``start_release_id`` predates the report release keeps its
+        *original* release in its URI, because no taxonomy is published
+        for that unchanged module under the later report release. An
+        unchanged ``ae`` stays at ``.../ae/4.2/mod/ae`` inside a 4.2.1
+        report. ``release_id`` never touches the segment: on a CSV miss
+        the resolver returns ``mv.start_release_id`` and ignores it.
         """
         Svc, _ = _load_module()
         svc = Svc(MagicMock())
@@ -909,7 +906,7 @@ class TestGetModuleUri:
         mv = MagicMock()
         mv.code = "AE"
         mv.version_number = "1.4.0"
-        mv.start_release_id = 11  # release 4.2 — older
+        mv.start_release_id = 11  # release 4.2 — older than the report
         mv.module = MagicMock()
         mv.module.framework = MagicMock()
         mv.module.framework.code = "AE"
@@ -919,14 +916,18 @@ class TestGetModuleUri:
             return_value=None,
         )
 
-        target_release = MagicMock()
-        target_release.code = "4.2.1"
+        # On a CSV miss the segment is seeded from start_release_id (11),
+        # not the report release_id (12) passed to _get_module_uri.
+        assert svc._resolve_uri_release_id(mv, "AE") == 11
+
+        start_release = MagicMock()
+        start_release.code = "4.2"  # 4.2, not the 4.2.1 report release
         q = svc.session.query.return_value
-        q.filter.return_value.first.return_value = target_release
+        q.filter.return_value.first.return_value = start_release
 
         uri = svc._get_module_uri(10, release_id=12, mv=mv)
         assert uri == (
-            "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/ae/4.2.1/mod/ae"
+            "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/ae/4.2/mod/ae"
         )
 
     def test_missing_module_code_returns_none(self):
