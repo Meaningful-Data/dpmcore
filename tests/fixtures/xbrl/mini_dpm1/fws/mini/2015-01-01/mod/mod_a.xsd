@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:xbrli="http://www.xbrl.org/2003/instance"
+           xmlns:model="http://www.eurofiling.info/xbrl/ext/model"
+           targetNamespace="http://www.example.be/xbrl/crr/fws/mini/2015-01-01/mod/mod_a"
+           elementFormDefault="qualified">
+  <xs:import
+      namespace="http://www.example.be/xbrl/crr/fws/mini/2015-01-01/tab/T_1.00"
+      schemaLocation="../tab/t_1.00/t_1.00.xsd"/>
+  <xs:element name="mod_a" type="model:moduleType"
+              substitutionGroup="xbrli:item" nillable="true"
+              abstract="true" xbrli:periodType="instant" id="be_mod_a"/>
+</xs:schema>

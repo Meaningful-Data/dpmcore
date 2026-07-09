@@ -18,20 +18,18 @@ imported lazily so the rest of dpmcore works without them.
 from __future__ import annotations
 
 import logging
-import re
-import shutil
 import subprocess
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from io import StringIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import case, inspect, select, text
+from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
+from dpmcore.loaders import _sqlite_output
 from dpmcore.orm.base import Base
-from dpmcore.orm.infrastructure import Release
 
 logger = logging.getLogger(__name__)
 
@@ -314,84 +312,35 @@ class MigrationService:
     ) -> Optional[Path]:
         """Move the SQLite file to its final location.
 
-        When *output_path* is given, the file is moved there verbatim;
-        otherwise the conventional ``<stem>_<release>_<YYYYMMDD>.db``
-        name is applied next to the original location. Returns
-        ``None`` when the engine is not a SQLite file engine
-        (``:memory:``, PostgreSQL, etc.).
+        Delegates to :func:`dpmcore.loaders._sqlite_output.
+        relocate_database`; see there for the naming convention.
         """
-        current = self._sqlite_file_path()
-        if current is None:
-            return None
-
-        if output_path is not None:
-            new_path = Path(output_path)
-        else:
-            new_path = current.with_name(self._conventional_name(current))
-
-        if new_path == current:
-            return current
-
-        new_path.parent.mkdir(parents=True, exist_ok=True)
-        self._engine.dispose()
-        shutil.move(str(current), str(new_path))
-        return new_path
+        return _sqlite_output.relocate_database(
+            self._engine,
+            output_path,
+            name_builder=self._conventional_name,
+        )
 
     def _conventional_name(self, current: Path) -> str:
         """Build the ``<stem>_<release>_<YYYYMMDD><suffix>`` filename."""
-        tokens = [current.stem]
-        release_code = self._current_release_code()
-        if release_code:
-            tokens.append(release_code)
-        tokens.append(self._today_token())
-        return "_".join(tokens) + current.suffix
+        return _sqlite_output.conventional_name(
+            self._engine,
+            current,
+            today=self._today_token(),
+        )
 
     @staticmethod
     def _today_token() -> str:
         """Return today's UTC date as ``YYYYMMDD``."""
-        return datetime.now(tz=timezone.utc).strftime("%Y%m%d")
+        return _sqlite_output.today_token()
 
     def _sqlite_file_path(self) -> Optional[Path]:
         """Return the SQLite file path, or ``None`` if not applicable."""
-        url = self._engine.url
-        if url.get_backend_name() != "sqlite":
-            return None
-        database = url.database
-        if not database or database == ":memory:":
-            return None
-        path = Path(database)
-        if not path.is_file():
-            return None
-        return path
+        return _sqlite_output.sqlite_file_path(self._engine)
 
     def _current_release_code(self) -> Optional[str]:
         """Return a filename-safe code for the current release."""
-        from sqlalchemy.orm import Session
-
-        # Latest first: an undated (unpublished) working release ranks as
-        # the latest. The NULL-first CASE keeps this uniform across
-        # backends (SQLite/SQL Server otherwise sort NULLs last in DESC).
-        latest_first = (
-            case((Release.date.is_(None), 1), else_=0).desc(),
-            Release.date.desc(),
-        )
-        with Session(self._engine) as session:
-            stmt = (
-                select(Release.code)
-                .where(Release.is_current.is_(True))
-                .order_by(*latest_first)
-            )
-            code = session.scalars(stmt).first()
-            if code is None:
-                code = session.scalars(
-                    select(Release.code)
-                    .where(Release.code.is_not(None))
-                    .order_by(*latest_first)
-                ).first()
-
-        if not code:
-            return None
-        return re.sub(r"[^A-Za-z0-9.+-]+", "-", code).strip("-") or None
+        return _sqlite_output.current_release_code(self._engine)
 
     @staticmethod
     def _coerce_numeric_columns(df: Any) -> Any:

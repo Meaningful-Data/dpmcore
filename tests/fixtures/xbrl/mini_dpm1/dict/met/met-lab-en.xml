@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:xlink="http://www.w3.org/1999/xlink">
+  <link:labelLink xlink:type="extended"
+                  xlink:role="http://www.xbrl.org/2003/role/link">
+    <link:loc xlink:type="locator" xlink:href="met.xsd#be_mi1"
+              xlink:label="loc_be_mi1"/>
+    <link:label xlink:type="resource" xlink:label="label_be_mi1"
+                xml:lang="en"
+                xlink:role="http://www.xbrl.org/2003/role/label">Carrying amount</link:label>
+    <link:labelArc xlink:type="arc"
+        xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label"
+        xlink:from="loc_be_mi1" xlink:to="label_be_mi1"/>
+    <link:loc xlink:type="locator" xlink:href="met.xsd#be_ii2"
+              xlink:label="loc_be_ii2"/>
+    <link:label xlink:type="resource" xlink:label="label_be_ii2"
+                xml:lang="en"
+                xlink:role="http://www.xbrl.org/2003/role/label">Number of items</link:label>
+    <link:labelArc xlink:type="arc"
+        xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label"
+        xlink:from="loc_be_ii2" xlink:to="label_be_ii2"/>
+  </link:labelLink>
+</link:linkbase>

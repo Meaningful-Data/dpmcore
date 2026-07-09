@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<schema elementFormDefault="qualified"
+xmlns:link="http://www.xbrl.org/2003/linkbase"
+xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2001/XMLSchema" targetNamespace="http://www.xbrl.be/be/fr/FinancialInstrumentsBalance/t-FinInstr/2008-01-01" attributeFormDefault="unqualified"
+xmlns:xbrli="http://www.xbrl.org/2003/instance"
+xmlns:t-FinInstr="http://www.xbrl.be/be/fr/FinancialInstrumentsBalance/t-FinInstr/2008-01-01"
+xmlns:ref="http://www.xbrl.org/2004/ref"
+xmlns:xbrldt="http://xbrl.org/2005/xbrldt"
+xmlns:xl="http://www.xbrl.org/2003/XLink"
+xmlns:d-sc-be="http://www.c-ebs.org/eu/fr/esrs/corep/2006-07-01/d-sc-be-2006-07-01">
+  <annotation>
+    <appinfo>
+      <link:linkbaseRef xlink:type="simple" xlink:href="t-FinInstr-2008-01-01-definition.xml" xlink:title="Definition Links, all" xlink:role="http://www.xbrl.org/2003/role/definitionLinkbaseRef" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+    </appinfo>
+  </annotation>
+  <import namespace="http://www.xbrl.org/2003/instance" schemaLocation="http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd"/>
+  <import namespace="http://www.xbrl.org/2004/ref" schemaLocation="http://www.xbrl.org/2004/ref-2004-08-10.xsd"/>
+  <import namespace="http://xbrl.org/2005/xbrldt" schemaLocation="http://www.xbrl.org/2005/xbrldt-2005.xsd"/>
+  <import namespace="http://www.xbrl.be/be/fr/FinancialInstrumentsBalance/p-FinInstr/2008-01-01" schemaLocation="p-FinInstr-2008-01-01.xsd"/>
+  <import namespace="http://www.c-ebs.org/eu/fr/esrs/corep/2006-07-01/d-hh-2006-07-01" schemaLocation="d-hh-2006-07-01.xsd"/>
+  <import namespace="http://www.xbrl.org/2003/linkbase" schemaLocation="http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd"/>
+  <import namespace="http://www.c-ebs.org/eu/fr/esrs/corep/2006-07-01/d-sc-be-2006-07-01" schemaLocation="d-sc-be-2006-07-01.xsd"/>
+</schema>

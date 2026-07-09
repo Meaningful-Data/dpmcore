@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?taxonomy-version 1.2.4?>
+<!-- Copyright (C) 2005 CEBS Secretariat Ltd., Tower 42, 25 Old Broad Street, London, EC2N 1HQ, United Kingdom. -->
+<link:linkbase
+xmlns:link="http://www.xbrl.org/2003/linkbase"
+xmlns:xbrli="http://www.xbrl.org/2003/instance"
+xmlns:xlink="http://www.w3.org/1999/xlink"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd"
+xmlns:d-hh="http://www.c-ebs.org/eu/fr/esrs/corep/2006-07-01/d-hh-2006-07-01">
+  <link:labelLink xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <link:loc xlink:type="locator" xlink:href="d-hh-2006-07-01.xsd#hyp-cm_EmptyHypercube" xlink:label="EmptyHypercube" xlink:title="EmptyHypercube"/>
+    <link:label xlink:type="resource" xlink:label="label_EmptyHypercube" xlink:role="http://www.xbrl.org/2003/role/label" xlink:title="label_EmptyHypercube" xml:lang="en" id="label_EmptyHypercube">Helper Empty (Hypercube)</link:label>
+    <link:labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="EmptyHypercube" xlink:to="label_EmptyHypercube" xlink:title="label: EmptyHypercube to label_EmptyHypercube"/>
+    <link:loc xlink:type="locator" xlink:href="d-hh-2006-07-01.xsd#hyp-cm_ProhibitingHypercube" xlink:label="InvalidHypercube" xlink:title="InvalidHypercube"/>
+    <link:label xlink:type="resource" xlink:label="label_InvalidHypercube" xlink:role="http://www.xbrl.org/2003/role/label" xlink:title="label_InvalidHypercube" xml:lang="en" id="label_InvalidHypercube">Helper Prohibiting (Hypercube)</link:label>
+    <link:labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="InvalidHypercube" xlink:to="label_InvalidHypercube" xlink:title="label: InvalidHypercube to label_InvalidHypercube"/>
+    <link:loc xlink:type="locator" xlink:href="d-hh-2006-07-01.xsd#hyp-cm_NullDimension" xlink:label="InvalidDimension" xlink:title="InvalidDimension"/>
+    <link:label xlink:type="resource" xlink:label="label_InvalidDimension" xlink:role="http://www.xbrl.org/2003/role/label" xlink:title="label_InvalidDimension" xml:lang="en" id="label_InvalidDimension">Helper Null (Dimension)</link:label>
+    <link:labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="InvalidDimension" xlink:to="label_InvalidDimension" xlink:title="label: InvalidDimension to label_InvalidDimension"/>
+    <link:loc xlink:type="locator" xlink:href="d-hh-2006-07-01.xsd#hyp-cm_ProhibitedItemsPlaceholder" xlink:label="ProhibitedItemsPlaceholder" xlink:title="ProhibitedItemsPlaceholder"/>
+    <link:label xlink:type="resource" xlink:label="label_ProhibitedItemsPlaceholder" xlink:role="http://www.xbrl.org/2003/role/label" xlink:title="label_ProhibitedItemsPlaceholder" xml:lang="en" id="label_ProhibitedItemsPlaceholder">Helper Prohibited Items Placeholder</link:label>
+    <link:labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="ProhibitedItemsPlaceholder" xlink:to="label_ProhibitedItemsPlaceholder" xlink:title="label: ProhibitedItemsPlaceholder to label_ProhibitedItemsPlaceholder"/>
+    <link:loc xlink:type="locator" xlink:href="d-hh-2006-07-01.xsd#hyp-cm_AdimensionalItemsPlaceholder" xlink:label="AdimensionalItemsPlaceholder" xlink:title="AdimensionalItemsPlaceholder"/>
+    <link:label xlink:type="resource" xlink:label="label_AdimensionalItemsPlaceholder" xlink:role="http://www.xbrl.org/2003/role/label" xlink:title="label_AdimensionalItemsPlaceholder" xml:lang="en" id="label_AdimensionalItemsPlaceholder">Helper Adimensional Items Placeholder</link:label>
+    <link:labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="AdimensionalItemsPlaceholder" xlink:to="label_AdimensionalItemsPlaceholder" xlink:title="label: AdimensionalItemsPlaceholder to label_AdimensionalItemsPlaceholder"/>
+  </link:labelLink>
+</link:linkbase>

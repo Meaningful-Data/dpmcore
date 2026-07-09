@@ -152,6 +152,208 @@ def export_csv(source: str, output_dir: str) -> None:
     console.print("Review results with manual inspection and/or git diff.")
 
 
+@main.command("import-xbrl")
+@click.option(
+    "--source",
+    required=True,
+    type=click.Path(exists=True, path_type=str),
+    help="Taxonomy directory or .zip archive.",
+)
+@click.option(
+    "--framework-code",
+    required=True,
+    help="Code of the framework to create (e.g. B2P2).",
+)
+@click.option(
+    "--framework-name",
+    default=None,
+    help="Framework display name. Defaults to the framework code.",
+)
+@click.option(
+    "--release-code",
+    required=True,
+    help="Code of the release to import under (e.g. 2008-01-01).",
+)
+@click.option(
+    "--release-date",
+    default=None,
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help="Release date (YYYY-MM-DD).",
+)
+@click.option(
+    "--entry",
+    "entry_points",
+    multiple=True,
+    help=(
+        "Entry-point schema (relative to the taxonomy root, glob "
+        "patterns allowed). Repeatable; auto-discovered when omitted."
+    ),
+)
+@click.option(
+    "--database",
+    default=None,
+    help=(
+        "SQLAlchemy URL of a NEW database to build "
+        "(e.g. sqlite:///b2p2.db). The schema is dropped and "
+        "recreated. Mutually exclusive with --into."
+    ),
+)
+@click.option(
+    "--into",
+    "into_database",
+    default=None,
+    help=(
+        "SQLAlchemy URL of an EXISTING populated DPM database to "
+        "import into under a new release. Mutually exclusive with "
+        "--database."
+    ),
+)
+@click.option(
+    "--output",
+    "output_path",
+    default=None,
+    type=click.Path(dir_okay=False, path_type=str),
+    help=(
+        "Final path for the resulting SQLite file (new-database "
+        "mode). When omitted, defaults to "
+        "'<stem>_<release>_<YYYYMMDD>.db'."
+    ),
+)
+@click.option(
+    "--architecture",
+    type=click.Choice(["auto", "eurofiling2006", "dpm1"]),
+    default="auto",
+    show_default=True,
+    help="Taxonomy architecture; detected automatically by default.",
+)
+@click.option(
+    "--offline",
+    is_flag=True,
+    default=False,
+    help="Forbid web access; remote schemas must be cached.",
+)
+@click.option(
+    "--cache-dir",
+    default=None,
+    type=click.Path(file_okay=False, path_type=str),
+    help="Pre-seeded Arelle web-cache directory.",
+)
+@click.option(
+    "--owner-acronym",
+    default="NBB",
+    show_default=True,
+    help="Acronym of the owning organisation.",
+)
+@click.option(
+    "--owner-name",
+    default="National Bank of Belgium",
+    show_default=True,
+    help="Name of the owning organisation.",
+)
+@click.option(
+    "--max-columns",
+    default=512,
+    show_default=True,
+    help=(
+        "Column-enumeration bound; larger dimensions become key "
+        "(sheet) dimensions."
+    ),
+)
+def import_xbrl(  # noqa: C901 - thin option plumbing
+    source: str,
+    framework_code: str,
+    framework_name: str | None,
+    release_code: str,
+    release_date: Any,
+    entry_points: tuple[str, ...],
+    database: str | None,
+    into_database: str | None,
+    output_path: str | None,
+    architecture: str,
+    offline: bool,
+    cache_dir: str | None,
+    owner_acronym: str,
+    owner_name: str,
+    max_columns: int,
+) -> None:
+    """Import an XBRL taxonomy into a DPM database."""
+    from pathlib import Path
+
+    try:
+        from rich.console import Console
+        from rich.table import Table
+    except ImportError:
+        click.echo(
+            "Install 'rich' for pretty output: pip install dpmcore[cli]",
+            err=True,
+        )
+        sys.exit(1)
+
+    console = Console()
+
+    if (database is None) == (into_database is None):
+        console.print(
+            "[red]Error:[/red] provide exactly one of --database "
+            "(build a new database) or --into (add to an existing "
+            "one)."
+        )
+        sys.exit(1)
+
+    from sqlalchemy import create_engine
+
+    from dpmcore.loaders.xbrl import (
+        XbrlImportError,
+        XbrlTaxonomyImportService,
+    )
+
+    engine = create_engine(database or into_database or "")
+    service = XbrlTaxonomyImportService(engine)
+
+    try:
+        result = service.import_taxonomy(
+            source,
+            framework_code=framework_code,
+            framework_name=framework_name,
+            release_code=release_code,
+            release_date=(
+                release_date.date() if release_date is not None else None
+            ),
+            entry_points=list(entry_points) or None,
+            architecture=architecture,
+            owner_name=owner_name,
+            owner_acronym=owner_acronym,
+            into_existing=into_database is not None,
+            offline=offline,
+            cache_dir=Path(cache_dir) if cache_dir else None,
+            output_path=Path(output_path) if output_path else None,
+            max_enumerated_columns=max_columns,
+        )
+    except XbrlImportError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        sys.exit(1)
+
+    table = Table(title=f"XBRL Import Results ({result.architecture})")
+    table.add_column("Entity", style="cyan")
+    table.add_column("Created", justify="right", style="green")
+    table.add_column("Reused", justify="right", style="yellow")
+
+    for entity in sorted(set(result.created) | set(result.reused)):
+        table.add_row(
+            entity,
+            str(result.created.get(entity, 0)),
+            str(result.reused.get(entity, 0)),
+        )
+
+    console.print(table)
+    console.print(f"[bold]Release ID:[/bold] {result.release_id}")
+    if result.database_path is not None:
+        console.print(
+            f"[bold]Database:[/bold] [green]{result.database_path}[/green]"
+        )
+    for warning in result.warnings:
+        console.print(f"[yellow]Warning:[/yellow] {warning}")
+
+
 @main.command("build-meili-json")
 @click.option(
     "--source-dir",

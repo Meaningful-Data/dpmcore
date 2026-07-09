@@ -1,0 +1,23 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<linkbase xmlns="http://www.xbrl.org/2003/linkbase"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns:xlink="http://www.w3.org/1999/xlink"
+xmlns:xbrldt="http://xbrl.org/2005/xbrldt" xsi:schemaLocation=" http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd http://xbrl.org/2005/xbrldt http://www.xbrl.org/2005/xbrldt-2005.xsd">
+  <arcroleRef xlink:type="simple" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#dimension-domain" arcroleURI="http://xbrl.org/int/dim/arcrole/dimension-domain" />
+  <arcroleRef xlink:type="simple" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#domain-member" arcroleURI="http://xbrl.org/int/dim/arcrole/domain-member" />
+  <definitionLink xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_ScopeDimension" xlink:label="d-sc-be_ScopeDimension" />
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_ScopeDomain" xlink:label="d-sc-be_ScopeDomain" />
+    <definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/dimension-domain" xlink:from="d-sc-be_ScopeDimension" xlink:to="d-sc-be_ScopeDomain" order="1" use="optional" xbrldt:usable="false" />
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_Holding" xlink:label="d-sc-be_Holding" />
+    <definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="d-sc-be_ScopeDomain" xlink:to="d-sc-be_Holding" order="1" use="optional" />
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_Consolidated" xlink:label="d-sc-be_Consolidated" />
+    <definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="d-sc-be_ScopeDomain" xlink:to="d-sc-be_Consolidated" order="2" use="optional" />
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_Solo" xlink:label="d-sc-be_Solo" />
+    <definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="d-sc-be_ScopeDomain" xlink:to="d-sc-be_Solo" order="3" use="optional" />
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_Social" xlink:label="d-sc-be_Social" />
+    <definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="d-sc-be_Solo" xlink:to="d-sc-be_Social" order="1" use="optional" />
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_Territorial" xlink:label="d-sc-be_Territorial" />
+    <definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="d-sc-be_Solo" xlink:to="d-sc-be_Territorial" order="2" use="optional" />
+  </definitionLink>
+</linkbase>

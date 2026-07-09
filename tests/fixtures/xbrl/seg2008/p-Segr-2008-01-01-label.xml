@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<linkbase xmlns="http://www.xbrl.org/2003/linkbase" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xlink="http://www.w3.org/1999/xlink" xsi:schemaLocation=" http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd">
+  <labelLink xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_ClientFundsToBePlaced" xlink:label="p-Segr_ClientFundsToBePlaced" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="p-Segr_ClientFundsToBePlaced" xlink:to="p-Segr_ClientFundsToBePlaced_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="p-Segr_ClientFundsToBePlaced_lbl" xml:lang="en">Client Funds to be Placed</label>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_ClientFundsToBePlacedOfWhichFundsOfClientsWhoAreAdverseToMoneyMarketFunds" xlink:label="p-Segr_ClientFundsToBePlacedOfWhichFundsOfClientsWhoAreAdverseToMoneyMarketFunds" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="p-Segr_ClientFundsToBePlacedOfWhichFundsOfClientsWhoAreAdverseToMoneyMarketFunds" xlink:to="p-Segr_ClientFundsToBePlacedOfWhichFundsOfClientsWhoAreAdverseToMoneyMarketFunds_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="p-Segr_ClientFundsToBePlacedOfWhichFundsOfClientsWhoAreAdverseToMoneyMarketFunds_lbl" xml:lang="en">Of Which Funds of Clients who are Adverse to Money Market Funds</label>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_ExemptClientFundsFundsInTransitMaxThreeWorkingDays" xlink:label="p-Segr_ExemptClientFundsFundsInTransitMaxThreeWorkingDays" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="p-Segr_ExemptClientFundsFundsInTransitMaxThreeWorkingDays" xlink:to="p-Segr_ExemptClientFundsFundsInTransitMaxThreeWorkingDays_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="p-Segr_ExemptClientFundsFundsInTransitMaxThreeWorkingDays_lbl" xml:lang="en">Funds in Transit (Max Three Working Days)</label>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_ExemptClientFundsCoverAssets" xlink:label="p-Segr_ExemptClientFundsCoverAssets" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="p-Segr_ExemptClientFundsCoverAssets" xlink:to="p-Segr_ExemptClientFundsCoverAssets_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="p-Segr_ExemptClientFundsCoverAssets_lbl" xml:lang="en">Cover Assets</label>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_ExemptClientFundsPresentation" xlink:label="p-Segr_ExemptClientFundsPresentation" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="p-Segr_ExemptClientFundsPresentation" xlink:to="p-Segr_ExemptClientFundsPresentation_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="p-Segr_ExemptClientFundsPresentation_lbl" xml:lang="en">Exempt Client Funds (Presentation)</label>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_ExemptClientFundsTotal" xlink:label="p-Segr_ExemptClientFundsTotal" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="p-Segr_ExemptClientFundsTotal" xlink:to="p-Segr_ExemptClientFundsTotal_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="p-Segr_ExemptClientFundsTotal_lbl" xml:lang="en">Exempt Client Funds, Total</label>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_NetClientFundsToBePlaced" xlink:label="p-Segr_NetClientFundsToBePlaced" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="p-Segr_NetClientFundsToBePlaced" xlink:to="p-Segr_NetClientFundsToBePlaced_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="p-Segr_NetClientFundsToBePlaced_lbl" xml:lang="en">Net Client Funds to be Placed</label>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_PlacementOfClientFundsClientAccountsWithCentralBanks" xlink:label="p-Segr_PlacementOfClientFundsClientAccountsWithCentralBanks" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="p-Segr_PlacementOfClientFundsClientAccountsWithCentralBanks" xlink:to="p-Segr_PlacementOfClientFundsClientAccountsWithCentralBanks_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="p-Segr_PlacementOfClientFundsClientAccountsWithCentralBanks_lbl" xml:lang="en">Client Accounts with Central Banks</label>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsOutsideTheEEA" xlink:label="p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsOutsideTheEEA" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsOutsideTheEEA" xlink:to="p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsOutsideTheEEA_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsOutsideTheEEA_lbl" xml:lang="en">Client Accounts with Credit Institutions outside the EEA</label>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsWithinTheEEA" xlink:label="p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsWithinTheEEA" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsWithinTheEEA" xlink:to="p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsWithinTheEEA_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsWithinTheEEA_lbl" xml:lang="en">Client Accounts with Credit Institutions within the EEA</label>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_PlacementOfClientFundsEligibleMoneyMarketFunds" xlink:label="p-Segr_PlacementOfClientFundsEligibleMoneyMarketFunds" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="p-Segr_PlacementOfClientFundsEligibleMoneyMarketFunds" xlink:to="p-Segr_PlacementOfClientFundsEligibleMoneyMarketFunds_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="p-Segr_PlacementOfClientFundsEligibleMoneyMarketFunds_lbl" xml:lang="en">Eligible Money Market Funds</label>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_PlacementOfClientFundsPresentation" xlink:label="p-Segr_PlacementOfClientFundsPresentation" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="p-Segr_PlacementOfClientFundsPresentation" xlink:to="p-Segr_PlacementOfClientFundsPresentation_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="p-Segr_PlacementOfClientFundsPresentation_lbl" xml:lang="en">Placement of Client Funds (Presentation)</label>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_PlacementOfClientFundsTotal" xlink:label="p-Segr_PlacementOfClientFundsTotal" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="p-Segr_PlacementOfClientFundsTotal" xlink:to="p-Segr_PlacementOfClientFundsTotal_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="p-Segr_PlacementOfClientFundsTotal_lbl" xml:lang="en">Placement of Client Funds, Total</label>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_PlacementOfClientFundsTotalOfWhichDepositsThatMayNotBePlacedInMoneyMarketFunds" xlink:label="p-Segr_PlacementOfClientFundsTotalOfWhichDepositsThatMayNotBePlacedInMoneyMarketFunds" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="p-Segr_PlacementOfClientFundsTotalOfWhichDepositsThatMayNotBePlacedInMoneyMarketFunds" xlink:to="p-Segr_PlacementOfClientFundsTotalOfWhichDepositsThatMayNotBePlacedInMoneyMarketFunds_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="p-Segr_PlacementOfClientFundsTotalOfWhichDepositsThatMayNotBePlacedInMoneyMarketFunds_lbl" xml:lang="en">Of Which Deposits that may Not be Placed in Money Market Funds</label>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_SegregationPresentation" xlink:label="p-Segr_SegregationPresentation" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="p-Segr_SegregationPresentation" xlink:to="p-Segr_SegregationPresentation_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="p-Segr_SegregationPresentation_lbl" xml:lang="en">Segregation (Presentation)</label>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_SurplusShortfall" xlink:label="p-Segr_SurplusShortfall" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="p-Segr_SurplusShortfall" xlink:to="p-Segr_SurplusShortfall_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="p-Segr_SurplusShortfall_lbl" xml:lang="en">Surplus (+) / Shortfall (-)</label>
+  </labelLink>
+</linkbase>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<linkbase xmlns="http://www.xbrl.org/2003/linkbase" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xbrldt="http://xbrl.org/2005/xbrldt" xsi:schemaLocation=" http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd http://xbrl.org/2005/xbrldt http://www.xbrl.org/2005/xbrldt-2005.xsd">
+  <roleRef xlink:type="simple" xlink:href="p-Segr-2008-01-01.xsd#Segregation" roleURI="http://www.xbrl.be/be/fr/Segregation/2008-01-01/role/Segregation" />
+  <arcroleRef xlink:type="simple" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#all" arcroleURI="http://xbrl.org/int/dim/arcrole/all" />
+  <arcroleRef xlink:type="simple" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#hypercube-dimension" arcroleURI="http://xbrl.org/int/dim/arcrole/hypercube-dimension" />
+  <arcroleRef xlink:type="simple" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#dimension-domain" arcroleURI="http://xbrl.org/int/dim/arcrole/dimension-domain" />
+  <arcroleRef xlink:type="simple" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#domain-member" arcroleURI="http://xbrl.org/int/dim/arcrole/domain-member" />
+  <definitionLink xlink:type="extended" xlink:role="http://www.xbrl.be/be/fr/Segregation/2008-01-01/role/Segregation">
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_SegregationPresentation" xlink:label="p-Segr_SegregationPresentation" xlink:title="definition: SegregationPresentation to EmptyHypercube" />
+    <loc xlink:type="locator" xlink:href="d-hh-2006-07-01.xsd#hyp-cm_EmptyHypercube" xlink:label="d-hh_EmptyHypercube" xlink:title="definition: SegregationPresentation to EmptyHypercube" />
+    <definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/all" xlink:from="p-Segr_SegregationPresentation" xlink:to="d-hh_EmptyHypercube" xlink:title="definition: SegregationPresentation to EmptyHypercube" order="6" use="optional" xbrldt:contextElement="scenario" xbrldt:closed="true" />
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_ScopeDimension" xlink:label="d-sc-be_ScopeDimension" xlink:title="definition: EmptyHypercube to ScopeDimension" />
+    <definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/hypercube-dimension" xlink:from="d-hh_EmptyHypercube" xlink:to="d-sc-be_ScopeDimension" xlink:title="definition: EmptyHypercube to ScopeDimension" order="1" use="optional" />
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_ScopeDomain" xlink:label="d-sc-be_ScopeDomain" xlink:title="definition: ScopeDimension to ScopeDomain" />
+    <definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/dimension-domain" xlink:from="d-sc-be_ScopeDimension" xlink:to="d-sc-be_ScopeDomain" xlink:title="definition: ScopeDimension to ScopeDomain" order="1" use="optional" xbrldt:usable="false" />
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_Social" xlink:label="d-sc-be_Social" xlink:title="definition: Solo to Social" />
+    <definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="d-sc-be_ScopeDomain" xlink:to="d-sc-be_Social" xlink:title="definition: ScopeDomain to Social" order="1" use="optional" />
+  </definitionLink>
+</linkbase>

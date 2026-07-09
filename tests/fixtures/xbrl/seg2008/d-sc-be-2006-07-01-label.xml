@@ -1,0 +1,28 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<linkbase xmlns="http://www.xbrl.org/2003/linkbase"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns:xlink="http://www.w3.org/1999/xlink" xsi:schemaLocation=" http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd">
+  <labelLink xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_Consolidated" xlink:label="d-sc-be_Consolidated" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="d-sc-be_Consolidated" xlink:to="d-sc-be_Consolidated_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="d-sc-be_Consolidated_lbl" xml:lang="en">Consolidated</label>
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_Holding" xlink:label="d-sc-be_Holding" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="d-sc-be_Holding" xlink:to="d-sc-be_Holding_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="d-sc-be_Holding_lbl" xml:lang="en">Holding</label>
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_ScopeDimension" xlink:label="d-sc-be_ScopeDimension" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="d-sc-be_ScopeDimension" xlink:to="d-sc-be_ScopeDimension_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="d-sc-be_ScopeDimension_lbl" xml:lang="en">Scope (Dimension)</label>
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_ScopeDomain" xlink:label="d-sc-be_ScopeDomain" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="d-sc-be_ScopeDomain" xlink:to="d-sc-be_ScopeDomain_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="d-sc-be_ScopeDomain_lbl" xml:lang="en">Scope (Domain)</label>
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_Social" xlink:label="d-sc-be_Social" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="d-sc-be_Social" xlink:to="d-sc-be_Social_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="d-sc-be_Social_lbl" xml:lang="en">Social</label>
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_Solo" xlink:label="d-sc-be_Solo" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="d-sc-be_Solo" xlink:to="d-sc-be_Solo_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="d-sc-be_Solo_lbl" xml:lang="en">Solo</label>
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_Territorial" xlink:label="d-sc-be_Territorial" />
+    <labelArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="d-sc-be_Territorial" xlink:to="d-sc-be_Territorial_lbl" />
+    <label xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/label" xlink:label="d-sc-be_Territorial_lbl" xml:lang="en">Territorial</label>
+  </labelLink>
+</linkbase>

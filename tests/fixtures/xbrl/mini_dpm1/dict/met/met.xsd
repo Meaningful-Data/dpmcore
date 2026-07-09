@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:xbrli="http://www.xbrl.org/2003/instance"
+           targetNamespace="http://www.example.be/xbrl/crr/dict/met"
+           elementFormDefault="qualified">
+  <xs:element name="mi1" type="xbrli:monetaryItemType"
+              substitutionGroup="xbrli:item" xbrli:periodType="instant"
+              nillable="true" id="be_mi1"/>
+  <xs:element name="ii2" type="xbrli:integerItemType"
+              substitutionGroup="xbrli:item" xbrli:periodType="duration"
+              nillable="true" id="be_ii2"/>
+</xs:schema>

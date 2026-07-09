@@ -10,9 +10,17 @@ from dpmcore.loaders.migration import (
     MigrationResult,
     MigrationService,
 )
+from dpmcore.loaders.xbrl import (
+    XbrlImportError,
+    XbrlImportResult,
+    XbrlTaxonomyImportService,
+)
 
 __all__ = [
     "MigrationError",
     "MigrationResult",
     "MigrationService",
+    "XbrlImportError",
+    "XbrlImportResult",
+    "XbrlTaxonomyImportService",
 ]

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:xbrli="http://www.xbrl.org/2003/instance"
+           targetNamespace="http://www.example.be/xbrl/crr/dict/dom/MD"
+           elementFormDefault="qualified">
+  <xs:element name="x0" abstract="true" substitutionGroup="xbrli:item"
+              type="xbrli:stringItemType" xbrli:periodType="instant"
+              nillable="true" id="be_x0"/>
+  <xs:element name="x1" abstract="true" substitutionGroup="xbrli:item"
+              type="xbrli:stringItemType" xbrli:periodType="instant"
+              nillable="true" id="be_x1"/>
+  <xs:element name="x2" abstract="true" substitutionGroup="xbrli:item"
+              type="xbrli:stringItemType" xbrli:periodType="instant"
+              nillable="true" id="be_x2"/>
+</xs:schema>

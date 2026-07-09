@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<schema xmlns="http://www.w3.org/2001/XMLSchema"
+xmlns:xbrli="http://www.xbrl.org/2003/instance"
+xmlns:link="http://www.xbrl.org/2003/linkbase"
+xmlns:xlink="http://www.w3.org/1999/xlink"
+xmlns:p-FinInstr="http://www.xbrl.be/be/fr/FinancialInstrumentsBalance/p-FinInstr/2008-01-01" 
+targetNamespace="http://www.xbrl.be/be/fr/FinancialInstrumentsBalance/p-FinInstr/2008-01-01" elementFormDefault="qualified" attributeFormDefault="unqualified">
+  <annotation>
+    <appinfo>
+      <link:roleType roleURI="http://www.xbrl.be/be/fr/FinancialInstrumentsBalance/2008-01-01/role/FinancialInstrumentsBalance" id="FinancialInstrumentsBalance">
+        <link:definition>Financial Instruments Balance</link:definition>
+        <link:usedOn>link:presentationLink</link:usedOn>
+        <link:usedOn>link:labelLink</link:usedOn>
+        <link:usedOn>link:referenceLink</link:usedOn>
+        <link:usedOn>link:calculationLink</link:usedOn>
+        <link:usedOn>link:definitionLink</link:usedOn>
+      </link:roleType>
+      <link:linkbaseRef xlink:type="simple" xlink:href="p-FinInstr-2008-01-01-presentation.xml" xlink:role="http://www.xbrl.org/2003/role/presentationLinkbaseRef" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" xlink:title="Presentation Links, all" />
+      <link:linkbaseRef xlink:type="simple" xlink:href="p-FinInstr-2008-01-01-definition.xml" xlink:role="http://www.xbrl.org/2003/role/definitionLinkbaseRef" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" xlink:title="Definition Links, all" />
+      <link:linkbaseRef xlink:type="simple" xlink:href="p-FinInstr-2008-01-01-label.xml" xlink:role="http://www.xbrl.org/2003/role/labelLinkbaseRef" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" xlink:title="Label Links, all" />
+      <link:linkbaseRef xlink:type="simple" xlink:href="p-FinInstr-2008-01-01-reference.xml" xlink:role="http://www.xbrl.org/2003/role/referenceLinkbaseRef" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" xlink:title="Reference Links, all" />
+    </appinfo>
+  </annotation>
+  <import namespace="http://www.xbrl.org/2003/instance" schemaLocation="http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd" />
+  <import namespace="http://www.xbrl.org/2004/ref" schemaLocation="http://www.xbrl.org/2004/ref-2004-08-10.xsd" />
+  <import namespace="http://xbrl.org/2005/xbrldt" schemaLocation="http://www.xbrl.org/2005/xbrldt-2005.xsd" />
+  <import namespace="http://www.xbrl.org/2003/linkbase" schemaLocation="http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstruments" name="ClientOwnedFinancialInstruments" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsCreditBalancesAtDepositaries" name="ClientOwnedFinancialInstrumentsCreditBalancesAtDepositaries" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeeping" name="ClientOwnedFinancialInstrumentsInSafekeeping" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingValuationDifferences" name="ClientOwnedFinancialInstrumentsInSafekeepingValuationDifferences" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithClientsDebitBalances" name="ClientOwnedFinancialInstrumentsInSafekeepingWithClientsDebitBalances" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithReportingInstitution" name="ClientOwnedFinancialInstrumentsInSafekeepingWithReportingInstitution" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSafeCustodyInstitutionsOwnAssets" name="ClientOwnedFinancialInstrumentsInSafekeepingWithSafeCustodyInstitutionsOwnAssets" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSafeCustodyThirdPartyDepositaries" name="ClientOwnedFinancialInstrumentsInSafekeepingWithSafeCustodyThirdPartyDepositaries" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSettlementsInstitutionsOutsideTheGroup" name="ClientOwnedFinancialInstrumentsInSafekeepingWithSettlementsInstitutionsOutsideTheGroup" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSettlementsInstitutionsWithinTheGroup" name="ClientOwnedFinancialInstrumentsInSafekeepingWithSettlementsInstitutionsWithinTheGroup" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithThirdPartyDepositaries" name="ClientOwnedFinancialInstrumentsInSafekeepingWithThirdPartyDepositaries" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsProfessionalClients" name="ClientOwnedFinancialInstrumentsProfessionalClients" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsProfessionalClientsNotUnderPortfolioManagement" name="ClientOwnedFinancialInstrumentsProfessionalClientsNotUnderPortfolioManagement" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsProfessionalClientsUnderPortfolioManagement" name="ClientOwnedFinancialInstrumentsProfessionalClientsUnderPortfolioManagement" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsProvidedAsCollateral" name="ClientOwnedFinancialInstrumentsProvidedAsCollateral" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsReceivedAsCollateral" name="ClientOwnedFinancialInstrumentsReceivedAsCollateral" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsRetailClients" name="ClientOwnedFinancialInstrumentsRetailClients" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsRetailClientsNotUnderPortfolioManagement" name="ClientOwnedFinancialInstrumentsRetailClientsNotUnderPortfolioManagement" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsRetailClientsUnderPortfolioManagement" name="ClientOwnedFinancialInstrumentsRetailClientsUnderPortfolioManagement" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_ClientOwnedFinancialInstrumentsValuationDifferences" name="ClientOwnedFinancialInstrumentsValuationDifferences" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_FinancialInstrumentsBalanceAssetsPresentation" name="FinancialInstrumentsBalanceAssetsPresentation" type="xbrli:stringItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" abstract="true" nillable="true" />
+  <element id="p-FinInstr_FinancialInstrumentsBalanceLiabilitiesPresentation" name="FinancialInstrumentsBalanceLiabilitiesPresentation" type="xbrli:stringItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" abstract="true" nillable="true" />
+  <element id="p-FinInstr_FinancialInstrumentsBalancePresentation" name="FinancialInstrumentsBalancePresentation" type="xbrli:stringItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" abstract="true" nillable="true" />
+  <element id="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterparties" name="FinancialInstrumentsToBeDeliveredToClientsOrCounterparties" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesAdjustments" name="FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesAdjustments" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesSecuritiesFinancingContracts" name="FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesSecuritiesFinancingContracts" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesTransactionsInProgress" name="FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesTransactionsInProgress" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterparties" name="FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterparties" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesAdjustments" name="FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesAdjustments" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesSecuritiesFinancingContracts" name="FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesSecuritiesFinancingContracts" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesTransactionsInProgress" name="FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesTransactionsInProgress" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_TotalFinancialInstrumentsAssets" name="TotalFinancialInstrumentsAssets" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-FinInstr_TotalFinancialInstrumentsLiabilities" name="TotalFinancialInstrumentsLiabilities" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+</schema>

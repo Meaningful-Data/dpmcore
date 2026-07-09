@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<linkbase xmlns="http://www.xbrl.org/2003/linkbase"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns:xlink="http://www.w3.org/1999/xlink"
+xmlns:p-FinInstr="http://www.xbrl.be/be/fr/FinancialInstrumentsBalance/p-FinInstr/2008-01-01"
+xmlns:ref="http://www.xbrl.org/2004/ref" xsi:schemaLocation=" http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd http://www.xbrl.be/be/fr/FinancialInstrumentsBalance/p-FinInstr/2008-01-01 p-FinInstr-2008-01-01.xsd http://www.xbrl.org/2004/ref http://www.xbrl.org/2004/ref-2004-08-10.xsd">
+  <referenceLink xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsCreditBalancesAtDepositaries" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsCreditBalancesAtDepositaries" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsCreditBalancesAtDepositaries" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsCreditBalancesAtDepositaries_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsCreditBalancesAtDepositaries_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeeping" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeeping" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeeping" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeeping_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeeping_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingValuationDifferences" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingValuationDifferences" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingValuationDifferences" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingValuationDifferences_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingValuationDifferences_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithClientsDebitBalances" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithClientsDebitBalances" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithClientsDebitBalances" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithClientsDebitBalances_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithClientsDebitBalances_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithReportingInstitution" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithReportingInstitution" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithReportingInstitution" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithReportingInstitution_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithReportingInstitution_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSafeCustodyInstitutionsOwnAssets" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSafeCustodyInstitutionsOwnAssets" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSafeCustodyInstitutionsOwnAssets" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSafeCustodyInstitutionsOwnAssets_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSafeCustodyInstitutionsOwnAssets_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSafeCustodyThirdPartyDepositaries" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSafeCustodyThirdPartyDepositaries" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSafeCustodyThirdPartyDepositaries" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSafeCustodyThirdPartyDepositaries_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSafeCustodyThirdPartyDepositaries_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSettlementsInstitutionsOutsideTheGroup" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSettlementsInstitutionsOutsideTheGroup" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSettlementsInstitutionsOutsideTheGroup" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSettlementsInstitutionsOutsideTheGroup_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSettlementsInstitutionsOutsideTheGroup_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSettlementsInstitutionsWithinTheGroup" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSettlementsInstitutionsWithinTheGroup" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSettlementsInstitutionsWithinTheGroup" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSettlementsInstitutionsWithinTheGroup_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithSettlementsInstitutionsWithinTheGroup_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithThirdPartyDepositaries" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithThirdPartyDepositaries" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithThirdPartyDepositaries" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithThirdPartyDepositaries_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsInSafekeepingWithThirdPartyDepositaries_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsProfessionalClientsNotUnderPortfolioManagement" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsProfessionalClientsNotUnderPortfolioManagement" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsProfessionalClientsNotUnderPortfolioManagement" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsProfessionalClientsNotUnderPortfolioManagement_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsProfessionalClientsNotUnderPortfolioManagement_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsProfessionalClients" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsProfessionalClients" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsProfessionalClients" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsProfessionalClients_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsProfessionalClients_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsProfessionalClientsUnderPortfolioManagement" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsProfessionalClientsUnderPortfolioManagement" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsProfessionalClientsUnderPortfolioManagement" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsProfessionalClientsUnderPortfolioManagement_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsProfessionalClientsUnderPortfolioManagement_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsProvidedAsCollateral" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsProvidedAsCollateral" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsProvidedAsCollateral" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsProvidedAsCollateral_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsProvidedAsCollateral_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsReceivedAsCollateral" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsReceivedAsCollateral" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsReceivedAsCollateral" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsReceivedAsCollateral_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsReceivedAsCollateral_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsRetailClientsNotUnderPortfolioManagement" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsRetailClientsNotUnderPortfolioManagement" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsRetailClientsNotUnderPortfolioManagement" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsRetailClientsNotUnderPortfolioManagement_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsRetailClientsNotUnderPortfolioManagement_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsRetailClients" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsRetailClients" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsRetailClients" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsRetailClients_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsRetailClients_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsRetailClientsUnderPortfolioManagement" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsRetailClientsUnderPortfolioManagement" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsRetailClientsUnderPortfolioManagement" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsRetailClientsUnderPortfolioManagement_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsRetailClientsUnderPortfolioManagement_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstruments" xlink:label="p-FinInstr_ClientOwnedFinancialInstruments" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstruments" xlink:to="p-FinInstr_ClientOwnedFinancialInstruments_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstruments_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_ClientOwnedFinancialInstrumentsValuationDifferences" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsValuationDifferences" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_ClientOwnedFinancialInstrumentsValuationDifferences" xlink:to="p-FinInstr_ClientOwnedFinancialInstrumentsValuationDifferences_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_ClientOwnedFinancialInstrumentsValuationDifferences_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_FinancialInstrumentsBalanceAssetsPresentation" xlink:label="p-FinInstr_FinancialInstrumentsBalanceAssetsPresentation" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_FinancialInstrumentsBalanceAssetsPresentation" xlink:to="p-FinInstr_FinancialInstrumentsBalanceAssetsPresentation_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_FinancialInstrumentsBalanceAssetsPresentation_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_FinancialInstrumentsBalanceLiabilitiesPresentation" xlink:label="p-FinInstr_FinancialInstrumentsBalanceLiabilitiesPresentation" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_FinancialInstrumentsBalanceLiabilitiesPresentation" xlink:to="p-FinInstr_FinancialInstrumentsBalanceLiabilitiesPresentation_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_FinancialInstrumentsBalanceLiabilitiesPresentation_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_FinancialInstrumentsBalancePresentation" xlink:label="p-FinInstr_FinancialInstrumentsBalancePresentation" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_FinancialInstrumentsBalancePresentation" xlink:to="p-FinInstr_FinancialInstrumentsBalancePresentation_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_FinancialInstrumentsBalancePresentation_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesAdjustments" xlink:label="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesAdjustments" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesAdjustments" xlink:to="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesAdjustments_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesAdjustments_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesSecuritiesFinancingContracts" xlink:label="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesSecuritiesFinancingContracts" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesSecuritiesFinancingContracts" xlink:to="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesSecuritiesFinancingContracts_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesSecuritiesFinancingContracts_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterparties" xlink:label="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterparties" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterparties" xlink:to="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterparties_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterparties_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesTransactionsInProgress" xlink:label="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesTransactionsInProgress" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesTransactionsInProgress" xlink:to="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesTransactionsInProgress_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_FinancialInstrumentsToBeDeliveredToClientsOrCounterpartiesTransactionsInProgress_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesAdjustments" xlink:label="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesAdjustments" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesAdjustments" xlink:to="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesAdjustments_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesAdjustments_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesSecuritiesFinancingContracts" xlink:label="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesSecuritiesFinancingContracts" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesSecuritiesFinancingContracts" xlink:to="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesSecuritiesFinancingContracts_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesSecuritiesFinancingContracts_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterparties" xlink:label="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterparties" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterparties" xlink:to="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterparties_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterparties_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesTransactionsInProgress" xlink:label="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesTransactionsInProgress" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesTransactionsInProgress" xlink:to="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesTransactionsInProgress_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_FinancialInstrumentsToBeReceivedForTheAccountOfClientsOrCounterpartiesTransactionsInProgress_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_TotalFinancialInstrumentsAssets" xlink:label="p-FinInstr_TotalFinancialInstrumentsAssets" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_TotalFinancialInstrumentsAssets" xlink:to="p-FinInstr_TotalFinancialInstrumentsAssets_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_TotalFinancialInstrumentsAssets_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_TotalFinancialInstrumentsLiabilities" xlink:label="p-FinInstr_TotalFinancialInstrumentsLiabilities" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-FinInstr_TotalFinancialInstrumentsLiabilities" xlink:to="p-FinInstr_TotalFinancialInstrumentsLiabilities_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-FinInstr_TotalFinancialInstrumentsLiabilities_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-7-CPB</ref:Name>
+    </reference>
+  </referenceLink>
+</linkbase>

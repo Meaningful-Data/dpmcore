@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<linkbase xmlns="http://www.xbrl.org/2003/linkbase"
+xmlns:xlink="http://www.w3.org/1999/xlink"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd http://xbrl.org/2005/xbrldt http://www.xbrl.org/2005/xbrldt-2005.xsd"
+xmlns:xbrldt="http://xbrl.org/2005/xbrldt">
+  <roleRef roleURI="http://www.xbrl.be/be/fr/FinancialInstrumentsBalance/2008-01-01/role/FinancialInstrumentsBalance" xlink:type="simple" xlink:href="p-FinInstr-2008-01-01.xsd#FinancialInstrumentsBalance"/>
+  <arcroleRef arcroleURI="http://xbrl.org/int/dim/arcrole/all" xlink:type="simple" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#all"/>
+  <arcroleRef arcroleURI="http://xbrl.org/int/dim/arcrole/dimension-domain" xlink:type="simple" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#dimension-domain"/>
+  <arcroleRef arcroleURI="http://xbrl.org/int/dim/arcrole/domain-member" xlink:type="simple" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#domain-member"/>
+  <arcroleRef arcroleURI="http://xbrl.org/int/dim/arcrole/hypercube-dimension" xlink:type="simple" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#hypercube-dimension"/>
+  <definitionLink xlink:type="extended" xlink:role="http://www.xbrl.be/be/fr/FinancialInstrumentsBalance/2008-01-01/role/FinancialInstrumentsBalance">
+    <loc xlink:type="locator" xlink:href="p-FinInstr-2008-01-01.xsd#p-FinInstr_FinancialInstrumentsBalancePresentation" xlink:label="p-FinInstr_FinancialInstrumentsBalancePresentation" xlink:title="definition: FinancialInstrumentsBalancePresentation to EmptyHypercube"/>
+    <loc xlink:type="locator" xlink:href="d-hh-2006-07-01.xsd#hyp-cm_EmptyHypercube" xlink:label="d-hh_EmptyHypercube" xlink:title="definition: FinancialInstrumentsBalancePresentation to EmptyHypercube"/>
+    <definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/all" xlink:from="p-FinInstr_FinancialInstrumentsBalancePresentation" xlink:to="d-hh_EmptyHypercube" xlink:title="definition: FinancialInstrumentsBalancePresentation to EmptyHypercube" use="optional" order="3.0" xbrldt:contextElement="scenario" xbrldt:closed="true"/>
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_ScopeDimension" xlink:label="ScopeDimension" xlink:title="ScopeDimension"/>
+    <definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/hypercube-dimension" xlink:from="d-hh_EmptyHypercube" xlink:to="ScopeDimension" xlink:title="definition: EmptyHypercube to ScopeDimension" order="1.0"/>
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_ScopeDomain" xlink:label="ScopeDomain"/>
+    <definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/dimension-domain" xlink:from="ScopeDimension" xlink:to="ScopeDomain" xlink:title="definition: ScopeDimension to ScopeDomain" use="optional" order="1.0" xbrldt:usable="false"/>
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_Social" xlink:label="Social"/>
+    <definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="ScopeDomain" xlink:to="Social" xlink:title="definition: ScopeDomain to Social" use="optional" order="1.0"/>
+    <loc xlink:type="locator" xlink:href="d-sc-be-2006-07-01.xsd#d-sc-be_Territorial" xlink:label="Territorial"/>
+    <definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="ScopeDomain" xlink:to="Territorial" xlink:title="definition: ScopeDomain to Territorial" use="optional" order="2.0"/>
+  </definitionLink>
+</linkbase>

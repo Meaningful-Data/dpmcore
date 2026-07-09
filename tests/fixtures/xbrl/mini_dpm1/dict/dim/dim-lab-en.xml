@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:xlink="http://www.w3.org/1999/xlink">
+  <link:labelLink xlink:type="extended"
+                  xlink:role="http://www.xbrl.org/2003/role/link">
+    <link:loc xlink:type="locator" xlink:href="dim.xsd#be_EXD"
+              xlink:label="loc_be_EXD"/>
+    <link:label xlink:type="resource" xlink:label="label_be_EXD"
+                xml:lang="en"
+                xlink:role="http://www.xbrl.org/2003/role/label">Explicit dimension</link:label>
+    <link:labelArc xlink:type="arc"
+        xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label"
+        xlink:from="loc_be_EXD" xlink:to="label_be_EXD"/>
+    <link:loc xlink:type="locator" xlink:href="dim.xsd#be_TYD"
+              xlink:label="loc_be_TYD"/>
+    <link:label xlink:type="resource" xlink:label="label_be_TYD"
+                xml:lang="en"
+                xlink:role="http://www.xbrl.org/2003/role/label">Typed dimension</link:label>
+    <link:labelArc xlink:type="arc"
+        xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label"
+        xlink:from="loc_be_TYD" xlink:to="label_be_TYD"/>
+  </link:labelLink>
+</link:linkbase>

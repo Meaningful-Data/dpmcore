@@ -39,3 +39,24 @@ runs therefore succeed without the file; providing it activates the additional
 
 Run `pytest tests/integration/validation/test_semantic_release.py -v` after
 dropping the file in — you should see every test pass.
+
+## XBRL taxonomy fixtures (`xbrl/`)
+
+Unlike `test_data.db`, the XBRL fixtures **are** committed:
+
+- `xbrl/seg2008/`, `xbrl/fib2008/` — the National Bank of Belgium
+  SEG (seg2008) and FIB (fib2008) taxonomies, copied verbatim from
+  the public downloads at <https://www.nbb.be/doc/dd/onegate/data/>
+  (`seg2008-taxonomy.zip`, `fib2008-taxonomy.zip`). They are tiny
+  (one table each) and serve as real-world integration fixtures for
+  the 2006-Eurofiling reader. © National Bank of Belgium; included
+  here solely for testing the importer.
+- `xbrl/mini_dpm1/` — a hand-crafted minimal TREP-style (dpm1
+  architecture) taxonomy exercising every reader branch: one
+  explicit and one typed dimension, a three-member domain with a
+  hierarchy, two metrics, one module and one table with x/y/z
+  breakdowns.
+
+The xbrl.org core schemas the SEG/FIB DTSes reference are served
+from Arelle's bundled resource cache, so the related tests run
+fully offline.

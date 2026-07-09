@@ -7,12 +7,14 @@ dictionary but never mutate it.
 Data loading (importing a DPM Access database) lives in
 ``dpmcore.loaders``, not here.
 
-``MigrationService`` is re-exported here for backward compatibility;
-the canonical import is ``from dpmcore.loaders.migration import
-MigrationService``.
+``MigrationService`` and ``XbrlTaxonomyImportService`` are
+re-exported here for symmetry; their canonical imports are
+``from dpmcore.loaders.migration import MigrationService`` and
+``from dpmcore.loaders.xbrl import XbrlTaxonomyImportService``.
 """
 
 from dpmcore.loaders.migration import MigrationService
+from dpmcore.loaders.xbrl import XbrlTaxonomyImportService
 from dpmcore.services.ast_generator import ASTGeneratorService
 from dpmcore.services.data_dictionary import DataDictionaryService
 from dpmcore.services.dpm_xl import DpmXlService
@@ -42,4 +44,5 @@ __all__ = [
     "MeiliJsonService",
     "MeiliBuildService",
     "EcbValidationsImportService",
+    "XbrlTaxonomyImportService",
 ]

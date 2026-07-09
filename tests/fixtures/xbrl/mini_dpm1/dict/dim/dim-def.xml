@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:xlink="http://www.w3.org/1999/xlink"
+               xmlns:xbrldt="http://xbrl.org/2005/xbrldt">
+  <link:definitionLink xlink:type="extended"
+                       xlink:role="http://www.xbrl.org/2003/role/link">
+    <link:loc xlink:type="locator" xlink:href="dim.xsd#be_EXD"
+              xlink:label="loc_be_EXD"/>
+    <link:loc xlink:type="locator" xlink:href="../dom/exp.xsd#be_MD"
+              xlink:label="loc_be_MD"/>
+    <link:definitionArc xlink:type="arc"
+        xlink:arcrole="http://xbrl.org/int/dim/arcrole/dimension-domain"
+        xlink:from="loc_be_EXD" xlink:to="loc_be_MD"
+        xbrldt:usable="false"/>
+    <link:loc xlink:type="locator" xlink:href="../dom/md/mem.xsd#be_x0"
+              xlink:label="loc_be_MD_x0"/>
+    <link:definitionArc xlink:type="arc"
+        xlink:arcrole="http://xbrl.org/int/dim/arcrole/dimension-default"
+        xlink:from="loc_be_EXD" xlink:to="loc_be_MD_x0"/>
+  </link:definitionLink>
+</link:linkbase>

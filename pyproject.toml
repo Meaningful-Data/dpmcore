@@ -59,6 +59,11 @@ migration = ["pandas>=2.1.4,<3.0", "numpy>=2.2.0,<2.3"]
 data = ["pandas>=2.1.4,<3.0", "numpy>=2.2.0,<2.3"]
 cli = ["click>=8.4.1", "rich>=13.7"]
 export = ["openpyxl>=3.1"]
+# arelle-release is the maintained PyPI distribution of the Arelle XBRL
+# processor (import package `arelle`). Used by the XBRL taxonomy importer
+# (dpmcore.loaders.xbrl); lxml is imported directly by the table-linkbase
+# parser.
+xbrl = ["arelle-release>=2.30,<3", "lxml>=4.9"]
 all = [
     "fastapi>=0.138.0",
     "uvicorn[standard]>=0.49.0",
@@ -71,6 +76,8 @@ all = [
     "click>=8.4.1",
     "rich>=13.7",
     "openpyxl>=3.1",
+    "arelle-release>=2.30,<3",
+    "lxml>=4.9",
 ]
 
 [project.scripts]
@@ -91,6 +98,9 @@ httpx = ">=0.28,<1.0"
 pytest-django = ">=4.9"
 django-stubs = ">=6.0.6"
 pandas-stubs = ">=2.2.2,<3.0"
+# XBRL importer integration tests load real taxonomies through Arelle.
+arelle-release = ">=2.30,<3"
+lxml = ">=4.9"
 
 [tool.poetry.group.docs.dependencies]
 # sphinx-multiversion 0.2.4 (unmaintained since 2022) calls Sphinx's internal
@@ -248,6 +258,13 @@ ignore_missing_imports = true
 # that may drift from the runtime version.
 [[tool.mypy.overrides]]
 module = ["openpyxl", "openpyxl.*"]
+ignore_missing_imports = true
+
+# arelle (PyPI: arelle-release) ships no py.typed marker; lxml's
+# third-party stubs (lxml-stubs) drift from the runtime version.
+# Both are confined to the loaders.xbrl adapter modules.
+[[tool.mypy.overrides]]
+module = ["arelle", "arelle.*", "lxml", "lxml.*"]
 ignore_missing_imports = true
 
 # Django ORM field declarations (CharField(...), ForeignKey(...),

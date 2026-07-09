@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<linkbase xmlns="http://www.xbrl.org/2003/linkbase" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:p-Segr="http://www.xbrl.be/be/fr/Segregation/p-Segr/2008-01-01" xmlns:ref="http://www.xbrl.org/2004/ref" xsi:schemaLocation=" http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd http://www.xbrl.be/be/fr/Segregation/p-Segr/2008-01-01 p-Segr-2008-01-01.xsd http://www.xbrl.org/2004/ref http://www.xbrl.org/2004/ref-2004-08-10.xsd">
+  <referenceLink xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_ClientFundsToBePlacedOfWhichFundsOfClientsWhoAreAdverseToMoneyMarketFunds" xlink:label="p-Segr_ClientFundsToBePlacedOfWhichFundsOfClientsWhoAreAdverseToMoneyMarketFunds" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-Segr_ClientFundsToBePlacedOfWhichFundsOfClientsWhoAreAdverseToMoneyMarketFunds" xlink:to="p-Segr_ClientFundsToBePlacedOfWhichFundsOfClientsWhoAreAdverseToMoneyMarketFunds_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-Segr_ClientFundsToBePlacedOfWhichFundsOfClientsWhoAreAdverseToMoneyMarketFunds_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-XX-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_ClientFundsToBePlaced" xlink:label="p-Segr_ClientFundsToBePlaced" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-Segr_ClientFundsToBePlaced" xlink:to="p-Segr_ClientFundsToBePlaced_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-Segr_ClientFundsToBePlaced_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-XX-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_ExemptClientFundsFundsInTransitMaxThreeWorkingDays" xlink:label="p-Segr_ExemptClientFundsFundsInTransitMaxThreeWorkingDays" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-Segr_ExemptClientFundsFundsInTransitMaxThreeWorkingDays" xlink:to="p-Segr_ExemptClientFundsFundsInTransitMaxThreeWorkingDays_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-Segr_ExemptClientFundsFundsInTransitMaxThreeWorkingDays_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-XX-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_ExemptClientFundsCoverAssets" xlink:label="p-Segr_ExemptClientFundsCoverAssets" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-Segr_ExemptClientFundsCoverAssets" xlink:to="p-Segr_ExemptClientFundsCoverAssets_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-Segr_ExemptClientFundsCoverAssets_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-XX-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_ExemptClientFundsPresentation" xlink:label="p-Segr_ExemptClientFundsPresentation" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-Segr_ExemptClientFundsPresentation" xlink:to="p-Segr_ExemptClientFundsPresentation_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-Segr_ExemptClientFundsPresentation_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-XX-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_ExemptClientFundsTotal" xlink:label="p-Segr_ExemptClientFundsTotal" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-Segr_ExemptClientFundsTotal" xlink:to="p-Segr_ExemptClientFundsTotal_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-Segr_ExemptClientFundsTotal_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-XX-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_NetClientFundsToBePlaced" xlink:label="p-Segr_NetClientFundsToBePlaced" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-Segr_NetClientFundsToBePlaced" xlink:to="p-Segr_NetClientFundsToBePlaced_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-Segr_NetClientFundsToBePlaced_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-XX-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_PlacementOfClientFundsClientAccountsWithCentralBanks" xlink:label="p-Segr_PlacementOfClientFundsClientAccountsWithCentralBanks" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-Segr_PlacementOfClientFundsClientAccountsWithCentralBanks" xlink:to="p-Segr_PlacementOfClientFundsClientAccountsWithCentralBanks_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-Segr_PlacementOfClientFundsClientAccountsWithCentralBanks_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-XX-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsOutsideTheEEA" xlink:label="p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsOutsideTheEEA" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsOutsideTheEEA" xlink:to="p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsOutsideTheEEA_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsOutsideTheEEA_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-XX-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsWithinTheEEA" xlink:label="p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsWithinTheEEA" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsWithinTheEEA" xlink:to="p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsWithinTheEEA_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsWithinTheEEA_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-XX-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_PlacementOfClientFundsEligibleMoneyMarketFunds" xlink:label="p-Segr_PlacementOfClientFundsEligibleMoneyMarketFunds" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-Segr_PlacementOfClientFundsEligibleMoneyMarketFunds" xlink:to="p-Segr_PlacementOfClientFundsEligibleMoneyMarketFunds_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-Segr_PlacementOfClientFundsEligibleMoneyMarketFunds_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-XX-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_PlacementOfClientFundsPresentation" xlink:label="p-Segr_PlacementOfClientFundsPresentation" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-Segr_PlacementOfClientFundsPresentation" xlink:to="p-Segr_PlacementOfClientFundsPresentation_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-Segr_PlacementOfClientFundsPresentation_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-XX-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_PlacementOfClientFundsTotalOfWhichDepositsThatMayNotBePlacedInMoneyMarketFunds" xlink:label="p-Segr_PlacementOfClientFundsTotalOfWhichDepositsThatMayNotBePlacedInMoneyMarketFunds" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-Segr_PlacementOfClientFundsTotalOfWhichDepositsThatMayNotBePlacedInMoneyMarketFunds" xlink:to="p-Segr_PlacementOfClientFundsTotalOfWhichDepositsThatMayNotBePlacedInMoneyMarketFunds_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-Segr_PlacementOfClientFundsTotalOfWhichDepositsThatMayNotBePlacedInMoneyMarketFunds_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-XX-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_PlacementOfClientFundsTotal" xlink:label="p-Segr_PlacementOfClientFundsTotal" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-Segr_PlacementOfClientFundsTotal" xlink:to="p-Segr_PlacementOfClientFundsTotal_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-Segr_PlacementOfClientFundsTotal_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-XX-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_SegregationPresentation" xlink:label="p-Segr_SegregationPresentation" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-Segr_SegregationPresentation" xlink:to="p-Segr_SegregationPresentation_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-Segr_SegregationPresentation_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-XX-CPB</ref:Name>
+    </reference>
+    <loc xlink:type="locator" xlink:href="p-Segr-2008-01-01.xsd#p-Segr_SurplusShortfall" xlink:label="p-Segr_SurplusShortfall" />
+    <referenceArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-reference" xlink:from="p-Segr_SurplusShortfall" xlink:to="p-Segr_SurplusShortfall_ref" />
+    <reference xlink:type="resource" xlink:role="http://www.xbrl.org/2003/role/reference" xlink:label="p-Segr_SurplusShortfall_ref">
+      <ref:Name>CIRCULAIRE PPB-2007-XX-CPB</ref:Name>
+    </reference>
+  </referenceLink>
+</linkbase>

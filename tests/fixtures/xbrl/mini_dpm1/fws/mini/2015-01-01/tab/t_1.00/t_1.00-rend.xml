@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:xlink="http://www.w3.org/1999/xlink"
+               xmlns:gen="http://xbrl.org/2008/generic"
+               xmlns:formula="http://xbrl.org/2008/formula"
+               xmlns:table="http://xbrl.org/PWD/2013-05-17/table"
+               xmlns:be_met="http://www.example.be/xbrl/crr/dict/met"
+               xmlns:be_dim="http://www.example.be/xbrl/crr/dict/dim"
+               xmlns:be_MD="http://www.example.be/xbrl/crr/dict/dom/MD">
+  <gen:link xlink:type="extended"
+      xlink:role="http://www.example.be/xbrl/crr/role/fws/mini/tab/T_1.00">
+    <table:table xlink:type="resource" xlink:label="be_tT_1.00"
+                 aspectModel="dimensional" id="be_tT_1.00"/>
+    <table:breakdown xlink:type="resource" xlink:label="be_a1"
+                     parentChildOrder="parent-first" id="be_a1"/>
+    <table:ruleNode xlink:type="resource" xlink:label="be_a1.root"
+                    abstract="true" id="be_a1.root"/>
+    <table:breakdownTreeArc xlink:type="arc"
+        xlink:arcrole="http://xbrl.org/arcrole/PWD/2013-05-17/breakdown-tree"
+        xlink:from="be_a1" xlink:to="be_a1.root" order="0"/>
+    <table:ruleNode xlink:type="resource" xlink:label="be_c1" id="be_c1">
+      <formula:explicitDimension dimension="be_dim:EXD">
+        <formula:member>
+          <formula:qname>be_MD:x1</formula:qname>
+        </formula:member>
+      </formula:explicitDimension>
+    </table:ruleNode>
+    <table:definitionNodeSubtreeArc xlink:type="arc"
+        xlink:arcrole="http://xbrl.org/arcrole/PWD/2013-05-17/definition-node-subtree"
+        xlink:from="be_a1.root" xlink:to="be_c1" order="1"/>
+    <table:ruleNode xlink:type="resource" xlink:label="be_c2" id="be_c2">
+      <formula:explicitDimension dimension="be_dim:EXD">
+        <formula:member>
+          <formula:qname>be_MD:x2</formula:qname>
+        </formula:member>
+      </formula:explicitDimension>
+    </table:ruleNode>
+    <table:definitionNodeSubtreeArc xlink:type="arc"
+        xlink:arcrole="http://xbrl.org/arcrole/PWD/2013-05-17/definition-node-subtree"
+        xlink:from="be_a1.root" xlink:to="be_c2" order="2"/>
+    <table:tableBreakdownArc xlink:type="arc"
+        xlink:arcrole="http://xbrl.org/arcrole/PWD/2013-05-17/table-breakdown"
+        xlink:from="be_tT_1.00" xlink:to="be_a1" axis="x" order="1"/>
+    <table:breakdown xlink:type="resource" xlink:label="be_a2"
+                     parentChildOrder="parent-first" id="be_a2"/>
+    <table:ruleNode xlink:type="resource" xlink:label="be_a2.root"
+                    abstract="true" id="be_a2.root"/>
+    <table:breakdownTreeArc xlink:type="arc"
+        xlink:arcrole="http://xbrl.org/arcrole/PWD/2013-05-17/breakdown-tree"
+        xlink:from="be_a2" xlink:to="be_a2.root" order="0"/>
+    <table:ruleNode xlink:type="resource" xlink:label="be_r1" id="be_r1">
+      <formula:concept>
+        <formula:qname>be_met:mi1</formula:qname>
+      </formula:concept>
+    </table:ruleNode>
+    <table:definitionNodeSubtreeArc xlink:type="arc"
+        xlink:arcrole="http://xbrl.org/arcrole/PWD/2013-05-17/definition-node-subtree"
+        xlink:from="be_a2.root" xlink:to="be_r1" order="1"/>
+    <table:ruleNode xlink:type="resource" xlink:label="be_r2" id="be_r2">
+      <formula:concept>
+        <formula:qname>be_met:ii2</formula:qname>
+      </formula:concept>
+    </table:ruleNode>
+    <table:definitionNodeSubtreeArc xlink:type="arc"
+        xlink:arcrole="http://xbrl.org/arcrole/PWD/2013-05-17/definition-node-subtree"
+        xlink:from="be_a2.root" xlink:to="be_r2" order="2"/>
+    <table:tableBreakdownArc xlink:type="arc"
+        xlink:arcrole="http://xbrl.org/arcrole/PWD/2013-05-17/table-breakdown"
+        xlink:from="be_tT_1.00" xlink:to="be_a2" axis="y" order="2"/>
+    <table:breakdown xlink:type="resource" xlink:label="be_a3"
+                     parentChildOrder="parent-first" id="be_a3"/>
+    <table:aspectNode xlink:type="resource" xlink:label="be_a3.root"
+                      id="be_a3.root">
+      <table:dimensionAspect>be_dim:TYD</table:dimensionAspect>
+    </table:aspectNode>
+    <table:breakdownTreeArc xlink:type="arc"
+        xlink:arcrole="http://xbrl.org/arcrole/PWD/2013-05-17/breakdown-tree"
+        xlink:from="be_a3" xlink:to="be_a3.root" order="0"/>
+    <table:tableBreakdownArc xlink:type="arc"
+        xlink:arcrole="http://xbrl.org/arcrole/PWD/2013-05-17/table-breakdown"
+        xlink:from="be_tT_1.00" xlink:to="be_a3" axis="z" order="3"/>
+  </gen:link>
+</link:linkbase>

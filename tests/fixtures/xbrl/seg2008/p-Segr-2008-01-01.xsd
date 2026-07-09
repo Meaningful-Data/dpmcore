@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<schema xmlns="http://www.w3.org/2001/XMLSchema" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:p-Segr="http://www.xbrl.be/be/fr/Segregation/p-Segr/2008-01-01" targetNamespace="http://www.xbrl.be/be/fr/Segregation/p-Segr/2008-01-01" elementFormDefault="qualified" attributeFormDefault="unqualified">
+  <annotation>
+    <appinfo>
+      <link:roleType roleURI="http://www.xbrl.be/be/fr/Segregation/2008-01-01/role/Segregation" id="Segregation">
+        <link:definition>Segregation</link:definition>
+        <link:usedOn>link:presentationLink</link:usedOn>
+        <link:usedOn>link:labelLink</link:usedOn>
+        <link:usedOn>link:referenceLink</link:usedOn>
+        <link:usedOn>link:calculationLink</link:usedOn>
+        <link:usedOn>link:definitionLink</link:usedOn>
+      </link:roleType>
+      <link:linkbaseRef xlink:type="simple" xlink:href="p-Segr-2008-01-01-presentation.xml" xlink:role="http://www.xbrl.org/2003/role/presentationLinkbaseRef" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" xlink:title="Presentation Links, all" />
+      <link:linkbaseRef xlink:type="simple" xlink:href="p-Segr-2008-01-01-definition.xml" xlink:role="http://www.xbrl.org/2003/role/definitionLinkbaseRef" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" xlink:title="Definition Links, all" />
+      <link:linkbaseRef xlink:type="simple" xlink:href="p-Segr-2008-01-01-label.xml" xlink:role="http://www.xbrl.org/2003/role/labelLinkbaseRef" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" xlink:title="Label Links, all" />
+      <link:linkbaseRef xlink:type="simple" xlink:href="p-Segr-2008-01-01-reference.xml" xlink:role="http://www.xbrl.org/2003/role/referenceLinkbaseRef" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" xlink:title="Reference Links, all" />
+    </appinfo>
+  </annotation>
+  <import namespace="http://www.xbrl.org/2003/instance" schemaLocation="http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd" />
+  <import namespace="http://www.xbrl.org/2004/ref" schemaLocation="http://www.xbrl.org/2004/ref-2004-08-10.xsd" />
+  <import namespace="http://xbrl.org/2005/xbrldt" schemaLocation="http://www.xbrl.org/2005/xbrldt-2005.xsd" />
+  <import namespace="http://www.xbrl.org/2003/linkbase" schemaLocation="http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd" />
+  <element id="p-Segr_ClientFundsToBePlaced" name="ClientFundsToBePlaced" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-Segr_ClientFundsToBePlacedOfWhichFundsOfClientsWhoAreAdverseToMoneyMarketFunds" name="ClientFundsToBePlacedOfWhichFundsOfClientsWhoAreAdverseToMoneyMarketFunds" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-Segr_ExemptClientFundsFundsInTransitMaxThreeWorkingDays" name="ExemptClientFundsFundsInTransitMaxThreeWorkingDays" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-Segr_ExemptClientFundsCoverAssets" name="ExemptClientFundsCoverAssets" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-Segr_ExemptClientFundsPresentation" name="ExemptClientFundsPresentation" type="xbrli:stringItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" abstract="true" nillable="true" />
+  <element id="p-Segr_ExemptClientFundsTotal" name="ExemptClientFundsTotal" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-Segr_NetClientFundsToBePlaced" name="NetClientFundsToBePlaced" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-Segr_PlacementOfClientFundsClientAccountsWithCentralBanks" name="PlacementOfClientFundsClientAccountsWithCentralBanks" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsOutsideTheEEA" name="PlacementOfClientFundsClientAccountsWithCreditInstitutionsOutsideTheEEA" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-Segr_PlacementOfClientFundsClientAccountsWithCreditInstitutionsWithinTheEEA" name="PlacementOfClientFundsClientAccountsWithCreditInstitutionsWithinTheEEA" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-Segr_PlacementOfClientFundsEligibleMoneyMarketFunds" name="PlacementOfClientFundsEligibleMoneyMarketFunds" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-Segr_PlacementOfClientFundsPresentation" name="PlacementOfClientFundsPresentation" type="xbrli:stringItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" abstract="true" nillable="true" />
+  <element id="p-Segr_PlacementOfClientFundsTotal" name="PlacementOfClientFundsTotal" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-Segr_PlacementOfClientFundsTotalOfWhichDepositsThatMayNotBePlacedInMoneyMarketFunds" name="PlacementOfClientFundsTotalOfWhichDepositsThatMayNotBePlacedInMoneyMarketFunds" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+  <element id="p-Segr_SegregationPresentation" name="SegregationPresentation" type="xbrli:stringItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" abstract="true" nillable="true" />
+  <element id="p-Segr_SurplusShortfall" name="SurplusShortfall" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant" nillable="true" />
+</schema>
