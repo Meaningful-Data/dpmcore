@@ -377,11 +377,7 @@ class ScopeCalculatorService:
         dropped, since the engine schema requires
         ``minProperties: 1`` on each table's variables map).
         """
-        uri = self._get_module_uri(
-            module_vid=vid,
-            release_id=release_id,
-            mv=mv,
-        )
+        uri = self._get_module_uri(module_vid=vid, mv=mv)
         if not uri:
             return None
 
@@ -446,7 +442,11 @@ class ScopeCalculatorService:
 
         Returns a list of ``[uri_a, uri_b]`` pairs (sorted).
         """
-        release_id = resolve_release_id(
+        # Validate the release inputs (rejects an unknown code, or both
+        # arguments at once). The resolved id is not threaded further:
+        # each module version's URI roots at its own start release, not
+        # the report release.
+        resolve_release_id(
             self.session, release_id=release_id, release_code=release_code
         )
         single_ext_vids, all_ext_vid_sets = self._collect_external_vid_sets(
@@ -461,7 +461,7 @@ class ScopeCalculatorService:
         if not alt_pairs:
             return []
 
-        return self._map_pairs_to_uris(alt_pairs, release_id)
+        return self._map_pairs_to_uris(alt_pairs)
 
     @staticmethod
     def _collect_external_vid_sets(
@@ -517,7 +517,6 @@ class ScopeCalculatorService:
     def _map_pairs_to_uris(
         self,
         pairs: List[tuple[int, int]],
-        release_id: Optional[int],
     ) -> List[List[str]]:
         """Resolve VID pairs to sorted URI pairs."""
         needed: Set[int] = set()
@@ -538,7 +537,6 @@ class ScopeCalculatorService:
         for vid in needed:
             uri = self._get_module_uri(
                 module_vid=vid,
-                release_id=release_id,
                 mv=mv_by_vid.get(vid),
             )
             if uri:
@@ -647,7 +645,6 @@ class ScopeCalculatorService:
     def _get_module_uri(
         self,
         module_vid: int,
-        release_id: Optional[int] = None,
         mv: Optional[Any] = None,
     ) -> Optional[str]:
         """Resolve a module VID to its EBA taxonomy URI.
@@ -658,9 +655,10 @@ class ScopeCalculatorService:
         is published under that release, so an unchanged module keeps its
         original release segment even inside a later report: e.g. an
         unchanged ``ae`` stays at ``.../ae/4.2/mod/ae`` in a 4.2.1 report,
-        because no ``ae`` taxonomy exists at 4.2.1. The ``release_id``
-        argument only selects which module version is active; it does not
-        set the release segment.
+        because no ``ae`` taxonomy exists at 4.2.1. The report release is
+        deliberately not an input: it never sets the release segment, and
+        it would not pick the module version either — the lookup filters
+        by ``module_vid`` alone.
 
         Resolution order (in :meth:`_resolve_uri_release_id`): the static
         CSV mapping by ``(module_code, version_number)`` first; on a miss,
