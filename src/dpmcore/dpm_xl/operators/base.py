@@ -265,9 +265,9 @@ class Binary(Operator):
         elif isinstance(left, RecordSet) and isinstance(right, ScalarSet):
             fact_component = left.get_fact_component()
             return fact_component.type, right.type, op_type_to_check
-        elif isinstance(left, Scalar) and isinstance(right, ScalarSet):
-            return left.type, right.type, op_type_to_check
-        elif isinstance(left, ScalarSet) and isinstance(right, ScalarSet):
+        elif (isinstance(left, Scalar) and isinstance(right, ScalarSet)) or (
+            isinstance(left, ScalarSet) and isinstance(right, ScalarSet)
+        ):
             return left.type, right.type, op_type_to_check
         elif isinstance(left, ScalarSet) and isinstance(right, RecordSet):
             fact_component = right.get_fact_component()
