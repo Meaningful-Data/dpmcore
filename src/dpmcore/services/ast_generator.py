@@ -304,7 +304,6 @@ class ASTGeneratorService:
             namespace = (
                 self._scope_calc._get_module_uri(
                     module_vid=primary_module_vid,
-                    release_id=release_id,
                     mv=mv,
                 )
                 or _DEFAULT_NAMESPACE

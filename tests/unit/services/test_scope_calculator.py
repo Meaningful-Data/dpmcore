@@ -229,8 +229,8 @@ class TestDetectAlternativeDependencies:
         Svc, SR = _load_module()
         svc = Svc(MagicMock())
         if uri_map is not None:
-            svc._get_module_uri = lambda module_vid, release_id=None, mv=None: (
-                uri_map.get(module_vid)
+            svc._get_module_uri = lambda module_vid, mv=None: uri_map.get(
+                module_vid
             )
         return svc, SR
 
@@ -330,7 +330,7 @@ class TestDetectCrossModuleDependencies:
     def _make_svc(self):
         Svc, SR = _load_module()
         svc = Svc(MagicMock())
-        svc._get_module_uri = lambda module_vid, release_id=None, mv=None: (
+        svc._get_module_uri = lambda module_vid, mv=None: (
             f"http://uri/mod_{module_vid}"
         )
         svc._get_module_tables = lambda module_vid, release_id=None: {}
@@ -761,7 +761,7 @@ class TestGetModuleUri:
             release,
         ]
 
-        uri = svc._get_module_uri(10, release_id=5)
+        uri = svc._get_module_uri(10)
         expected = (
             "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/crr/3.4/mod/corep"
         )
@@ -785,7 +785,7 @@ class TestGetModuleUri:
         # Only one query (for Release), not two
         q.filter.return_value.first.return_value = release
 
-        uri = svc._get_module_uri(10, release_id=5, mv=mv)
+        uri = svc._get_module_uri(10, mv=mv)
         assert uri is not None
         assert "corep" in uri
 
@@ -825,8 +825,8 @@ class TestGetModuleUri:
 
         On a CSV miss the release segment falls through to the module
         version's ``start_release_id``. The CSV is always consulted
-        first regardless of ``release_id``; that contract is pinned by
-        ``test_release_id_does_not_bypass_static_csv``.
+        first; the hit-wins side of that contract is pinned by
+        ``test_static_csv_hit_strips_json_suffix``.
         """
         Svc, _ = _load_module()
         svc = Svc(MagicMock())
@@ -856,49 +856,15 @@ class TestGetModuleUri:
             "COREP", "2.0.1"
         )
 
-    def test_release_id_does_not_bypass_static_csv(self):
-        """Passing ``release_id`` still consults the CSV, and its hit wins.
-
-        ``release_id`` only selects which module version is active; it
-        never sets the URI's release segment. A module version's
-        taxonomy is published under the release it was introduced in, so
-        the static CSV mapping is consulted first for every caller. When
-        it hits, that final URI wins regardless of ``release_id``.
-        """
-        Svc, _ = _load_module()
-        svc = Svc(MagicMock())
-
-        mv = MagicMock()
-        mv.code = "COREP_Con"
-        mv.version_number = "2.0.1"
-        mv.start_release_id = 5
-        mv.module = MagicMock()
-        mv.module.framework = MagicMock()
-        mv.module.framework.code = "CRR"
-
-        data_stub = sys.modules["dpmcore.data"]
-        # The CSV is consulted even though release_id is supplied, and
-        # its hit short-circuits the URI (``.json`` suffix stripped).
-        data_stub.get_module_schema_ref_by_version = MagicMock(
-            return_value="http://example.org/corep_con.json",
-        )
-
-        uri = svc._get_module_uri(10, release_id=42, mv=mv)
-        assert uri == "http://example.org/corep_con"
-        data_stub.get_module_schema_ref_by_version.assert_called_once_with(
-            "COREP_Con", "2.0.1"
-        )
-
-    def test_start_release_seeds_segment_not_release_id(self):
-        """The URI's release segment uses start_release, not ``release_id``.
+    def test_start_release_seeds_segment(self):
+        """The URI's release segment uses start_release, not the report.
 
         Pins the taxonomy-URL fix: a module version whose
         ``start_release_id`` predates the report release keeps its
         *original* release in its URI, because no taxonomy is published
         for that unchanged module under the later report release. An
         unchanged ``ae`` stays at ``.../ae/4.2/mod/ae`` inside a 4.2.1
-        report. ``release_id`` never touches the segment: on a CSV miss
-        the resolver returns ``mv.start_release_id`` and ignores it.
+        report. On a CSV miss the resolver returns ``mv.start_release_id``.
         """
         Svc, _ = _load_module()
         svc = Svc(MagicMock())
@@ -917,15 +883,15 @@ class TestGetModuleUri:
         )
 
         # On a CSV miss the segment is seeded from start_release_id (11),
-        # not the report release_id (12) passed to _get_module_uri.
+        # the release the module version was introduced in.
         assert svc._resolve_uri_release_id(mv, "AE") == 11
 
         start_release = MagicMock()
-        start_release.code = "4.2"  # 4.2, not the 4.2.1 report release
+        start_release.code = "4.2"  # 4.2, not a later 4.2.1 report release
         q = svc.session.query.return_value
         q.filter.return_value.first.return_value = start_release
 
-        uri = svc._get_module_uri(10, release_id=12, mv=mv)
+        uri = svc._get_module_uri(10, mv=mv)
         assert uri == (
             "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/ae/4.2/mod/ae"
         )
@@ -940,12 +906,12 @@ class TestGetModuleUri:
 
         assert svc._get_module_uri(10, mv=mv) is None
 
-    def test_no_release_id_falls_back_to_start_release(self):
-        """No release_id, no version_number → uses ``mv.start_release_id``.
+    def test_falls_back_to_start_release(self):
+        """No version_number → uses ``mv.start_release_id``.
 
-        Covers the legacy ad-hoc-lookup path where the CSV mapping is
-        skipped (no version) and resolution falls through to the
-        module version's start release.
+        Covers the path where the CSV mapping is skipped (no version)
+        and resolution falls through to the module version's start
+        release.
         """
         Svc, _ = _load_module()
         svc = Svc(MagicMock())
@@ -968,13 +934,12 @@ class TestGetModuleUri:
             "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/crr/3.4/mod/corep"
         )
 
-    def test_no_resolvable_release_id_returns_none(self):
+    def test_no_resolvable_release_returns_none(self):
         """When no release can be resolved at all, returns ``None``.
 
-        Both ``release_id`` and ``mv.start_release_id`` are missing
-        and the CSV mapping doesn't apply (no version) — the resolver
-        bottoms out and returns ``None`` rather than constructing a
-        URI with a missing segment.
+        ``mv.start_release_id`` is missing and the CSV mapping doesn't
+        apply (no version) — the resolver bottoms out and returns
+        ``None`` rather than constructing a URI with a missing segment.
         """
         Svc, _ = _load_module()
         svc = Svc(MagicMock())
@@ -1005,7 +970,7 @@ class TestGetModuleUri:
         q = svc.session.query.return_value
         q.filter.return_value.first.return_value = None
 
-        assert svc._get_module_uri(10, release_id=5, mv=mv) is None
+        assert svc._get_module_uri(10, mv=mv) is None
 
     def test_exception_is_logged_and_returns_none(self):
         """Unexpected errors are caught and produce ``None``."""

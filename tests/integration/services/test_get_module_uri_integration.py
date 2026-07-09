@@ -90,7 +90,7 @@ class TestGetModuleUriIntegration:
         populated_session.commit()
 
         svc = ScopeCalculatorService(populated_session)
-        uri = svc._get_module_uri(module_vid=200, release_id=5)
+        uri = svc._get_module_uri(module_vid=200)
 
         # Dynamic template uses framework.code + Release.code + module.code.
         assert uri == (
@@ -98,17 +98,15 @@ class TestGetModuleUriIntegration:
             "made_up_mod"
         )
 
-    def test_start_release_seeds_segment_not_release_id(
-        self, populated_session
-    ):
-        """Taxonomy-URL fix: start release wins over the report release_id.
+    def test_start_release_seeds_segment(self, populated_session):
+        """Taxonomy-URL fix: the URI roots at the module's start release.
 
         A module version's taxonomy is published under the release it
         was introduced in. An unchanged module keeps its original
         release segment even inside a later report, because no taxonomy
         exists for it at the report release. So the URI must root at the
-        module version's ``start_release_id``, and the report
-        ``release_id`` must not touch the segment.
+        module version's ``start_release_id`` — a later report release
+        never touches the segment.
         """
         # Add a later report release (4.2.1) and a module whose start
         # release is the older 3.4 (release_id=5).
@@ -127,18 +125,16 @@ class TestGetModuleUriIntegration:
         populated_session.commit()
 
         svc = ScopeCalculatorService(populated_session)
-        # Even when the report release_id is 4.2.1, the URI keeps the
-        # module's introducing release (3.4) in its segment.
-        uri = svc._get_module_uri(module_vid=300, release_id=12)
+        # Even inside a later 4.2.1 report, the URI keeps the module's
+        # introducing release (3.4) in its segment.
+        uri = svc._get_module_uri(module_vid=300)
 
         assert uri == (
             "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/corep/3.4/mod/ae"
         )
 
-    def test_no_release_id_falls_back_to_start_release(
-        self, populated_session
-    ):
-        """No-release_id callers still use the legacy start_release path."""
+    def test_falls_back_to_start_release(self, populated_session):
+        """Ad-hoc lookups use the module version's start_release path."""
         populated_session.add(
             ModuleVersion(
                 module_vid=400,
