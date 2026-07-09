@@ -16,6 +16,7 @@ def test_set_operator_token_constants_exist():
 # ---------------------------------------------------------------------------
 
 from dpmcore.dpm_xl.ast.nodes import (
+    AggregationOp,
     BinOp,
     Constant,
     CountSetOp,
@@ -185,7 +186,8 @@ def test_in_symdiff_produces_bin_op_with_symdiff_op():
 def test_count_set_of_produces_count_set_op():
     ast = SyntaxService().parse("count(set_of({tT1, r001-010}))")
     node = ast.children[0]
-    assert isinstance(node, CountSetOp)
+    assert isinstance(node, AggregationOp)
+    assert node.op == "count"
     assert isinstance(node.operand, SetOfOp)
 
 
