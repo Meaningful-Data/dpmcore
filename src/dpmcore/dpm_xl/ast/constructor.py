@@ -23,7 +23,6 @@ from dpmcore.dpm_xl.ast.nodes import (
     ComplexNumericOp,
     CondExpr,
     Constant,
-    CountSetOp,
     DateConstructorOp,
     Dimension,
     FilterOp,
@@ -678,10 +677,10 @@ class ASTVisitor(dpm_xlParserVisitor):
         return BinOp(left=left, op=op, right=right)
 
     def visitSetOperand(self, ctx: dpm_xlParser.SetOperandContext) -> AST:
-        elements_ctx = ctx.setElements()
-        if elements_ctx is None:
-            return Set(children=[])
-        return cast(AST, self._visit(elements_ctx))
+        for child in ctx.getChildren():
+            if isinstance(child, dpm_xlParser.SetElementsContext):
+                return cast(AST, self._visit(child))
+        return Set(children=[])
 
     def visitSetElements(
         self, ctx: dpm_xlParser.SetElementsContext
@@ -751,16 +750,6 @@ class ASTVisitor(dpm_xlParserVisitor):
         return SymdiffOp(
             left=self._visit(set_exprs[0]), right=self._visit(set_exprs[1])
         )
-
-    def visitSubcategorySelectExpr(
-        self, ctx: dpm_xlParser.SubcategorySelectExprContext
-    ) -> AST:
-        return cast(AST, self._visit(ctx.getChild(0)))
-
-    def visitCountSetOp(
-        self, ctx: dpm_xlParser.CountSetOpContext
-    ) -> CountSetOp:
-        return CountSetOp(operand=self._visit(ctx.getChild(2)))
 
     def visitItemReference(
         self, ctx: dpm_xlParser.ItemReferenceContext
