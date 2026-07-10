@@ -23,7 +23,6 @@ from dpmcore.dpm_xl.ast.nodes import (
     ComplexNumericOp,
     CondExpr,
     Constant,
-    CountSetOp,
     DateConstructorOp,
     Dimension,
     FilterOp,
@@ -231,6 +230,8 @@ class ASTVisitor(dpm_xlParserVisitor):
             return cast(AST, self.visitLiteralExpr(child))
         elif isinstance(child, dpm_xlParser.SelectExprContext):
             return cast(AST, self.visitSelectExpr(child))
+        elif isinstance(child, dpm_xlParser.SetExprContext):
+            return cast(AST, self._visit(child.getChild(0)))
         return None
 
     def visitParExpr(self, ctx: dpm_xlParser.ParExprContext) -> ParExpr:
@@ -676,7 +677,10 @@ class ASTVisitor(dpm_xlParserVisitor):
         return BinOp(left=left, op=op, right=right)
 
     def visitSetOperand(self, ctx: dpm_xlParser.SetOperandContext) -> AST:
-        return cast(AST, self._visit(ctx.getChild(1)))
+        for child in ctx.getChildren():
+            if isinstance(child, dpm_xlParser.SetElementsContext):
+                return cast(AST, self._visit(child))
+        return Set(children=[])
 
     def visitSetElements(
         self, ctx: dpm_xlParser.SetElementsContext
@@ -709,7 +713,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         operands = [
             self._visit(child)
             for child in ctx.getChildren()
-            if isinstance(child, dpm_xlParser.SetExpressionContext)
+            if isinstance(child, dpm_xlParser.ExpressionContext)
         ]
         return UnionSetOp(operands=operands)
 
@@ -719,7 +723,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         operands = [
             self._visit(child)
             for child in ctx.getChildren()
-            if isinstance(child, dpm_xlParser.SetExpressionContext)
+            if isinstance(child, dpm_xlParser.ExpressionContext)
         ]
         return IntersectSetOp(operands=operands)
 
@@ -729,7 +733,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         set_exprs = [
             child
             for child in ctx.getChildren()
-            if isinstance(child, dpm_xlParser.SetExpressionContext)
+            if isinstance(child, dpm_xlParser.ExpressionContext)
         ]
         return SetdiffOp(
             left=self._visit(set_exprs[0]), right=self._visit(set_exprs[1])
@@ -741,21 +745,11 @@ class ASTVisitor(dpm_xlParserVisitor):
         set_exprs = [
             child
             for child in ctx.getChildren()
-            if isinstance(child, dpm_xlParser.SetExpressionContext)
+            if isinstance(child, dpm_xlParser.ExpressionContext)
         ]
         return SymdiffOp(
             left=self._visit(set_exprs[0]), right=self._visit(set_exprs[1])
         )
-
-    def visitSubcategorySelectExpr(
-        self, ctx: dpm_xlParser.SubcategorySelectExprContext
-    ) -> AST:
-        return cast(AST, self._visit(ctx.getChild(0)))
-
-    def visitCountSetOp(
-        self, ctx: dpm_xlParser.CountSetOpContext
-    ) -> CountSetOp:
-        return CountSetOp(operand=self._visit(ctx.getChild(2)))
 
     def visitItemReference(
         self, ctx: dpm_xlParser.ItemReferenceContext

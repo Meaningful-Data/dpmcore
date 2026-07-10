@@ -774,34 +774,52 @@ class MLGeneration(ASTTemplate):
         self.session.add(operand_ref)
 
     def visit_SetOfOp(self, node: SetOfOp) -> None:
-        raise NotImplementedError(
-            "ML generation for set_of is not yet supported"
-        )
+        operand_node = self.create_operation_node(node)
+        node.operand.parent = operand_node
+        node.operand.argument = "operand"
+        self.visit(node.operand)
 
     def visit_UnionSetOp(self, node: UnionSetOp) -> None:
-        raise NotImplementedError(
-            "ML generation for union is not yet supported"
-        )
+        operand_node = self.create_operation_node(node)
+        for operand in node.operands:
+            operand.parent = operand_node
+            operand.argument = "operand"
+            self.visit(operand)
 
     def visit_IntersectSetOp(self, node: IntersectSetOp) -> None:
-        raise NotImplementedError(
-            "ML generation for intersect is not yet supported"
-        )
+        operand_node = self.create_operation_node(node)
+        for operand in node.operands:
+            operand.parent = operand_node
+            operand.argument = "operand"
+            self.visit(operand)
 
     def visit_SetdiffOp(self, node: SetdiffOp) -> None:
-        raise NotImplementedError(
-            "ML generation for setdiff is not yet supported"
-        )
+        operand_node = self.create_operation_node(node)
+        node.left.parent = operand_node
+        node.left.argument = "left"
+        node.right.parent = operand_node
+        node.right.argument = "right"
+        self.visit(node.left)
+        self.visit(node.right)
 
     def visit_SymdiffOp(self, node: SymdiffOp) -> None:
-        raise NotImplementedError(
-            "ML generation for symdiff is not yet supported"
-        )
+        operand_node = self.create_operation_node(node)
+        node.left.parent = operand_node
+        node.left.argument = "left"
+        node.right.parent = operand_node
+        node.right.argument = "right"
+        self.visit(node.left)
+        self.visit(node.right)
 
     def visit_CountSetOp(self, node: CountSetOp) -> None:
-        raise NotImplementedError(
-            "ML generation for count(setExpression) is not yet supported"
-        )
+        # ``CountSetOp`` is a legacy AST shape kept for backward-compat: the
+        # grammar rule was removed in MR !74 and ``count(set)`` now produces
+        # an ``AggregationOp``. Route through the same operation-node emission
+        # pattern so any AST built by external callers still round-trips.
+        operand_node = self.create_operation_node(node)
+        node.operand.parent = operand_node
+        node.operand.argument = "operand"
+        self.visit(node.operand)
 
     def _get_op_version_id(self, operation_code: str) -> int:
         if self.operations_data is None:

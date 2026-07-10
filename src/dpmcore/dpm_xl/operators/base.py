@@ -48,6 +48,7 @@ class Operator:
         do_not_check_with_return_type: On Comparison operators, we enforce only that operands involved have the same data type
         return_type: Data type to be checked. Operands must comply with this Data type by having it or by applying the Type Promotion.
         accepts_scalar_set_rhs: Operator accepts a ``ScalarSet`` as the right-hand operand (membership operators only).
+        accepts_scalar_set_pair: Operator accepts ``ScalarSet`` on both sides (set equality ``=``/``!=`` only, per §13.7).
     """
 
     op: ClassVar[str | None] = None
@@ -58,6 +59,7 @@ class Operator:
     propagate_attributes: ClassVar[bool] = False
     interval_allowed: ClassVar[bool] = False
     accepts_scalar_set_rhs: ClassVar[bool] = False
+    accepts_scalar_set_pair: ClassVar[bool] = False
 
     @staticmethod
     def _create_labeled_scalar(origin: str, result_type: ScalarType) -> Scalar:
@@ -267,8 +269,22 @@ class Binary(Operator):
             return fact_component.type, right.type, op_type_to_check
         elif isinstance(left, Scalar) and isinstance(right, ScalarSet):
             return left.type, right.type, op_type_to_check
+        elif (
+            cls.accepts_scalar_set_pair
+            and isinstance(left, ScalarSet)
+            and isinstance(right, ScalarSet)
+        ):
+            # §13.7 set equality: `=`/`!=` accept ScalarSet on both sides.
+            # Mixing a ScalarSet with a Scalar or Recordset is explicitly
+            # rejected (§13.7.5 / §5.2.1.5).
+            return left.type, right.type, op_type_to_check
         else:
-            raise NotImplementedError
+            raise SemanticError(
+                "3-3",
+                type_1=(f"{type(left).__name__}, {type(right).__name__}"),
+                type_op="compatible operand shapes",
+                origin=cls.op or "binary operator",
+            )
 
     @classmethod
     def validate_types(
@@ -553,20 +569,41 @@ class Binary(Operator):
         # ``accepts_scalar_set_rhs`` (currently only the ``in`` membership
         # operator). Any other shape — notably a bare RecordSet leaking past
         # validate_structures — is a real bug and gets a precise rejection.
+        if (
+            cls.accepts_scalar_set_pair
+            and isinstance(left, ScalarSet)
+            and isinstance(right, ScalarSet)
+        ):
+            # §13.7 set equality: only ScalarSet on both sides is valid.
+            # Mixed shapes are rejected in ``types_given_structures``.
+            labeled_scalar = cls.create_labeled_scalar(
+                left, right, result_type=rslt_type
+            )
+            return labeled_scalar
         if not isinstance(left, (Scalar, ConstantOperand)):
-            raise Exception(
-                f"Operator {cls.op}: invalid left operand type "
-                f"{type(left).__name__} for scalar binary operation"
+            raise SemanticError(
+                "3-3",
+                type_1=type(left).__name__,
+                type_op="Scalar or ConstantOperand on the left",
+                origin=cls.op or "binary operator",
             )
         if not isinstance(right, (Scalar, ConstantOperand, ScalarSet)):
-            raise Exception(
-                f"Operator {cls.op}: invalid right operand type "
-                f"{type(right).__name__} for scalar binary operation"
+            raise SemanticError(
+                "3-3",
+                type_1=type(right).__name__,
+                type_op="Scalar, ConstantOperand or ScalarSet on the right",
+                origin=cls.op or "binary operator",
             )
         if isinstance(right, ScalarSet) and not cls.accepts_scalar_set_rhs:
-            raise Exception(
-                f"Operator {cls.op}: set-literal right-hand side is only "
-                f"allowed for membership operators"
+            # A set-valued RHS is only accepted by `in` (via
+            # ``accepts_scalar_set_rhs``) and by set equality when the LHS is
+            # also a ScalarSet (handled above via ``accepts_scalar_set_pair``).
+            # Any other combination (e.g. ``1 = {1,2,3}``) is a semantic error.
+            raise SemanticError(
+                "3-3",
+                type_1=f"{type(left).__name__}, {type(right).__name__}",
+                type_op="matching set-valued operands or a non-set RHS",
+                origin=cls.op or "binary operator",
             )
         labeled_scalar = cls.create_labeled_scalar(
             left, right, result_type=rslt_type

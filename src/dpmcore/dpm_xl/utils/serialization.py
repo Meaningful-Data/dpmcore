@@ -527,6 +527,55 @@ class ASTToJSONVisitor(NodeVisitor):
             "value": node.value,
         }
 
+    def visit_Set(self, node: Any) -> NodeDict:
+        """Visit Set nodes (set literals, including ``{}``)."""
+        return {
+            "class_name": "Set",
+            "children": [self.visit(child) for child in node.children],
+        }
+
+    def visit_SetOfOp(self, node: Any) -> NodeDict:
+        """Visit SetOfOp nodes (``set_of(recordset)``)."""
+        return {
+            "class_name": "SetOfOp",
+            "op": node.op,
+            "operand": self.visit(node.operand),
+        }
+
+    def visit_UnionSetOp(self, node: Any) -> NodeDict:
+        """Visit UnionSetOp nodes (variadic ``union(...)``)."""
+        return {
+            "class_name": "UnionSetOp",
+            "op": node.op,
+            "operands": [self.visit(operand) for operand in node.operands],
+        }
+
+    def visit_IntersectSetOp(self, node: Any) -> NodeDict:
+        """Visit IntersectSetOp nodes (variadic ``intersect(...)``)."""
+        return {
+            "class_name": "IntersectSetOp",
+            "op": node.op,
+            "operands": [self.visit(operand) for operand in node.operands],
+        }
+
+    def visit_SetdiffOp(self, node: Any) -> NodeDict:
+        """Visit SetdiffOp nodes (``setdiff(left, right)``)."""
+        return {
+            "class_name": "SetdiffOp",
+            "op": node.op,
+            "left": self.visit(node.left),
+            "right": self.visit(node.right),
+        }
+
+    def visit_SymdiffOp(self, node: Any) -> NodeDict:
+        """Visit SymdiffOp nodes (``symdiff(left, right)``)."""
+        return {
+            "class_name": "SymdiffOp",
+            "op": node.op,
+            "left": self.visit(node.left),
+            "right": self.visit(node.right),
+        }
+
     def visit_ParExpr(self, node: Any) -> NodeDict:
         """Visit ParExpr nodes."""
         return {

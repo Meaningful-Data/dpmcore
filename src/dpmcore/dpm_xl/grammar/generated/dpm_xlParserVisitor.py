@@ -1,4 +1,4 @@
-# Generated from dpm_xlParser.g4 by ANTLR 4.9.2
+# Generated from /home/victorp/dpmcore/src/dpmcore/dpm_xl/grammar/dpm_xlParser.g4 by ANTLR 4.9.2
 from antlr4 import *
 if __name__ is not None and "." in __name__:
     from .dpm_xlParser import dpm_xlParser
@@ -149,6 +149,11 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by dpm_xlParser#setExpr.
+    def visitSetExpr(self, ctx:dpm_xlParser.SetExprContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by dpm_xlParser#setOperand.
     def visitSetOperand(self, ctx:dpm_xlParser.SetOperandContext):
         return self.visitChildren(ctx)
@@ -186,11 +191,6 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by dpm_xlParser#symdiffSetExpr.
     def visitSymdiffSetExpr(self, ctx:dpm_xlParser.SymdiffSetExprContext):
-        return self.visitChildren(ctx)
-
-
-    # Visit a parse tree produced by dpm_xlParser#subcategorySelectExpr.
-    def visitSubcategorySelectExpr(self, ctx:dpm_xlParser.SubcategorySelectExprContext):
         return self.visitChildren(ctx)
 
 
@@ -301,11 +301,6 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by dpm_xlParser#rankOp.
     def visitRankOp(self, ctx:dpm_xlParser.RankOpContext):
-        return self.visitChildren(ctx)
-
-
-    # Visit a parse tree produced by dpm_xlParser#countSetOp.
-    def visitCountSetOp(self, ctx:dpm_xlParser.CountSetOpContext):
         return self.visitChildren(ctx)
 
 
