@@ -581,19 +581,29 @@ class Binary(Operator):
             )
             return labeled_scalar
         if not isinstance(left, (Scalar, ConstantOperand)):
-            raise Exception(
-                f"Operator {cls.op}: invalid left operand type "
-                f"{type(left).__name__} for scalar binary operation"
+            raise SemanticError(
+                "3-3",
+                type_1=type(left).__name__,
+                type_op="Scalar or ConstantOperand on the left",
+                origin=cls.op or "binary operator",
             )
         if not isinstance(right, (Scalar, ConstantOperand, ScalarSet)):
-            raise Exception(
-                f"Operator {cls.op}: invalid right operand type "
-                f"{type(right).__name__} for scalar binary operation"
+            raise SemanticError(
+                "3-3",
+                type_1=type(right).__name__,
+                type_op="Scalar, ConstantOperand or ScalarSet on the right",
+                origin=cls.op or "binary operator",
             )
         if isinstance(right, ScalarSet) and not cls.accepts_scalar_set_rhs:
-            raise Exception(
-                f"Operator {cls.op}: set-literal right-hand side is only "
-                f"allowed for membership operators"
+            # A set-valued RHS is only accepted by `in` (via
+            # ``accepts_scalar_set_rhs``) and by set equality when the LHS is
+            # also a ScalarSet (handled above via ``accepts_scalar_set_pair``).
+            # Any other combination (e.g. ``1 = {1,2,3}``) is a semantic error.
+            raise SemanticError(
+                "3-3",
+                type_1=f"{type(left).__name__}, {type(right).__name__}",
+                type_op="matching set-valued operands or a non-set RHS",
+                origin=cls.op or "binary operator",
             )
         labeled_scalar = cls.create_labeled_scalar(
             left, right, result_type=rslt_type

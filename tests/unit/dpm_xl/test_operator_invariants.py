@@ -120,13 +120,16 @@ class TestScalarSetRhsHandling:
         assert str(result.type) == "Boolean"
 
     def test_equal_rejects_scalar_set_rhs_with_named_error(self) -> None:
+        from dpmcore.errors import SemanticError
+
         left = _make_scalar(Item, "left")
         right = _make_scalar_set(Item)
-        with pytest.raises(
-            Exception,
-            match="set-literal right-hand side is only allowed",
-        ):
+        # `1 = {1,2,3}` (Scalar LHS + ScalarSet RHS on `=`) used to leak a
+        # bare ``Exception``; MR !74 alignment converts it to a proper
+        # ``SemanticError("3-3")``.
+        with pytest.raises(SemanticError) as exc:
             Equal.validate(left, right)
+        assert exc.value.code == "3-3"
 
     def test_in_with_constant_lhs_and_scalar_set_rhs(self) -> None:
         left = ConstantOperand(
@@ -252,6 +255,35 @@ class TestNonEqualityBinariesRejectScalarSetPair:
         from dpmcore.dpm_xl.operators.comparison import Less
 
         self._run(Less)
+
+
+class TestScalarVsScalarSetRejected:
+    """`1 = {1,2,3}` and friends (Scalar LHS + ScalarSet RHS on non-``in``
+    operators) must raise ``SemanticError("3-3")`` — never a bare
+    ``Exception``. This pins the fix flagged during PR review of MR !74.
+    """
+
+    def _run(self, op_cls: type) -> None:
+        from dpmcore.errors import SemanticError
+
+        left = _make_scalar(Integer, "left")
+        right = _make_scalar_set(Integer)
+        with pytest.raises(SemanticError) as exc:
+            op_cls.validate(left, right)
+        assert exc.value.code == "3-3"
+
+    def test_equal_scalar_vs_scalar_set_raises_semantic_error(self) -> None:
+        self._run(Equal)
+
+    def test_notequal_scalar_vs_scalar_set_raises_semantic_error(self) -> None:
+        from dpmcore.dpm_xl.operators.comparison import NotEqual
+
+        self._run(NotEqual)
+
+    def test_greater_scalar_vs_scalar_set_raises_semantic_error(self) -> None:
+        from dpmcore.dpm_xl.operators.comparison import Greater
+
+        self._run(Greater)
 
 
 class TestInRejectsNonSetRhs:
