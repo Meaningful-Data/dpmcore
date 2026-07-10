@@ -288,21 +288,75 @@ class TestDetectAlternativeDependencies:
         )
         assert result == []
 
-    def test_multiple_scope_results(self):
-        """Works across multiple scope results."""
+    def test_different_operations_are_not_alternatives(self):
+        """Sole-external of *different* operations is not an alternative.
+
+        #202: two modules that are each the sole external of a separate
+        operation share no operation and so are not interchangeable.
+        Each ``ScopeResult`` is one operation.
+        """
         svc, SR = self._make_svc(
             {10: "http://uri/a", 20: "http://uri/b"},
         )
-        sr1 = SR(
-            scopes=[_scope([1, 10])],
-        )
-        sr2 = SR(
-            scopes=[_scope([1, 20])],
-        )
+        sr1 = SR(scopes=[_scope([1, 10])])
+        sr2 = SR(scopes=[_scope([1, 20])])
         result = svc.detect_alternative_dependencies(
             scope_results=[sr1, sr2], primary_module_vid=1
         )
-        assert len(result) == 1
+        assert result == []
+
+    def test_same_pair_across_operations_deduped(self):
+        """A pair that is an alternative in two operations appears once."""
+        svc, SR = self._make_svc(
+            {10: "http://uri/a", 20: "http://uri/b"},
+        )
+        sr1 = SR(scopes=[_scope([1, 10]), _scope([1, 20])])
+        sr2 = SR(scopes=[_scope([1, 10]), _scope([1, 20])])
+        result = svc.detect_alternative_dependencies(
+            scope_results=[sr1, sr2], primary_module_vid=1
+        )
+        assert result == [sorted(["http://uri/a", "http://uri/b"])]
+
+    def test_co_occurrence_in_other_operation_vetoes_pair(self):
+        """Co-occurring in *any* operation disqualifies a pair."""
+        svc, SR = self._make_svc(
+            {10: "http://uri/a", 20: "http://uri/b"},
+        )
+        # Op 1: 10 and 20 look like alternatives.
+        sr1 = SR(scopes=[_scope([1, 10]), _scope([1, 20])])
+        # Op 2: 10 and 20 are required together -> conjunctive, not alt.
+        sr2 = SR(scopes=[_scope([1, 10, 20])])
+        result = svc.detect_alternative_dependencies(
+            scope_results=[sr1, sr2], primary_module_vid=1
+        )
+        assert result == []
+
+    def test_valid_module_uris_drops_dangling_pair(self):
+        """A pair naming a non-dependency module is dropped (#202)."""
+        svc, SR = self._make_svc(
+            {10: "http://uri/a", 20: "http://uri/b"},
+        )
+        sr = SR(scopes=[_scope([1, 10]), _scope([1, 20])])
+        # Only module 10's URI is a genuine dependency module.
+        result = svc.detect_alternative_dependencies(
+            scope_results=[sr],
+            primary_module_vid=1,
+            valid_module_uris={"http://uri/a"},
+        )
+        assert result == []
+
+    def test_valid_module_uris_keeps_genuine_pair(self):
+        """A pair whose modules are both dependencies survives (#202)."""
+        svc, SR = self._make_svc(
+            {10: "http://uri/a", 20: "http://uri/b"},
+        )
+        sr = SR(scopes=[_scope([1, 10]), _scope([1, 20])])
+        result = svc.detect_alternative_dependencies(
+            scope_results=[sr],
+            primary_module_vid=1,
+            valid_module_uris={"http://uri/a", "http://uri/b"},
+        )
+        assert result == [sorted(["http://uri/a", "http://uri/b"])]
 
     def test_uri_failure_skips_pair(self):
         """If URI resolution fails, skip pair."""
@@ -412,30 +466,29 @@ class TestDetectCrossModuleDependencies:
         assert info["intra_instance_validations"] == []
         assert info["cross_instance_dependencies"] == []
 
-    def test_alternative_deps_included(self):
-        """Alternative deps appear in the result."""
-        svc, SR = self._make_svc()
+    @staticmethod
+    def _mv(vid):
+        mv = MagicMock()
+        mv.module_vid = vid
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+        return mv
 
-        mv20 = MagicMock()
-        mv20.module_vid = 20
-        mv20.version_number = "1.0"
-        mv20.from_reference_date = None
-        mv20.to_reference_date = None
+    def test_alternative_deps_dropped_when_not_dependency_modules(self):
+        """A pair naming a non-dependency module is dropped (#202).
 
-        mv30 = MagicMock()
-        mv30.module_vid = 30
-        mv30.version_number = "1.0"
-        mv30.from_reference_date = None
-        mv30.to_reference_date = None
+        With no variable-carrying tables, modules 20 and 30 never become
+        dependency modules, so they must not surface as alternatives even
+        though they are sole-external and never co-occur.
+        """
+        svc, SR = self._make_svc()  # _get_module_tables -> {}
 
         q = svc.session.query.return_value
-        q.filter.return_value.all.return_value = [mv20, mv30]
+        q.filter.return_value.all.return_value = [self._mv(20), self._mv(30)]
 
         sr = SR(
-            scopes=[
-                _scope([10, 20]),
-                _scope([10, 30]),
-            ],
+            scopes=[_scope([10, 20]), _scope([10, 30])],
             is_cross_module=True,
         )
         info = svc.detect_cross_module_dependencies(
@@ -443,7 +496,35 @@ class TestDetectCrossModuleDependencies:
             primary_module_vid=10,
             operation_code="v1",
         )
-        assert "alternative_dependencies" in info
+        assert info["dependency_modules"] == {}
+        assert info["alternative_dependencies"] == []
+
+    def test_alternative_deps_kept_when_dependency_modules(self):
+        """Genuine dependency modules surface as alternatives (#202)."""
+        svc, SR = self._make_svc()
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "T_01": {"variables": {"v1": "x"}, "open_keys": {}},
+        }
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [self._mv(20), self._mv(30)]
+
+        sr = SR(
+            scopes=[_scope([10, 20]), _scope([10, 30])],
+            is_cross_module=True,
+        )
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+            operation_code="v1",
+        )
+        assert set(info["dependency_modules"]) == {
+            "http://uri/mod_20",
+            "http://uri/mod_30",
+        }
+        assert info["alternative_dependencies"] == [
+            sorted(["http://uri/mod_20", "http://uri/mod_30"])
+        ]
 
     def test_ref_period_from_time_shifts(self):
         """ref_period uses time_shifts when provided."""

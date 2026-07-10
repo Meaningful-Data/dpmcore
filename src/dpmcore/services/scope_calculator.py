@@ -290,12 +290,17 @@ class ScopeCalculatorService:
         )
 
         if scope_result.has_error or not is_cross or primary_has_intra:
+            # This branch builds no dependency modules (the primary owns
+            # the reading, or the scope is not cross-module), so there are
+            # no genuine dependencies for two modules to be alternatives
+            # of: an empty valid-URI set drops every candidate pair (#202).
             alternative_deps: List[List[str]] = []
             if compute_alternative_deps and not scope_result.has_error:
                 alternative_deps = self.detect_alternative_dependencies(
                     scope_results=[scope_result],
                     primary_module_vid=primary_module_vid,
                     release_id=release_id,
+                    valid_module_uris=set(),
                 )
             return {
                 **empty_result,
@@ -350,6 +355,7 @@ class ScopeCalculatorService:
                 scope_results=[scope_result],
                 primary_module_vid=primary_module_vid,
                 release_id=release_id,
+                valid_module_uris=set(dep_modules),
             )
             if compute_alternative_deps
             else []
@@ -433,12 +439,28 @@ class ScopeCalculatorService:
         primary_module_vid: int,
         release_id: Optional[int] = None,
         release_code: Optional[str] = None,
+        valid_module_uris: Optional[Set[str]] = None,
     ) -> List[List[str]]:
         """Detect pairs of external modules that are alternatives.
 
-        Two external modules are alternatives if they each appear as
-        the sole external module alongside the primary module in
-        separate scopes, but never co-exist in the same scope.
+        Two external modules are alternatives only when they are
+        interchangeable dependencies of the *same* operation (#202):
+        within a single operation's scopes they each appear as the sole
+        external module alongside the primary, yet never co-exist in one
+        scope. Each ``ScopeResult`` is one operation, so candidate pairs
+        are collected per scope result — being the sole external of two
+        *different* operations does not make two modules alternatives.
+
+        Args:
+            scope_results: One entry per operation.
+            primary_module_vid: VID of the primary module.
+            release_id: Optional release filter (validated only).
+            release_code: Optional release code (validated only).
+            valid_module_uris: When given, the genuine dependency-module
+                URIs of the script. Pairs referencing a module outside
+                this set are dropped so ``alternative_dependencies`` can
+                never name a module absent from ``dependency_modules``
+                (#202 dangling references).
 
         Returns a list of ``[uri_a, uri_b]`` pairs (sorted).
         """
@@ -449,19 +471,31 @@ class ScopeCalculatorService:
         resolve_release_id(
             self.session, release_id=release_id, release_code=release_code
         )
-        single_ext_vids, all_ext_vid_sets = self._collect_external_vid_sets(
-            scope_results, primary_module_vid
-        )
-        if len(single_ext_vids) < 2:
-            return []
+        # Candidates: pairs sole-external within the *same* operation.
+        # Co-occurrence is tracked across every operation — two modules
+        # that ever share one scope are conjunctive, never alternatives.
+        candidate_pairs: Set[Tuple[int, int]] = set()
+        co_occurring: Set[Tuple[int, int]] = set()
+        for sr in scope_results:
+            single_ext_vids, ext_vid_sets = self._collect_external_vid_sets(
+                [sr], primary_module_vid
+            )
+            co_occurring |= self._co_occurring_pairs(ext_vid_sets)
+            candidate_pairs |= self._sole_external_pairs(single_ext_vids)
 
-        alt_pairs = self._find_alternative_pairs(
-            single_ext_vids, all_ext_vid_sets
-        )
+        alt_pairs = sorted(candidate_pairs - co_occurring)
         if not alt_pairs:
             return []
 
-        return self._map_pairs_to_uris(alt_pairs)
+        uri_pairs = self._map_pairs_to_uris(alt_pairs)
+        if valid_module_uris is not None:
+            uri_pairs = [
+                pair
+                for pair in uri_pairs
+                if pair[0] in valid_module_uris
+                and pair[1] in valid_module_uris
+            ]
+        return uri_pairs
 
     @staticmethod
     def _collect_external_vid_sets(
@@ -492,11 +526,22 @@ class ScopeCalculatorService:
         return single_ext_vids, all_ext_vid_sets
 
     @staticmethod
-    def _find_alternative_pairs(
+    def _sole_external_pairs(
         single_ext_vids: Set[int],
+    ) -> Set[tuple[int, int]]:
+        """All sorted VID pairs among sole-external modules of one op."""
+        sorted_vids = sorted(single_ext_vids)
+        return {
+            (v1, v2)
+            for i, v1 in enumerate(sorted_vids)
+            for v2 in sorted_vids[i + 1 :]
+        }
+
+    @staticmethod
+    def _co_occurring_pairs(
         all_ext_vid_sets: List[frozenset[int]],
-    ) -> List[tuple[int, int]]:
-        """Find VID pairs that are sole-external and never co-occur."""
+    ) -> Set[tuple[int, int]]:
+        """Sorted VID pairs that share a single scope (conjunctive)."""
         co_occurring: Set[tuple[int, int]] = set()
         for ext_set in all_ext_vid_sets:
             if len(ext_set) > 1:
@@ -504,15 +549,7 @@ class ScopeCalculatorService:
                 for i, v1 in enumerate(sorted_vids):
                     for v2 in sorted_vids[i + 1 :]:
                         co_occurring.add((v1, v2))
-
-        pairs = []
-        sorted_singles = sorted(single_ext_vids)
-        for i, v1 in enumerate(sorted_singles):
-            for v2 in sorted_singles[i + 1 :]:
-                pair = (v1, v2) if v1 < v2 else (v2, v1)
-                if pair not in co_occurring:
-                    pairs.append(pair)
-        return pairs
+        return co_occurring
 
     def _map_pairs_to_uris(
         self,
