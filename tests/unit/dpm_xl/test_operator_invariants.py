@@ -179,6 +179,111 @@ def test_equal_does_not_accept_scalar_set_rhs() -> None:
     assert Equal.accepts_scalar_set_rhs is False
 
 
+# ---------------------------------------------------------------------------
+# MR !74 alignment: accepts_scalar_set_pair flag, set-equality between two
+# ScalarSets, and rejection of non-set RHS in ``in``.
+# ---------------------------------------------------------------------------
+
+
+def test_equal_declares_accepts_scalar_set_pair() -> None:
+    """§13.7: ``=`` is one of the two operators that opts into set equality."""
+    assert Equal.accepts_scalar_set_pair is True
+
+
+def test_notequal_declares_accepts_scalar_set_pair() -> None:
+    from dpmcore.dpm_xl.operators.comparison import NotEqual
+
+    assert NotEqual.accepts_scalar_set_pair is True
+
+
+def test_in_does_not_declare_accepts_scalar_set_pair() -> None:
+    """``in`` accepts a ScalarSet only on the RHS, never symmetrically."""
+    assert In.accepts_scalar_set_pair is False
+
+
+def test_greater_does_not_declare_accepts_scalar_set_pair() -> None:
+    """Ordering comparisons are not defined on ScalarSets (§13.7)."""
+    from dpmcore.dpm_xl.operators.comparison import Greater
+
+    assert Greater.accepts_scalar_set_pair is False
+
+
+class TestSetEqualityPair:
+    """§13.7: ``=`` / ``!=`` between two ScalarSets return a Boolean Scalar."""
+
+    def test_equal_accepts_scalar_set_pair(self) -> None:
+        left = _make_scalar_set(Integer)
+        right = _make_scalar_set(Integer)
+        result = Equal.validate(left, right)
+        assert isinstance(result, Scalar)
+        assert isinstance(result.type, Boolean)
+
+    def test_notequal_accepts_scalar_set_pair(self) -> None:
+        from dpmcore.dpm_xl.operators.comparison import NotEqual
+
+        left = _make_scalar_set(Integer)
+        right = _make_scalar_set(Integer)
+        result = NotEqual.validate(left, right)
+        assert isinstance(result, Scalar)
+        assert isinstance(result.type, Boolean)
+
+
+class TestNonEqualityBinariesRejectScalarSetPair:
+    """Only ``=`` / ``!=`` may accept a ScalarSet pair. Every other binary
+    must raise ``SemanticError("3-3")`` — no silent leaks through the base
+    ``types_given_structures`` else-branch.
+    """
+
+    def _run(self, op_cls: type) -> None:
+        from dpmcore.errors import SemanticError
+
+        left = _make_scalar_set(Integer)
+        right = _make_scalar_set(Integer)
+        with pytest.raises(SemanticError) as exc:
+            op_cls.validate(left, right)
+        assert exc.value.code == "3-3"
+
+    def test_greater_rejects_scalar_set_pair(self) -> None:
+        from dpmcore.dpm_xl.operators.comparison import Greater
+
+        self._run(Greater)
+
+    def test_less_rejects_scalar_set_pair(self) -> None:
+        from dpmcore.dpm_xl.operators.comparison import Less
+
+        self._run(Less)
+
+
+class TestInRejectsNonSetRhs:
+    """MR !74 widens ``in``'s RHS to a generic ``expression``; the semantic
+    layer must reject a non-set RHS instead of letting a bare
+    ``TypeError`` leak from the runtime evaluator.
+    """
+
+    def test_in_with_scalar_rhs_raises_semantic_error(self) -> None:
+        from dpmcore.errors import SemanticError
+
+        left = _make_scalar(Integer, "left")
+        right = _make_scalar(Integer, "right")
+        with pytest.raises(SemanticError) as exc:
+            In.validate(left, right)
+        assert exc.value.code == "3-3"
+
+    def test_in_with_constant_rhs_raises_semantic_error(self) -> None:
+        from dpmcore.errors import SemanticError
+
+        left = _make_scalar(Integer, "left")
+        right = ConstantOperand(
+            type_=ScalarFactory().scalar_factory("Integer"),
+            name="3",
+            origin="3",
+            value=3,
+        )
+        with pytest.raises(SemanticError) as exc:
+            In.validate(left, right)
+        assert exc.value.code == "3-3"
+
+
 class TestMixedTypeOperands:
     """Mixed-type cells must not crash or raise 3-1 in Boolean operators."""
 

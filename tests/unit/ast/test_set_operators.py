@@ -212,3 +212,96 @@ def test_existing_literal_set_still_works():
     node = ast.children[0]
     assert isinstance(node, BinOp)
     assert node.op == "in"
+
+
+# ---------------------------------------------------------------------------
+# ASTToJSONVisitor: MR !74 set operators must serialize as first-class nodes
+# with their ``class_name`` preserved. Previously the visitor lacked handlers
+# and these nodes were silently dropped from the enriched AST payload.
+# ---------------------------------------------------------------------------
+
+from dpmcore.dpm_xl.utils.serialization import ASTToJSONVisitor  # noqa: E402
+
+
+def _serialize_expr(expression: str) -> dict:
+    ast = SyntaxService().parse(expression)
+    result = ASTToJSONVisitor().visit(ast)
+    assert isinstance(result, dict)
+    return result["children"][0]
+
+
+def test_ast_to_json_serializes_empty_set_literal():
+    node = _serialize_expr("{tT1, r001} in {}")
+    assert node["class_name"] == "BinOp"
+    assert node["op"] == "in"
+    right = node["right"]
+    assert right["class_name"] == "Set"
+    assert right["children"] == []
+
+
+def test_ast_to_json_serializes_non_empty_set_literal():
+    node = _serialize_expr("{tT1, r001} in {1, 2, 3}")
+    right = node["right"]
+    assert right["class_name"] == "Set"
+    assert len(right["children"]) == 3
+    for child, expected in zip(right["children"], [1, 2, 3], strict=True):
+        assert child["class_name"] == "Constant"
+        assert child["value"] == expected
+
+
+def test_ast_to_json_serializes_set_of_op():
+    node = _serialize_expr("{tT1, r001} in set_of({tT2, r001-010})")
+    right = node["right"]
+    assert right["class_name"] == "SetOfOp"
+    assert right["op"] == "set_of"
+    assert isinstance(right["operand"], dict)
+
+
+def test_ast_to_json_serializes_union_variadic():
+    node = _serialize_expr("{tT1, r001} in union({1, 2}, {3, 4}, {5, 6})")
+    right = node["right"]
+    assert right["class_name"] == "UnionSetOp"
+    assert right["op"] == "union"
+    assert len(right["operands"]) == 3
+    for operand in right["operands"]:
+        assert operand["class_name"] == "Set"
+
+
+def test_ast_to_json_serializes_intersect():
+    node = _serialize_expr("{tT1, r001} in intersect({1, 2, 3}, {2, 3, 4})")
+    right = node["right"]
+    assert right["class_name"] == "IntersectSetOp"
+    assert right["op"] == "intersect"
+    assert len(right["operands"]) == 2
+
+
+def test_ast_to_json_serializes_setdiff():
+    node = _serialize_expr("{tT1, r001} in setdiff({1, 2, 3}, {3})")
+    right = node["right"]
+    assert right["class_name"] == "SetdiffOp"
+    assert right["op"] == "setdiff"
+    assert right["left"]["class_name"] == "Set"
+    assert right["right"]["class_name"] == "Set"
+
+
+def test_ast_to_json_serializes_symdiff():
+    node = _serialize_expr("{tT1, r001} in symdiff({1, 2}, {2, 3})")
+    right = node["right"]
+    assert right["class_name"] == "SymdiffOp"
+    assert right["op"] == "symdiff"
+    assert right["left"]["class_name"] == "Set"
+    assert right["right"]["class_name"] == "Set"
+
+
+def test_ast_to_json_preserves_nested_set_operators():
+    """A nested ``setdiff(union(...), ...)`` expression must round-trip with
+    every intermediate ``class_name`` intact — not just the outermost node.
+    """
+    node = _serialize_expr(
+        "{tT1, r001} in setdiff(union({1, 2}, {3, 4}), {5})"
+    )
+    outer = node["right"]
+    assert outer["class_name"] == "SetdiffOp"
+    inner = outer["left"]
+    assert inner["class_name"] == "UnionSetOp"
+    assert len(inner["operands"]) == 2
