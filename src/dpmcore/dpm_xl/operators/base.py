@@ -269,17 +269,22 @@ class Binary(Operator):
             return fact_component.type, right.type, op_type_to_check
         elif isinstance(left, Scalar) and isinstance(right, ScalarSet):
             return left.type, right.type, op_type_to_check
-        elif cls.accepts_scalar_set_pair and isinstance(left, ScalarSet):
-            # §13.7 set equality: `=`/`!=` accept ScalarSet on both sides,
-            # with a RecordSet coerced to its Fact Component's ScalarSet.
-            if isinstance(right, ScalarSet):
-                return left.type, right.type, op_type_to_check
-            if isinstance(right, RecordSet):
-                fact_component = right.get_fact_component()
-                return left.type, fact_component.type, op_type_to_check
-            raise NotImplementedError
+        elif (
+            cls.accepts_scalar_set_pair
+            and isinstance(left, ScalarSet)
+            and isinstance(right, ScalarSet)
+        ):
+            # §13.7 set equality: `=`/`!=` accept ScalarSet on both sides.
+            # Mixing a ScalarSet with a Scalar or Recordset is explicitly
+            # rejected (§13.7.5 / §5.2.1.5).
+            return left.type, right.type, op_type_to_check
         else:
-            raise NotImplementedError
+            raise SemanticError(
+                "3-3",
+                type_1=(f"{type(left).__name__}, {type(right).__name__}"),
+                type_op="compatible operand shapes",
+                origin=cls.op or "binary operator",
+            )
 
     @classmethod
     def validate_types(
@@ -567,24 +572,12 @@ class Binary(Operator):
         if (
             cls.accepts_scalar_set_pair
             and isinstance(left, ScalarSet)
-            and isinstance(right, (ScalarSet, RecordSet))
+            and isinstance(right, ScalarSet)
         ):
-            # §13.7: set equality accepts ScalarSet on both sides, and also
-            # a RecordSet on the RHS (coerced upstream in types_given_structures).
-            # ``create_labeled_scalar`` only accepts ScalarSet/Scalar/Constant on
-            # the RHS; a RecordSet is folded into a ScalarSet placeholder that
-            # carries the fact type resolved above.
-            right_operand: ScalarSet
-            if isinstance(right, RecordSet):
-                right_operand = ScalarSet(
-                    type_=right.get_fact_component().type,
-                    name=None,
-                    origin=right.origin,
-                )
-            else:
-                right_operand = right
+            # §13.7 set equality: only ScalarSet on both sides is valid.
+            # Mixed shapes are rejected in ``types_given_structures``.
             labeled_scalar = cls.create_labeled_scalar(
-                left, right_operand, result_type=rslt_type
+                left, right, result_type=rslt_type
             )
             return labeled_scalar
         if not isinstance(left, (Scalar, ConstantOperand)):

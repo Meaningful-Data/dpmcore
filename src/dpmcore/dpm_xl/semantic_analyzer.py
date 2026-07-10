@@ -449,6 +449,11 @@ class InputAnalyzer(ASTTemplate, ABC):
         self, node: AggregationOp
     ) -> Operand:
         operand = self.visit(node.operand)
+        # `count` is the only aggregator defined on a ScalarSet: it returns
+        # the set's cardinality as an Integer Scalar (§13, formerly the
+        # dedicated ``CountSetOp`` grammar rule dropped in MR !74).
+        if node.op == "count" and isinstance(operand, ScalarSet):
+            return Scalar(type_=Integer(), name=None, origin="count")
         if not isinstance(operand, RecordSet):
             raise errors.SemanticError("4-4-0-1", op=node.op)
 
@@ -864,7 +869,15 @@ class InputAnalyzer(ASTTemplate, ABC):
                     origin="set operator",
                 )
             symbols.append(result)
-        types = {sym.type.__class__ for sym in symbols}
+        # The empty set literal ``{}`` has no elements from which to infer a
+        # type, so ``visit_Set`` gives it an ``Item`` placeholder. That
+        # placeholder is not a real element type and must not participate in
+        # the homogeneity check (otherwise ``union({}, {1,2})`` would clash
+        # as ``Item`` vs ``Integer``).
+        typed_symbols = [s for s in symbols if s.origin != "{}"]
+        if not typed_symbols:
+            return symbols[0]
+        types = {sym.type.__class__ for sym in typed_symbols}
         if len(types) > 1:
             type_names = ", ".join(t.__name__ for t in types)
             raise errors.SemanticError(
@@ -873,7 +886,7 @@ class InputAnalyzer(ASTTemplate, ABC):
                 type_op="homogeneous scalar type",
                 origin="set operator",
             )
-        return symbols[0]
+        return typed_symbols[0]
 
     def visit_UnionSetOp(  # type: ignore[override]
         self, node: UnionSetOp

@@ -30,11 +30,38 @@ class Binary(_BaseBinary):
     return_type: ClassVar[type[ScalarType] | None] = Boolean
 
 
+def _reject_scalarset_mixed_with_recordset(
+    left: BinaryOperand, right: BinaryOperand, op: str
+) -> None:
+    """Reject ``=`` / ``!=`` between a ``ScalarSet`` and a ``RecordSet``.
+
+    §13.7.5 / §5.2.1.5: set equality applies only when *both* operands are
+    set-valued. A comparison that mixes a Scalar Set with a Recordset (or a
+    Scalar) is explicitly rejected by semantic analysis.
+    """
+    if (isinstance(left, ScalarSet) and isinstance(right, RecordSet)) or (
+        isinstance(left, RecordSet) and isinstance(right, ScalarSet)
+    ):
+        raise SemanticError(
+            "3-3",
+            type_1=(f"{type(left).__name__}, {type(right).__name__}"),
+            type_op="matching set-valued or non-set operands",
+            origin=op,
+        )
+
+
 class Equal(Binary):
     op: ClassVar[str | None] = tokens.EQ
     py_op: ClassVar[PyOp | None] = operator.eq
     # §13.7: ``=`` accepts a set-valued operand on both sides (set equality).
     accepts_scalar_set_pair: ClassVar[bool] = True
+
+    @classmethod
+    def validate(
+        cls, left: BinaryOperand, right: BinaryOperand
+    ) -> "Scalar | RecordSet":  # type: ignore[name-defined]  # noqa: F821
+        _reject_scalarset_mixed_with_recordset(left, right, cls.op or "=")
+        return super().validate(left, right)
 
 
 class NotEqual(Binary):
@@ -42,6 +69,13 @@ class NotEqual(Binary):
     py_op: ClassVar[PyOp | None] = operator.ne
     # §13.7: ``!=`` accepts a set-valued operand on both sides (set inequality).
     accepts_scalar_set_pair: ClassVar[bool] = True
+
+    @classmethod
+    def validate(
+        cls, left: BinaryOperand, right: BinaryOperand
+    ) -> "Scalar | RecordSet":  # type: ignore[name-defined]  # noqa: F821
+        _reject_scalarset_mixed_with_recordset(left, right, cls.op or "!=")
+        return super().validate(left, right)
 
 
 class Greater(Binary):
