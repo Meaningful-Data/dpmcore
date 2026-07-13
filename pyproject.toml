@@ -99,7 +99,7 @@ pandas-stubs = ">=2.2.2,<3.0"
 # 7.1.x, which in turn caps sphinx-autodoc-typehints at the 2.0.x line
 # (>= 2.1 requires sphinx >= 7.3.5). Lift all three together if/when the docs
 # move off sphinx-multiversion.
-sphinx = ">=7.1.2,<7.2"
+sphinx = ">=8.1.3,<8.2"
 sphinx-rtd-theme = ">=3.0"
 sphinx-autodoc-typehints = ">=2.0,<2.1"
 sphinx-multiversion = ">=0.2.4"
