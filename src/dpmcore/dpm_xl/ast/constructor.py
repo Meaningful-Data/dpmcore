@@ -64,6 +64,7 @@ from dpmcore.dpm_xl.grammar.generated.dpm_xlParserVisitor import (
     dpm_xlParserVisitor,
 )
 from dpmcore.dpm_xl.utils.tokens import TABLE_GROUP_PREFIX
+from dpmcore.dpm_xl.warning_collector import add_semantic_warning
 from dpmcore.errors import SemanticError
 
 
@@ -806,7 +807,17 @@ class ASTVisitor(dpm_xlParserVisitor):
         elif type_ == dpm_xlParser.STRING_LITERAL:
             value = value[1:-1]
             if value == "null":
-                raise SemanticError("0-3")
+                # Historical DPM-XL expressions shipped in older DB releases
+                # used the string literal ``"null"`` as a null sentinel. The
+                # grammar accepts it and the intent is unambiguous, so treat
+                # it as a proper Null Constant and surface a deprecation
+                # warning instead of aborting semantic analysis with 0-3.
+                add_semantic_warning(
+                    'Deprecated use of the "null" string literal; '
+                    "prefer the ``isnull(...)`` function or the bare "
+                    "``null`` keyword."
+                )
+                return Constant(type_="Null", value=None)
             return Constant(type_="String", value=value)
         elif type_ == dpm_xlParser.BOOLEAN_LITERAL:
             constant_value: bool
