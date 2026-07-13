@@ -115,14 +115,14 @@ def test_default_null_survives_with_clause_propagation():
 # word ``null``) as a null sentinel. The grammar accepts it and the intent
 # is unambiguous, so ``visitLiteral`` now materialises it as a proper
 # ``Null`` Constant and emits a deprecation warning instead of aborting
-# with ``SemanticError("0-3")``.
+# semantic analysis.
 # ---------------------------------------------------------------------------
 
 
 def test_string_literal_null_no_longer_raises_semantic_error():
-    """The historical ``"null"`` string literal now parses instead of
-    raising ``SemanticError("0-3")`` — the AST construction path from
-    the issue's reproducer must complete without an exception.
+    """The historical ``"null"`` string literal now parses without
+    raising a ``SemanticError`` — the AST construction path from the
+    issue's reproducer must complete without an exception.
     """
     from antlr4 import CommonTokenStream, InputStream
 

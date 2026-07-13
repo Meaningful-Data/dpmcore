@@ -811,7 +811,7 @@ class ASTVisitor(dpm_xlParserVisitor):
                 # used the string literal ``"null"`` as a null sentinel. The
                 # grammar accepts it and the intent is unambiguous, so treat
                 # it as a proper Null Constant and surface a deprecation
-                # warning instead of aborting semantic analysis with 0-3.
+                # warning instead of aborting semantic analysis.
                 add_semantic_warning(
                     'Deprecated use of the "null" string literal; '
                     "prefer the ``isnull(...)`` function or the bare "
