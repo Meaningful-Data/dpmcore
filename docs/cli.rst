@@ -481,23 +481,27 @@ one node per operation, one arrow per dependency. The output is a single
 embedded inline, so it opens offline and can be attached to a ticket or sent
 to another person as a single file.
 
-Provide exactly **one** input source:
+**``--database URL`` is always required.** The engine resolves every
+selection's cells against the DPM dictionary, so dependencies are exact in
+every mode — row/column ranges and wildcards are expanded to the concrete
+cells they cover, never approximated. Choose the operations to graph with one
+input source:
 
 #. a ``Code,Expression`` **CSV file** (the ``CSV`` argument);
 #. one or more inline **``-e CODE=EXPRESSION``** operations (handy for a
    quick, ad-hoc graph without authoring a file); or
-#. **``--database URL``** to read the DPM dictionary directly (the *engine
-   mode*; see below).
+#. **neither** — read the DPM dictionary directly (filter with ``--module``
+   / ``--table``).
 
-The CSV and inline modes need no database — dependencies are derived from the
-DPM-XL AST. The engine mode reads the dictionary's pre-resolved operands.
+``--release`` selects the release to resolve against (default: the latest).
 
 .. code-block:: text
 
-   dpmcore generate-graph CSV [-o OUTPUT] [-t TITLE]
-   dpmcore generate-graph -e CODE=EXPRESSION [-e ...] [-o OUTPUT] [-t TITLE]
+   dpmcore generate-graph CSV --database URL [--release R] [-o OUT] [-t TITLE]
+   dpmcore generate-graph -e CODE=EXPRESSION [-e ...] --database URL
+                          [--release R] [-o OUT] [-t TITLE]
    dpmcore generate-graph --database URL [--module C] [--table T]
-                          [--release R] [-o OUTPUT] [-t TITLE]
+                          [--release R] [-o OUT] [-t TITLE]
 
 **Arguments / Options:**
 
@@ -512,32 +516,40 @@ DPM-XL AST. The engine mode reads the dictionary's pre-resolved operands.
    * - ``-e, --expression CODE=EXPRESSION``
      - An inline operation, given as a ``Code`` and its DPM-XL expression
        separated by ``=`` (split on the first ``=``). Repeatable.
-   * - ``--database TEXT``
-     - SQLAlchemy database URL. Engine mode: builds the graph from the DPM
-       dictionary using the engine's resolved operand cells.
+   * - ``--database TEXT`` (required)
+     - SQLAlchemy database URL. The engine resolves every selection's cells
+       against this dictionary, so dependencies are exact in all modes.
    * - ``--module TEXT``
-     - Engine mode only: restrict to operations in this module version code.
+     - Dictionary mode only (no CSV / ``-e``): restrict to operations in this
+       module version code.
    * - ``--table TEXT``
-     - Engine mode only: restrict to operations referencing this table code.
+     - Dictionary mode only (no CSV / ``-e``): restrict to operations
+       referencing this table code.
    * - ``--release TEXT``
-     - Engine mode only: restrict to operations active in this release code
-       (e.g. ``4.2``).
+     - Release code to resolve against (e.g. ``4.2``). Defaults to the latest
+       release.
    * - ``-o, --output PATH``
      - Output HTML path. Defaults to ``calculations_graph.html``.
    * - ``-t, --title TEXT``
      - Graph title. Defaults to a title derived from the input.
 
-**Engine mode (``--database``):**
+**How dependencies are resolved:**
 
-Real DPM dictionaries store each operation as a validation/equality
-(``with {scope}: {LHS} = {RHS}``), not a ``<-`` assignment, so the text modes
-above find no dependencies in them. Engine mode instead reads the engine's
-already-resolved operand tree: for an ``=`` operation the ``left`` side is the
-**output** cell and the ``right`` side the **inputs**, and operations are
-linked when one writes a variable another reads (exact ``VariableID`` match,
-with ranges/wildcards/sheets already expanded by the engine). The full
-dictionary has thousands of operations, so a ``--module`` / ``--table`` /
-``--release`` filter is recommended to keep the graph readable.
+The engine expands every selection to the concrete ``VariableID`` set it
+covers — ranges, wildcards and the sheet dimension included — and draws an
+implicit edge only on an *exact* variable match, so overlapping ranges never
+produce a false dependency.
+
+In the **CSV and inline modes** each ``<lhs> <- ...: (<rhs>)`` assignment is
+resolved against ``--database`` at ``--release``: the left-hand selection is
+the operation's output and the right-hand side its inputs.
+
+In the **dictionary mode** the graph is built from the operations already in
+the DPM dictionary. Those are stored as validations/equalities
+(``with {scope}: {LHS} = {RHS}``); for an ``=`` operation the ``left`` side is
+the output and the ``right`` the inputs. The full dictionary has thousands of
+operations, so a ``--module`` / ``--table`` / ``--release`` filter is
+recommended to keep the graph readable.
 
 **Input format:**
 
@@ -555,8 +567,8 @@ A CSV with a ``Code,Expression`` header. Each row is one operation:
 
 An arrow ``A -> B`` is drawn when operation ``B`` depends on ``A``:
 
-- **Implicit** — ``B`` reads a cell that ``A`` writes (matched on
-  table/row/column/sheet).
+- **Implicit** — ``B`` reads a cell that ``A`` writes (matched on the
+  engine-resolved ``VariableID``).
 - **Explicit** — ``B`` references ``A`` directly via ``{o<A-code>}``.
 
 Operations with no incoming arrow are **roots** and are shown in a distinct
@@ -565,22 +577,24 @@ also offers search/filter and ``Fit`` / ``Re-layout`` controls.
 
 .. note::
 
-   In the CSV / inline modes dependency detection runs without a database, so
-   concrete cell-range expansion (the exact row codes a ``0010-0050`` range
-   covers) is approximated by numeric range *overlap*. Wildcards, the sheet
-   dimension and operation references are handled exactly. Engine mode
-   (``--database``) avoids the approximation by using the dictionary's
-   pre-resolved cells.
+   An operation whose selection cannot be resolved (an unknown table, or a
+   grey cell that carries no variable) is not fatal: its node still renders,
+   its unresolved dependencies are skipped, and a warning is printed.
+   Explicit ``{o<code>}`` references need no cell resolution and are always
+   drawn.
 
 **Examples:**
 
 .. code-block:: bash
 
-   # Default output (calculations_graph.html)
-   dpmcore generate-graph calculations_script.csv
-
-   # Custom output path and title
+   # CSV script, resolved against the dictionary (default output)
    dpmcore generate-graph calculations_script.csv \
+       --database sqlite:///dpm.db
+
+   # Custom output path, title and release
+   dpmcore generate-graph calculations_script.csv \
+       --database sqlite:///dpm.db \
+       --release 4.2 \
        -o output/graph.html \
        -t "COREP calculations"
 
@@ -588,9 +602,10 @@ also offers search/filter and ``Fit`` / ``Re-layout`` controls.
    dpmcore generate-graph \
        -e "calc1={tK_1.00, r0010, c0010} <- {tK_2.00, r0010, c0010}" \
        -e "calc2={tK_3.00, r0010, c0010} <- {tK_1.00, r0010, c0010} + 1" \
+       --database sqlite:///dpm.db \
        -o graph.html
 
-   # Engine mode: read the DPM dictionary directly (filter to one table)
+   # Dictionary mode: graph the operations already in the DPM (one table)
    dpmcore generate-graph \
        --database sqlite:///dpm.db \
        --table C_01.00 \
