@@ -580,6 +580,42 @@ class TestEcbValidationsImport:
 
         assert result == set()
 
+    def test_extract_table_codes_for_expression_records_warnings_on_failure(
+        self, service_with_schema, sqlite_engine_with_schema
+    ):
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        warnings: list = []
+
+        with (
+            patch(
+                "dpmcore.services.ecb_validations_import.SyntaxService"
+            ) as syntax_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import.OperandsChecking"
+            ) as checker_cls,
+        ):
+            syntax_cls.return_value.parse.return_value = object()
+            checker_cls.side_effect = RuntimeError("cannot inspect tables")
+
+            result = service_with_schema._extract_table_codes_for_expression(
+                session,
+                expression="broken expression",
+                start_release_id=1,
+                latest_release_id=2,
+                warnings=warnings,
+            )
+
+        session.close()
+
+        assert result == set()
+        assert len(warnings) == 2
+        assert all(
+            "Table code resolution failed for expression" in w
+            for w in warnings
+        )
+        assert "release 1" in warnings[0]
+        assert "release 2" in warnings[1]
+
     def test_create_table_references_returns_zero_when_no_table_codes(
         self, service_with_schema, sqlite_engine_with_schema
     ):
