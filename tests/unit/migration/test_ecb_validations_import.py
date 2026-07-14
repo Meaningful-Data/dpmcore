@@ -10,6 +10,7 @@ from dpmcore.orm.infrastructure import Organisation
 from dpmcore.services.ecb_validations_import import (
     EcbValidationsImportError,
     EcbValidationsImportService,
+    _format_warnings,
     _stable_uuid,
 )
 
@@ -804,6 +805,102 @@ class TestEcbValidationsImport:
                 match="Failed to import ECB validations",
             ):
                 service_with_schema.import_csv(str(csv_file))
+
+    def test_import_csv_raises_when_commit_persists_nothing(
+        self, service_with_schema, tmp_path
+    ):
+        """A hollow commit (no ECB org row) must surface as an error.
+
+        Regression test for the "silent transaction abort" failure mode:
+        a swallowed mid-loop DB error can leave ``session.commit()``
+        succeeding with nothing actually persisted. Simulated here by
+        stubbing out ``_import_ecb_validations_df`` entirely, so the
+        session commits without ever creating the ECB organisation.
+        """
+        csv_file = tmp_path / "valid.csv"
+        csv_file.write_text(
+            "vr_code,start_release\nV1,4.0\n", encoding="utf-8"
+        )
+
+        with patch.object(
+            service_with_schema,
+            "_import_ecb_validations_df",
+            return_value=MagicMock(),
+        ):
+            with pytest.raises(
+                EcbValidationsImportError,
+                match="no data was persisted",
+            ):
+                service_with_schema.import_csv(str(csv_file))
+
+
+# ---------------------------------------------------------------------------
+# _verify_persisted
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyPersisted:
+    def test_passes_silently_when_ecb_organisation_exists(
+        self, service_with_schema, sqlite_engine_with_schema
+    ):
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            session.add(
+                Organisation(
+                    org_id=1,
+                    name="European Central Bank",
+                    acronym="ECB",
+                    id_prefix=1,
+                )
+            )
+            session.commit()
+        finally:
+            session.close()
+
+        service_with_schema._verify_persisted([])
+
+    def test_raises_when_no_ecb_organisation_exists(self, service_with_schema):
+        with pytest.raises(
+            EcbValidationsImportError,
+            match="no data was persisted",
+        ):
+            service_with_schema._verify_persisted([])
+
+    def test_error_message_includes_warnings(self, service_with_schema):
+        with pytest.raises(EcbValidationsImportError, match="oops"):
+            service_with_schema._verify_persisted(["oops"])
+
+
+# ---------------------------------------------------------------------------
+# _format_warnings
+# ---------------------------------------------------------------------------
+
+
+class TestFormatWarnings:
+    def test_empty_list_returns_no_warnings_message(self):
+        assert (
+            _format_warnings([])
+            == " No warnings were logged during the run."
+        )
+
+    def test_small_list_shows_all_warnings_without_omission_note(self):
+        result = _format_warnings(["a", "b"])
+        assert result == " Warnings logged: ['a', 'b']"
+        assert "omitted" not in result
+
+    def test_caps_at_default_limit_of_20(self):
+        warnings = [f"warning-{i}" for i in range(25)]
+
+        result = _format_warnings(warnings)
+
+        assert "warning-19" in result
+        assert "warning-20" not in result
+        assert "(+5 more omitted)" in result
+
+    def test_respects_custom_limit(self):
+        result = _format_warnings(["a", "b", "c"], limit=2)
+
+        assert result == " Warnings logged: ['a', 'b'] (+1 more omitted)"
 
 
 # ---------------------------------------------------------------------------

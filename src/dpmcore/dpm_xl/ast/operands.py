@@ -238,8 +238,21 @@ class OperandsChecking(ASTTemplate, ABC):
             return
 
         engine = self.session.get_bind()
-        engine_key: Hashable = getattr(engine, "url", repr(engine))
-        cache_key = (engine_key, self.release_id, tuple(sorted(table_codes)))
+        url_key: Hashable = getattr(engine, "url", repr(engine))
+        schema_translate_map = engine.get_execution_options().get(
+            "schema_translate_map"
+        )
+        schema_key = (
+            frozenset(schema_translate_map.items())
+            if schema_translate_map
+            else None
+        )
+        cache_key = (
+            url_key,
+            schema_key,
+            self.release_id,
+            tuple(sorted(table_codes)),
+        )
 
         df_headers = _HEADERS_CACHE.get(cache_key)
         if df_headers is None:
@@ -270,15 +283,11 @@ class OperandsChecking(ASTTemplate, ABC):
                 release_id=self.release_id,
             )
 
-            from dpmcore.dpm_xl.model_queries import (
-                compile_query_for_pandas,
-                read_sql_with_connection,
-            )
+            from dpmcore.dpm_xl.model_queries import read_sql_with_connection
 
-            compiled_query = compile_query_for_pandas(
+            df_headers = read_sql_with_connection(
                 query.statement, self.session
             )
-            df_headers = read_sql_with_connection(compiled_query, self.session)
             _HEADERS_CACHE[cache_key] = df_headers
 
         for table in table_codes:

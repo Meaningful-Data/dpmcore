@@ -9,7 +9,6 @@ legacy ``session.query()`` API for compatibility.
 
 from __future__ import annotations
 
-import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -90,68 +89,61 @@ def _is_filing_indicator() -> Any:
 
 
 def _get_engine_cache_key(session: "Session") -> Hashable:
-    """Return a hashable key that identifies the engine.
+    """Return a hashable key that identifies the engine and its schema.
+
+    Includes ``schema_translate_map`` so that two sessions bound to
+    the same URL but scoped to different schemas (e.g. distinct
+    staging schemas, or staging vs. the default schema) never share a
+    cache entry.
 
     Args:
         session: SQLAlchemy session.
 
     Returns:
-        A hashable value derived from the bound engine URL.
+        A hashable value derived from the bound engine URL and schema
+        translation options.
     """
     bind = session.get_bind()
-    return getattr(bind, "url", repr(bind))
+    url = getattr(bind, "url", repr(bind))
+    schema_translate_map = bind.get_execution_options().get(
+        "schema_translate_map"
+    )
+    schema_key = (
+        frozenset(schema_translate_map.items())
+        if schema_translate_map
+        else None
+    )
+    return (url, schema_key)
 
 
 def read_sql_with_connection(
-    sql: str,
+    query_statement: Any,
     session: "Session",
 ) -> pd.DataFrame:
-    """Execute ``pd.read_sql`` with proper connection handling.
+    """Execute *query_statement* through *session* and return a DataFrame.
 
-    Uses the raw DBAPI connection to avoid the pandas 2.x
-    deprecation warning about ``DBAPI2`` connections.
+    Goes through ``session.execute()`` rather than compiling to a
+    literal SQL string for a raw DBAPI connection (the previous
+    approach). SQLAlchemy only resolves the engine's
+    ``schema_translate_map`` execution option at actual
+    statement-execution time -- compiling standalone with
+    ``compile_kwargs={"schema_translate_map": ...}`` does not apply
+    it and silently produces unqualified table names, which then
+    resolve against the connection's default ``search_path`` (e.g.
+    ``public``) instead of a migration's staging schema. Executing
+    through the session keeps schema scoping correct for both plain
+    and schema-translated engines.
 
     Args:
-        sql: Compiled SQL string.
+        query_statement: SQLAlchemy statement object (e.g.
+            ``query.statement``).
         session: SQLAlchemy session.
 
     Returns:
         DataFrame with query results.
     """
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message=".*pandas only supports SQLAlchemy.*",
-            category=UserWarning,
-        )
-        # pandas accepts DBAPI2 connections at runtime; its type stubs
-        # only advertise SQLAlchemy Connection so we sidestep the mismatch.
-        raw_conn: Any = session.connection().connection
-        return pd.read_sql(sql, raw_conn)
-
-
-def compile_query_for_pandas(
-    query_statement: Any,
-    session: "Session",
-) -> str:
-    """Compile a query statement to a SQL string.
-
-    Performs literal-bind compilation so that the resulting
-    string can be fed directly to ``pd.read_sql``.
-
-    Args:
-        query_statement: SQLAlchemy statement object.
-        session: SQLAlchemy session.
-
-    Returns:
-        Compiled SQL string.
-    """
-    return str(
-        query_statement.compile(
-            dialect=session.get_bind().dialect,
-            compile_kwargs={"literal_binds": True},
-        )
-    )
+    result = session.execute(query_statement)
+    return pd.DataFrame(result.fetchall(), columns=list(result.keys()))
 
 
 # ------------------------------------------------------------------ #
@@ -1303,7 +1295,7 @@ class ViewDatapointsQuery:
                 TableVersionCell,
                 and_(
                     TableVersionCell.table_vid == TableVersion.table_vid,
-                    TableVersionCell.is_void == 0,
+                    TableVersionCell.is_void.is_(False),
                 ),
             )
             .outerjoin(
@@ -1485,10 +1477,7 @@ class ViewDatapointsQuery:
                 release_id=release_id,
             )
 
-        data = read_sql_with_connection(
-            compile_query_for_pandas(query.statement, session),
-            session,
-        )
+        data = read_sql_with_connection(query.statement, session)
 
         if len(data) > 0:
             data = data.sort_values("variable_id", na_position="last")
@@ -1561,10 +1550,7 @@ class ViewDatapointsQuery:
                 release_id=release_id,
             )
 
-        return read_sql_with_connection(
-            compile_query_for_pandas(query.statement, session),
-            session,
-        )
+        return read_sql_with_connection(query.statement, session)
 
 
 def _apply_dimension_filter(
@@ -1697,10 +1683,7 @@ class ViewKeyComponentsQuery:
             active_only_fallback=True,
         )
         query = query.distinct()
-        return read_sql_with_connection(
-            compile_query_for_pandas(query.statement, session),
-            session,
-        )
+        return read_sql_with_connection(query.statement, session)
 
 
 # ------------------------------------------------------------------ #
@@ -1779,10 +1762,7 @@ class ViewOpenKeysQuery:
             active_only_fallback=True,
         )
         query = query.distinct()
-        return read_sql_with_connection(
-            compile_query_for_pandas(query.statement, session),
-            session,
-        )
+        return read_sql_with_connection(query.statement, session)
 
 
 # ------------------------------------------------------------------ #
@@ -1863,7 +1843,4 @@ class ViewModulesQuery:
             )
             .distinct()
         )
-        return read_sql_with_connection(
-            compile_query_for_pandas(query.statement, session),
-            session,
-        )
+        return read_sql_with_connection(query.statement, session)

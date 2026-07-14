@@ -696,7 +696,63 @@ class MigrationService:
         for table_name, df in data.items():
             self._load_table(table_name, df, warnings, identity_cols)
 
+        self._resync_postgresql_sequences(data)
+
         return warnings
+
+    def _resync_postgresql_sequences(self, data: Dict[str, Any]) -> None:
+        """Resync SERIAL/IDENTITY sequences after loading explicit PKs.
+
+        ``df.to_sql`` inserts every DataFrame column verbatim, including
+        single-column integer primary keys copied from the Access
+        source. Unlike SQL Server's ``IDENTITY_INSERT``, PostgreSQL
+        never advances a column's sequence when a value is supplied
+        explicitly, so a later ORM insert that relies on the sequence
+        default (e.g. a new ``OperationScope`` row) can collide with a
+        row that was just bulk-loaded. Resync each loaded table's
+        sequence to ``MAX(pk)`` once loading completes.
+        """
+        if self._engine.dialect.name != "postgresql" or self._schema is None:
+            return
+
+        preparer = self._engine.dialect.identifier_preparer
+
+        with self._engine.begin() as conn:
+            for table_name in data:
+                orm_table = Base.metadata.tables.get(table_name)
+                if orm_table is None:
+                    continue
+
+                pk_columns = list(orm_table.primary_key.columns)
+                if len(pk_columns) != 1:
+                    continue
+
+                pk_column = pk_columns[0].name
+                quoted_pk_column = preparer.quote(pk_column)
+                qualified_table = (
+                    f"{preparer.quote_schema(self._schema)}."
+                    f"{preparer.quote(table_name)}"
+                )
+
+                sequence = conn.execute(
+                    text("SELECT pg_get_serial_sequence(:table, :column)"),
+                    {"table": qualified_table, "column": pk_column},
+                ).scalar()
+                if sequence is None:
+                    continue
+
+                max_id = conn.execute(
+                    text(
+                        f"SELECT MAX({quoted_pk_column}) FROM {qualified_table}"
+                    )
+                ).scalar()
+                if max_id is None:
+                    continue
+
+                conn.execute(
+                    text("SELECT setval(:sequence, :max_id)"),
+                    {"sequence": sequence, "max_id": max_id},
+                )
 
     def _load_table(
         self,
