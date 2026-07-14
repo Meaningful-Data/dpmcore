@@ -7,8 +7,10 @@ Usage::
     dpmcore generate-script --expressions ./rules.json \
         --module-code COREP_Con --module-version 2.0.1 \
         --database sqlite:///dpm.db --output ./script.json
-    dpmcore generate-graph ./calculations_script.csv -o ./graph.html
-    dpmcore generate-graph -e "c1={tA,r1,c1} <- {tB,r1,c1}" -o ./graph.html
+    dpmcore generate-graph ./calculations_script.csv \
+        --database sqlite:///dpm.db -o ./graph.html
+    dpmcore generate-graph -e "c1={tA,r1,c1} <- {tB,r1,c1}" \
+        --database sqlite:///dpm.db -o ./graph.html
     dpmcore generate-graph --database sqlite:///dpm.db --table C_01.00 \
         -o ./graph.html
     dpmcore --version
@@ -708,6 +710,43 @@ def export_layout(
     click.echo(f"Exported to {path}")
 
 
+def _validate_graph_inputs(
+    database: str | None,
+    csv: str | None,
+    expressions: tuple[str, ...],
+    module_code: str | None,
+    table_code: str | None,
+) -> tuple[str, list[tuple[str, str]]]:
+    """Validate ``generate-graph`` inputs and parse inline expressions.
+
+    Returns ``(database, rows)`` where ``rows`` are the ``(code, expression)``
+    pairs from ``--expression`` (empty for the CSV and dictionary modes).
+    Raises ``click.UsageError`` on any invalid combination.
+    """
+    if database is None:  # required=True guarantees this; narrows for mypy
+        raise click.UsageError("--database is required.")
+    if csv is not None and expressions:
+        raise click.UsageError(
+            "Provide either a CSV path argument or --expression options, "
+            "not both."
+        )
+    reads_dictionary = csv is None and not expressions
+    if not reads_dictionary and (module_code or table_code):
+        raise click.UsageError(
+            "--module / --table only apply when reading the dictionary "
+            "directly (omit the CSV argument and --expression)."
+        )
+    rows: list[tuple[str, str]] = []
+    for item in expressions:
+        code, sep, expr = item.partition("=")
+        if not sep:
+            raise click.UsageError(
+                f"Invalid --expression {item!r}; expected CODE=EXPRESSION."
+            )
+        rows.append((code.strip(), expr.strip()))
+    return database, rows
+
+
 @main.command("generate-graph")
 @click.argument(
     "csv",
@@ -722,7 +761,8 @@ def export_layout(
     metavar="CODE=EXPRESSION",
     help=(
         "Inline operation as CODE=EXPRESSION (repeatable). Use instead "
-        "of the CSV argument for a quick, ad-hoc graph."
+        "of the CSV argument for a quick, ad-hoc graph. Resolved against "
+        "--database like the CSV mode."
     ),
 )
 @click.option(
@@ -737,28 +777,36 @@ def export_layout(
 @click.option(
     "--database",
     default=None,
+    required=True,
     help=(
-        "SQLAlchemy database URL. Builds the graph from the DPM "
-        "dictionary using the engine's resolved operand cells."
+        "SQLAlchemy database URL (required). The engine resolves every "
+        "selection's cells against this DPM dictionary, so dependencies "
+        "are exact in all input modes."
     ),
 )
 @click.option(
     "--module",
     "module_code",
     default=None,
-    help="Engine mode: restrict to operations in this module version code.",
+    help=(
+        "Dictionary mode only (no CSV/-e): restrict to operations in this "
+        "module version code."
+    ),
 )
 @click.option(
     "--table",
     "table_code",
     default=None,
-    help="Engine mode: restrict to operations referencing this table code.",
+    help=(
+        "Dictionary mode only (no CSV/-e): restrict to operations "
+        "referencing this table code."
+    ),
 )
 @click.option(
     "--release",
     "release_code",
     default=None,
-    help="Engine mode: restrict to operations active in this release code.",
+    help="Resolve against this release code (default: the latest release).",
 )
 @click.option(
     "--title",
@@ -778,15 +826,18 @@ def generate_graph(
 ) -> None:
     r"""Build a self-contained HTML dependency graph of a calculations script.
 
-    Provide exactly one input source:
+    ``--database URL`` is always required: the engine resolves every
+    selection's cells against the DPM dictionary, so dependencies are exact
+    (ranges and wildcards are expanded, never approximated). Choose the
+    operations to graph with one input source:
 
     \b
     * a ``Code,Expression`` CSV file (the CSV argument);
     * one or more inline ``-e CODE=EXPRESSION`` operations; or
-    * ``--database URL`` to read the DPM dictionary directly, deriving
-      dependencies from the engine's resolved operand cells (filter with
-      ``--module`` / ``--table`` / ``--release``).
+    * neither — read the DPM dictionary directly (filter with
+      ``--module`` / ``--table``).
 
+    ``--release`` selects the release to resolve against (default: latest).
     The output is a single HTML file with its rendering libraries embedded
     inline, so it opens offline.
     """
@@ -804,34 +855,29 @@ def generate_graph(
     from dpmcore.errors import DpmCoreError
     from dpmcore.services.calculations_graph import CalculationsGraphService
 
-    sources = [csv is not None, bool(expressions), database is not None]
-    if sum(sources) != 1:
-        raise click.UsageError(
-            "Provide exactly one input source: a CSV path argument, one or "
-            "more --expression options, or --database."
-        )
-    if database is None and (module_code or table_code or release_code):
-        raise click.UsageError(
-            "--module / --table / --release only apply with --database."
-        )
-
-    rows: list[tuple[str, str]] = []
-    for item in expressions:
-        code, sep, expr = item.partition("=")
-        if not sep:
-            raise click.UsageError(
-                f"Invalid --expression {item!r}; expected CODE=EXPRESSION."
-            )
-        rows.append((code.strip(), expr.strip()))
+    database, rows = _validate_graph_inputs(
+        database, csv, expressions, module_code, table_code
+    )
 
     console = Console()
 
+    from dpmcore.connection import connect
+
     svc = CalculationsGraphService()
     try:
-        if database is not None:
-            from dpmcore.connection import connect
-
-            with connect(database) as db:
+        with connect(database) as db:
+            if csv is not None:
+                result = svc.generate(
+                    Path(csv), db.session, title, release_code
+                )
+            elif expressions:
+                result = svc.generate_from_rows(
+                    rows,
+                    db.session,
+                    title or "Execution graph",
+                    release_code,
+                )
+            else:
                 result = svc.generate_from_database(
                     db.session,
                     release_code=release_code,
@@ -839,10 +885,6 @@ def generate_graph(
                     table_code=table_code,
                     title=title,
                 )
-        elif csv is not None:
-            result = svc.generate(Path(csv), title)
-        else:
-            result = svc.generate_from_rows(rows, title or "Execution graph")
     except DpmCoreError as exc:
         console.print(f"[red]Error:[/red] {exc}")
         sys.exit(1)

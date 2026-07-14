@@ -1,5 +1,7 @@
 """Unit tests for the engine/DB-backed calculations graph (in-memory DB)."""
 
+from datetime import date
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -45,8 +47,10 @@ def session():
     sess = Session(engine)
 
     rows = [
-        Release(release_id=_R40, code="4.0"),
-        Release(release_id=_R42, code="4.2"),
+        # Dates give the releases their sort order (4.0 before 4.2);
+        # the code itself is never parsed for ordering.
+        Release(release_id=_R40, code="4.0", date=date(2023, 1, 1)),
+        Release(release_id=_R42, code="4.2", date=date(2024, 1, 1)),
         # Operators: 1 = equals, 2 = >= (no output), 3 = + (inner).
         Operator(operator_id=1, name="Equal", symbol="="),
         Operator(operator_id=2, name="GE", symbol=">="),

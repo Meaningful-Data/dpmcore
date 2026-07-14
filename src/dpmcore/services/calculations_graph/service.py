@@ -10,12 +10,13 @@ reads its *inputs* through selection operators ``{...}``. A dependency edge
 ``A -> B`` exists when operation ``B`` reads a cell that operation ``A`` writes
 (implicit), or when ``B`` explicitly references ``{o<A-code>}`` (explicit).
 
-Dependencies are derived from the DPM-XL **AST** (via :class:`SyntaxService`,
-which needs no database), so wildcards, the sheet dimension, nested braces, the
-``with`` clause and operation references are handled by the real parser rather
-than by regular expressions. Concrete row-range expansion (the actual row codes
-a ``0010-0050`` range covers) needs the database and is out of scope here; this
-service does best-effort numeric range *overlap* instead.
+Dependencies are resolved by the DPM-XL **engine** (:class:`OperandsChecking`)
+against a database and release: every selection — including row/column ranges,
+wildcards and the sheet dimension — is expanded to the concrete ``VariableID``
+set it covers, and an implicit edge is drawn only on an *exact* variable match.
+Every input mode (CSV file, inline expressions, or the DPM dictionary itself)
+therefore needs a database connection; there is no approximate, database-free
+mode.
 """
 
 from __future__ import annotations
@@ -36,6 +37,9 @@ from dpmcore.dpm_xl.ast.nodes import (
     OperationRef,
     VarID,
 )
+from dpmcore.dpm_xl.ast.operands import OperandsChecking
+from dpmcore.dpm_xl.model_queries import ModuleVersionQuery
+from dpmcore.dpm_xl.utils.filters import resolve_release_id
 from dpmcore.errors import InternalError, Invalid
 from dpmcore.services.syntax import SyntaxService
 
@@ -49,11 +53,6 @@ _ASSET_FILES = (
     "dagre.min.js",
     "cytoscape-dagre.min.js",
 )
-_WILDCARD = "*"
-
-# A cell key is ``(table, row, column, sheet)`` with each dimension being an
-# exact code, a numeric range ``"lo-hi"``, or the wildcard ``"*"``.
-CellKey = tuple[str, str, str, str]
 
 # The ``with {default:..., interval:...}`` clause uses braces too; strip it
 # before showing the right-hand side text in the detail panel.
@@ -113,8 +112,8 @@ class _Operation:
     expression: str
     lhs_text: str
     rhs_text: str
-    write_keys: set[CellKey] = field(default_factory=set)
-    read_keys: set[CellKey] = field(default_factory=set)
+    output_var_ids: set[int] = field(default_factory=set)
+    input_var_ids: set[int] = field(default_factory=set)
     op_refs: set[str] = field(default_factory=set)
     parse_error: str | None = None
 
@@ -149,113 +148,84 @@ def _iter_ast(root: AST) -> Iterable[AST]:
             stack.extend(_ast_children(value))
 
 
-def _varid_keys(node: VarID) -> set[CellKey]:
-    """Expand a cell-selecting :class:`VarID` to its cartesian cell keys.
-
-    A :class:`VarID` carrying neither a table nor any row/column/sheet (for
-    example a ``with {default: 0}`` configuration clause) is not a cell
-    selection and yields no keys — otherwise it would become an all-matching
-    wildcard and link every operation to every other.
-    """
-    if (
-        node.table is None
-        and not node.rows
-        and not node.cols
-        and not node.sheets
-    ):
-        return set()
-    table = node.table or _WILDCARD
-    rows = node.rows or [_WILDCARD]
-    cols = node.cols or [_WILDCARD]
-    sheets = node.sheets or [_WILDCARD]
-    return {
-        (table, row, col, sheet)
-        for row in rows
-        for col in cols
-        for sheet in sheets
-    }
-
-
-def _collect(root: AST) -> tuple[set[CellKey], set[str]]:
-    """Return ``(cell_keys, op_refs)`` for one parsed expression part.
+def _collect_op_refs(root: AST) -> set[str]:
+    """Return the explicit operation references ``{o<code>}`` in *root*.
 
     A :class:`VarID` carrying an ``operation`` (or a bare
     :class:`OperationRef`) is an explicit operation reference rather than a
-    cell selection.
+    cell selection. These need no database resolution — the edge is drawn by
+    operation code alone.
     """
-    keys: set[CellKey] = set()
     op_refs: set[str] = set()
     for node in _iter_ast(root):
         if isinstance(node, VarID):
             if node.operation is not None:
                 op_refs.add(node.operation)
-            else:
-                keys |= _varid_keys(node)
         elif isinstance(node, OperationRef):
             op_refs.add(node.operation_code)
-    return keys, op_refs
+    return op_refs
+
+
+def _variable_ids_from_ast(root: AST) -> set[int]:
+    """Return the concrete ``variable_id`` set resolved onto *root*.
+
+    After :class:`OperandsChecking` runs, every cell-selecting :class:`VarID`
+    carries a ``data`` frame whose ``variable_id`` column lists the exact
+    variables the selection covers (ranges/wildcards already expanded). Grey
+    cells (no variable) contribute nothing.
+    """
+    var_ids: set[int] = set()
+    for node in _iter_ast(root):
+        if not isinstance(node, VarID):
+            continue
+        data = getattr(node, "data", None)
+        if data is None:
+            continue
+        try:
+            column = data["variable_id"]
+        except (KeyError, TypeError):
+            continue
+        var_ids |= {int(value) for value in column.dropna().unique()}
+    return var_ids
 
 
 # --------------------------------------------------------------------------- #
-# Cell-key matching
+# Edge building
 # --------------------------------------------------------------------------- #
 
 
-def _as_range(token: str) -> tuple[int, int] | None:
-    """Parse ``"lo-hi"`` into ``(lo, hi)`` ints, or ``None`` if not a range."""
-    parts = token.split("-")
-    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-        return int(parts[0]), int(parts[1])
-    return None
+def _implicit_edges(
+    outputs_by_code: dict[str, set[int]],
+    inputs_by_code: dict[str, set[int]],
+) -> dict[tuple[str, str], str]:
+    """Return implicit edges from exact ``variable_id`` producer→consumer.
+
+    An edge ``A -> B`` exists when ``B`` reads a variable that ``A`` writes.
+    Both the CSV/inline path and the database path share this matcher so a
+    dependency is always an exact variable match, never a range *overlap*.
+    """
+    producers: dict[int, set[str]] = defaultdict(set)
+    for code, outputs in outputs_by_code.items():
+        for variable_id in outputs:
+            producers[variable_id].add(code)
+
+    edges: dict[tuple[str, str], str] = {}
+    for code, inputs in inputs_by_code.items():
+        for variable_id in inputs:
+            for producer in sorted(producers.get(variable_id, set())):
+                if producer != code:
+                    edges.setdefault((producer, code), "implicit")
+    return edges
 
 
-def _in_range(token: str, bounds: tuple[int, int]) -> bool:
-    """Return whether a numeric *token* falls within *bounds* (inclusive)."""
-    return token.isdigit() and bounds[0] <= int(token) <= bounds[1]
-
-
-def _dim_overlap(left: str, right: str) -> bool:
-    """Return whether two dimension values can refer to the same code."""
-    if left == _WILDCARD or right == _WILDCARD:
-        return True
-    left_range = _as_range(left)
-    right_range = _as_range(right)
-    if left_range is None and right_range is None:
-        return left == right
-    if left_range is None:
-        return _in_range(left, right_range)  # type: ignore[arg-type]
-    if right_range is None:
-        return _in_range(right, left_range)
-    return left_range[0] <= right_range[1] and right_range[0] <= left_range[1]
-
-
-def _cells_overlap(write_key: CellKey, read_key: CellKey) -> bool:
-    """Return whether a written cell and a read cell can be the same cell."""
-    return all(_dim_overlap(write_key[dim], read_key[dim]) for dim in range(4))
-
-
-def _producers_for(
-    read_keys: set[CellKey],
-    writes_by_table: dict[str, list[tuple[str, CellKey]]],
-) -> set[str]:
-    """Return codes of operations that write any cell in *read_keys*."""
-    producers: set[str] = set()
-    for read_key in read_keys:
-        table = read_key[0]
-        if table == _WILDCARD:
-            candidates = [
-                entry
-                for bucket in writes_by_table.values()
-                for entry in bucket
-            ]
-        else:
-            candidates = writes_by_table.get(table, []) + writes_by_table.get(
-                _WILDCARD, []
-            )
-        for producer_code, write_key in candidates:
-            if _cells_overlap(write_key, read_key):
-                producers.add(producer_code)
-    return producers
+def _add_edge(
+    edges: dict[tuple[str, str], str],
+    source: str,
+    target: str,
+    kind: str,
+) -> None:
+    """Record an edge, keeping an existing (explicit) kind if present."""
+    edges.setdefault((source, target), kind)
 
 
 # --------------------------------------------------------------------------- #
@@ -289,7 +259,7 @@ def _op_warnings(op: _Operation) -> list[str]:
     out: list[str] = []
     if op.parse_error is not None:
         out.append(
-            f"Operation {op.code!r}: expression could not be parsed "
+            f"Operation {op.code!r}: expression could not be resolved "
             f"({op.parse_error}); its dependencies were skipped."
         )
     if op.code.startswith("o"):
@@ -299,16 +269,6 @@ def _op_warnings(op: _Operation) -> list[str]:
             "should not begin with 'o'."
         )
     return out
-
-
-def _add_edge(
-    edges: dict[tuple[str, str], str],
-    source: str,
-    target: str,
-    kind: str,
-) -> None:
-    """Record an edge, keeping an existing (explicit) kind if present."""
-    edges.setdefault((source, target), kind)
 
 
 # --------------------------------------------------------------------------- #
@@ -379,52 +339,42 @@ def _read_csv_rows(csv_path: Path) -> list[tuple[str, str]]:
 class CalculationsGraphService:
     """Turn a calculations-script CSV into a portable HTML dependency graph.
 
-    The service is stateless and needs **no** database connection — it parses
-    each expression with :class:`SyntaxService` and derives dependencies from
-    the resulting AST.
+    The service is stateless: a SQLAlchemy ``Session`` is passed to each
+    generate call. Dependencies are always resolved by the DPM-XL engine
+    against that database and a release, so every input mode is exact.
     """
 
     def __init__(self) -> None:
         """Build a stateless calculations-graph service."""
         self._syntax = SyntaxService()
 
-    def parse_operations(
-        self, rows: Iterable[tuple[str, str]]
-    ) -> list[_Operation]:
-        """Parse ``(code, expression)`` rows into operations.
+    def _resolve_release(
+        self, session: "Session", release_code: str | None
+    ) -> int | None:
+        """Return the release id to resolve against (latest when unset).
 
-        An expression that fails to parse is not fatal: its dependencies are
-        skipped and the failure is recorded on the operation so the node still
-        renders.
+        Defaults to the latest release, matching the DPM-XL engine
+        convention used by the semantic service.
         """
-        ops: list[_Operation] = []
-        for code, expression in rows:
-            lhs_text, rhs_text = _split_assignment(expression)
-            write_keys, read_keys, op_refs, error = self._extract_keys(
-                expression
-            )
-            ops.append(
-                _Operation(
-                    code=code,
-                    expression=expression,
-                    lhs_text=lhs_text,
-                    rhs_text=rhs_text,
-                    write_keys=write_keys,
-                    read_keys=read_keys,
-                    op_refs=op_refs,
-                    parse_error=error,
-                )
-            )
-        return ops
+        release_id = resolve_release_id(session, release_code=release_code)
+        if release_id is None:
+            release_id = ModuleVersionQuery.get_last_release(session)
+        return release_id
 
-    def _collect_part(
-        self, text: str
-    ) -> tuple[set[CellKey], set[str], str | None]:
-        """Parse one expression part, returning keys, op refs and any error.
+    def _resolve_side(
+        self,
+        text: str,
+        session: "Session",
+        release_id: int | None,
+        *,
+        collect_refs: bool,
+    ) -> tuple[set[int], set[str], str | None]:
+        """Resolve one side of an assignment via the engine.
 
-        The ``<-`` persistent-assignment form is not a valid top-level
-        statement, so each side is parsed independently — a selection or a
-        ``with {..}: expr`` body both parse standalone.
+        Returns ``(variable_ids, op_refs, error)``. Explicit operation
+        references are collected from the parse tree even when engine
+        resolution fails, since they need no cell resolution. A resolution
+        failure is not fatal: it is recorded so the node still renders.
         """
         if not text.strip():
             return set(), set(), None
@@ -432,41 +382,84 @@ class CalculationsGraphService:
             ast = self._syntax.parse(text)
         except Exception as exc:  # noqa: BLE001 — degrade gracefully
             return set(), set(), str(exc)
-        keys, op_refs = _collect(ast)
-        return keys, op_refs, None
+        op_refs = _collect_op_refs(ast) if collect_refs else set()
+        try:
+            OperandsChecking(
+                session=session,
+                expression=text,
+                ast=ast,
+                release_id=release_id,
+                is_scripting=True,
+            )
+        except Exception as exc:  # noqa: BLE001 — degrade gracefully
+            return set(), op_refs, str(exc)
+        return _variable_ids_from_ast(ast), op_refs, None
 
-    def _extract_keys(
-        self, expression: str
-    ) -> tuple[set[CellKey], set[CellKey], set[str], str | None]:
-        """Return ``(writes, reads, op_refs, error)`` for an expression.
+    def _extract(
+        self, expression: str, session: "Session", release_id: int | None
+    ) -> tuple[set[int], set[int], set[str], str | None]:
+        """Return ``(outputs, inputs, op_refs, error)`` for an expression.
 
-        The left-hand selection (before ``<-``) supplies the written cells;
-        the right-hand side supplies the read cells and operation references.
-        An expression without ``<-`` has no writes (validation-style).
+        The left-hand selection (before ``<-``) resolves to the written
+        variables; the right-hand side resolves to the read variables and
+        supplies the explicit operation references. An expression without
+        ``<-`` has no writes (validation-style).
         """
         lhs_text, rhs_text = _split_assignment(expression)
-        write_keys: set[CellKey] = set()
+        outputs: set[int] = set()
         lhs_error: str | None = None
         if "<-" in expression:
-            write_keys, _, lhs_error = self._collect_part(lhs_text)
-        read_keys, op_refs, rhs_error = self._collect_part(rhs_text)
+            outputs, _, lhs_error = self._resolve_side(
+                lhs_text, session, release_id, collect_refs=False
+            )
+        inputs, op_refs, rhs_error = self._resolve_side(
+            rhs_text, session, release_id, collect_refs=True
+        )
         error = "; ".join(e for e in (lhs_error, rhs_error) if e) or None
-        return write_keys, read_keys, op_refs, error
+        return outputs, inputs, op_refs, error
+
+    def parse_operations(
+        self,
+        rows: Iterable[tuple[str, str]],
+        session: "Session",
+        release_id: int | None,
+    ) -> list[_Operation]:
+        """Parse and engine-resolve ``(code, expression)`` rows.
+
+        An expression that fails to resolve is not fatal: its dependencies
+        are skipped and the failure is recorded on the operation so the node
+        still renders.
+        """
+        ops: list[_Operation] = []
+        for code, expression in rows:
+            lhs_text, rhs_text = _split_assignment(expression)
+            outputs, inputs, op_refs, error = self._extract(
+                expression, session, release_id
+            )
+            ops.append(
+                _Operation(
+                    code=code,
+                    expression=expression,
+                    lhs_text=lhs_text,
+                    rhs_text=rhs_text,
+                    output_var_ids=outputs,
+                    input_var_ids=inputs,
+                    op_refs=op_refs,
+                    parse_error=error,
+                )
+            )
+        return ops
 
     def build_graph(
         self, ops: list[_Operation]
     ) -> tuple[tuple[GraphNode, ...], tuple[GraphEdge, ...], tuple[str, ...]]:
-        """Build nodes, edges and warnings from parsed operations."""
+        """Build nodes, edges and warnings from resolved operations."""
         codes = {op.code for op in ops}
-        writes_by_table: dict[str, list[tuple[str, CellKey]]] = defaultdict(
-            list
-        )
-        for op in ops:
-            for key in op.write_keys:
-                writes_by_table[key[0]].append((op.code, key))
-
         edges: dict[tuple[str, str], str] = {}
         warnings: list[str] = []
+
+        # Explicit references are recorded first so they win over an implicit
+        # edge between the same pair.
         for op in ops:
             warnings.extend(_op_warnings(op))
             for ref in sorted(op.op_refs):
@@ -478,11 +471,13 @@ class CalculationsGraphService:
                         f"{{o{ref}}} points to an unknown operation; "
                         "no edge was drawn."
                     )
-            for producer in sorted(
-                _producers_for(op.read_keys, writes_by_table)
-            ):
-                if producer != op.code:
-                    _add_edge(edges, producer, op.code, "implicit")
+
+        implicit = _implicit_edges(
+            {op.code: op.output_var_ids for op in ops},
+            {op.code: op.input_var_ids for op in ops},
+        )
+        for (source, target), kind in implicit.items():
+            _add_edge(edges, source, target, kind)
 
         nodes = _build_nodes(ops, edges)
         edge_objs = tuple(
@@ -537,10 +532,19 @@ class CalculationsGraphService:
         )
 
     def generate_from_rows(
-        self, rows: Iterable[tuple[str, str]], title: str
+        self,
+        rows: Iterable[tuple[str, str]],
+        session: "Session",
+        title: str,
+        release_code: str | None = None,
     ) -> CalculationsGraphResult:
-        """Produce the full graph result from ``(code, expression)`` rows."""
-        ops = self.parse_operations(rows)
+        """Produce the full graph result from ``(code, expression)`` rows.
+
+        Dependencies are resolved by the engine against *session* at
+        *release_code* (latest when omitted).
+        """
+        release_id = self._resolve_release(session, release_code)
+        ops = self.parse_operations(rows, session, release_id)
         nodes, edges, warnings = self.build_graph(ops)
         document = self.render_html(nodes, edges, title)
         return CalculationsGraphResult(
@@ -551,12 +555,22 @@ class CalculationsGraphService:
         )
 
     def generate(
-        self, csv_path: Path, title: str | None = None
+        self,
+        csv_path: Path,
+        session: "Session",
+        title: str | None = None,
+        release_code: str | None = None,
     ) -> CalculationsGraphResult:
-        """Read a CSV and produce the full graph result, HTML included."""
+        """Read a CSV and produce the full graph result, HTML included.
+
+        Dependencies are resolved by the engine against *session* at
+        *release_code* (latest when omitted).
+        """
         rows = _read_csv_rows(csv_path)
         final_title = title or f"Execution graph — {csv_path.name}"
-        return self.generate_from_rows(rows, final_title)
+        return self.generate_from_rows(
+            rows, session, final_title, release_code
+        )
 
     def generate_from_database(
         self,

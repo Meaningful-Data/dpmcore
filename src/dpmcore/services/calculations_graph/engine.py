@@ -19,6 +19,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
+from dpmcore.dpm_xl.utils.filters import resolve_release_id
 from dpmcore.errors import Invalid
 from dpmcore.orm.operations import (
     OperandReference,
@@ -32,11 +33,12 @@ from dpmcore.orm.operations import (
     OperatorArgument,
 )
 from dpmcore.orm.packaging import ModuleVersion
-from dpmcore.orm.release_sort_order import (
-    compute_sort_order,
-    load_release_sort_orders,
+from dpmcore.orm.release_sort_order import load_release_sort_orders
+from dpmcore.services.calculations_graph.service import (
+    GraphEdge,
+    GraphNode,
+    _implicit_edges,
 )
-from dpmcore.services.calculations_graph.service import GraphEdge, GraphNode
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -107,14 +109,32 @@ def select_operations(
 def _filter_by_release(
     session: "Session", rows: list[tuple[Any, ...]], release_code: str
 ) -> list[tuple[Any, ...]]:
-    """Keep rows whose release window contains *release_code*."""
-    target = compute_sort_order(release_code)
+    """Keep rows whose release window contains *release_code*.
+
+    The window is inclusive of ``end_release_id``. Ordering comes from each
+    release's ``Release.date`` (the code is never parsed), so the target
+    release is resolved to its id and then to its date-derived sort order.
+    """
+    sort_orders = load_release_sort_orders(session)
+    try:
+        target_release_id = resolve_release_id(
+            session, release_code=release_code
+        )
+    except ValueError as exc:
+        raise Invalid(
+            "Invalid release code",
+            f"Unknown release code {release_code!r}.",
+        ) from exc
+    target = (
+        sort_orders.get(target_release_id)
+        if target_release_id is not None
+        else None
+    )
     if target is None:
         raise Invalid(
             "Invalid release code",
-            f"Could not parse {release_code!r} as MAJOR.MINOR[.PATCH].",
+            f"Release {release_code!r} has no ordering.",
         )
-    sort_orders = load_release_sort_orders(session)
     kept: list[tuple[Any, ...]] = []
     for row in rows:
         start_so = sort_orders.get(row[3])
@@ -231,17 +251,10 @@ def build(
     cells: dict[int, tuple[set[int], set[int]]],
 ) -> tuple[tuple[GraphNode, ...], tuple[GraphEdge, ...], tuple[str, ...]]:
     """Build nodes, edges and warnings from resolved operation cells."""
-    producers: dict[int, set[str]] = defaultdict(set)
-    for vid, (code, _expr) in operations.items():
-        for variable_id in cells[vid][0]:
-            producers[variable_id].add(code)
-
-    edges: dict[tuple[str, str], str] = {}
-    for vid, (code, _expr) in operations.items():
-        for variable_id in cells[vid][1]:
-            for producer in producers.get(variable_id, set()):
-                if producer != code:
-                    edges.setdefault((producer, code), "implicit")
+    edges = _implicit_edges(
+        {code: cells[vid][0] for vid, (code, _expr) in operations.items()},
+        {code: cells[vid][1] for vid, (code, _expr) in operations.items()},
+    )
 
     indegree: dict[str, int] = defaultdict(int)
     for _src, dst in edges:

@@ -1,4 +1,12 @@
-"""CLI tests for ``dpmcore generate-graph``."""
+"""CLI tests for ``dpmcore generate-graph``.
+
+``--database`` is required in every input mode: the engine resolves each
+selection's cells against the dictionary. These tests use a *minimal* SQLite
+database — the database-input path is fully exercised (it reads pre-resolved
+operands), while the CSV/inline paths render nodes and explicit-reference
+edges but cannot resolve cell selections against the empty tables (that exact
+resolution is covered by the integration tests).
+"""
 
 import pytest
 from click.testing import CliRunner
@@ -15,117 +23,6 @@ def _write_csv(tmp_path, body):
     path = tmp_path / "calc.csv"
     path.write_text("Code,Expression\n" + body, encoding="utf-8")
     return path
-
-
-def test_generate_graph_happy_path(runner, tmp_path):
-    csv = _write_csv(
-        tmp_path,
-        'calc1,"{tK_1.00, r0010, c0010} <- {tK_2.00, r0010, c0010} + 1"\n'
-        'calc2,"{tK_3.00, r0010, c0010} <- {tK_1.00, r0010, c0010} * 2"\n',
-    )
-    out = tmp_path / "graph.html"
-    result = runner.invoke(main, ["generate-graph", str(csv), "-o", str(out)])
-    assert result.exit_code == 0, result.output
-    assert out.exists()
-    html = out.read_text(encoding="utf-8")
-    assert "cytoscape" in html
-    # rich wraps console output, so normalise whitespace before matching.
-    assert "2 operations" in " ".join(result.output.split())
-
-
-def test_generate_graph_with_title(runner, tmp_path):
-    csv = _write_csv(tmp_path, "calc1,{tA, r1, c1} <- {tB, r1, c1}\n")
-    out = tmp_path / "graph.html"
-    result = runner.invoke(
-        main,
-        ["generate-graph", str(csv), "-o", str(out), "-t", "Custom"],
-    )
-    assert result.exit_code == 0, result.output
-    assert "Custom" in out.read_text(encoding="utf-8")
-
-
-def test_generate_graph_surfaces_warnings(runner, tmp_path):
-    csv = _write_csv(
-        tmp_path,
-        'calc1,"{tK_1.00, r0010, c0010} <- {oZZZ, r0010, c0010}"\n',
-    )
-    out = tmp_path / "graph.html"
-    result = runner.invoke(main, ["generate-graph", str(csv), "-o", str(out)])
-    assert result.exit_code == 0, result.output
-    assert "Warning" in result.output
-
-
-def test_generate_graph_bad_header_exits_1(runner, tmp_path):
-    csv = tmp_path / "calc.csv"
-    csv.write_text("Name,Expr\na,b\n", encoding="utf-8")
-    result = runner.invoke(
-        main, ["generate-graph", str(csv), "-o", str(tmp_path / "g.html")]
-    )
-    assert result.exit_code == 1
-    assert "Error" in result.output
-
-
-def test_generate_graph_missing_input(runner, tmp_path):
-    result = runner.invoke(
-        main, ["generate-graph", str(tmp_path / "nope.csv")]
-    )
-    assert result.exit_code != 0
-
-
-def test_generate_graph_inline_expressions(runner, tmp_path):
-    out = tmp_path / "graph.html"
-    result = runner.invoke(
-        main,
-        [
-            "generate-graph",
-            "-e",
-            "calc1={tK_1.00, r0010, c0010} <- {tK_2.00, r0010, c0010}",
-            "-e",
-            "calc2={tK_3.00, r0010, c0010} <- {tK_1.00, r0010, c0010} + 1",
-            "-o",
-            str(out),
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    assert out.exists()
-    assert "2 operations" in " ".join(result.output.split())
-
-
-def test_generate_graph_inline_bad_format(runner, tmp_path):
-    result = runner.invoke(
-        main,
-        [
-            "generate-graph",
-            "-e",
-            "no-equals-sign",
-            "-o",
-            str(tmp_path / "g.html"),
-        ],
-    )
-    assert result.exit_code != 0
-    assert "CODE=EXPRESSION" in result.output
-
-
-def test_generate_graph_rejects_both_sources(runner, tmp_path):
-    csv = _write_csv(tmp_path, "calc1,{tA, r1, c1} <- {tB, r1, c1}\n")
-    result = runner.invoke(
-        main, ["generate-graph", str(csv), "-e", "calc2={tC} <- {tA}"]
-    )
-    assert result.exit_code != 0
-
-
-def test_generate_graph_requires_a_source(runner):
-    result = runner.invoke(main, ["generate-graph"])
-    assert result.exit_code != 0
-
-
-def test_generate_graph_filter_without_database(runner, tmp_path):
-    csv = _write_csv(tmp_path, "calc1,{tA, r1, c1} <- {tB, r1, c1}\n")
-    result = runner.invoke(
-        main, ["generate-graph", str(csv), "--table", "C_01.00"]
-    )
-    assert result.exit_code != 0
-    assert "--database" in result.output
 
 
 def _build_minimal_db(path):
@@ -209,22 +106,178 @@ def _build_minimal_db(path):
     engine.dispose()
 
 
-def test_generate_graph_database_mode(runner, tmp_path):
+@pytest.fixture
+def db_url(tmp_path):
     db_path = tmp_path / "dpm.db"
     _build_minimal_db(db_path)
+    return f"sqlite:///{db_path}"
+
+
+# --------------------------------------------------------------------------- #
+# CSV / inline input modes (with --database)
+# --------------------------------------------------------------------------- #
+
+
+def test_generate_graph_csv_happy_path(runner, tmp_path, db_url):
+    csv = _write_csv(
+        tmp_path,
+        'calc1,"{tK_1.00, r0010, c0010} <- {ocalc2}"\n'
+        'calc2,"{tK_3.00, r0010, c0010} <- {tK_1.00, r0010, c0010} * 2"\n',
+    )
+    out = tmp_path / "graph.html"
+    result = runner.invoke(
+        main,
+        ["generate-graph", str(csv), "--database", db_url, "-o", str(out)],
+    )
+    assert result.exit_code == 0, result.output
+    assert out.exists()
+    assert "cytoscape" in out.read_text(encoding="utf-8")
+    # rich wraps console output, so normalise whitespace before matching.
+    normalised = " ".join(result.output.split())
+    assert "2 operations" in normalised
+    # calc1 explicitly references calc2 -> exactly one (explicit) edge.
+    assert "1 dependencies" in normalised
+
+
+def test_generate_graph_with_title(runner, tmp_path, db_url):
+    csv = _write_csv(tmp_path, "calc1,{tA, r1, c1} <- {tB, r1, c1}\n")
     out = tmp_path / "graph.html"
     result = runner.invoke(
         main,
         [
             "generate-graph",
+            str(csv),
             "--database",
-            f"sqlite:///{db_path}",
+            db_url,
+            "-o",
+            str(out),
+            "-t",
+            "Custom",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Custom" in out.read_text(encoding="utf-8")
+
+
+def test_generate_graph_inline_expressions(runner, tmp_path, db_url):
+    out = tmp_path / "graph.html"
+    result = runner.invoke(
+        main,
+        [
+            "generate-graph",
+            "-e",
+            "calc1={tK_1.00, r0010, c0010} <- {ocalc2}",
+            "-e",
+            "calc2={tK_3.00, r0010, c0010} <- {tK_1.00, r0010, c0010} + 1",
+            "--database",
+            db_url,
             "-o",
             str(out),
         ],
     )
     assert result.exit_code == 0, result.output
     assert out.exists()
-    # op 'b' writes var 200 which op 'a' reads -> one edge, one root.
     assert "2 operations" in " ".join(result.output.split())
-    assert "1 dependencies" in " ".join(result.output.split())
+
+
+def test_generate_graph_database_mode(runner, tmp_path, db_url):
+    out = tmp_path / "graph.html"
+    result = runner.invoke(
+        main,
+        ["generate-graph", "--database", db_url, "-o", str(out)],
+    )
+    assert result.exit_code == 0, result.output
+    assert out.exists()
+    # op 'b' writes var 200 which op 'a' reads -> one edge, one root.
+    normalised = " ".join(result.output.split())
+    assert "2 operations" in normalised
+    assert "1 dependencies" in normalised
+
+
+def test_generate_graph_bad_header_exits_1(runner, tmp_path, db_url):
+    csv = tmp_path / "calc.csv"
+    csv.write_text("Name,Expr\na,b\n", encoding="utf-8")
+    result = runner.invoke(
+        main,
+        [
+            "generate-graph",
+            str(csv),
+            "--database",
+            db_url,
+            "-o",
+            str(tmp_path / "g.html"),
+        ],
+    )
+    assert result.exit_code == 1
+    assert "Error" in result.output
+
+
+# --------------------------------------------------------------------------- #
+# Argument validation (fails before touching the database)
+# --------------------------------------------------------------------------- #
+
+
+def test_generate_graph_requires_database(runner, tmp_path):
+    csv = _write_csv(tmp_path, "calc1,{tA, r1, c1} <- {tB, r1, c1}\n")
+    result = runner.invoke(main, ["generate-graph", str(csv)])
+    assert result.exit_code != 0
+    assert "--database" in result.output
+
+
+def test_generate_graph_rejects_both_sources(runner, tmp_path, db_url):
+    csv = _write_csv(tmp_path, "calc1,{tA, r1, c1} <- {tB, r1, c1}\n")
+    result = runner.invoke(
+        main,
+        [
+            "generate-graph",
+            str(csv),
+            "-e",
+            "calc2={tC} <- {tA}",
+            "--database",
+            db_url,
+        ],
+    )
+    assert result.exit_code != 0
+    assert "not both" in result.output
+
+
+def test_generate_graph_filter_in_text_mode_rejected(runner, tmp_path, db_url):
+    csv = _write_csv(tmp_path, "calc1,{tA, r1, c1} <- {tB, r1, c1}\n")
+    result = runner.invoke(
+        main,
+        [
+            "generate-graph",
+            str(csv),
+            "--database",
+            db_url,
+            "--table",
+            "C_01.00",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "reading the dictionary directly" in result.output
+
+
+def test_generate_graph_inline_bad_format(runner, tmp_path, db_url):
+    result = runner.invoke(
+        main,
+        [
+            "generate-graph",
+            "-e",
+            "no-equals-sign",
+            "--database",
+            db_url,
+            "-o",
+            str(tmp_path / "g.html"),
+        ],
+    )
+    assert result.exit_code != 0
+    assert "CODE=EXPRESSION" in result.output
+
+
+def test_generate_graph_missing_csv_file(runner, tmp_path, db_url):
+    result = runner.invoke(
+        main,
+        ["generate-graph", str(tmp_path / "nope.csv"), "--database", db_url],
+    )
+    assert result.exit_code != 0
