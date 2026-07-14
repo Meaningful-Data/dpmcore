@@ -34,9 +34,7 @@ class TestGetEngineCacheKey:
             schema_translate_map={None: "staging"}
         )
 
-        plain_key = model_queries._get_engine_cache_key(
-            _session_for(engine)
-        )
+        plain_key = model_queries._get_engine_cache_key(_session_for(engine))
         scoped_key = model_queries._get_engine_cache_key(
             _session_for(scoped_engine)
         )

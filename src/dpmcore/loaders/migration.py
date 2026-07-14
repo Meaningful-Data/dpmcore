@@ -741,11 +741,11 @@ class MigrationService:
                 if sequence is None:
                     continue
 
-                max_id = conn.execute(
-                    text(
-                        f"SELECT MAX({quoted_pk_column}) FROM {qualified_table}"
-                    )
-                ).scalar()
+                max_id_sql = (
+                    f"SELECT MAX({quoted_pk_column}) "  # noqa: S608
+                    f"FROM {qualified_table}"
+                )
+                max_id = conn.execute(text(max_id_sql)).scalar()
                 if max_id is None:
                     continue
 

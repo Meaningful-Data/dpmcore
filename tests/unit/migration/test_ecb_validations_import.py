@@ -879,8 +879,7 @@ class TestVerifyPersisted:
 class TestFormatWarnings:
     def test_empty_list_returns_no_warnings_message(self):
         assert (
-            _format_warnings([])
-            == " No warnings were logged during the run."
+            _format_warnings([]) == " No warnings were logged during the run."
         )
 
     def test_small_list_shows_all_warnings_without_omission_note(self):

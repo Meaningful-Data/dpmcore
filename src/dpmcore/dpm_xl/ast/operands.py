@@ -69,7 +69,8 @@ IMPLICIT_OPEN_KEYS = {
 
 
 _HEADERS_CACHE: Dict[
-    Tuple[Hashable, int | None, Tuple[str, ...]], pd.DataFrame
+    Tuple[Hashable, frozenset[Any] | None, int | None, Tuple[str, ...]],
+    pd.DataFrame,
 ] = {}
 
 

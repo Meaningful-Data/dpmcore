@@ -1050,8 +1050,8 @@ class TestLoadTableIdentityInsert:
 def _postgres_engine_mock() -> MagicMock:
     engine = MagicMock()
     engine.dialect.name = "postgresql"
-    engine.dialect.identifier_preparer.quote_schema.side_effect = (
-        lambda s: f'"{s}"'
+    engine.dialect.identifier_preparer.quote_schema.side_effect = lambda s: (
+        f'"{s}"'
     )
     engine.dialect.identifier_preparer.quote.side_effect = lambda s: f'"{s}"'
     return engine

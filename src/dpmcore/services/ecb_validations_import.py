@@ -732,7 +732,7 @@ class EcbValidationsImportService:
                         )
                         continue
 
-                    def _module_vids(scope_obj: Any) -> tuple:
+                    def _module_vids(scope_obj: Any) -> tuple[int, ...]:
                         return tuple(
                             sorted(
                                 comp.module_vid

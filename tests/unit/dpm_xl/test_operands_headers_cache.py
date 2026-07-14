@@ -60,7 +60,9 @@ def patched_query_helpers(monkeypatch):
         calls.append(session)
         return pd.DataFrame(columns=_HEADER_COLUMNS)
 
-    monkeypatch.setattr(model_queries, "read_sql_with_connection", fake_read_sql)
+    monkeypatch.setattr(
+        model_queries, "read_sql_with_connection", fake_read_sql
+    )
     return calls
 
 
