@@ -34,6 +34,7 @@ htmlcov/
 
 # Documentation
 docs/_build/
+_site/
 
 # Database files
 *.db

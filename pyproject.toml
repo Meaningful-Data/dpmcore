@@ -1,6 +1,6 @@
 [project]
 name = "dpmcore"
-version = "0.1.1rc4"
+version = "0.1.2rc2"
 description = "Python library for DPM 2.0 Refit regulatory reporting (ORM, services, REST API)"
 license = { text = "Apache-2.0" }
 readme = "README.md"
@@ -49,26 +49,26 @@ documentation = "https://docs.dpmcore.meaningfuldata.eu"
 # ubuntu_test_24_04.yml can install this library with system packages
 # via `pip install --no-dependencies`. Version bumps above these floors
 # should stay within semver compatibility.
-server = ["fastapi>=0.138.0", "uvicorn[standard]>=0.49.0"]
-django = ["django>=5.2.15", "mssql-django>=1.7.2"]
+server = ["fastapi>=0.139.0", "uvicorn[standard]>=0.49.0"]
+django = ["django>=5.2.15", "mssql-django>=1.7.3"]
 postgres = ["psycopg2-binary>=2.9.12,<3.0"]
 sqlserver = ["pyodbc>=5.0"]
 # pandas / numpy ranges mirror vtlengine's published pins so that
 # dpmcore + vtlengine can be co-installed without resolver conflicts.
 migration = ["pandas>=2.1.4,<3.0", "numpy>=2.2.0,<2.3"]
 data = ["pandas>=2.1.4,<3.0", "numpy>=2.2.0,<2.3"]
-cli = ["click>=8.4.1", "rich>=13.7"]
+cli = ["click>=8.4.2", "rich>=13.7"]
 export = ["openpyxl>=3.1"]
 all = [
-    "fastapi>=0.138.0",
+    "fastapi>=0.139.0",
     "uvicorn[standard]>=0.49.0",
     "django>=5.2.15",
-    "mssql-django>=1.7.2",
+    "mssql-django>=1.7.3",
     "psycopg2-binary>=2.9.12,<3.0",
     "pyodbc>=5.0",
     "pandas>=2.1.4,<3.0",
     "numpy>=2.2.0,<2.3",
-    "click>=8.4.1",
+    "click>=8.4.2",
     "rich>=13.7",
     "openpyxl>=3.1",
 ]
@@ -81,7 +81,7 @@ packages = [{ include = "dpmcore", from = "src" }]
 
 [tool.poetry.group.dev.dependencies]
 coverage = ">=7.14.3,<8.0"
-ruff = ">=0.15.19"
+ruff = ">=0.15.20"
 mypy = ">=2.1.0"
 pytest = ">=9.1.1"
 pytest-asyncio = ">=0.24"
@@ -93,16 +93,10 @@ django-stubs = ">=6.0.6"
 pandas-stubs = ">=2.2.2,<3.0"
 
 [tool.poetry.group.docs.dependencies]
-# sphinx-multiversion 0.2.4 (unmaintained since 2022) calls Sphinx's internal
-# Config.read() with the old positional signature, which Sphinx >= 7.2 broke
-# (overrides/tags became keyword-only). Sphinx is therefore capped at the last
-# 7.1.x, which in turn caps sphinx-autodoc-typehints at the 2.0.x line
-# (>= 2.1 requires sphinx >= 7.3.5). Lift all three together if/when the docs
-# move off sphinx-multiversion.
-sphinx = ">=7.1.2,<7.2"
+sphinx = ">=8.1,<9"
 sphinx-rtd-theme = ">=3.0"
-sphinx-autodoc-typehints = ">=2.0,<2.1"
-sphinx-multiversion = ">=0.2.4"
+sphinx-autodoc-typehints = ">=3.0"
+sphinx-polyversion = ">=2.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

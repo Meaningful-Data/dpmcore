@@ -14,15 +14,13 @@ from typing import (
     Tuple,
 )
 
-from sqlalchemy import or_
-
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
 from dpmcore.dpm_xl.utils.filters import resolve_release_id
 from dpmcore.dpm_xl.utils.scopes_calculator import (
     OperationScopeService,
 )
 from dpmcore.errors import SemanticError
-from dpmcore.orm.glossary import ItemCategory, Property
+from dpmcore.orm.glossary import Property
 from dpmcore.orm.infrastructure import DataType, Release
 from dpmcore.orm.packaging import (
     ModuleVersion,
@@ -33,7 +31,10 @@ from dpmcore.orm.rendering import (
     TableVersion,
     TableVersionCell,
 )
-from dpmcore.orm.variables import KeyComposition, Variable, VariableVersion
+from dpmcore.orm.variables import Variable, VariableVersion
+from dpmcore.services._open_keys import (
+    get_open_keys_for_tables as _get_open_keys_for_tables,
+)
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -289,12 +290,17 @@ class ScopeCalculatorService:
         )
 
         if scope_result.has_error or not is_cross or primary_has_intra:
+            # This branch builds no dependency modules (the primary owns
+            # the reading, or the scope is not cross-module), so there are
+            # no genuine dependencies for two modules to be alternatives
+            # of: an empty valid-URI set drops every candidate pair (#202).
             alternative_deps: List[List[str]] = []
             if compute_alternative_deps and not scope_result.has_error:
                 alternative_deps = self.detect_alternative_dependencies(
                     scope_results=[scope_result],
                     primary_module_vid=primary_module_vid,
                     release_id=release_id,
+                    valid_module_uris=set(),
                 )
             return {
                 **empty_result,
@@ -349,6 +355,7 @@ class ScopeCalculatorService:
                 scope_results=[scope_result],
                 primary_module_vid=primary_module_vid,
                 release_id=release_id,
+                valid_module_uris=set(dep_modules),
             )
             if compute_alternative_deps
             else []
@@ -376,11 +383,7 @@ class ScopeCalculatorService:
         dropped, since the engine schema requires
         ``minProperties: 1`` on each table's variables map).
         """
-        uri = self._get_module_uri(
-            module_vid=vid,
-            release_id=release_id,
-            mv=mv,
-        )
+        uri = self._get_module_uri(module_vid=vid, mv=mv)
         if not uri:
             return None
 
@@ -436,31 +439,63 @@ class ScopeCalculatorService:
         primary_module_vid: int,
         release_id: Optional[int] = None,
         release_code: Optional[str] = None,
+        valid_module_uris: Optional[Set[str]] = None,
     ) -> List[List[str]]:
         """Detect pairs of external modules that are alternatives.
 
-        Two external modules are alternatives if they each appear as
-        the sole external module alongside the primary module in
-        separate scopes, but never co-exist in the same scope.
+        Two external modules are alternatives only when they are
+        interchangeable dependencies of the *same* operation (#202):
+        within a single operation's scopes they each appear as the sole
+        external module alongside the primary, yet never co-exist in one
+        scope. Each ``ScopeResult`` is one operation, so candidate pairs
+        are collected per scope result — being the sole external of two
+        *different* operations does not make two modules alternatives.
+
+        Args:
+            scope_results: One entry per operation.
+            primary_module_vid: VID of the primary module.
+            release_id: Optional release filter (validated only).
+            release_code: Optional release code (validated only).
+            valid_module_uris: When given, the genuine dependency-module
+                URIs of the script. Pairs referencing a module outside
+                this set are dropped so ``alternative_dependencies`` can
+                never name a module absent from ``dependency_modules``
+                (#202 dangling references).
 
         Returns a list of ``[uri_a, uri_b]`` pairs (sorted).
         """
-        release_id = resolve_release_id(
+        # Validate the release inputs (rejects an unknown code, or both
+        # arguments at once). The resolved id is not threaded further:
+        # each module version's URI roots at its own start release, not
+        # the report release.
+        resolve_release_id(
             self.session, release_id=release_id, release_code=release_code
         )
-        single_ext_vids, all_ext_vid_sets = self._collect_external_vid_sets(
-            scope_results, primary_module_vid
-        )
-        if len(single_ext_vids) < 2:
-            return []
+        # Candidates: pairs sole-external within the *same* operation.
+        # Co-occurrence is tracked across every operation — two modules
+        # that ever share one scope are conjunctive, never alternatives.
+        candidate_pairs: Set[Tuple[int, int]] = set()
+        co_occurring: Set[Tuple[int, int]] = set()
+        for sr in scope_results:
+            single_ext_vids, ext_vid_sets = self._collect_external_vid_sets(
+                [sr], primary_module_vid
+            )
+            co_occurring |= self._co_occurring_pairs(ext_vid_sets)
+            candidate_pairs |= self._sole_external_pairs(single_ext_vids)
 
-        alt_pairs = self._find_alternative_pairs(
-            single_ext_vids, all_ext_vid_sets
-        )
+        alt_pairs = sorted(candidate_pairs - co_occurring)
         if not alt_pairs:
             return []
 
-        return self._map_pairs_to_uris(alt_pairs, release_id)
+        uri_pairs = self._map_pairs_to_uris(alt_pairs)
+        if valid_module_uris is not None:
+            uri_pairs = [
+                pair
+                for pair in uri_pairs
+                if pair[0] in valid_module_uris
+                and pair[1] in valid_module_uris
+            ]
+        return uri_pairs
 
     @staticmethod
     def _collect_external_vid_sets(
@@ -491,11 +526,22 @@ class ScopeCalculatorService:
         return single_ext_vids, all_ext_vid_sets
 
     @staticmethod
-    def _find_alternative_pairs(
+    def _sole_external_pairs(
         single_ext_vids: Set[int],
+    ) -> Set[tuple[int, int]]:
+        """All sorted VID pairs among sole-external modules of one op."""
+        sorted_vids = sorted(single_ext_vids)
+        return {
+            (v1, v2)
+            for i, v1 in enumerate(sorted_vids)
+            for v2 in sorted_vids[i + 1 :]
+        }
+
+    @staticmethod
+    def _co_occurring_pairs(
         all_ext_vid_sets: List[frozenset[int]],
-    ) -> List[tuple[int, int]]:
-        """Find VID pairs that are sole-external and never co-occur."""
+    ) -> Set[tuple[int, int]]:
+        """Sorted VID pairs that share a single scope (conjunctive)."""
         co_occurring: Set[tuple[int, int]] = set()
         for ext_set in all_ext_vid_sets:
             if len(ext_set) > 1:
@@ -503,20 +549,11 @@ class ScopeCalculatorService:
                 for i, v1 in enumerate(sorted_vids):
                     for v2 in sorted_vids[i + 1 :]:
                         co_occurring.add((v1, v2))
-
-        pairs = []
-        sorted_singles = sorted(single_ext_vids)
-        for i, v1 in enumerate(sorted_singles):
-            for v2 in sorted_singles[i + 1 :]:
-                pair = (v1, v2) if v1 < v2 else (v2, v1)
-                if pair not in co_occurring:
-                    pairs.append(pair)
-        return pairs
+        return co_occurring
 
     def _map_pairs_to_uris(
         self,
         pairs: List[tuple[int, int]],
-        release_id: Optional[int],
     ) -> List[List[str]]:
         """Resolve VID pairs to sorted URI pairs."""
         needed: Set[int] = set()
@@ -537,7 +574,6 @@ class ScopeCalculatorService:
         for vid in needed:
             uri = self._get_module_uri(
                 module_vid=vid,
-                release_id=release_id,
                 mv=mv_by_vid.get(vid),
             )
             if uri:
@@ -629,8 +665,10 @@ class ScopeCalculatorService:
                     variables_by_tvid[tvid][var_id] = type_code
 
         # Open keys per table_code
-        open_keys_by_code = self._get_open_keys_for_tables(
-            list(vid_to_code.values()), release_id=release_id
+        open_keys_by_code = _get_open_keys_for_tables(
+            self.session,
+            list(vid_to_code.values()),
+            release_id=release_id,
         )
 
         tables: Dict[str, Any] = {}
@@ -641,92 +679,27 @@ class ScopeCalculatorService:
             }
         return tables
 
-    def _get_open_keys_for_tables(
-        self,
-        table_codes: List[str],
-        release_id: Optional[int] = None,
-    ) -> Dict[str, Dict[str, str]]:
-        """Return ``{table_code: {property_code: data_type_code}}``.
-
-        Identifies the open-key (compound-key) variables of each table
-        by walking ``TableVersion`` → ``KeyComposition`` →
-        ``VariableVersion`` → ``Property`` → ``ItemCategory`` (for the
-        property code) → ``DataType`` (for the type code). When
-        ``release_id`` is given the query restricts to ``TableVersion``
-        rows whose release window contains it.
-        """
-        result: Dict[str, Dict[str, str]] = {code: {} for code in table_codes}
-        if not table_codes:
-            return result
-
-        query = (
-            self.session.query(
-                TableVersion.code.label("table_code"),
-                ItemCategory.code.label("property_code"),
-                DataType.code.label("data_type_code"),
-            )
-            .select_from(DataType)
-            .join(Property, DataType.data_type_id == Property.data_type_id)
-            .join(ItemCategory, Property.property_id == ItemCategory.item_id)
-            .join(
-                VariableVersion,
-                ItemCategory.item_id == VariableVersion.property_id,
-            )
-            .join(
-                KeyComposition,
-                VariableVersion.variable_vid == KeyComposition.variable_vid,
-            )
-            .join(
-                TableVersion,
-                KeyComposition.key_id == TableVersion.key_id,
-            )
-        )
-
-        if release_id is not None:
-            query = query.filter(
-                or_(
-                    TableVersion.end_release_id.is_(None),
-                    TableVersion.end_release_id > release_id,
-                ),
-                TableVersion.start_release_id <= release_id,
-            )
-
-        query = query.distinct().order_by(TableVersion.code, ItemCategory.code)
-        rows = chunked_in(query, TableVersion.code, table_codes)
-        for row in rows:
-            tcode = row.table_code
-            pcode = row.property_code
-            dcode = row.data_type_code or ""
-            if tcode and pcode:
-                result.setdefault(tcode, {})[pcode] = dcode
-        return result
-
     def _get_module_uri(
         self,
         module_vid: int,
-        release_id: Optional[int] = None,
         mv: Optional[Any] = None,
     ) -> Optional[str]:
         """Resolve a module VID to its EBA taxonomy URI.
 
-        Resolution order:
+        The URI's release segment always comes from the release in which
+        the module version was introduced (its start release), resolved
+        via :meth:`_resolve_uri_release_id`. A module version's taxonomy
+        is published under that release, so an unchanged module keeps its
+        original release segment even inside a later report: e.g. an
+        unchanged ``ae`` stays at ``.../ae/4.2/mod/ae`` in a 4.2.1 report,
+        because no ``ae`` taxonomy exists at 4.2.1. The report release is
+        deliberately not an input: it never sets the release segment, and
+        it would not pick the module version either — the lookup filters
+        by ``module_vid`` alone.
 
-        - When ``release_id`` is supplied (the script-generation path),
-          build the URI dynamically using *that* release's code as the
-          release segment, regardless of when the module version
-          itself was introduced. This matches what the EBA taxonomy
-          package writers do: every module shipped inside a given
-          taxonomy release is rooted at ``.../{release}/mod/...``,
-          even when the underlying module version's start release is
-          older. Sharing the release segment across all modules in a
-          script is what lets the engine resolve cross-instance
-          dependencies against the matching XBRL Report Packages.
-
-        - When ``release_id`` is not supplied (ad-hoc lookups outside
-          script generation), try the static CSV mapping by
-          ``(module_code, version_number)`` first; on a miss, fall
-          back to the dynamic builder using the module version's
-          start release.
+        Resolution order (in :meth:`_resolve_uri_release_id`): the static
+        CSV mapping by ``(module_code, version_number)`` first; on a miss,
+        the module version's ``start_release_id``.
 
         When *mv* is supplied the initial DB lookup is skipped.
         """
@@ -748,9 +721,7 @@ class ScopeCalculatorService:
             if not framework or not framework.code:
                 return None
 
-            csv_or_release_id = self._resolve_uri_release_id(
-                mv, module_code, release_id
-            )
+            csv_or_release_id = self._resolve_uri_release_id(mv, module_code)
             if isinstance(csv_or_release_id, str):
                 return csv_or_release_id  # CSV hit (already final URI).
             if csv_or_release_id is None:
@@ -784,30 +755,29 @@ class ScopeCalculatorService:
     def _resolve_uri_release_id(
         mv: Any,
         module_code: str,
-        release_id: Optional[int],
     ) -> Optional[Any]:
-        """Pick the release_id that seeds the URL's release segment.
+        """Pick the release that seeds the URL's release segment.
+
+        A module version's taxonomy is published under the release in
+        which that version was introduced (its ``start_release_id``), not
+        under the report release. Seeding the segment from the report
+        release would build URIs like ``.../ae/4.2.1/mod/ae`` for modules
+        that did not change since 4.2 and therefore have no taxonomy at
+        4.2.1. So the segment is resolved from the module version itself,
+        the same way for every caller.
 
         Returns one of:
 
-        - ``int`` — the release_id whose ``Release.code`` should fill
-          the ``/{release}/`` segment.
         - ``str`` — a final URI (CSV hit, ``.json`` suffix already
           stripped). The caller must short-circuit and return it.
-        - ``None`` — no release_id resolvable; caller returns ``None``.
-
-        The script-generation path passes ``release_id`` and skips the
-        CSV mapping entirely so every module in a script shares the
-        same target release in its URI. Ad-hoc callers (no
-        ``release_id``) get the legacy resolution: CSV first, then
-        ``mv.start_release_id``.
+        - ``int`` — the release_id whose ``Release.code`` should fill
+          the ``/{release}/`` segment.
+        - ``None`` — nothing resolvable; caller returns ``None``.
         """
         from dpmcore.data import (
             get_module_schema_ref_by_version,
         )
 
-        if release_id is not None:
-            return release_id
         if mv.version_number:
             static = get_module_schema_ref_by_version(
                 module_code, mv.version_number

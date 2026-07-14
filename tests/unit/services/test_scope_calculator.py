@@ -229,8 +229,8 @@ class TestDetectAlternativeDependencies:
         Svc, SR = _load_module()
         svc = Svc(MagicMock())
         if uri_map is not None:
-            svc._get_module_uri = lambda module_vid, release_id=None, mv=None: (
-                uri_map.get(module_vid)
+            svc._get_module_uri = lambda module_vid, mv=None: uri_map.get(
+                module_vid
             )
         return svc, SR
 
@@ -288,21 +288,75 @@ class TestDetectAlternativeDependencies:
         )
         assert result == []
 
-    def test_multiple_scope_results(self):
-        """Works across multiple scope results."""
+    def test_different_operations_are_not_alternatives(self):
+        """Sole-external of *different* operations is not an alternative.
+
+        #202: two modules that are each the sole external of a separate
+        operation share no operation and so are not interchangeable.
+        Each ``ScopeResult`` is one operation.
+        """
         svc, SR = self._make_svc(
             {10: "http://uri/a", 20: "http://uri/b"},
         )
-        sr1 = SR(
-            scopes=[_scope([1, 10])],
-        )
-        sr2 = SR(
-            scopes=[_scope([1, 20])],
-        )
+        sr1 = SR(scopes=[_scope([1, 10])])
+        sr2 = SR(scopes=[_scope([1, 20])])
         result = svc.detect_alternative_dependencies(
             scope_results=[sr1, sr2], primary_module_vid=1
         )
-        assert len(result) == 1
+        assert result == []
+
+    def test_same_pair_across_operations_deduped(self):
+        """A pair that is an alternative in two operations appears once."""
+        svc, SR = self._make_svc(
+            {10: "http://uri/a", 20: "http://uri/b"},
+        )
+        sr1 = SR(scopes=[_scope([1, 10]), _scope([1, 20])])
+        sr2 = SR(scopes=[_scope([1, 10]), _scope([1, 20])])
+        result = svc.detect_alternative_dependencies(
+            scope_results=[sr1, sr2], primary_module_vid=1
+        )
+        assert result == [sorted(["http://uri/a", "http://uri/b"])]
+
+    def test_co_occurrence_in_other_operation_vetoes_pair(self):
+        """Co-occurring in *any* operation disqualifies a pair."""
+        svc, SR = self._make_svc(
+            {10: "http://uri/a", 20: "http://uri/b"},
+        )
+        # Op 1: 10 and 20 look like alternatives.
+        sr1 = SR(scopes=[_scope([1, 10]), _scope([1, 20])])
+        # Op 2: 10 and 20 are required together -> conjunctive, not alt.
+        sr2 = SR(scopes=[_scope([1, 10, 20])])
+        result = svc.detect_alternative_dependencies(
+            scope_results=[sr1, sr2], primary_module_vid=1
+        )
+        assert result == []
+
+    def test_valid_module_uris_drops_dangling_pair(self):
+        """A pair naming a non-dependency module is dropped (#202)."""
+        svc, SR = self._make_svc(
+            {10: "http://uri/a", 20: "http://uri/b"},
+        )
+        sr = SR(scopes=[_scope([1, 10]), _scope([1, 20])])
+        # Only module 10's URI is a genuine dependency module.
+        result = svc.detect_alternative_dependencies(
+            scope_results=[sr],
+            primary_module_vid=1,
+            valid_module_uris={"http://uri/a"},
+        )
+        assert result == []
+
+    def test_valid_module_uris_keeps_genuine_pair(self):
+        """A pair whose modules are both dependencies survives (#202)."""
+        svc, SR = self._make_svc(
+            {10: "http://uri/a", 20: "http://uri/b"},
+        )
+        sr = SR(scopes=[_scope([1, 10]), _scope([1, 20])])
+        result = svc.detect_alternative_dependencies(
+            scope_results=[sr],
+            primary_module_vid=1,
+            valid_module_uris={"http://uri/a", "http://uri/b"},
+        )
+        assert result == [sorted(["http://uri/a", "http://uri/b"])]
 
     def test_uri_failure_skips_pair(self):
         """If URI resolution fails, skip pair."""
@@ -330,7 +384,7 @@ class TestDetectCrossModuleDependencies:
     def _make_svc(self):
         Svc, SR = _load_module()
         svc = Svc(MagicMock())
-        svc._get_module_uri = lambda module_vid, release_id=None, mv=None: (
+        svc._get_module_uri = lambda module_vid, mv=None: (
             f"http://uri/mod_{module_vid}"
         )
         svc._get_module_tables = lambda module_vid, release_id=None: {}
@@ -412,30 +466,29 @@ class TestDetectCrossModuleDependencies:
         assert info["intra_instance_validations"] == []
         assert info["cross_instance_dependencies"] == []
 
-    def test_alternative_deps_included(self):
-        """Alternative deps appear in the result."""
-        svc, SR = self._make_svc()
+    @staticmethod
+    def _mv(vid):
+        mv = MagicMock()
+        mv.module_vid = vid
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+        return mv
 
-        mv20 = MagicMock()
-        mv20.module_vid = 20
-        mv20.version_number = "1.0"
-        mv20.from_reference_date = None
-        mv20.to_reference_date = None
+    def test_alternative_deps_dropped_when_not_dependency_modules(self):
+        """A pair naming a non-dependency module is dropped (#202).
 
-        mv30 = MagicMock()
-        mv30.module_vid = 30
-        mv30.version_number = "1.0"
-        mv30.from_reference_date = None
-        mv30.to_reference_date = None
+        With no variable-carrying tables, modules 20 and 30 never become
+        dependency modules, so they must not surface as alternatives even
+        though they are sole-external and never co-occur.
+        """
+        svc, SR = self._make_svc()  # _get_module_tables -> {}
 
         q = svc.session.query.return_value
-        q.filter.return_value.all.return_value = [mv20, mv30]
+        q.filter.return_value.all.return_value = [self._mv(20), self._mv(30)]
 
         sr = SR(
-            scopes=[
-                _scope([10, 20]),
-                _scope([10, 30]),
-            ],
+            scopes=[_scope([10, 20]), _scope([10, 30])],
             is_cross_module=True,
         )
         info = svc.detect_cross_module_dependencies(
@@ -443,7 +496,35 @@ class TestDetectCrossModuleDependencies:
             primary_module_vid=10,
             operation_code="v1",
         )
-        assert "alternative_dependencies" in info
+        assert info["dependency_modules"] == {}
+        assert info["alternative_dependencies"] == []
+
+    def test_alternative_deps_kept_when_dependency_modules(self):
+        """Genuine dependency modules surface as alternatives (#202)."""
+        svc, SR = self._make_svc()
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "T_01": {"variables": {"v1": "x"}, "open_keys": {}},
+        }
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [self._mv(20), self._mv(30)]
+
+        sr = SR(
+            scopes=[_scope([10, 20]), _scope([10, 30])],
+            is_cross_module=True,
+        )
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+            operation_code="v1",
+        )
+        assert set(info["dependency_modules"]) == {
+            "http://uri/mod_20",
+            "http://uri/mod_30",
+        }
+        assert info["alternative_dependencies"] == [
+            sorted(["http://uri/mod_20", "http://uri/mod_30"])
+        ]
 
     def test_ref_period_from_time_shifts(self):
         """ref_period uses time_shifts when provided."""
@@ -761,7 +842,7 @@ class TestGetModuleUri:
             release,
         ]
 
-        uri = svc._get_module_uri(10, release_id=5)
+        uri = svc._get_module_uri(10)
         expected = (
             "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/crr/3.4/mod/corep"
         )
@@ -785,7 +866,7 @@ class TestGetModuleUri:
         # Only one query (for Release), not two
         q.filter.return_value.first.return_value = release
 
-        uri = svc._get_module_uri(10, release_id=5, mv=mv)
+        uri = svc._get_module_uri(10, mv=mv)
         assert uri is not None
         assert "corep" in uri
 
@@ -823,11 +904,10 @@ class TestGetModuleUri:
     def test_static_csv_miss_falls_through_to_dynamic(self):
         """When the static lookup returns ``None`` the dynamic path runs.
 
-        ``release_id`` is intentionally omitted here so that the
-        ad-hoc-lookup branch (which still consults the CSV) is
-        exercised. The script-generation path bypasses the CSV
-        entirely; that contract is pinned by
-        ``test_release_id_bypasses_static_csv``.
+        On a CSV miss the release segment falls through to the module
+        version's ``start_release_id``. The CSV is always consulted
+        first; the hit-wins side of that contract is pinned by
+        ``test_static_csv_hit_strips_json_suffix``.
         """
         Svc, _ = _load_module()
         svc = Svc(MagicMock())
@@ -857,51 +937,15 @@ class TestGetModuleUri:
             "COREP", "2.0.1"
         )
 
-    def test_release_id_bypasses_static_csv(self):
-        """When ``release_id`` is given the CSV mapping is *not* consulted.
+    def test_start_release_seeds_segment(self):
+        """The URI's release segment uses start_release, not the report.
 
-        The script-generation path must always root URIs at the target
-        release's segment so every module in a script shares the same
-        ``/{release}/`` segment as the matching XBRL Report Packages.
-        Letting CSV intercept the lookup would reintroduce the skew
-        that breaks cross-instance dependency resolution.
-        """
-        Svc, _ = _load_module()
-        svc = Svc(MagicMock())
-
-        mv = MagicMock()
-        mv.code = "COREP_Con"
-        mv.version_number = "2.0.1"
-        mv.start_release_id = 5
-        mv.module = MagicMock()
-        mv.module.framework = MagicMock()
-        mv.module.framework.code = "CRR"
-
-        data_stub = sys.modules["dpmcore.data"]
-        # If the CSV were consulted, this would short-circuit the URI.
-        data_stub.get_module_schema_ref_by_version = MagicMock(
-            return_value="http://example.org/corep_con.json",
-        )
-
-        release = MagicMock()
-        release.code = "4.2.1"
-        q = svc.session.query.return_value
-        q.filter.return_value.first.return_value = release
-
-        uri = svc._get_module_uri(10, release_id=42, mv=mv)
-        assert uri == (
-            "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/crr/4.2.1/mod/"
-            "corep_con"
-        )
-        data_stub.get_module_schema_ref_by_version.assert_not_called()
-
-    def test_release_id_overrides_module_start_release(self):
-        """The URI's release segment uses ``release_id``, not start_release.
-
-        Pins the cross-module fix: a module version whose
-        ``start_release_id`` predates the script's target release must
-        still be rendered with the *target* release in its URI so it
-        matches the engine's package URIs.
+        Pins the taxonomy-URL fix: a module version whose
+        ``start_release_id`` predates the report release keeps its
+        *original* release in its URI, because no taxonomy is published
+        for that unchanged module under the later report release. An
+        unchanged ``ae`` stays at ``.../ae/4.2/mod/ae`` inside a 4.2.1
+        report. On a CSV miss the resolver returns ``mv.start_release_id``.
         """
         Svc, _ = _load_module()
         svc = Svc(MagicMock())
@@ -909,7 +953,7 @@ class TestGetModuleUri:
         mv = MagicMock()
         mv.code = "AE"
         mv.version_number = "1.4.0"
-        mv.start_release_id = 11  # release 4.2 — older
+        mv.start_release_id = 11  # release 4.2 — older than the report
         mv.module = MagicMock()
         mv.module.framework = MagicMock()
         mv.module.framework.code = "AE"
@@ -919,14 +963,18 @@ class TestGetModuleUri:
             return_value=None,
         )
 
-        target_release = MagicMock()
-        target_release.code = "4.2.1"
-        q = svc.session.query.return_value
-        q.filter.return_value.first.return_value = target_release
+        # On a CSV miss the segment is seeded from start_release_id (11),
+        # the release the module version was introduced in.
+        assert svc._resolve_uri_release_id(mv, "AE") == 11
 
-        uri = svc._get_module_uri(10, release_id=12, mv=mv)
+        start_release = MagicMock()
+        start_release.code = "4.2"  # 4.2, not a later 4.2.1 report release
+        q = svc.session.query.return_value
+        q.filter.return_value.first.return_value = start_release
+
+        uri = svc._get_module_uri(10, mv=mv)
         assert uri == (
-            "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/ae/4.2.1/mod/ae"
+            "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/ae/4.2/mod/ae"
         )
 
     def test_missing_module_code_returns_none(self):
@@ -939,12 +987,12 @@ class TestGetModuleUri:
 
         assert svc._get_module_uri(10, mv=mv) is None
 
-    def test_no_release_id_falls_back_to_start_release(self):
-        """No release_id, no version_number → uses ``mv.start_release_id``.
+    def test_falls_back_to_start_release(self):
+        """No version_number → uses ``mv.start_release_id``.
 
-        Covers the legacy ad-hoc-lookup path where the CSV mapping is
-        skipped (no version) and resolution falls through to the
-        module version's start release.
+        Covers the path where the CSV mapping is skipped (no version)
+        and resolution falls through to the module version's start
+        release.
         """
         Svc, _ = _load_module()
         svc = Svc(MagicMock())
@@ -967,13 +1015,12 @@ class TestGetModuleUri:
             "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/crr/3.4/mod/corep"
         )
 
-    def test_no_resolvable_release_id_returns_none(self):
+    def test_no_resolvable_release_returns_none(self):
         """When no release can be resolved at all, returns ``None``.
 
-        Both ``release_id`` and ``mv.start_release_id`` are missing
-        and the CSV mapping doesn't apply (no version) — the resolver
-        bottoms out and returns ``None`` rather than constructing a
-        URI with a missing segment.
+        ``mv.start_release_id`` is missing and the CSV mapping doesn't
+        apply (no version) — the resolver bottoms out and returns
+        ``None`` rather than constructing a URI with a missing segment.
         """
         Svc, _ = _load_module()
         svc = Svc(MagicMock())
@@ -1004,7 +1051,7 @@ class TestGetModuleUri:
         q = svc.session.query.return_value
         q.filter.return_value.first.return_value = None
 
-        assert svc._get_module_uri(10, release_id=5, mv=mv) is None
+        assert svc._get_module_uri(10, mv=mv) is None
 
     def test_exception_is_logged_and_returns_none(self):
         """Unexpected errors are caught and produce ``None``."""

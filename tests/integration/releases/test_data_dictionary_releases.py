@@ -98,3 +98,35 @@ def test_get_release_by_id_returns_correct_release(service_with_data):
 
 def test_get_release_by_id_returns_none_if_not_found(service_with_data):
     assert service_with_data.get_release_by_id(999) is None
+
+
+def test_get_latest_release_returns_most_recent(service_with_data):
+    latest = service_with_data.get_latest_release()
+    assert latest is not None
+    assert latest["code"] == "R3"
+
+
+def test_get_latest_release_empty_db(memory_session):
+    assert DataDictionaryService(memory_session).get_latest_release() is None
+
+
+def test_undated_release_is_latest(memory_session):
+    """An undated working release ranks as the latest, ahead of dated ones."""
+    session = memory_session
+    session.add_all(
+        [
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(release_id=2, code="4.2.1", date=date(2026, 2, 15)),
+            Release(release_id=9999, code="Playground", date=None),
+        ]
+    )
+    session.commit()
+    service = DataDictionaryService(session)
+
+    assert service.get_latest_release()["code"] == "Playground"
+    # Latest first: undated Playground, then 4.2.1, then 4.2.
+    assert [r["code"] for r in service.get_releases()] == [
+        "Playground",
+        "4.2.1",
+        "4.2",
+    ]

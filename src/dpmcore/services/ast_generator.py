@@ -103,13 +103,14 @@ class ASTGeneratorService:
             module_code: Code of the primary module (e.g. ``"COREP_Con"``).
             module_version: Version of the primary module
                 (e.g. ``"2.0.1"``).
-            preconditions: Optional list of precondition specs:
-                - Tuples: ``(precondition_expression, [validation_codes])``
-                - Dicts: ``{"expression": "...",
-                  "affected_operations": [...], "code": "P_571",
-                  "version_id": 8341}`` (code and version_id optional)
-                A precondition can guard many validation codes; a
-                validation may have no precondition.
+            preconditions: Optional list of precondition specs. Each
+                entry is either a tuple
+                ``(precondition_expression, [validation_codes])`` or a
+                dict with keys ``expression`` and
+                ``affected_operations`` (optional ``code`` and
+                ``version_id`` are also accepted). A precondition can
+                guard many validation codes; a validation may have no
+                precondition.
             severity: Optional global default severity tag
                 (``"error"``, ``"warning"``, ``"info"``). Defaults to
                 ``"warning"``.
@@ -125,9 +126,12 @@ class ASTGeneratorService:
                 downstream DB filter.
 
         Returns:
-            ``{"success": bool, "enriched_ast": <namespaced dict>,
-            "error": <str | None>}``. The namespaced dict mirrors the
-            shape pydpm's ``generate_validations_script`` produces.
+            A dict with keys ``success`` (bool), ``enriched_ast`` (the
+            namespaced dict, or ``None`` on failure), ``error`` (str or
+            ``None``), and ``failed_operations`` (a
+            ``{validation_code: error_message}`` map of expressions
+            skipped due to semantic errors). The namespaced dict mirrors
+            the shape pydpm's ``generate_validations_script`` produces.
         """
         session = self.session
         if (
@@ -300,7 +304,6 @@ class ASTGeneratorService:
             namespace = (
                 self._scope_calc._get_module_uri(
                     module_vid=primary_module_vid,
-                    release_id=release_id,
                     mv=mv,
                 )
                 or _DEFAULT_NAMESPACE
@@ -412,8 +415,8 @@ class ASTGeneratorService:
 
         Looks up ``Release.code == release`` and validates that the
         release sits inside ``mv``'s window. Comparison runs against the
-        semver-parsed sort order of each release ``code`` (the DPM
-        ``ReleaseID`` FK is no longer monotonic — see
+        date-based sort order of each release (the DPM ``ReleaseID`` FK
+        is no longer monotonic — see
         :mod:`dpmcore.orm.release_sort_order`), not the raw id. Raises
         ``ValueError`` if the release is unknown, predates
         ``start_release_id``, or is past ``end_release_id``.
@@ -454,11 +457,11 @@ class ASTGeneratorService:
     def _latest_release_in_window(self, mv: Any) -> Any:
         """Pick the latest ``released`` Release covering *mv*'s window.
 
-        Comparison runs against the semver-parsed sort order of each
-        candidate's ``code`` so a hypothetical backport like ``4.0.1``
-        published after ``4.2.1`` is correctly placed inside the
-        ``4.0`` lineage. Falls back to the latest of any status if no
-        released row matches.
+        Comparison runs against the date-based sort order of each
+        candidate (``Release.date``), not the opaque ``ReleaseID`` FK; an
+        undated (unpublished) release ranks as the latest candidate.
+        Falls back to the latest of any status if no released row
+        matches.
         """
         from dpmcore.orm.infrastructure import Release
         from dpmcore.orm.release_sort_order import (
@@ -487,9 +490,7 @@ class ASTGeneratorService:
         rows = self.session.query(Release).all()
         candidates: List[tuple[int, Any]] = []
         for r in rows:
-            so = compute_sort_order(r.code)
-            if so is None:
-                continue
+            so = compute_sort_order(r.date)
             if start_sort is not None and so < start_sort:
                 continue
             if end_sort is not None and so >= end_sort:
@@ -1065,10 +1066,14 @@ class ASTGeneratorService:
                 current.get("dependency_modules", {}),
             )
 
+        # Restrict alternatives to the script's genuine dependency modules
+        # so the pairs can never name a module absent from
+        # ``dependency_modules`` (#202 dangling references).
         alt_deps = self._scope_calc.detect_alternative_dependencies(
             scope_results=all_scope_results,
             primary_module_vid=primary_module_vid,
             release_id=release_id,
+            valid_module_uris=set(all_dep_modules),
         )
 
         deduped_intra: List[str] = list(dict.fromkeys(all_intra))

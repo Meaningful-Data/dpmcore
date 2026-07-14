@@ -71,7 +71,6 @@ centralised_messages: Dict[str, str] = {
         "Cannot specify {argument} more than one"
         " time in the same cell reference."
     ),
-    "0-3": ("Cannot use null literal, you must use the isnull function"),
     # Variable not found
     "1-1": "The following items were not found: {items}.",
     "1-2": ("Cell expression {cell_expression} was not found."),
@@ -288,6 +287,10 @@ centralised_messages: Dict[str, str] = {
     "4-7-4": (
         "For time_shift operator,"
         " shift_number must evaluate to an integer scalar"
+    ),
+    # - String Operators
+    "4-8-1": (
+        "Invalid {op} parameter: {parameter_name} must be {constraint}."
     ),
     # Generation of validations
     "5-0-1": ("This expression doesn't generate any correct validation."),

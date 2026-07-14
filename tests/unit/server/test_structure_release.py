@@ -284,3 +284,35 @@ class TestExistingEndpoints:
     def test_health(self, client):
         resp = client.get("/api/v1/health")
         assert resp.status_code == 200
+
+
+class TestQueryReleasesUndatedIsLatest:
+    """query_releases ranks an undated working release as the latest."""
+
+    def test_undated_release_is_latest(self, engine):
+        from dpmcore.services.structure import StructureService
+
+        with Session(engine) as session:
+            session.add_all(
+                [
+                    Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+                    Release(
+                        release_id=2, code="4.2.1", date=date(2026, 2, 15)
+                    ),
+                    Release(release_id=9999, code="Playground", date=None),
+                ]
+            )
+            session.commit()
+            svc = StructureService(session)
+
+            latest, _ = svc.query_releases(latest=True)
+            assert [r["code"] for r in latest] == ["Playground"]
+
+            all_rows, total = svc.query_releases()
+            assert total == 3
+            # Latest first: undated Playground, then 4.2.1, then 4.2.
+            assert [r["code"] for r in all_rows] == [
+                "Playground",
+                "4.2.1",
+                "4.2",
+            ]

@@ -1,8 +1,20 @@
 """Syntax and AST tests for the date(year, month, day) constructor operator."""
 
+import pandas as pd
 import pytest
 
 from dpmcore.dpm_xl.ast.nodes import DateConstructorOp
+from dpmcore.dpm_xl.operators.time import DateConstructor
+from dpmcore.dpm_xl.symbols import (
+    FactComponent,
+    KeyComponent,
+    RecordSet,
+    Scalar,
+    Structure,
+)
+from dpmcore.dpm_xl.types.scalar import Date, Integer, Mixed, Number, String
+from dpmcore.dpm_xl.utils.tokens import STANDARD
+from dpmcore.errors import SemanticError
 from dpmcore.services.syntax import SyntaxService
 
 VALID_FORMS = [
@@ -65,3 +77,104 @@ def test_constructor_node_op_is_date():
     assert isinstance(node, DateConstructorOp)
     assert node.op == "date"
     assert node.toJSON()["op"] == "date"
+
+
+# Operator validation: any combination of Scalar and Recordset operands is allowed
+
+
+def _int_scalar(name: str) -> Scalar:
+    return Scalar(type_=Integer(), name=name, origin=name)
+
+
+def _int_recordset(key_code: str = "r", name: str = "test") -> RecordSet:
+    structure = Structure(
+        [
+            KeyComponent(key_code, Number(), STANDARD, "test"),
+            FactComponent(Integer(), "test"),
+        ]
+    )
+    return RecordSet(structure, name, name)
+
+
+@pytest.mark.parametrize(
+    ("operands", "expects_recordset"),
+    [
+        ((_int_scalar("y"), _int_scalar("m"), _int_scalar("d")), False),
+        ((_int_recordset(), _int_scalar("m"), _int_scalar("d")), True),
+    ],
+)
+def test_date_constructor_validate_scalar_and_recordset(
+    operands, expects_recordset
+):
+    result = DateConstructor.validate(*operands)
+    if expects_recordset:
+        assert isinstance(result, RecordSet)
+        assert isinstance(result.get_fact_component().type, Date)
+    else:
+        assert isinstance(result, Scalar)
+        assert isinstance(result.type, Date)
+
+
+def test_date_constructor_incompatible_recordset_key_sets_rejected():
+    """date({cellA}, {cellB}, 1) with disjoint key sets ('r' vs 'c') must
+    be rejected instead of silently discarding one operand's keys
+    """
+    year_sym = _int_recordset(key_code="r", name="cellA")
+    month_sym = _int_recordset(key_code="c", name="cellB")
+    day_sym = _int_scalar("d")
+
+    with pytest.raises(SemanticError) as exc_info:
+        DateConstructor.validate(year_sym, month_sym, day_sym)
+    assert exc_info.value.code == "2-3"
+
+
+def test_date_constructor_subset_recordset_key_sets_accepted():
+    """Accept date({cellA}, {cellB}, 1) when both have compatible keys"""
+    year_sym = _int_recordset(key_code="r", name="cellA")
+    month_sym = _int_recordset(key_code="r", name="cellB")
+    day_sym = _int_scalar("d")
+
+    result = DateConstructor.validate(year_sym, month_sym, day_sym)
+    assert isinstance(result, RecordSet)
+    assert result.get_key_components_names() == ["r"]
+
+
+def _mixed_recordset() -> RecordSet:
+    """Recordset with Mixed fact type and compatible row types."""
+    structure = Structure(
+        [
+            KeyComponent("r", Number(), STANDARD, "test"),
+            FactComponent(Mixed(), "test"),
+        ]
+    )
+    recordset = RecordSet(structure, "test", "test")
+    recordset.records = pd.DataFrame(
+        {"r": [1, 2], "data_type": [Integer(), Integer()]}
+    )
+    return recordset
+
+
+def test_date_constructor_mixed_recordset_does_not_crash():
+    """Mixed typed recordset with compatible rows must succeed."""
+    day_sym = _int_scalar("d")
+    result = DateConstructor.validate(_mixed_recordset(), day_sym, day_sym)
+    assert isinstance(result, RecordSet)
+
+
+def test_date_constructor_mixed_recordset_incompatible_row_raises():
+    """Mixed typed recordset with incompatible row type raises SemanticError, not KeyError."""
+    recordset = _mixed_recordset()
+    recordset.records["data_type"] = [String(), Integer()]
+    day_sym = _int_scalar("d")
+    with pytest.raises(SemanticError):
+        DateConstructor.validate(recordset, day_sym, day_sym)
+
+
+def test_date_constructor_mixed_recordset_without_records_raises():
+    """Malformed Mixed recordset (no .records) must raise error, not KeyError."""
+    recordset = _mixed_recordset()
+    recordset.records = None
+    day_sym = _int_scalar("d")
+    with pytest.raises(Exception) as exc_info:
+        DateConstructor.validate(recordset, day_sym, day_sym)
+    assert not isinstance(exc_info.value, KeyError)

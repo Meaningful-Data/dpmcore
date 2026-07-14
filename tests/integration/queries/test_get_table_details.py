@@ -114,9 +114,9 @@ def test_get_table_details_filtering_by_release_id(memory_session):
     """
     session = memory_session
 
-    # Release-range filter resolves the target's sort_order (parsed
-    # from semver code), so each release_id must correspond to a real
-    # Release row with a parseable code.
+    # Release-range filter resolves the target's sort_order from
+    # Release.date, so each release_id must correspond to a real, dated
+    # Release row.
     session.add(Release(release_id=1, code="1.0", date=date(2024, 1, 1)))
     session.add(Release(release_id=2, code="2.0", date=date(2025, 1, 1)))
 

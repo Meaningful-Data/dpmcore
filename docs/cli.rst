@@ -318,6 +318,75 @@ Start the dpmcore REST API server.
    dpmcore serve --database sqlite:///dpm.db --host 0.0.0.0 --port 8000
 
 
+``dpmcore generate-script``
+---------------------------
+
+Generate an engine-ready DPM-XL validations script from a set of
+expressions. Expressions are validated and enriched against the DPM
+dictionary; the output is a JSON document keyed by the resolved module
+URI (the same shape produced by the Python ``ASTGeneratorService`` and
+the ``/api/v1/scripts`` REST endpoint).
+
+.. code-block:: text
+
+   dpmcore generate-script --expressions <file> --module-code <code>
+                           --module-version <ver> --database <url>
+                           --output <file> [--severity LEVEL] [--release CODE]
+
+**Options:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Option
+     - Description
+   * - ``--expressions PATH``
+     - Path to a JSON file describing the validations (see below).
+       **(Required)**
+   * - ``--module-code TEXT``
+     - Primary module code, e.g. ``COREP_Con``. **(Required)**
+   * - ``--module-version TEXT``
+     - Primary module version, e.g. ``2.0.1``. **(Required)**
+   * - ``--severity TEXT``
+     - Global default severity (``error`` / ``warning`` / ``info``).
+       Defaults to ``warning``. Per-validation overrides go in the
+       ``severities`` map of the input file.
+   * - ``--release TEXT``
+     - Release code, e.g. ``4.2``. When omitted, resolves to the latest
+       release whose window contains the requested module version.
+   * - ``--database TEXT``
+     - SQLAlchemy database URL. **(Required)**
+   * - ``--output PATH``
+     - Path to write the generated script JSON. **(Required)**
+
+**Input file format:**
+
+The ``--expressions`` file is a JSON object. Only ``expressions`` is
+required; ``preconditions`` and ``severities`` are optional.
+
+.. code-block:: json
+
+   {
+       "expressions": [
+           ["{tC_01.00, r0100, c0010} = {tC_01.00, r0200, c0010}", "v0001"]
+       ],
+       "preconditions": [
+           ["{is_reporting_entity}", ["v0001"]]
+       ],
+       "severities": {"v0001": "error"}
+   }
+
+**Example:**
+
+.. code-block:: bash
+
+   dpmcore generate-script \
+       --expressions ./rules.json \
+       --module-code COREP_Con --module-version 2.0.1 \
+       --severity warning --release 4.2 \
+       --database sqlite:///dpm.db --output ./script.json
+
 ``dpmcore export-layout``
 -------------------------
 

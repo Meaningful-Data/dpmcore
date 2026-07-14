@@ -28,6 +28,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     SetOfOp,
     Start,
     SubOp,
+    SubstrOp,
     SymdiffOp,
     TemporaryAssignment,
     TimeShiftOp,
@@ -119,6 +120,9 @@ class ASTTemplate(NodeVisitor):
         self.visit(node.year)
         self.visit(node.month)
         self.visit(node.day)
+
+    def visit_SubstrOp(self, node: SubstrOp) -> None:
+        self.visit(node.operand)
 
     def visit_FilterOp(self, node: FilterOp) -> None:
         self.visit(node.selection)

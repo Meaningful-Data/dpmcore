@@ -23,7 +23,6 @@ from dpmcore.dpm_xl.ast.nodes import (
     ComplexNumericOp,
     CondExpr,
     Constant,
-    CountSetOp,
     DateConstructorOp,
     Dimension,
     FilterOp,
@@ -46,6 +45,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     Start,
     SubAssignment,
     SubOp,
+    SubstrOp,
     SymdiffOp,
     TemporaryAssignment,
     TemporaryIdentifier,
@@ -64,6 +64,7 @@ from dpmcore.dpm_xl.grammar.generated.dpm_xlParserVisitor import (
     dpm_xlParserVisitor,
 )
 from dpmcore.dpm_xl.utils.tokens import TABLE_GROUP_PREFIX
+from dpmcore.dpm_xl.warning_collector import add_semantic_warning
 from dpmcore.errors import SemanticError
 
 
@@ -117,6 +118,16 @@ class ASTVisitor(dpm_xlParserVisitor):
         """
         return str(cast(TerminalNodeImpl, node).symbol.text)
 
+    @staticmethod
+    def _int_literal_value(text: str) -> int:
+        """Parse both INTEGER_LITERAL formats (plain or parenthesized negatives).
+
+        int() fails on (-5), so this handles both forms.
+        """
+        if text.startswith("(") and text.endswith(")"):
+            return int(text[1:-1])
+        return int(text)
+
     def visitStart(self, ctx: dpm_xlParser.StartContext) -> Start:
         ctx_list = list(ctx.getChildren())
 
@@ -161,6 +172,11 @@ class ASTVisitor(dpm_xlParserVisitor):
         self, ctx: dpm_xlParser.PartialSelectContext
     ) -> VarID:
         return cast(VarID, self._visit(ctx.getChild(1)))
+
+    def visitAssignmentTarget(
+        self, ctx: dpm_xlParser.AssignmentTargetContext
+    ) -> AST:
+        return self._visit(ctx.getChild(1))
 
     def visitPersistentAssignmentExpression(
         self, ctx: dpm_xlParser.PersistentAssignmentExpressionContext
@@ -215,6 +231,8 @@ class ASTVisitor(dpm_xlParserVisitor):
             return cast(AST, self.visitLiteralExpr(child))
         elif isinstance(child, dpm_xlParser.SelectExprContext):
             return cast(AST, self.visitSelectExpr(child))
+        elif isinstance(child, dpm_xlParser.SetExprContext):
+            return cast(AST, self._visit(child.getChild(0)))
         return None
 
     def visitParExpr(self, ctx: dpm_xlParser.ParExprContext) -> ParExpr:
@@ -513,6 +531,25 @@ class ASTVisitor(dpm_xlParserVisitor):
         operand: AST = self._visit(ctx_list[2])
         return UnaryOp(op=op, operand=operand)
 
+    def visitSubstrFunction(
+        self, ctx: dpm_xlParser.SubstrFunctionContext
+    ) -> SubstrOp:
+        ctx_list = list(ctx.getChildren())
+        # SUBSTR ( operand , start , length )
+        #   0    1    2    3   4   5   6    7
+        operand: AST = self._visit(ctx_list[2])
+        start = (
+            self._int_literal_value(self._symbol_text(ctx_list[4]))
+            if len(ctx_list) >= 6
+            else None
+        )
+        length = (
+            self._int_literal_value(self._symbol_text(ctx_list[6]))
+            if len(ctx_list) >= 8
+            else None
+        )
+        return SubstrOp(operand=operand, start=start, length=length)
+
     def visitClauseExpr(
         self, ctx: dpm_xlParser.ClauseExprContext
     ) -> AST | None:
@@ -641,7 +678,10 @@ class ASTVisitor(dpm_xlParserVisitor):
         return BinOp(left=left, op=op, right=right)
 
     def visitSetOperand(self, ctx: dpm_xlParser.SetOperandContext) -> AST:
-        return cast(AST, self._visit(ctx.getChild(1)))
+        for child in ctx.getChildren():
+            if isinstance(child, dpm_xlParser.SetElementsContext):
+                return cast(AST, self._visit(child))
+        return Set(children=[])
 
     def visitSetElements(
         self, ctx: dpm_xlParser.SetElementsContext
@@ -674,7 +714,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         operands = [
             self._visit(child)
             for child in ctx.getChildren()
-            if isinstance(child, dpm_xlParser.SetExpressionContext)
+            if isinstance(child, dpm_xlParser.ExpressionContext)
         ]
         return UnionSetOp(operands=operands)
 
@@ -684,7 +724,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         operands = [
             self._visit(child)
             for child in ctx.getChildren()
-            if isinstance(child, dpm_xlParser.SetExpressionContext)
+            if isinstance(child, dpm_xlParser.ExpressionContext)
         ]
         return IntersectSetOp(operands=operands)
 
@@ -694,7 +734,7 @@ class ASTVisitor(dpm_xlParserVisitor):
         set_exprs = [
             child
             for child in ctx.getChildren()
-            if isinstance(child, dpm_xlParser.SetExpressionContext)
+            if isinstance(child, dpm_xlParser.ExpressionContext)
         ]
         return SetdiffOp(
             left=self._visit(set_exprs[0]), right=self._visit(set_exprs[1])
@@ -706,21 +746,11 @@ class ASTVisitor(dpm_xlParserVisitor):
         set_exprs = [
             child
             for child in ctx.getChildren()
-            if isinstance(child, dpm_xlParser.SetExpressionContext)
+            if isinstance(child, dpm_xlParser.ExpressionContext)
         ]
         return SymdiffOp(
             left=self._visit(set_exprs[0]), right=self._visit(set_exprs[1])
         )
-
-    def visitSubcategorySelectExpr(
-        self, ctx: dpm_xlParser.SubcategorySelectExprContext
-    ) -> AST:
-        return cast(AST, self._visit(ctx.getChild(0)))
-
-    def visitCountSetOp(
-        self, ctx: dpm_xlParser.CountSetOpContext
-    ) -> CountSetOp:
-        return CountSetOp(operand=self._visit(ctx.getChild(2)))
 
     def visitItemReference(
         self, ctx: dpm_xlParser.ItemReferenceContext
@@ -765,7 +795,9 @@ class ASTVisitor(dpm_xlParserVisitor):
         type_ = token.type
 
         if type_ == dpm_xlParser.INTEGER_LITERAL:
-            return Constant(type_="Integer", value=int(value))
+            return Constant(
+                type_="Integer", value=self._int_literal_value(value)
+            )
         elif type_ == dpm_xlParser.DECIMAL_LITERAL:
             return Constant(type_="Number", value=float(value))
         elif type_ == dpm_xlParser.PERCENT_LITERAL:
@@ -775,7 +807,17 @@ class ASTVisitor(dpm_xlParserVisitor):
         elif type_ == dpm_xlParser.STRING_LITERAL:
             value = value[1:-1]
             if value == "null":
-                raise SemanticError("0-3")
+                # Historical DPM-XL expressions shipped in older DB releases
+                # used the string literal ``"null"`` as a null sentinel. The
+                # grammar accepts it and the intent is unambiguous, so treat
+                # it as a proper Null Constant and surface a deprecation
+                # warning instead of aborting semantic analysis.
+                add_semantic_warning(
+                    'Deprecated use of the "null" string literal; '
+                    "prefer the ``isnull(...)`` function or the bare "
+                    "``null`` keyword."
+                )
+                return Constant(type_="Null", value=None)
             return Constant(type_="String", value=value)
         elif type_ == dpm_xlParser.BOOLEAN_LITERAL:
             constant_value: bool

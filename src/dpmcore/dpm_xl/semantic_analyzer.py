@@ -30,6 +30,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     SetOfOp,
     Start,
     SubOp,
+    SubstrOp,
     SymdiffOp,
     TemporaryAssignment,
     TimeShiftOp,
@@ -78,6 +79,7 @@ from dpmcore.dpm_xl.utils.operator_mapping import (
     COMPLEX_OP_MAPPING,
     CONDITIONAL_OP_MAPPING,
     RANK_OP_MAPPING,
+    STRING_OPERATORS,
     TIME_OPERATORS,
     UNARY_OP_MAPPING,
 )
@@ -91,6 +93,7 @@ from dpmcore.dpm_xl.utils.tokens import (
     RENAME,
     STANDARD,
     SUB,
+    SUBSTR,
     TIME_SHIFT,
     WHERE,
 )
@@ -446,6 +449,11 @@ class InputAnalyzer(ASTTemplate, ABC):
         self, node: AggregationOp
     ) -> Operand:
         operand = self.visit(node.operand)
+        # `count` is the only aggregator defined on a ScalarSet: it returns
+        # the set's cardinality as an Integer Scalar (§13, formerly the
+        # dedicated ``CountSetOp`` grammar rule dropped in MR !74).
+        if node.op == "count" and isinstance(operand, ScalarSet):
+            return Scalar(type_=Integer(), name=None, origin="count")
         if not isinstance(operand, RecordSet):
             raise errors.SemanticError("4-4-0-1", op=node.op)
 
@@ -521,6 +529,9 @@ class InputAnalyzer(ASTTemplate, ABC):
     ) -> ScalarSet:
 
         common_type_code: str
+        if not node.children:
+            common_type = ScalarFactory().scalar_factory("Item")
+            return ScalarSet(type_=common_type, name=None, origin="{}")
         if isinstance(node.children[0], Constant):
             # ``Constant.type`` is stored as a str (see visit_Constant); the
             # shared AST annotation is ScalarType | None, so narrow at use.
@@ -718,6 +729,17 @@ class InputAnalyzer(ASTTemplate, ABC):
         )
         return cast(Operand, result)
 
+    def visit_SubstrOp(  # type: ignore[override]
+        self, node: SubstrOp
+    ) -> Operand:
+        operand = self.visit(node.operand)
+        if not isinstance(operand, (RecordSet, Scalar, ConstantOperand)):
+            raise errors.SemanticError("4-7-1", op=SUBSTR)
+        result = cast(Any, STRING_OPERATORS[SUBSTR]).validate(
+            operand, node.start, node.length
+        )
+        return cast(Operand, result)
+
     def visit_WhereClauseOp(  # type: ignore[override]
         self, node: WhereClauseOp
     ) -> RecordSet:
@@ -834,6 +856,11 @@ class InputAnalyzer(ASTTemplate, ABC):
         symbols: list[ScalarSet] = []
         for op in operands:
             result = self.visit(op)
+            # §13.1.5: a RecordSet operand is implicitly treated as the
+            # ScalarSet of its Fact Component values, as if wrapped in set_of.
+            if isinstance(result, RecordSet):
+                fact_type = result.get_fact_component().type
+                result = ScalarSet(type_=fact_type, name=None, origin="set_of")
             if not isinstance(result, ScalarSet):
                 raise errors.SemanticError(
                     "3-3",
@@ -842,7 +869,15 @@ class InputAnalyzer(ASTTemplate, ABC):
                     origin="set operator",
                 )
             symbols.append(result)
-        types = {sym.type.__class__ for sym in symbols}
+        # The empty set literal ``{}`` has no elements from which to infer a
+        # type, so ``visit_Set`` gives it an ``Item`` placeholder. That
+        # placeholder is not a real element type and must not participate in
+        # the homogeneity check (otherwise ``union({}, {1,2})`` would clash
+        # as ``Item`` vs ``Integer``).
+        typed_symbols = [s for s in symbols if s.origin != "{}"]
+        if not typed_symbols:
+            return symbols[0]
+        types = {sym.type.__class__ for sym in typed_symbols}
         if len(types) > 1:
             type_names = ", ".join(t.__name__ for t in types)
             raise errors.SemanticError(
@@ -851,7 +886,7 @@ class InputAnalyzer(ASTTemplate, ABC):
                 type_op="homogeneous scalar type",
                 origin="set operator",
             )
-        return symbols[0]
+        return typed_symbols[0]
 
     def visit_UnionSetOp(  # type: ignore[override]
         self, node: UnionSetOp

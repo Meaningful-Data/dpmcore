@@ -37,7 +37,7 @@ from dpmcore.dpm_xl.operators.comparison import (
     NotEqual,
 )
 from dpmcore.dpm_xl.operators.conditional import Filter, IfOperator, Nvl
-from dpmcore.dpm_xl.operators.string import Concatenate, Len
+from dpmcore.dpm_xl.operators.string import Concatenate, Len, Substr
 from dpmcore.dpm_xl.operators.time import (
     Annualise,
     DateConstructor,
@@ -125,3 +125,5 @@ TIME_OPERATORS = {
 CONDITIONAL_OP_MAPPING = {IF: IfOperator, FILTER: Filter}
 
 COMPLEX_OP_MAPPING = {MAX: Max, MIN: Min}
+
+STRING_OPERATORS = {SUBSTR: Substr}

@@ -33,6 +33,9 @@ if TYPE_CHECKING:
     from dpmcore.services.data_dictionary import DataDictionaryService
     from dpmcore.services.dpm_xl import DpmXlService
     from dpmcore.services.explorer import ExplorerService
+    from dpmcore.services.expression_metadata import (
+        ExpressionMetadataService,
+    )
     from dpmcore.services.hierarchy import HierarchyService
     from dpmcore.services.layout_exporter import LayoutExporterService
     from dpmcore.services.meili_json import MeiliJsonService
@@ -113,6 +116,19 @@ class _ServiceAccessor:
                 self._session,
             )
         service: ScopeCalculatorService = self._cache["scope_calculator"]
+        return service
+
+    @property
+    def expression_metadata(self) -> ExpressionMetadataService:
+        from dpmcore.services.expression_metadata import (
+            ExpressionMetadataService,
+        )
+
+        if "expression_metadata" not in self._cache:
+            self._cache["expression_metadata"] = ExpressionMetadataService(
+                self._session,
+            )
+        service: ExpressionMetadataService = self._cache["expression_metadata"]
         return service
 
     # ------------------------------------------------------------------ #

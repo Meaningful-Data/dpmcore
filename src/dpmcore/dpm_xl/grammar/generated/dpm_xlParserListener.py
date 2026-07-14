@@ -1,4 +1,4 @@
-# Generated from dpm_xlParser.g4 by ANTLR 4.9.2
+# Generated from /home/victorp/dpmcore/src/dpmcore/dpm_xl/grammar/dpm_xlParser.g4 by ANTLR 4.9.2
 from antlr4 import *
 if __name__ is not None and "." in __name__:
     from .dpm_xlParser import dpm_xlParser
@@ -41,6 +41,15 @@ class dpm_xlParserListener(ParseTreeListener):
 
     # Exit a parse tree produced by dpm_xlParser#assignmentExpr.
     def exitAssignmentExpr(self, ctx:dpm_xlParser.AssignmentExprContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#persistentAssignExpr.
+    def enterPersistentAssignExpr(self, ctx:dpm_xlParser.PersistentAssignExprContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#persistentAssignExpr.
+    def exitPersistentAssignExpr(self, ctx:dpm_xlParser.PersistentAssignExprContext):
         pass
 
 
@@ -95,6 +104,15 @@ class dpm_xlParserListener(ParseTreeListener):
 
     # Exit a parse tree produced by dpm_xlParser#persistentAssignmentExpression.
     def exitPersistentAssignmentExpression(self, ctx:dpm_xlParser.PersistentAssignmentExpressionContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#assignmentTarget.
+    def enterAssignmentTarget(self, ctx:dpm_xlParser.AssignmentTargetContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#assignmentTarget.
+    def exitAssignmentTarget(self, ctx:dpm_xlParser.AssignmentTargetContext):
         pass
 
 
@@ -242,6 +260,15 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by dpm_xlParser#setExpr.
+    def enterSetExpr(self, ctx:dpm_xlParser.SetExprContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#setExpr.
+    def exitSetExpr(self, ctx:dpm_xlParser.SetExprContext):
+        pass
+
+
     # Enter a parse tree produced by dpm_xlParser#setOperand.
     def enterSetOperand(self, ctx:dpm_xlParser.SetOperandContext):
         pass
@@ -311,15 +338,6 @@ class dpm_xlParserListener(ParseTreeListener):
 
     # Exit a parse tree produced by dpm_xlParser#symdiffSetExpr.
     def exitSymdiffSetExpr(self, ctx:dpm_xlParser.SymdiffSetExprContext):
-        pass
-
-
-    # Enter a parse tree produced by dpm_xlParser#subcategorySelectExpr.
-    def enterSubcategorySelectExpr(self, ctx:dpm_xlParser.SubcategorySelectExprContext):
-        pass
-
-    # Exit a parse tree produced by dpm_xlParser#subcategorySelectExpr.
-    def exitSubcategorySelectExpr(self, ctx:dpm_xlParser.SubcategorySelectExprContext):
         pass
 
 
@@ -494,6 +512,15 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by dpm_xlParser#substrFunction.
+    def enterSubstrFunction(self, ctx:dpm_xlParser.SubstrFunctionContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#substrFunction.
+    def exitSubstrFunction(self, ctx:dpm_xlParser.SubstrFunctionContext):
+        pass
+
+
     # Enter a parse tree produced by dpm_xlParser#commonAggrOp.
     def enterCommonAggrOp(self, ctx:dpm_xlParser.CommonAggrOpContext):
         pass
@@ -509,15 +536,6 @@ class dpm_xlParserListener(ParseTreeListener):
 
     # Exit a parse tree produced by dpm_xlParser#rankOp.
     def exitRankOp(self, ctx:dpm_xlParser.RankOpContext):
-        pass
-
-
-    # Enter a parse tree produced by dpm_xlParser#countSetOp.
-    def enterCountSetOp(self, ctx:dpm_xlParser.CountSetOpContext):
-        pass
-
-    # Exit a parse tree produced by dpm_xlParser#countSetOp.
-    def exitCountSetOp(self, ctx:dpm_xlParser.CountSetOpContext):
         pass
 
 

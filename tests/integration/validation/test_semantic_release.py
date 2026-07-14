@@ -367,13 +367,17 @@ def test_date_constructor_string_argument_rejected(fixture_session):
     assert result.error_code == "3-3"
 
 
-def test_date_constructor_recordset_argument_rejected(fixture_session):
-    """date() rejects a RecordSet argument with 4-7-1."""
+def test_date_constructor_non_integer_recordset_argument_rejected(
+    fixture_session,
+):
+    """date() accepts RecordSet operands, a non-Integer recordset
+    fact is rejected on the Integer type check with 3-3.
+    """
     result = SemanticService(fixture_session).validate(
         "date({tC_09.02, r0030, c0080}, 1, 1)", release_id=5
     )
     assert not result.is_valid
-    assert result.error_code == "4-7-1"
+    assert result.error_code == "3-3"
 
 
 def test_date_roundtrip_extraction_and_constructor(fixture_session):
