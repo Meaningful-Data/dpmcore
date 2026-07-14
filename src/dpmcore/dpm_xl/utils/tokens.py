@@ -96,6 +96,13 @@ SHEET_CODE = "sheet_code"
 TABLE_CODE = "table_code"
 CELL_COMPONENTS = [ROW_CODE, COLUMN_CODE, SHEET_CODE]
 
+# Stored display order per axis (TableVersionHeader.Order), surfaced
+# alongside each *_code so range membership and X/Y/Z ranking follow the
+# table's display order instead of the lexicographic order of the code text.
+ROW_ORDER = "row_order"
+COLUMN_ORDER = "column_order"
+SHEET_ORDER = "sheet_order"
+
 # Generated validations status
 STATUS = "status"
 STATUS_CORRECT = "Correct"
