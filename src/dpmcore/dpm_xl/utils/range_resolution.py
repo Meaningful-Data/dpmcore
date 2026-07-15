@@ -21,13 +21,14 @@ caller's job; :func:`build_axis_order_map` returns ``None`` to signal it.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping
 from typing import Any
 
 
 def _is_missing(value: object) -> bool:
-    """Return True for ``None`` or a NaN float (``value != value``)."""
-    return value is None or (isinstance(value, float) and value != value)
+    """Return True for ``None`` or a NaN float."""
+    return value is None or (isinstance(value, float) and math.isnan(value))
 
 
 def resolve_range_codes(

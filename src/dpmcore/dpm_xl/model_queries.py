@@ -23,7 +23,10 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import aliased
 
 from dpmcore.dpm_xl.utils.filters import filter_by_release
-from dpmcore.dpm_xl.utils.range_resolution import resolve_range_codes
+from dpmcore.dpm_xl.utils.range_resolution import (
+    build_axis_order_map,
+    resolve_range_codes,
+)
 from dpmcore.orm.glossary import (
     Item,
     ItemCategory,
@@ -1703,26 +1706,17 @@ class ViewDatapointsQuery:
 def _build_axis_order_map(
     data: pd.DataFrame, code_col: str, order_col: str
 ) -> dict[str, int] | None:
-    """Build ``{code: order}`` for one axis from a distinct code/order frame.
+    """Build ``{code: order}`` for one axis from a code/order frame.
 
-    Returns ``None`` when the axis is not fully ordered — any present code
-    lacks an order, or a code carries two different orders — so the caller
-    falls back to string comparison for that whole axis.
+    Thin ``DataFrame`` adapter over
+    :func:`~dpmcore.dpm_xl.utils.range_resolution.build_axis_order_map`:
+    returns ``None`` when the axis is not fully ordered — the order column is
+    absent, some present code lacks an order, or a code carries two different
+    orders — so the caller falls back to string comparison for that whole axis.
     """
     if code_col not in data.columns or order_col not in data.columns:
         return None
-    sub = data[[code_col, order_col]].drop_duplicates()
-    sub = sub[sub[code_col].notna()]
-    if sub.empty:
-        return {}
-    if sub[order_col].isna().any():
-        return None
-    if sub.groupby(code_col)[order_col].nunique().gt(1).any():
-        return None
-    return {
-        str(code): int(order)
-        for code, order in zip(sub[code_col], sub[order_col], strict=False)
-    }
+    return build_axis_order_map(data[code_col], data[order_col])
 
 
 def _resolve_dimension_values(
