@@ -6,13 +6,15 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from dpmcore.orm.infrastructure import Organisation
+from dpmcore.orm.infrastructure import Organisation, Release
+from dpmcore.orm.operations import OperationScope, OperationScopeComposition
 from dpmcore.services.ecb_validations_import import (
     EcbValidationsImportError,
     EcbValidationsImportService,
     _format_warnings,
     _stable_uuid,
 )
+from dpmcore.services.scope_calculator import ScopeResult
 
 
 @pytest.fixture
@@ -868,6 +870,165 @@ class TestEcbValidationsImport:
                 match="no data was persisted",
             ):
                 service_with_schema.import_csv(str(csv_file))
+
+
+# ---------------------------------------------------------------------------
+# Scope-creation loop: dedup across releases (issue: EGDQ_C207-style
+# duplicate OperationScope/OperationScopeComposition rows)
+# ---------------------------------------------------------------------------
+
+
+def _scope_result_for(*module_vid_sets):
+    scopes = []
+    for module_vids in module_vid_sets:
+        scope = OperationScope()
+        for module_vid in module_vids:
+            scope.operation_scope_compositions.append(
+                OperationScopeComposition(module_vid=module_vid)
+            )
+        scopes.append(scope)
+    return ScopeResult(
+        scopes=scopes,
+        total_scopes=len(scopes),
+        is_cross_module=any(len(v) > 1 for v in module_vid_sets),
+        module_versions=sorted(
+            {vid for vids in module_vid_sets for vid in vids}
+        ),
+    )
+
+
+class TestScopeDeduplicationAcrossReleases:
+    """A validation with no ``end_release`` matches every release from
+    its start onward. When the resolved module set doesn't change
+    between those releases, the scope must be created once, not once
+    per matching release.
+    """
+
+    def _seed_releases(self, sqlite_engine_with_schema):
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            session.add_all(
+                [
+                    Release(release_id=1, code="4.0", date=date(2024, 1, 1)),
+                    Release(release_id=2, code="4.1", date=date(2024, 6, 1)),
+                    Release(release_id=3, code="4.2", date=date(2024, 12, 1)),
+                ]
+            )
+            session.commit()
+        finally:
+            session.close()
+
+    def test_same_module_set_across_releases_creates_scope_once(
+        self, service_with_schema, sqlite_engine_with_schema, tmp_path
+    ):
+        self._seed_releases(sqlite_engine_with_schema)
+        csv_file = tmp_path / "ecb.csv"
+        csv_file.write_text(
+            "vr_code,expression,start_release\nV1,check(T_01),4.0\n",
+            encoding="utf-8",
+        )
+
+        with (
+            patch(
+                "dpmcore.services.ecb_validations_import.SyntaxService"
+            ) as syntax_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import.OperandsChecking"
+            ) as checker_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import"
+                ".ScopeCalculatorService"
+            ) as calc_cls,
+        ):
+            syntax_cls.return_value.parse.return_value = object()
+            checker_cls.side_effect = RuntimeError("skip table extraction")
+            calc_cls.return_value.calculate_from_expression.side_effect = [
+                _scope_result_for((100,)),
+                _scope_result_for((100,)),
+                _scope_result_for((100,)),
+            ]
+
+            result = service_with_schema.import_csv(str(csv_file))
+
+        assert result.scopes_created == 1
+        assert result.scope_compositions_created == 1
+
+    def test_different_module_sets_across_releases_creates_each_once(
+        self, service_with_schema, sqlite_engine_with_schema, tmp_path
+    ):
+        self._seed_releases(sqlite_engine_with_schema)
+        csv_file = tmp_path / "ecb.csv"
+        csv_file.write_text(
+            "vr_code,expression,start_release\nV1,check(T_01),4.0\n",
+            encoding="utf-8",
+        )
+
+        with (
+            patch(
+                "dpmcore.services.ecb_validations_import.SyntaxService"
+            ) as syntax_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import.OperandsChecking"
+            ) as checker_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import"
+                ".ScopeCalculatorService"
+            ) as calc_cls,
+        ):
+            syntax_cls.return_value.parse.return_value = object()
+            checker_cls.side_effect = RuntimeError("skip table extraction")
+            calc_cls.return_value.calculate_from_expression.side_effect = [
+                _scope_result_for((100,)),
+                _scope_result_for((100, 200)),
+                _scope_result_for((100, 200)),
+            ]
+
+            result = service_with_schema.import_csv(str(csv_file))
+
+        assert result.scopes_created == 2
+        assert result.scope_compositions_created == 3
+
+    def test_scopes_are_deduplicated_independently_per_validation(
+        self, service_with_schema, sqlite_engine_with_schema, tmp_path
+    ):
+        self._seed_releases(sqlite_engine_with_schema)
+        csv_file = tmp_path / "ecb.csv"
+        csv_file.write_text(
+            "vr_code,expression,start_release\n"
+            "V1,check(T_01),4.0\n"
+            "V2,check(T_02),4.0\n",
+            encoding="utf-8",
+        )
+
+        with (
+            patch(
+                "dpmcore.services.ecb_validations_import.SyntaxService"
+            ) as syntax_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import.OperandsChecking"
+            ) as checker_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import"
+                ".ScopeCalculatorService"
+            ) as calc_cls,
+        ):
+            syntax_cls.return_value.parse.return_value = object()
+            checker_cls.side_effect = RuntimeError("skip table extraction")
+            # Same module set (100,) recurs both across V1's releases and
+            # for V2 -- deduplication must not leak across validations.
+            calc_cls.return_value.calculate_from_expression.side_effect = [
+                _scope_result_for((100,)),
+                _scope_result_for((100,)),
+                _scope_result_for((100,)),
+                _scope_result_for((100,)),
+                _scope_result_for((100,)),
+                _scope_result_for((100,)),
+            ]
+
+            result = service_with_schema.import_csv(str(csv_file))
+
+        assert result.scopes_created == 2
+        assert result.scope_compositions_created == 2
 
 
 # ---------------------------------------------------------------------------
