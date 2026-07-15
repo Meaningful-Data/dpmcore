@@ -295,6 +295,14 @@ class OperationScope(models.Model):
         null=True,
         blank=True,
     )
+    created_release = models.ForeignKey(
+        "Release",
+        on_delete=models.DO_NOTHING,
+        db_column="CreatedReleaseID",
+        related_name="created_operation_scopes",
+        null=True,
+        blank=True,
+    )
 
     class Meta:
         managed = False

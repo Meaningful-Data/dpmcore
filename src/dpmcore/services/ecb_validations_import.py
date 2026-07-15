@@ -37,6 +37,21 @@ def _stable_uuid(*parts: object) -> str:
     return f"{{{str(uuid.uuid5(_ECB_UUID_NAMESPACE, text)).upper()}}}"
 
 
+def _format_warnings(warnings: List[str], limit: int = 20) -> str:
+    """Render at most *limit* warnings.
+
+    Caps the rendered text so a large warning list (e.g. hundreds of
+    rows repeating the same cascading transaction-abort message)
+    can't flood a terminal or log.
+    """
+    if not warnings:
+        return " No warnings were logged during the run."
+    shown = warnings[:limit]
+    omitted = len(warnings) - len(shown)
+    tail = f" (+{omitted} more omitted)" if omitted > 0 else ""
+    return f" Warnings logged: {shown}{tail}"
+
+
 class EcbValidationsImportError(Exception):
     """Raised when ECB validations cannot be imported."""
 
@@ -81,20 +96,54 @@ class EcbValidationsImportService:
 
         df.columns = df.columns.str.strip().str.lower()
 
+        warnings: List[str] = []
         session = sessionmaker(bind=self._engine)()
         try:
-            result = self._import_ecb_validations_df(session, df)
+            result = self._import_ecb_validations_df(session, df, warnings)
             session.commit()
-            return result
         except Exception as exc:
             session.rollback()
             if isinstance(exc, EcbValidationsImportError):
                 raise
             raise EcbValidationsImportError(
-                f"Failed to import ECB validations from '{csv_path}': {exc}"
+                f"Failed to import ECB validations from '{csv_path}':"
+                f" {exc}.{_format_warnings(warnings)}"
             ) from exc
         finally:
             session.close()
+
+        self._verify_persisted(warnings)
+        return result
+
+    def _verify_persisted(self, warnings: List[str]) -> None:
+        """Confirm the commit actually reached the database.
+
+        A DB-level error inside the per-row loop (e.g. a transient
+        network failure against a remote target) can be swallowed by
+        an inner ``except Exception`` without an explicit rollback.
+        SQLAlchemy then silently recovers the ``Session`` on next use,
+        discarding every already-flushed-but-uncommitted row from
+        earlier in the same transaction -- so ``session.commit()``
+        succeeds trivially with nothing left to persist. Re-checking
+        with a fresh connection after commit catches that hollow
+        "success" instead of reporting it as one.
+        """
+        verify_session = sessionmaker(bind=self._engine)()
+        try:
+            ecb_org_count = (
+                verify_session.query(Organisation)
+                .filter(Organisation.acronym == "ECB")
+                .count()
+            )
+        finally:
+            verify_session.close()
+
+        if not ecb_org_count:
+            raise EcbValidationsImportError(
+                "ECB validations import reported success but no data "
+                "was persisted (missing 'ECB' Organisation row)."
+                f"{_format_warnings(warnings)}"
+            )
 
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
@@ -263,6 +312,7 @@ class EcbValidationsImportService:
         expression: Optional[str],
         start_release_id: int,
         latest_release_id: Optional[int],
+        warnings: Optional[List[str]] = None,
     ) -> Set[str]:
         if expression is None or not str(expression).strip():
             return set()
@@ -284,8 +334,14 @@ class EcbValidationsImportService:
 
         try:
             table_codes = try_with_release(start_release_id)
-        except Exception:
+        except Exception as exc:
             table_codes = set()
+            if warnings is not None:
+                warnings.append(
+                    "Table code resolution failed for expression"
+                    f" {expression!r} at release {start_release_id}:"
+                    f" {exc}"
+                )
 
         if not table_codes and latest_release_id not in {
             None,
@@ -293,8 +349,14 @@ class EcbValidationsImportService:
         }:
             try:
                 table_codes = try_with_release(latest_release_id)
-            except Exception:
+            except Exception as exc:
                 table_codes = set()
+                if warnings is not None:
+                    warnings.append(
+                        "Table code resolution failed for expression"
+                        f" {expression!r} at release {latest_release_id}:"
+                        f" {exc}"
+                    )
 
         return table_codes
 
@@ -447,7 +509,7 @@ class EcbValidationsImportService:
         return op_version.operation_vid, created_count
 
     def _import_ecb_validations_df(  # noqa: C901
-        self, session: Session, df: Any
+        self, session: Session, df: Any, warnings: List[str]
     ) -> EcbValidationsImportResult:
         required_columns = {"vr_code", "start_release"}
         missing = required_columns - set(df.columns)
@@ -475,7 +537,6 @@ class EcbValidationsImportService:
             default=None,
         )
 
-        warnings: List[str] = []
         counters = {
             "operation_id": self._next_int_id(
                 session, Operation, "operation_id"
@@ -628,6 +689,7 @@ class EcbValidationsImportService:
                 expression=expression,
                 start_release_id=release.release_id,
                 latest_release_id=latest_release_id,
+                warnings=warnings,
             )
             references_created += self._create_table_references(
                 session,
@@ -664,29 +726,28 @@ class EcbValidationsImportService:
                     )
                     if scope_result.has_error:
                         warnings.append(
-                            f"Scope calculation failed for '{code}' in"
-                            f" release {release_id}:"
+                            f"Scope calculation failed for"
+                            f" '{code}' in release {release_id}:"
                             f" {scope_result.error_message}"
                         )
                         continue
 
-                    ordered_scopes = sorted(
-                        scope_result.scopes,
-                        key=lambda scope: tuple(
+                    def _module_vids(scope_obj: Any) -> tuple[int, ...]:
+                        return tuple(
                             sorted(
                                 comp.module_vid
-                                for comp in scope.operation_scope_compositions
+                                for comp in (
+                                    scope_obj.operation_scope_compositions
+                                )
                             )
-                        ),
+                        )
+
+                    ordered_scopes = sorted(
+                        scope_result.scopes, key=_module_vids
                     )
 
                     for scope_index, scope in enumerate(ordered_scopes):
-                        module_vids = tuple(
-                            sorted(
-                                comp.module_vid
-                                for comp in scope.operation_scope_compositions
-                            )
-                        )
+                        module_vids = _module_vids(scope)
 
                         scope.operation_vid = operation_version.operation_vid
                         scope.is_active = active_value

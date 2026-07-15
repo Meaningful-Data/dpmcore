@@ -374,6 +374,7 @@ class OperationScope(Base):
         severity: Severity level label.
         from_submission_date: Effective start date.
         row_guid: Row GUID.
+        created_release_id: FK to the Release that created this scope.
     """
 
     __tablename__ = "OperationScope"
@@ -392,6 +393,11 @@ class OperationScope(Base):
         "FromSubmissionDate", Date
     )
     row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
+    created_release_id: Mapped[Optional[int]] = mapped_column(
+        "CreatedReleaseID",
+        Integer,
+        ForeignKey("Release.ReleaseID"),
+    )
 
     operation_version: Mapped[Optional["OperationVersion"]] = relationship(
         "OperationVersion", back_populates="operation_scopes"
