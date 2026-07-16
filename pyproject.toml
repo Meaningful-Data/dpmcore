@@ -82,7 +82,7 @@ packages = [{ include = "dpmcore", from = "src" }]
 [tool.poetry.group.dev.dependencies]
 coverage = ">=7.15.2,<8.0"
 ruff = ">=0.15.20"
-mypy = ">=2.1.0"
+mypy = ">=2.3.0"
 pytest = ">=9.1.1"
 pytest-asyncio = ">=0.24"
 pytest-cov = ">=6.0"
