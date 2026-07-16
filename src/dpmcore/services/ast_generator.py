@@ -420,6 +420,17 @@ class ASTGeneratorService:
         :mod:`dpmcore.orm.release_sort_order`), not the raw id. Raises
         ``ValueError`` if the release is unknown, predates
         ``start_release_id``, or is past ``end_release_id``.
+
+        Coordinates with the ghost-version fallback in
+        :func:`dpmcore.dpm_xl.model_queries._resolve_with_ghost_fallback`:
+        when ``mv`` is being used as the fallback for a ghost that
+        follows it, ``mv``'s effective end release is virtually extended
+        past the ghost(s) to the start of the next non-ghost sibling —
+        or ``None`` when only ghosts follow (issue #221). The
+        ``predates`` branch is never relaxed:
+        ``_latest_prior_non_collapsed_vids`` picks fallbacks strictly
+        backward, so a legitimate ghost-fallback can never produce an MV
+        whose start ``predates`` the requested release.
         """
         from dpmcore.orm.infrastructure import Release
         from dpmcore.orm.release_sort_order import resolve_sort_order
@@ -444,15 +455,153 @@ class ASTGeneratorService:
                 f"{module_code} {module_version} "
                 f"(starts at release_id={start})."
             )
-        if end is not None and target >= resolve_sort_order(
-            self.session, end, role="module version end release"
-        ):
-            raise ValueError(
-                f"Release {release} is past the end of module "
-                f"version {module_code} {module_version} "
-                f"(ends at release_id={end})."
-            )
+        if end is not None:
+            effective_end_id = self._effective_end_release_id(mv)
+            if effective_end_id is not None and target >= resolve_sort_order(
+                self.session,
+                effective_end_id,
+                role="module version effective end release",
+            ):
+                raise ValueError(
+                    f"Release {release} is past the end of module "
+                    f"version {module_code} {module_version} "
+                    f"(ends at release_id={end})."
+                )
         return release_row
+
+    def _effective_end_release_id(self, mv: Any) -> Optional[int]:
+        """Compute ``mv``'s effective end, extended past ghost siblings.
+
+        When ``mv`` is used as ghost-fallback (its content substitutes
+        for a ghost of the same module covering releases past ``mv``'s
+        own end), the effective end virtually extends past those ghost
+        siblings. The extension follows a contiguous chain of ghost
+        siblings starting at (or overlapping) ``mv.end_release_id``:
+
+        - If the chain is followed by a non-ghost sibling, the effective
+          end is that sibling's ``start_release_id``.
+        - If only ghosts follow (open-ended ghost, or the last ghost's
+          end is null), the effective end is ``None`` (open).
+        - If no ghost adjoins ``mv``'s end, the effective end is
+          ``mv.end_release_id`` unchanged.
+
+        Args:
+            mv: The ``ModuleVersion`` being window-checked.
+
+        Returns:
+            The release id to use as the effective upper bound of
+            ``mv``'s window, or ``None`` if it is open-ended.
+        """
+        from dpmcore.orm.packaging import ModuleVersion
+        from dpmcore.orm.release_sort_order import resolve_sort_order
+
+        if mv.end_release_id is None:
+            return None
+        if self.session is None or mv.module_id is None:
+            return mv.end_release_id
+        session = self.session
+        end_sort = resolve_sort_order(
+            session,
+            mv.end_release_id,
+            role="module version end release",
+        )
+        siblings = (
+            session.query(ModuleVersion)
+            .filter(ModuleVersion.module_id == mv.module_id)
+            .filter(ModuleVersion.module_vid != mv.module_vid)
+            .all()
+        )
+        candidates = self._siblings_past_end(siblings, end_sort)
+        return self._walk_ghost_chain(mv, candidates, end_sort)
+
+    def _siblings_past_end(
+        self, siblings: Iterable[Any], end_sort: int
+    ) -> List[Tuple[int, bool, Any]]:
+        """Filter and sort siblings whose window extends past ``end_sort``."""
+        from dpmcore.orm.release_sort_order import resolve_sort_order
+
+        session = self.session
+        if session is None:
+            raise RuntimeError("session required")
+
+        def sort_or_none(
+            release_id: Optional[int], role: str
+        ) -> Optional[int]:
+            if release_id is None:
+                return None
+            return resolve_sort_order(session, release_id, role=role)
+
+        candidates: List[Tuple[int, bool, Any]] = []
+        for sibling in siblings:
+            sibling_end_sort = sort_or_none(
+                sibling.end_release_id, "sibling module version end release"
+            )
+            if sibling_end_sort is not None and sibling_end_sort <= end_sort:
+                continue
+            sibling_start_sort = sort_or_none(
+                sibling.start_release_id,
+                "sibling module version start release",
+            )
+            # Missing start acts as unbounded below; cap the sort key at
+            # ``end_sort`` so such siblings sit at the chain's head.
+            effective_start = (
+                end_sort
+                if sibling_start_sort is None
+                else max(sibling_start_sort, end_sort)
+            )
+            is_ghost = (
+                sibling.from_reference_date is not None
+                and sibling.to_reference_date is not None
+                and sibling.from_reference_date == sibling.to_reference_date
+            )
+            candidates.append((effective_start, is_ghost, sibling))
+        candidates.sort(key=lambda item: item[0])
+        return candidates
+
+    def _walk_ghost_chain(
+        self,
+        mv: Any,
+        candidates: List[Tuple[int, bool, Any]],
+        end_sort: int,
+    ) -> Optional[int]:
+        """Walk sibling candidates to find ``mv``'s effective end."""
+        from dpmcore.orm.release_sort_order import resolve_sort_order
+
+        session = self.session
+        if session is None:
+            raise RuntimeError("session required")
+        saw_ghost = False
+        boundary = end_sort
+        last_ghost_end_id: Optional[int] = None
+        for start_sort, ghost, sibling in candidates:
+            if start_sort > boundary:
+                break
+            if ghost:
+                saw_ghost = True
+                if sibling.end_release_id is None:
+                    return None
+                sibling_end_sort = resolve_sort_order(
+                    session,
+                    sibling.end_release_id,
+                    role="sibling module version end release",
+                )
+                if sibling_end_sort > boundary:
+                    boundary = sibling_end_sort
+                    last_ghost_end_id = sibling.end_release_id
+                continue
+            if saw_ghost:
+                # First non-ghost after a chain of ghosts terminates the
+                # virtual extension at its ``start_release_id``.
+                return sibling.start_release_id
+            # A non-ghost adjoins ``mv``'s end directly (no ghost bridge),
+            # so no extension applies — keep the schema value.
+            return mv.end_release_id
+        # Chain of ghosts with no non-ghost following it: the effective
+        # end is the last bounded ghost's ``end_release_id``. (An
+        # open-ended ghost would have returned ``None`` inside the loop.)
+        if saw_ghost:
+            return last_ghost_end_id
+        return mv.end_release_id
 
     def _latest_release_in_window(self, mv: Any) -> Any:
         """Pick the latest ``released`` Release covering *mv*'s window.
