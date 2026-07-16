@@ -502,6 +502,7 @@ class TestResolveExplicitReleaseGhostFallback:
                     date=date(2026, 3, 1),
                 ),
                 Release(release_id=5, code="4.2.1", date=date(2026, 6, 1)),
+                Release(release_id=7, code="4.3", date=date(2026, 9, 1)),
                 # MODA -- past-the-end scenario (the DORA/issue-#221 shape).
                 # Non-ghost 1.0.0 covers [4.0, 4.2); ghost 1.1.0 covers
                 # [4.2, ∞). Request 4.2 against 1.0.0 must succeed.
@@ -612,6 +613,30 @@ class TestResolveExplicitReleaseGhostFallback:
                     from_reference_date=date(2026, 6, 1),
                     to_reference_date=None,
                 ),
+                # MODG -- bounded-ghost tail. Non-ghost 1.0.0 covers
+                # [4.0, 4.2); ghost 1.1.0 covers [4.2, 4.2.1); no sibling
+                # after. Extension goes up to the ghost's end (4.2.1) --
+                # NOT past it. Releases beyond 4.2.1 must still raise.
+                ModuleVersion(
+                    module_vid=12,
+                    module_id=7,
+                    code="MODG",
+                    version_number="1.0.0",
+                    start_release_id=3,
+                    end_release_id=1010000003,
+                    from_reference_date=date(2025, 1, 31),
+                    to_reference_date=date(2026, 3, 30),
+                ),
+                ModuleVersion(
+                    module_vid=13,
+                    module_id=7,
+                    code="MODG",
+                    version_number="1.1.0",
+                    start_release_id=1010000003,
+                    end_release_id=5,
+                    from_reference_date=date(2026, 3, 31),
+                    to_reference_date=date(2026, 3, 31),
+                ),
             ]
         )
         memory_session.flush()
@@ -648,6 +673,19 @@ class TestResolveExplicitReleaseGhostFallback:
         mv, rel = svc._resolve_release("MODE", "1.0.0", "4.2.1")
         assert rel.code == "4.2.1"
         assert mv.version_number == "1.0.0"
+
+    def test_extension_stops_at_bounded_ghost_end_when_no_sibling(self, svc):
+        # MODG 1.0.0 ends at 4.2; ghost 1.1.0 covers [4.2, 4.2.1) and
+        # nothing follows. The extension must stop at the ghost's own
+        # end (4.2.1). Releases inside the ghost pass; anything past its
+        # end must still raise "past the end".
+        mv, rel = svc._resolve_release("MODG", "1.0.0", "4.2")
+        assert rel.code == "4.2"
+        assert mv.version_number == "1.0.0"
+        with pytest.raises(ValueError, match="past the end"):
+            svc._resolve_release("MODG", "1.0.0", "4.2.1")
+        with pytest.raises(ValueError, match="past the end"):
+            svc._resolve_release("MODG", "1.0.0", "4.3")
 
     def test_extension_stops_at_next_non_ghost_start(self, svc):
         # MODF 1.0.0 ends at 4.2; ghost 1.1.0 covers [4.2, 4.2.1);

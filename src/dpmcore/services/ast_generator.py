@@ -52,19 +52,6 @@ def _normalize_variable_code(code: str) -> str:
     return code
 
 
-def _is_ghost_mv(mv: Any) -> bool:
-    """Whether a ``ModuleVersion`` is a ghost (collapsed reference window).
-
-    Mirrors :func:`_collapsed_mask` in ``dpm_xl.model_queries``: a ghost
-    has both reference dates set and equal.
-    """
-    return (
-        mv.from_reference_date is not None
-        and mv.to_reference_date is not None
-        and mv.from_reference_date == mv.to_reference_date
-    )
-
-
 def _format_date(value: Any, fallback: Optional[str] = None) -> Optional[str]:
     """Format a ``date`` / ``datetime`` / string as ``YYYY-MM-DD``."""
     if value is None:
@@ -562,9 +549,12 @@ class ASTGeneratorService:
                 if sibling_start_sort is None
                 else max(sibling_start_sort, end_sort)
             )
-            candidates.append(
-                (effective_start, _is_ghost_mv(sibling), sibling)
+            is_ghost = (
+                sibling.from_reference_date is not None
+                and sibling.to_reference_date is not None
+                and sibling.from_reference_date == sibling.to_reference_date
             )
+            candidates.append((effective_start, is_ghost, sibling))
         candidates.sort(key=lambda item: item[0])
         return candidates
 
@@ -582,6 +572,7 @@ class ASTGeneratorService:
             raise RuntimeError("session required")
         saw_ghost = False
         boundary = end_sort
+        last_ghost_end_id: Optional[int] = None
         for start_sort, ghost, sibling in candidates:
             if start_sort > boundary:
                 break
@@ -589,14 +580,14 @@ class ASTGeneratorService:
                 saw_ghost = True
                 if sibling.end_release_id is None:
                     return None
-                boundary = max(
-                    boundary,
-                    resolve_sort_order(
-                        session,
-                        sibling.end_release_id,
-                        role="sibling module version end release",
-                    ),
+                sibling_end_sort = resolve_sort_order(
+                    session,
+                    sibling.end_release_id,
+                    role="sibling module version end release",
                 )
+                if sibling_end_sort > boundary:
+                    boundary = sibling_end_sort
+                    last_ghost_end_id = sibling.end_release_id
                 continue
             if saw_ghost:
                 # First non-ghost after a chain of ghosts terminates the
@@ -605,8 +596,11 @@ class ASTGeneratorService:
             # A non-ghost adjoins ``mv``'s end directly (no ghost bridge),
             # so no extension applies — keep the schema value.
             return mv.end_release_id
+        # Chain of ghosts with no non-ghost following it: the effective
+        # end is the last bounded ghost's ``end_release_id``. (An
+        # open-ended ghost would have returned ``None`` inside the loop.)
         if saw_ghost:
-            return None
+            return last_ghost_end_id
         return mv.end_release_id
 
     def _latest_release_in_window(self, mv: Any) -> Any:
