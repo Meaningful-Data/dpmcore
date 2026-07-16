@@ -717,6 +717,10 @@ class EcbValidationsImportService:
                     row.get("from_submission_date")
                 )
 
+                # Dedup by module-vid set: open-ended validations
+                # recompute the same scope across many releases.
+                seen_module_vid_sets: Set[tuple[int, ...]] = set()
+
                 for release_id in valid_release_ids:
                     scope_result = ScopeCalculatorService(
                         session
@@ -748,6 +752,9 @@ class EcbValidationsImportService:
 
                     for scope_index, scope in enumerate(ordered_scopes):
                         module_vids = _module_vids(scope)
+                        if module_vids in seen_module_vid_sets:
+                            continue
+                        seen_module_vid_sets.add(module_vids)
 
                         scope.operation_vid = operation_version.operation_vid
                         scope.is_active = active_value
