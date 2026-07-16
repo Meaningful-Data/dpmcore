@@ -22,6 +22,10 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import aliased
 
 from dpmcore.dpm_xl.utils.filters import filter_by_release
+from dpmcore.dpm_xl.utils.range_resolution import (
+    build_axis_order_map,
+    resolve_range_codes,
+)
 from dpmcore.orm.glossary import (
     Item,
     ItemCategory,
@@ -1258,6 +1262,15 @@ class ViewDatapointsQuery:
         pd.DataFrame,
     ] = {}
 
+    # ``{axis: {code: order}}`` per (engine, table, release). An axis maps to
+    # ``None`` when it is not fully ordered (a code without a stored order, or
+    # a code with two orders) so range resolution falls back to string
+    # comparison for that whole axis.
+    _AXIS_ORDER_CACHE: dict[
+        tuple[Hashable, str, int | None],
+        dict[str, dict[str, int] | None],
+    ] = {}
+
     # -- internal helpers ------------------------------------------ #
 
     @staticmethod
@@ -1393,6 +1406,102 @@ class ViewDatapointsQuery:
         }
         return query, aliases
 
+    @classmethod
+    def get_axis_orders(
+        cls,
+        session: "Session",
+        table: str,
+        release_id: int | None = None,
+    ) -> dict[str, dict[str, int] | None]:
+        """Return the ``{code: order}`` display order per axis of a table.
+
+        The stored order is ``TableVersionHeader.Order``; this is the single
+        source of truth used to resolve ranges by display order instead of by
+        code text (mirroring ``load_release_sort_orders`` for releases).
+
+        An axis maps to ``None`` when it is **not fully ordered** — some code
+        lacks a stored order (the column is nullable and some headers have no
+        ``TableVersionHeader`` row) or a code carries two different orders.
+        Callers then fall back to string comparison for that whole axis, so
+        order-based and string-based comparison are never mixed within an axis.
+
+        Results are cached per engine + table + release. The table and release
+        scoping mirrors :meth:`get_table_data` so the map matches the code
+        universe of the data query.
+
+        Args:
+            session: SQLAlchemy session.
+            table: Table version code.
+            release_id: Optional release filter.
+
+        Returns:
+            ``{"rows"/"cols"/"sheets": {code: order} | None}``.
+        """
+        engine_key = _get_engine_cache_key(session)
+        cache_key = (engine_key, table, release_id)
+        cached = cls._AXIS_ORDER_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+
+        query, aliases = cls._create_base_query_with_aliases(session)
+        query = query.add_columns(
+            aliases["hvr"].code.label("row_code"),
+            aliases["hvc"].code.label("column_code"),
+            aliases["hvs"].code.label("sheet_code"),
+            aliases["tvh_row"].order.label("row_order"),
+            aliases["tvh_col"].order.label("column_order"),
+            aliases["tvh_sheet"].order.label("sheet_order"),
+        ).distinct()
+
+        query = query.filter(TableVersion.code == table)
+        if release_id is None:
+            query = query.filter(TableVersion.end_release_id.is_(None))
+        else:
+            query = filter_by_release(
+                query,
+                start_col=ModuleVersion.start_release_id,
+                end_col=ModuleVersion.end_release_id,
+                release_id=release_id,
+            )
+
+        data = read_sql_with_connection(
+            compile_query_for_pandas(query.statement, session),
+            session,
+        )
+
+        axes = {
+            "rows": ("row_code", "row_order"),
+            "cols": ("column_code", "column_order"),
+            "sheets": ("sheet_code", "sheet_order"),
+        }
+        result: dict[str, dict[str, int] | None] = {}
+        for axis, (code_col, order_col) in axes.items():
+            result[axis] = _build_axis_order_map(data, code_col, order_col)
+
+        cls._AXIS_ORDER_CACHE[cache_key] = result
+        return result
+
+    @classmethod
+    def _axis_orders_for(
+        cls,
+        session: "Session",
+        table: str,
+        release_id: int | None,
+        selections: tuple[Sequence[str] | None, ...],
+    ) -> dict[str, dict[str, int] | None]:
+        """Return per-axis order maps, querying only when a range is present.
+
+        Non-range selectors never consult the display order, so the
+        ``get_axis_orders`` query is skipped and every axis maps to ``None``
+        (a no-op for plain ``IN`` / ``==`` selectors).
+        """
+        has_range = any(
+            v is not None and any("-" in x for x in v) for v in selections
+        )
+        if not has_range:
+            return {"rows": None, "cols": None, "sheets": None}
+        return cls.get_axis_orders(session, table, release_id)
+
     # -- public methods -------------------------------------------- #
 
     @classmethod
@@ -1444,6 +1553,9 @@ class ViewDatapointsQuery:
             aliases["hvr"].code.label("row_code"),
             aliases["hvc"].code.label("column_code"),
             aliases["hvs"].code.label("sheet_code"),
+            aliases["tvh_row"].order.label("row_order"),
+            aliases["tvh_col"].order.label("column_order"),
+            aliases["tvh_sheet"].order.label("sheet_order"),
             VariableVersion.variable_id.label("variable_id"),
             DataType.code.label("data_type"),
             TableVersion.table_vid.label("table_vid"),
@@ -1457,17 +1569,31 @@ class ViewDatapointsQuery:
         if release_id is None:
             query = query.filter(TableVersion.end_release_id.is_(None))
 
+        # Range endpoints are resolved against the stored display order, not
+        # the code text; ``get_axis_orders`` supplies the per-axis map (or
+        # ``None`` when the axis has no usable order -> string fallback). Only
+        # fetch it when a range is actually present.
+        axis_orders = cls._axis_orders_for(
+            session, table, release_id, (rows, cols, sheets)
+        )
+
         # Row filter
         if rows is not None and rows != ["*"]:
-            query = _apply_dimension_filter(query, aliases["hvr"].code, rows)
+            query = _apply_dimension_filter(
+                query, aliases["hvr"].code, rows, axis_orders["rows"]
+            )
 
         # Column filter
         if cols is not None and cols != ["*"]:
-            query = _apply_dimension_filter(query, aliases["hvc"].code, cols)
+            query = _apply_dimension_filter(
+                query, aliases["hvc"].code, cols, axis_orders["cols"]
+            )
 
         # Sheet filter
         if sheets is not None and sheets != ["*"]:
-            query = _apply_dimension_filter(query, aliases["hvs"].code, sheets)
+            query = _apply_dimension_filter(
+                query, aliases["hvs"].code, sheets, axis_orders["sheets"]
+            )
 
         if release_id is not None:
             query = filter_by_release(
@@ -1513,6 +1639,9 @@ class ViewDatapointsQuery:
             aliases["hvr"].code.label("row_code"),
             aliases["hvc"].code.label("column_code"),
             aliases["hvs"].code.label("sheet_code"),
+            aliases["tvh_row"].order.label("row_order"),
+            aliases["tvh_col"].order.label("column_order"),
+            aliases["tvh_sheet"].order.label("sheet_order"),
             VariableVersion.variable_id.label("variable_id"),
             DataType.code.label("data_type"),
             TableVersion.table_vid.label("table_vid"),
@@ -1526,6 +1655,16 @@ class ViewDatapointsQuery:
 
         query = query.filter(TableVersion.code == table)
 
+        axis_orders = cls._axis_orders_for(
+            session,
+            table,
+            release_id,
+            (
+                table_info.get("rows"),
+                table_info.get("cols"),
+                table_info.get("sheets"),
+            ),
+        )
         mapping = {
             "rows": aliases["hvr"].code,
             "cols": aliases["hvc"].code,
@@ -1533,14 +1672,11 @@ class ViewDatapointsQuery:
         }
         for key, values in table_info.items():
             if values is not None and key in mapping:
-                col = mapping[key]
-                if "-" in values[0]:
-                    lo, hi = values[0].split("-")
-                    query = query.filter(col.between(lo, hi))
-                elif values[0] == "*":
-                    continue
-                else:
-                    query = query.filter(col.in_(values))
+                clause = _dimension_clause(
+                    mapping[key], values, axis_orders[key]
+                )
+                if clause is not None:
+                    query = query.filter(clause)
 
         if release_id:
             query = filter_by_release(
@@ -1553,38 +1689,113 @@ class ViewDatapointsQuery:
         return read_sql_with_connection(query.statement, session)
 
 
+def _build_axis_order_map(
+    data: pd.DataFrame, code_col: str, order_col: str
+) -> dict[str, int] | None:
+    """Build ``{code: order}`` for one axis from a code/order frame.
+
+    Thin ``DataFrame`` adapter over
+    :func:`~dpmcore.dpm_xl.utils.range_resolution.build_axis_order_map`:
+    returns ``None`` when the axis is not fully ordered — the order column is
+    absent, some present code lacks an order, or a code carries two different
+    orders — so the caller falls back to string comparison for that whole axis.
+    """
+    if code_col not in data.columns or order_col not in data.columns:
+        return None
+    return build_axis_order_map(data[code_col], data[order_col])
+
+
+def _resolve_dimension_values(
+    values: Sequence[str],
+    order_map: dict[str, int] | None,
+) -> tuple[set[str], list[tuple[str, str]]]:
+    """Split axis selectors into concrete codes and unresolved ranges.
+
+    Range selectors are expanded to their spanned codes via the display-order
+    map. A range that cannot be resolved by order — reversed, or the axis has
+    no usable order — is returned as an ``(lo, hi)`` endpoint pair for the
+    caller to handle (widen or string ``between``). Wildcards (``*``) are
+    skipped: they mean "the whole axis", i.e. no filter.
+
+    Returns:
+        ``(codes, unresolved_ranges)``.
+    """
+    codes: set[str] = set()
+    unresolved: list[tuple[str, str]] = []
+    for value in values:
+        if value == "*":
+            continue
+        if "-" in value:
+            lo, hi = value.split("-")
+            spanned = (
+                resolve_range_codes(order_map, lo, hi) if order_map else []
+            )
+            if spanned:
+                codes.update(spanned)
+            else:
+                unresolved.append((lo, hi))
+        else:
+            codes.add(value)
+    return codes, unresolved
+
+
 def _apply_dimension_filter(
     query: "Query[Any]",
     # column is either a SQLAlchemy ColumnElement or an InstrumentedAttribute
     # from ORM; see _filter_elements for rationale.
     column: Any,
     values: Sequence[str],
+    order_map: dict[str, int] | None,
 ) -> "Query[Any]":
-    """Apply row/col/sheet dimension filter.
+    """Apply a row/col/sheet dimension filter for ``get_table_data``.
+
+    Ranges are resolved to concrete codes by display order and filtered with
+    ``IN``. If a range cannot be resolved by order (reversed, or the axis is
+    not fully ordered), the axis filter is **widened** — dropped entirely —
+    rather than compared by code text: ``get_table_data`` is always re-filtered
+    by the order-aware ``filter_all_data`` pass, which stays the authoritative
+    narrower and the source of the ``1-2`` endpoint error, so it must never
+    under-fetch.
 
     Args:
         query: SQLAlchemy query.
         column: Header code column.
         values: List of filter values (may have ranges).
+        order_map: ``{code: order}`` for this axis, or ``None`` when the axis
+            has no usable order.
 
     Returns:
         Filtered query.
     """
-    if len(values) == 1 and "-" in values[0]:
-        lo, hi = values[0].split("-")
-        return query.filter(column.between(lo, hi))
+    codes, unresolved = _resolve_dimension_values(values, order_map)
+    if unresolved:
+        return query
+    if not codes:
+        return query
+    return query.filter(column.in_(codes))
 
-    has_range = any("-" in x for x in values)
-    if has_range:
-        filters: list[Any] = []
-        for v in values:
-            if "-" in v:
-                lo, hi = v.split("-")
-                filters.append(column.between(lo, hi))
-            else:
-                filters.append(column == v)
-        return query.filter(or_(*filters))
-    return query.filter(column.in_(values))
+
+def _dimension_clause(
+    column: Any,
+    values: Sequence[str],
+    order_map: dict[str, int] | None,
+) -> Any | None:
+    """Build a dimension filter clause for ``get_filtered_datapoints``.
+
+    Like :func:`_apply_dimension_filter` but returns a clause instead of
+    widening: a range that cannot be resolved by order falls back to a string
+    ``between`` (this method's result is used directly, without a pandas
+    re-filter, so it must still narrow). Returns ``None`` when there is nothing
+    to filter (e.g. an all-wildcard selection).
+    """
+    codes, unresolved = _resolve_dimension_values(values, order_map)
+    clauses: list[Any] = []
+    if codes:
+        clauses.append(column.in_(codes))
+    clauses.extend(column.between(lo, hi) for lo, hi in unresolved)
+    if not clauses:
+        return None
+    return or_(*clauses)
 
 
 # ------------------------------------------------------------------ #

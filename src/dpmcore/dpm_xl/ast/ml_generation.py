@@ -158,9 +158,21 @@ class MLGeneration(ASTTemplate):
         data_filtered = filter_all_data(
             self.data, table, rows or [], cols or [], sheets or []
         )
-        data_filtered = data_filtered[
-            ["row_code", "column_code", "sheet_code", "variable_id", "cell_id"]
+        # Keep the *_order columns so generate_xyz can rank X/Y/Z by the
+        # stored display order; it drops them again before returning records.
+        projection = [
+            "row_code",
+            "column_code",
+            "sheet_code",
+            "variable_id",
+            "cell_id",
         ]
+        projection += [
+            col
+            for col in ("row_order", "column_order", "sheet_order")
+            if col in data_filtered.columns
+        ]
+        data_filtered = data_filtered[projection]
 
         list_xyz = generate_xyz(data_filtered)
 
