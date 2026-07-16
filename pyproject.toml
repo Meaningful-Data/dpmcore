@@ -89,7 +89,7 @@ pytest-cov = ">=6.0"
 pyroma = ">=4.2"
 httpx = ">=0.28,<1.0"
 pytest-django = ">=4.9"
-django-stubs = ">=6.0.6"
+django-stubs = ">=6.0.7"
 pandas-stubs = ">=2.2.2,<3.0"
 
 [tool.poetry.group.docs.dependencies]
