@@ -311,6 +311,7 @@ TABLE OperationNode
   COL UseIntervalArithmetics pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
   PK NodeID
 TABLE OperationScope
+  COL CreatedReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
   COL FromSubmissionDate pg=DATE mssql=DATETIME null=True pk=False ai=auto fks=
   COL IsActive pg=SMALLINT mssql=SMALLINT null=True pk=False ai=auto fks=
   COL OperationScopeID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
@@ -363,6 +364,7 @@ TABLE Organisation
   COL Name pg=VARCHAR(200) mssql=VARCHAR(200) null=True pk=False ai=auto fks=
   COL OrgID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
   COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL URL pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
   PK OrgID
   UNIQUE IDPrefix
   UNIQUE Name

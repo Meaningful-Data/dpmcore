@@ -129,6 +129,12 @@ class Organisation(models.Model):
         null=True,
         blank=True,
     )
+    url = models.CharField(
+        db_column="URL",
+        max_length=255,
+        null=True,
+        blank=True,
+    )
 
     class Meta:
         managed = False

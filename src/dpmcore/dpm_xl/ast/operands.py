@@ -48,6 +48,10 @@ from dpmcore.dpm_xl.utils.operands_mapping import (
     generate_new_label,
     set_operand_label,
 )
+from dpmcore.dpm_xl.utils.range_resolution import (
+    build_axis_order_map,
+    sort_by_order,
+)
 from dpmcore.errors import SemanticError
 from dpmcore.orm.rendering import (
     Header,
@@ -69,7 +73,8 @@ IMPLICIT_OPEN_KEYS = {
 
 
 _HEADERS_CACHE: Dict[
-    Tuple[Hashable, int | None, Tuple[str, ...]], pd.DataFrame
+    Tuple[Hashable, frozenset[Any] | None, int | None, Tuple[str, ...]],
+    pd.DataFrame,
 ] = {}
 
 
@@ -146,24 +151,47 @@ def _expand_ranges_from_data(node: VarID, node_data: pd.DataFrame) -> None:
 
     # Expand rows if they contain range syntax
     if _has_range_syntax(node.rows):
-        actual_rows = list(node_data["row_code"].dropna().unique().tolist())
+        actual_rows = _sorted_axis_codes(node_data, "row_code", "row_order")
         if actual_rows:
-            # Sort to maintain consistent ordering
-            node.rows = sorted(actual_rows)
+            node.rows = actual_rows
 
     # Expand cols if they contain range syntax
     if _has_range_syntax(node.cols):
-        actual_cols = list(node_data["column_code"].dropna().unique().tolist())
+        actual_cols = _sorted_axis_codes(
+            node_data, "column_code", "column_order"
+        )
         if actual_cols:
-            node.cols = sorted(actual_cols)
+            node.cols = actual_cols
 
     # Expand sheets if they contain range syntax
     if _has_range_syntax(node.sheets):
-        actual_sheets = list(
-            node_data["sheet_code"].dropna().unique().tolist()
+        actual_sheets = _sorted_axis_codes(
+            node_data, "sheet_code", "sheet_order"
         )
         if actual_sheets:
-            node.sheets = sorted(actual_sheets)
+            node.sheets = actual_sheets
+
+
+def _sorted_axis_codes(
+    node_data: pd.DataFrame, code_col: str, order_col: str
+) -> list[str]:
+    """Return the distinct codes of one axis in display order.
+
+    Sorts by the stored order (``*_order``) when that column is present and
+    fully populated; otherwise falls back to a lexicographic sort so codes
+    without a usable order stay deterministic.
+    """
+    codes = node_data[code_col].dropna().unique().tolist()
+    if not codes:
+        return []
+    order_map = (
+        build_axis_order_map(node_data[code_col], node_data[order_col])
+        if order_col in node_data.columns
+        else None
+    )
+    if order_map:
+        return sort_by_order(codes, order_map)
+    return sorted(codes)
 
 
 class OperandsChecking(ASTTemplate, ABC):
@@ -238,8 +266,21 @@ class OperandsChecking(ASTTemplate, ABC):
             return
 
         engine = self.session.get_bind()
-        engine_key: Hashable = getattr(engine, "url", repr(engine))
-        cache_key = (engine_key, self.release_id, tuple(sorted(table_codes)))
+        url_key: Hashable = getattr(engine, "url", repr(engine))
+        schema_translate_map = engine.get_execution_options().get(
+            "schema_translate_map"
+        )
+        schema_key = (
+            frozenset(schema_translate_map.items())
+            if schema_translate_map
+            else None
+        )
+        cache_key = (
+            url_key,
+            schema_key,
+            self.release_id,
+            tuple(sorted(table_codes)),
+        )
 
         df_headers = _HEADERS_CACHE.get(cache_key)
         if df_headers is None:
@@ -270,15 +311,11 @@ class OperandsChecking(ASTTemplate, ABC):
                 release_id=self.release_id,
             )
 
-            from dpmcore.dpm_xl.model_queries import (
-                compile_query_for_pandas,
-                read_sql_with_connection,
-            )
+            from dpmcore.dpm_xl.model_queries import read_sql_with_connection
 
-            compiled_query = compile_query_for_pandas(
+            df_headers = read_sql_with_connection(
                 query.statement, self.session
             )
-            df_headers = read_sql_with_connection(compiled_query, self.session)
             _HEADERS_CACHE[cache_key] = df_headers
 
         for table in table_codes:

@@ -78,15 +78,9 @@ def test_operands_check_headers_calls_filter_by_release_with_correct_args(
         operands_module, "filter_by_release", fake_filter_by_release
     )
 
-    # Stub out the pandas/SQLAlchemy helpers so the test doesn't touch
+    # Stub out the pandas/SQLAlchemy helper so the test doesn't touch
     # a real DB.
     import dpmcore.dpm_xl.model_queries as model_queries
-
-    monkeypatch.setattr(
-        model_queries,
-        "compile_query_for_pandas",
-        lambda stmt, session: stmt,
-    )
 
     def fake_read_sql(sql, session):
         return pd.DataFrame(

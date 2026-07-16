@@ -26,6 +26,24 @@ import click
 from dpmcore import __version__
 
 
+def _print_capped_warnings(
+    console: Any, label: str, warnings: list[str], limit: int = 20
+) -> None:
+    """Print at most *limit* warnings.
+
+    Caps output so a large list can't flood the terminal (e.g. many
+    rows repeating the same underlying error).
+    """
+    for warning in warnings[:limit]:
+        console.print(f"[yellow]{label}:[/yellow] {warning}")
+    omitted = len(warnings) - limit
+    if omitted > 0:
+        console.print(
+            f"[yellow]... and {omitted} more {label.lower()}(s) "
+            "omitted.[/yellow]"
+        )
+
+
 @click.group()
 @click.version_option(version=__version__, prog_name="dpmcore")
 def main() -> None:
@@ -330,8 +348,7 @@ def update_db(
     if result.ecb_validations_imported:
         console.print("[green]ECB validations imported[/green]")
 
-    for warning in migration.warnings:
-        console.print(f"[yellow]Warning:[/yellow] {warning}")
+    _print_capped_warnings(console, "Warning", migration.warnings)
 
     if result.dry_run:
         console.print(

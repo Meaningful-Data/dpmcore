@@ -1040,3 +1040,106 @@ class TestLoadTableIdentityInsert:
 
         sqls = [str(c.args[0]) for c in conn.execute.call_args_list]
         assert any("OFF" in s for s in sqls)
+
+
+# ---------------------------------------------------------------------------
+# _resync_postgresql_sequences
+# ---------------------------------------------------------------------------
+
+
+def _postgres_engine_mock() -> MagicMock:
+    engine = MagicMock()
+    engine.dialect.name = "postgresql"
+    engine.dialect.identifier_preparer.quote_schema.side_effect = lambda s: (
+        f'"{s}"'
+    )
+    engine.dialect.identifier_preparer.quote.side_effect = lambda s: f'"{s}"'
+    return engine
+
+
+class TestResyncPostgresqlSequences:
+    def test_noop_when_dialect_is_not_postgresql(self):
+        engine = MagicMock()
+        engine.dialect.name = "sqlite"
+        service = MigrationService(engine, schema="staging")
+
+        service._resync_postgresql_sequences({"Organisation": None})
+
+        engine.begin.assert_not_called()
+
+    def test_noop_when_schema_is_none(self):
+        engine = _postgres_engine_mock()
+        service = MigrationService(engine, schema=None)
+
+        service._resync_postgresql_sequences({"Organisation": None})
+
+        engine.begin.assert_not_called()
+
+    def test_resyncs_sequence_for_single_pk_table(self):
+        engine = _postgres_engine_mock()
+        conn = engine.begin.return_value.__enter__.return_value
+        conn.execute.side_effect = [
+            MagicMock(scalar=lambda: "staging.organisation_orgid_seq"),
+            MagicMock(scalar=lambda: 42),
+            MagicMock(),
+        ]
+
+        service = MigrationService(engine, schema="staging")
+        service._resync_postgresql_sequences({"Organisation": None})
+
+        assert conn.execute.call_count == 3
+
+        sequence_call, max_call, setval_call = conn.execute.call_args_list
+        assert sequence_call.args[1] == {
+            "table": '"staging"."Organisation"',
+            "column": "OrgID",
+        }
+        assert "MAX" in str(max_call.args[0])
+        assert '"staging"."Organisation"' in str(max_call.args[0])
+        assert setval_call.args[1] == {
+            "sequence": "staging.organisation_orgid_seq",
+            "max_id": 42,
+        }
+
+    def test_skips_table_not_known_to_orm(self):
+        engine = _postgres_engine_mock()
+        conn = engine.begin.return_value.__enter__.return_value
+
+        service = MigrationService(engine, schema="staging")
+        service._resync_postgresql_sequences({"NotARealTable": None})
+
+        conn.execute.assert_not_called()
+
+    def test_skips_table_with_composite_primary_key(self):
+        engine = _postgres_engine_mock()
+        conn = engine.begin.return_value.__enter__.return_value
+
+        service = MigrationService(engine, schema="staging")
+        service._resync_postgresql_sequences(
+            {"OperationScopeComposition": None}
+        )
+
+        conn.execute.assert_not_called()
+
+    def test_skips_when_column_has_no_serial_sequence(self):
+        engine = _postgres_engine_mock()
+        conn = engine.begin.return_value.__enter__.return_value
+        conn.execute.side_effect = [MagicMock(scalar=lambda: None)]
+
+        service = MigrationService(engine, schema="staging")
+        service._resync_postgresql_sequences({"Organisation": None})
+
+        assert conn.execute.call_count == 1
+
+    def test_skips_when_table_is_empty(self):
+        engine = _postgres_engine_mock()
+        conn = engine.begin.return_value.__enter__.return_value
+        conn.execute.side_effect = [
+            MagicMock(scalar=lambda: "staging.organisation_orgid_seq"),
+            MagicMock(scalar=lambda: None),
+        ]
+
+        service = MigrationService(engine, schema="staging")
+        service._resync_postgresql_sequences({"Organisation": None})
+
+        assert conn.execute.call_count == 2

@@ -6,12 +6,15 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from dpmcore.orm.infrastructure import Organisation
+from dpmcore.orm.infrastructure import Organisation, Release
+from dpmcore.orm.operations import OperationScope, OperationScopeComposition
 from dpmcore.services.ecb_validations_import import (
     EcbValidationsImportError,
     EcbValidationsImportService,
+    _format_warnings,
     _stable_uuid,
 )
+from dpmcore.services.scope_calculator import ScopeResult
 
 
 @pytest.fixture
@@ -579,6 +582,42 @@ class TestEcbValidationsImport:
 
         assert result == set()
 
+    def test_extract_table_codes_for_expression_records_warnings_on_failure(
+        self, service_with_schema, sqlite_engine_with_schema
+    ):
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        warnings: list = []
+
+        with (
+            patch(
+                "dpmcore.services.ecb_validations_import.SyntaxService"
+            ) as syntax_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import.OperandsChecking"
+            ) as checker_cls,
+        ):
+            syntax_cls.return_value.parse.return_value = object()
+            checker_cls.side_effect = RuntimeError("cannot inspect tables")
+
+            result = service_with_schema._extract_table_codes_for_expression(
+                session,
+                expression="broken expression",
+                start_release_id=1,
+                latest_release_id=2,
+                warnings=warnings,
+            )
+
+        session.close()
+
+        assert result == set()
+        assert len(warnings) == 2
+        assert all(
+            "Table code resolution failed for expression" in w
+            for w in warnings
+        )
+        assert "release 1" in warnings[0]
+        assert "release 2" in warnings[1]
+
     def test_create_table_references_returns_zero_when_no_table_codes(
         self, service_with_schema, sqlite_engine_with_schema
     ):
@@ -804,6 +843,260 @@ class TestEcbValidationsImport:
                 match="Failed to import ECB validations",
             ):
                 service_with_schema.import_csv(str(csv_file))
+
+    def test_import_csv_raises_when_commit_persists_nothing(
+        self, service_with_schema, tmp_path
+    ):
+        """A hollow commit (no ECB org row) must surface as an error.
+
+        Regression test for the "silent transaction abort" failure mode:
+        a swallowed mid-loop DB error can leave ``session.commit()``
+        succeeding with nothing actually persisted. Simulated here by
+        stubbing out ``_import_ecb_validations_df`` entirely, so the
+        session commits without ever creating the ECB organisation.
+        """
+        csv_file = tmp_path / "valid.csv"
+        csv_file.write_text(
+            "vr_code,start_release\nV1,4.0\n", encoding="utf-8"
+        )
+
+        with patch.object(
+            service_with_schema,
+            "_import_ecb_validations_df",
+            return_value=MagicMock(),
+        ):
+            with pytest.raises(
+                EcbValidationsImportError,
+                match="no data was persisted",
+            ):
+                service_with_schema.import_csv(str(csv_file))
+
+
+# ---------------------------------------------------------------------------
+# Scope-creation loop: dedup across releases (issue: EGDQ_C207-style
+# duplicate OperationScope/OperationScopeComposition rows)
+# ---------------------------------------------------------------------------
+
+
+def _scope_result_for(*module_vid_sets):
+    scopes = []
+    for module_vids in module_vid_sets:
+        scope = OperationScope()
+        for module_vid in module_vids:
+            scope.operation_scope_compositions.append(
+                OperationScopeComposition(module_vid=module_vid)
+            )
+        scopes.append(scope)
+    return ScopeResult(
+        scopes=scopes,
+        total_scopes=len(scopes),
+        is_cross_module=any(len(v) > 1 for v in module_vid_sets),
+        module_versions=sorted(
+            {vid for vids in module_vid_sets for vid in vids}
+        ),
+    )
+
+
+class TestScopeDeduplicationAcrossReleases:
+    """A validation with no ``end_release`` matches every release from
+    its start onward. When the resolved module set doesn't change
+    between those releases, the scope must be created once, not once
+    per matching release.
+    """
+
+    def _seed_releases(self, sqlite_engine_with_schema):
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            session.add_all(
+                [
+                    Release(release_id=1, code="4.0", date=date(2024, 1, 1)),
+                    Release(release_id=2, code="4.1", date=date(2024, 6, 1)),
+                    Release(release_id=3, code="4.2", date=date(2024, 12, 1)),
+                ]
+            )
+            session.commit()
+        finally:
+            session.close()
+
+    def test_same_module_set_across_releases_creates_scope_once(
+        self, service_with_schema, sqlite_engine_with_schema, tmp_path
+    ):
+        self._seed_releases(sqlite_engine_with_schema)
+        csv_file = tmp_path / "ecb.csv"
+        csv_file.write_text(
+            "vr_code,expression,start_release\nV1,check(T_01),4.0\n",
+            encoding="utf-8",
+        )
+
+        with (
+            patch(
+                "dpmcore.services.ecb_validations_import.SyntaxService"
+            ) as syntax_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import.OperandsChecking"
+            ) as checker_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import"
+                ".ScopeCalculatorService"
+            ) as calc_cls,
+        ):
+            syntax_cls.return_value.parse.return_value = object()
+            checker_cls.side_effect = RuntimeError("skip table extraction")
+            calc_cls.return_value.calculate_from_expression.side_effect = [
+                _scope_result_for((100,)),
+                _scope_result_for((100,)),
+                _scope_result_for((100,)),
+            ]
+
+            result = service_with_schema.import_csv(str(csv_file))
+
+        assert result.scopes_created == 1
+        assert result.scope_compositions_created == 1
+
+    def test_different_module_sets_across_releases_creates_each_once(
+        self, service_with_schema, sqlite_engine_with_schema, tmp_path
+    ):
+        self._seed_releases(sqlite_engine_with_schema)
+        csv_file = tmp_path / "ecb.csv"
+        csv_file.write_text(
+            "vr_code,expression,start_release\nV1,check(T_01),4.0\n",
+            encoding="utf-8",
+        )
+
+        with (
+            patch(
+                "dpmcore.services.ecb_validations_import.SyntaxService"
+            ) as syntax_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import.OperandsChecking"
+            ) as checker_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import"
+                ".ScopeCalculatorService"
+            ) as calc_cls,
+        ):
+            syntax_cls.return_value.parse.return_value = object()
+            checker_cls.side_effect = RuntimeError("skip table extraction")
+            calc_cls.return_value.calculate_from_expression.side_effect = [
+                _scope_result_for((100,)),
+                _scope_result_for((100, 200)),
+                _scope_result_for((100, 200)),
+            ]
+
+            result = service_with_schema.import_csv(str(csv_file))
+
+        assert result.scopes_created == 2
+        assert result.scope_compositions_created == 3
+
+    def test_scopes_are_deduplicated_independently_per_validation(
+        self, service_with_schema, sqlite_engine_with_schema, tmp_path
+    ):
+        self._seed_releases(sqlite_engine_with_schema)
+        csv_file = tmp_path / "ecb.csv"
+        csv_file.write_text(
+            "vr_code,expression,start_release\n"
+            "V1,check(T_01),4.0\n"
+            "V2,check(T_02),4.0\n",
+            encoding="utf-8",
+        )
+
+        with (
+            patch(
+                "dpmcore.services.ecb_validations_import.SyntaxService"
+            ) as syntax_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import.OperandsChecking"
+            ) as checker_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import"
+                ".ScopeCalculatorService"
+            ) as calc_cls,
+        ):
+            syntax_cls.return_value.parse.return_value = object()
+            checker_cls.side_effect = RuntimeError("skip table extraction")
+            # Same module set (100,) recurs both across V1's releases and
+            # for V2 -- deduplication must not leak across validations.
+            calc_cls.return_value.calculate_from_expression.side_effect = [
+                _scope_result_for((100,)),
+                _scope_result_for((100,)),
+                _scope_result_for((100,)),
+                _scope_result_for((100,)),
+                _scope_result_for((100,)),
+                _scope_result_for((100,)),
+            ]
+
+            result = service_with_schema.import_csv(str(csv_file))
+
+        assert result.scopes_created == 2
+        assert result.scope_compositions_created == 2
+
+
+# ---------------------------------------------------------------------------
+# _verify_persisted
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyPersisted:
+    def test_passes_silently_when_ecb_organisation_exists(
+        self, service_with_schema, sqlite_engine_with_schema
+    ):
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            session.add(
+                Organisation(
+                    org_id=1,
+                    name="European Central Bank",
+                    acronym="ECB",
+                    id_prefix=1,
+                )
+            )
+            session.commit()
+        finally:
+            session.close()
+
+        service_with_schema._verify_persisted([])
+
+    def test_raises_when_no_ecb_organisation_exists(self, service_with_schema):
+        with pytest.raises(
+            EcbValidationsImportError,
+            match="no data was persisted",
+        ):
+            service_with_schema._verify_persisted([])
+
+    def test_error_message_includes_warnings(self, service_with_schema):
+        with pytest.raises(EcbValidationsImportError, match="oops"):
+            service_with_schema._verify_persisted(["oops"])
+
+
+# ---------------------------------------------------------------------------
+# _format_warnings
+# ---------------------------------------------------------------------------
+
+
+class TestFormatWarnings:
+    def test_empty_list_returns_no_warnings_message(self):
+        assert (
+            _format_warnings([]) == " No warnings were logged during the run."
+        )
+
+    def test_small_list_shows_all_warnings_without_omission_note(self):
+        result = _format_warnings(["a", "b"])
+        assert result == " Warnings logged: ['a', 'b']"
+        assert "omitted" not in result
+
+    def test_caps_at_default_limit_of_20(self):
+        warnings = [f"warning-{i}" for i in range(25)]
+
+        result = _format_warnings(warnings)
+
+        assert "warning-19" in result
+        assert "warning-20" not in result
+        assert "(+5 more omitted)" in result
+
+    def test_respects_custom_limit(self):
+        result = _format_warnings(["a", "b", "c"], limit=2)
+
+        assert result == " Warnings logged: ['a', 'b'] (+1 more omitted)"
 
 
 # ---------------------------------------------------------------------------

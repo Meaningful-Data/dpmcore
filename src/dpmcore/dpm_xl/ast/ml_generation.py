@@ -158,9 +158,21 @@ class MLGeneration(ASTTemplate):
         data_filtered = filter_all_data(
             self.data, table, rows or [], cols or [], sheets or []
         )
-        data_filtered = data_filtered[
-            ["row_code", "column_code", "sheet_code", "variable_id", "cell_id"]
+        # Keep the *_order columns so generate_xyz can rank X/Y/Z by the
+        # stored display order; it drops them again before returning records.
+        projection = [
+            "row_code",
+            "column_code",
+            "sheet_code",
+            "variable_id",
+            "cell_id",
         ]
+        projection += [
+            col
+            for col in ("row_order", "column_order", "sheet_order")
+            if col in data_filtered.columns
+        ]
+        data_filtered = data_filtered[projection]
 
         list_xyz = generate_xyz(data_filtered)
 
@@ -201,7 +213,7 @@ class MLGeneration(ASTTemplate):
         argument = getattr(node, "argument", None)
         argument_id: int | None = None
         if argument:
-            parent_operator_id = parent_node.OperatorID
+            parent_operator_id = parent_node.operator_id
             argument_info = self.df_arguments[
                 (self.df_arguments["Name"] == argument)
                 & (self.df_arguments["OperatorID"] == parent_operator_id)
@@ -210,14 +222,14 @@ class MLGeneration(ASTTemplate):
                 argument_id = int(argument_info[0])
 
         operand_node = OperationNode(
-            OperatorID=operator_id,
-            OperationVID=self.op_version_id,
+            operator_id=operator_id,
+            operation_vid=self.op_version_id,
             parent=parent_node,
-            Scalar=scalar,
-            UseIntervalArithmetics=interval,
-            FallbackValue=fallback_value,
-            IsLeaf=is_leaf,
-            ArgumentID=argument_id,
+            scalar=scalar,
+            use_interval_arithmetics=interval,
+            fallback_value=fallback_value,
+            is_leaf=is_leaf,
+            argument_id=argument_id,
         )
 
         self.session.add(operand_node)
@@ -346,16 +358,16 @@ class MLGeneration(ASTTemplate):
             op_ref: OperandReference
             if component in ("r", "c", "s"):
                 op_ref = OperandReference(
-                    op_node=comp_node, OperandReference=component
+                    operation_node=comp_node, operand_reference=component
                 )
             else:
                 property_id = ItemCategoryQuery.get_property_id_from_code(
                     code=component, session=self.session_queries
                 )[0]
                 op_ref = OperandReference(
-                    op_node=comp_node,
-                    OperandReference="property",
-                    PropertyID=property_id,
+                    operation_node=comp_node,
+                    operand_reference="property",
+                    property_id=property_id,
                 )
 
             self.session.add(op_ref)
@@ -413,16 +425,16 @@ class MLGeneration(ASTTemplate):
         op_ref: OperandReference
         if property_ref_period_mangement(component):
             op_ref = OperandReference(
-                op_node=operand_node, OperandReference="refPeriod"
+                operation_node=operand_node, operand_reference="refPeriod"
             )
         else:
             property_id = ItemCategoryQuery.get_property_id_from_code(
                 code=component, session=self.session_queries
             )[0]
             op_ref = OperandReference(
-                op_node=operand_node,
-                OperandReference=ast_element.source_reference,
-                PropertyID=property_id,
+                operation_node=operand_node,
+                operand_reference=ast_element.source_reference,
+                property_id=property_id,
             )
         self.session.add(op_ref)
 
@@ -447,16 +459,16 @@ class MLGeneration(ASTTemplate):
         op_ref: OperandReference
         if property_ref_period_mangement(component):
             op_ref = OperandReference(
-                op_node=operand_node, OperandReference="refPeriod"
+                operation_node=operand_node, operand_reference="refPeriod"
             )
         else:
             property_id = ItemCategoryQuery.get_property_id_from_code(
                 code=component, session=self.session_queries
             )[0]
             op_ref = OperandReference(
-                op_node=operand_node,
-                OperandReference=ast_element.source_reference,
-                PropertyID=property_id,
+                operation_node=operand_node,
+                operand_reference=ast_element.source_reference,
+                property_id=property_id,
             )
         self.session.add(op_ref)
 
@@ -517,16 +529,16 @@ class MLGeneration(ASTTemplate):
         op_ref: OperandReference
         if property_ref_period_mangement(node.component):
             op_ref = OperandReference(
-                op_node=component_node, OperandReference="refPeriod"
+                operation_node=component_node, operand_reference="refPeriod"
             )
         else:
             property_id = ItemCategoryQuery.get_property_id_from_code(
                 code=node.component, session=self.session_queries
             )[0]
             op_ref = OperandReference(
-                op_node=component_node,
-                OperandReference=element.source_reference,
-                PropertyID=property_id,
+                operation_node=component_node,
+                operand_reference=element.source_reference,
+                property_id=property_id,
             )
         self.session.add(op_ref)
 
@@ -556,9 +568,9 @@ class MLGeneration(ASTTemplate):
         old_name_node = self.create_operation_node(old_name, is_leaf=True)
 
         old_operand_ref = OperandReference(
-            op_node=old_name_node,
-            OperandReference=old_name.source_reference,
-            PropertyID=old_property_id,
+            operation_node=old_name_node,
+            operand_reference=old_name.source_reference,
+            property_id=old_property_id,
         )
 
         self.session.add(old_operand_ref)
@@ -571,9 +583,9 @@ class MLGeneration(ASTTemplate):
         new_name_node = self.create_operation_node(new_name, is_leaf=True)
 
         new_operand_ref = OperandReference(
-            op_node=new_name_node,
-            OperandReference=new_name.source_reference,
-            PropertyID=old_property_id,
+            operation_node=new_name_node,
+            operand_reference=new_name.source_reference,
+            property_id=old_property_id,
         )
         self.session.add(new_operand_ref)
 
@@ -628,9 +640,9 @@ class MLGeneration(ASTTemplate):
                 raise SemanticError("1-3", variable=node.variable_code)
 
         operand_ref = OperandReference(
-            op_node=operand_node,
-            OperandReference=operand_reference,
-            VariableID=variable_id,
+            operation_node=operand_node,
+            operand_reference=operand_reference,
+            variable_id=variable_id,
         )
 
         self.session.add(operand_ref)
@@ -651,9 +663,9 @@ class MLGeneration(ASTTemplate):
         else:
             raise SemanticError("1-3", variable=node_value)
         operand_ref = OperandReference(
-            op_node=op_node,
-            OperandReference=node.source_reference,
-            VariableID=variable_id,
+            operation_node=op_node,
+            operand_reference=node.source_reference,
+            variable_id=variable_id,
         )
 
         self.session.add(operand_ref)
@@ -678,23 +690,23 @@ class MLGeneration(ASTTemplate):
 
         for e in data_xyz:
             operand_ref = OperandReference(
-                op_node=op_node,
+                operation_node=op_node,
                 x=e["x"] if significant_rows else None,
                 y=e["y"] if significant_cols else None,
                 z=e["z"] if significant_sheets else None,
-                OperandReference=node.source_reference,
-                VariableID=e["variable_id"],
+                operand_reference=node.source_reference,
+                variable_id=e["variable_id"],
             )
 
             self.session.add(operand_ref)
 
             operand_ref_loc = OperandReferenceLocation(
-                op_reference=operand_ref,
-                CellID=e["cell_id"],
-                Table=table,
-                Row=e["row_code"],
+                operand_reference=operand_ref,
+                cell_id=e["cell_id"],
+                table=table,
+                row=e["row_code"],
                 column=e["column_code"],
-                Sheet=e["sheet_code"],
+                sheet=e["sheet_code"],
             )
 
             self.session.add(operand_ref_loc)
@@ -725,9 +737,9 @@ class MLGeneration(ASTTemplate):
                 f"Property with code {node.dimension_code!r} not found"
             )
         operand_ref = OperandReference(
-            op_node=op_node,
-            OperandReference=node.source_reference,
-            PropertyID=property_row.item_id,
+            operation_node=op_node,
+            operand_reference=node.source_reference,
+            property_id=property_row.item_id,
         )
         self.session.add(operand_ref)
 
@@ -743,9 +755,9 @@ class MLGeneration(ASTTemplate):
                 signature=child.item, session=self.session_queries
             )[0]
             operand_ref = OperandReference(
-                op_node=op_node,
-                OperandReference=node.source_reference,
-                ItemID=item_id,
+                operation_node=op_node,
+                operand_reference=node.source_reference,
+                item_id=item_id,
             )
             self.session.add(operand_ref)
 
@@ -756,9 +768,9 @@ class MLGeneration(ASTTemplate):
             signature=node.item, session=self.session_queries
         )[0]
         operand_ref = OperandReference(
-            op_node=op_node,
-            OperandReference=node.source_reference,
-            ItemID=item_id,
+            operation_node=op_node,
+            operand_reference=node.source_reference,
+            item_id=item_id,
         )
         self.session.add(operand_ref)
 
@@ -769,7 +781,7 @@ class MLGeneration(ASTTemplate):
         op_version_id = self._get_op_version_id(node.operation_code)
 
         operand_ref = OperandReference(
-            op_node=op_node, OperandReference=op_version_id
+            operation_node=op_node, operand_reference=op_version_id
         )
         self.session.add(operand_ref)
 
