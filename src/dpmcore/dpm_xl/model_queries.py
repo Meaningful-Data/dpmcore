@@ -1464,10 +1464,7 @@ class ViewDatapointsQuery:
                 release_id=release_id,
             )
 
-        data = read_sql_with_connection(
-            compile_query_for_pandas(query.statement, session),
-            session,
-        )
+        data = read_sql_with_connection(query.statement, session)
 
         axes = {
             "rows": ("row_code", "row_order"),
