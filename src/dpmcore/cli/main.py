@@ -719,3 +719,231 @@ def export_layout(
             )
 
     click.echo(f"Exported to {path}")
+
+
+@main.command("validate-model")
+@click.option(
+    "--database",
+    required=True,
+    help="SQLAlchemy database URL (e.g. sqlite:///dpm.db).",
+)
+@click.option(
+    "--release",
+    "release_code",
+    default=None,
+    help="Release code to validate (default: the current release).",
+)
+@click.option(
+    "--release-id",
+    default=None,
+    type=int,
+    help="Release id to validate (9999 = draft/playground).",
+)
+@click.option(
+    "--rules",
+    "rule_ids",
+    default=None,
+    help="Comma-separated rule ids to run (default: all).",
+)
+@click.option(
+    "--no-warnings",
+    is_flag=True,
+    help="Skip warning-severity rules.",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Emit the result as JSON instead of a rich table.",
+)
+def validate_model(
+    database: str,
+    release_code: str | None,
+    release_id: int | None,
+    rule_ids: str | None,
+    no_warnings: bool,
+    as_json: bool,
+) -> None:
+    """Run the DPM modelling rules and report violations."""
+    import json as _json
+
+    from dpmcore.connection import connect
+
+    ids = None
+    if rule_ids:
+        ids = [r.strip() for r in rule_ids.split(",") if r.strip()]
+
+    with connect(database) as db:
+        result = db.services.model_validation.validate(
+            release_id=release_id,
+            release_code=release_code,
+            rule_ids=ids,
+            include_warnings=not no_warnings,
+        )
+
+    if as_json:
+        click.echo(_json.dumps(result.to_dict(), indent=2))
+        sys.exit(0 if result.is_valid else 1)
+
+    try:
+        from rich.console import Console
+        from rich.table import Table
+    except ImportError:
+        click.echo(
+            "Install 'rich' for pretty output: pip install dpmcore[cli]",
+            err=True,
+        )
+        sys.exit(1)
+
+    console = Console()
+    status = (
+        "[green]valid[/green]" if result.is_valid else "[red]invalid[/red]"
+    )
+    console.print(
+        f"Model: {status}  "
+        f"(release: {result.release_code or result.release_id}, "
+        f"{result.error_count} errors, {result.warning_count} warnings, "
+        f"{result.rules_run} rules, {result.elapsed_ms:.0f} ms)"
+    )
+
+    if result.violations:
+        table = Table(title="Violations")
+        table.add_column("Rule", style="cyan")
+        table.add_column("Severity")
+        table.add_column("Message")
+        table.add_column("Object", style="yellow")
+        for violation in result.violations:
+            obj = ""
+            if violation.objects:
+                first = violation.objects[0]
+                obj = f"{first.kind} {first.code or first.id}"
+            sev_style = (
+                "[red]error[/red]"
+                if violation.severity == "error"
+                else "[yellow]warning[/yellow]"
+            )
+            table.add_row(
+                violation.rule_id, sev_style, violation.message, obj
+            )
+        console.print(table)
+
+    sys.exit(0 if result.is_valid else 1)
+
+
+@main.command("generate-variables")
+@click.option(
+    "--database",
+    required=True,
+    help="SQLAlchemy database URL (e.g. sqlite:///dpm.db).",
+)
+@click.option(
+    "--release",
+    "release_code",
+    default=None,
+    help="Release code to generate for (default: the current release).",
+)
+@click.option(
+    "--release-id",
+    default=None,
+    type=int,
+    help="Release id to generate for.",
+)
+@click.option(
+    "--no-validate",
+    is_flag=True,
+    help="Skip the modelling-rule validation gate.",
+)
+@click.option(
+    "--summary-only",
+    is_flag=True,
+    help="Print only the summary (omit per-cell assignments).",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Emit the result as JSON instead of a rich table.",
+)
+def generate_variables(
+    database: str,
+    release_code: str | None,
+    release_id: int | None,
+    no_validate: bool,
+    summary_only: bool,
+    as_json: bool,
+) -> None:
+    """Compute the variable-generation plan (no database writes)."""
+    import json as _json
+
+    from dpmcore.connection import connect
+
+    with connect(database) as db:
+        result = db.services.variable_generation.generate(
+            release_id=release_id,
+            release_code=release_code,
+            validate_first=not no_validate,
+        )
+
+    completed = result.status.value == "completed"
+
+    if as_json:
+        payload = result.to_dict()
+        if summary_only:
+            payload.pop("cell_assignments", None)
+        click.echo(_json.dumps(payload, indent=2))
+        sys.exit(0 if completed else 1)
+
+    try:
+        from rich.console import Console
+        from rich.table import Table
+    except ImportError:
+        click.echo(
+            "Install 'rich' for pretty output: pip install dpmcore[cli]",
+            err=True,
+        )
+        sys.exit(1)
+
+    console = Console()
+    console.print(
+        f"Generation status: [bold]{result.status.value}[/bold] "
+        f"(release: {result.release_code or result.release_id})"
+    )
+
+    if result.validation is not None and not result.validation.is_valid:
+        console.print(
+            f"[red]{result.validation.error_count} blocking model "
+            "violations — run validate-model for details.[/red]"
+        )
+    for violation in result.consistency_violations:
+        console.print(
+            f"[red]{violation.rule_id}[/red] {violation.message}"
+        )
+
+    if completed:
+        console.print(
+            f"New variables: {len(result.new_variables)}, "
+            f"new versions: {len(result.new_variable_versions)}, "
+            f"new contexts: {len(result.new_contexts)}, "
+            f"new keys: {len(result.new_compound_keys)}, "
+            f"new filing indicators: "
+            f"{len(result.new_filing_indicators)}, "
+            f"cell assignments: {len(result.cell_assignments)}"
+        )
+        if result.summary:
+            table = Table(title="Generation summary")
+            table.add_column("Outcome", style="cyan")
+            table.add_column("Message")
+            table.add_column("Cells", justify="right")
+            table.add_column("First", style="yellow")
+            table.add_column("Last", style="yellow")
+            for row in result.summary:
+                table.add_row(
+                    row.outcome.value,
+                    row.message,
+                    str(row.count),
+                    row.min_cell_code or "",
+                    row.max_cell_code or "",
+                )
+            console.print(table)
+
+    sys.exit(0 if completed else 1)

@@ -12,6 +12,7 @@ layer, CLI, and REST API that can be used independently or together.
    guide/installation
    guide/quickstart
    guide/migration
+   guide/modelling
 
 .. toctree::
    :maxdepth: 2

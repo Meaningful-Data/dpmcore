@@ -193,5 +193,12 @@ def create_app(
     scope_router = create_scope_router(get_session)
     router.include_router(scope_router)
 
+    # -- modelling (validation + variable generation) ---------------------
+
+    from dpmcore.server.routers.model import create_model_router
+
+    model_router = create_model_router(get_session)
+    router.include_router(model_router)
+
     app.include_router(router)
     return app

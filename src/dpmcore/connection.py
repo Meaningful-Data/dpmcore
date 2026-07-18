@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from dpmcore.services.hierarchy import HierarchyService
     from dpmcore.services.layout_exporter import LayoutExporterService
     from dpmcore.services.meili_json import MeiliJsonService
+    from dpmcore.services.model_validation import ModelValidationService
     from dpmcore.services.schema_validation import (
         SchemaValidationResult,
     )
@@ -45,6 +46,9 @@ if TYPE_CHECKING:
     from dpmcore.services.semantic import SemanticService
     from dpmcore.services.structure import StructureService
     from dpmcore.services.syntax import SyntaxService
+    from dpmcore.services.variable_generation import (
+        VariableGenerationService,
+    )
 
 
 class _ServiceAccessor:
@@ -206,6 +210,38 @@ class _ServiceAccessor:
         if "meili_json" not in self._cache:
             self._cache["meili_json"] = MeiliJsonService(self._session)
         service: MeiliJsonService = self._cache["meili_json"]
+        return service
+
+    # ------------------------------------------------------------------ #
+    # Modelling services
+    # ------------------------------------------------------------------ #
+
+    @property
+    def model_validation(self) -> ModelValidationService:
+        from dpmcore.services.model_validation import (
+            ModelValidationService,
+        )
+
+        if "model_validation" not in self._cache:
+            self._cache["model_validation"] = ModelValidationService(
+                self._session,
+            )
+        service: ModelValidationService = self._cache["model_validation"]
+        return service
+
+    @property
+    def variable_generation(self) -> VariableGenerationService:
+        from dpmcore.services.variable_generation import (
+            VariableGenerationService,
+        )
+
+        if "variable_generation" not in self._cache:
+            self._cache["variable_generation"] = (
+                VariableGenerationService(self._session)
+            )
+        service: VariableGenerationService = self._cache[
+            "variable_generation"
+        ]
         return service
 
 

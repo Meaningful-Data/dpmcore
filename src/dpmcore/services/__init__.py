@@ -22,10 +22,14 @@ from dpmcore.services.export_csv import ExportCsvService
 from dpmcore.services.hierarchy import HierarchyService
 from dpmcore.services.meili_build import MeiliBuildService
 from dpmcore.services.meili_json import MeiliJsonService
+from dpmcore.services.model_validation import ModelValidationService
 from dpmcore.services.scope_calculator import ScopeCalculatorService
 from dpmcore.services.semantic import SemanticService
 from dpmcore.services.structure import StructureService
 from dpmcore.services.syntax import SyntaxService
+from dpmcore.services.variable_generation import (
+    VariableGenerationService,
+)
 
 __all__ = [
     "SyntaxService",
@@ -42,4 +46,6 @@ __all__ = [
     "MeiliJsonService",
     "MeiliBuildService",
     "EcbValidationsImportService",
+    "ModelValidationService",
+    "VariableGenerationService",
 ]

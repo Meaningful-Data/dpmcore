@@ -39,3 +39,13 @@ runs therefore succeed without the file; providing it activates the additional
 
 Run `pytest tests/integration/validation/test_semantic_release.py -v` after
 dropping the file in — you should see every test pass.
+
+## Parity fixtures (modelling services)
+
+`parity_dpm.db` plus the `parity/` directory of golden CSVs activate
+`tests/integration/validation/test_model_validation_parity.py`, which
+checks the Python `ModelValidationService` against a SQL Server run of
+the original `check_modelling_rules_tidy` stored procedure. They are
+produced from `input/DPM_REFIT_EBA_DEV_260715.bacpac` — see
+[`scripts/parity/README.md`](../../scripts/parity/README.md) for the
+workflow. Absent fixtures skip those tests, same as `test_data.db`.
