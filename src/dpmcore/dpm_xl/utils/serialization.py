@@ -9,6 +9,10 @@ from typing import Any, TypeAlias, cast
 
 from dpmcore.dpm_xl.ast import nodes as ASTObjects
 from dpmcore.dpm_xl.ast.visitor import NodeVisitor
+from dpmcore.dpm_xl.utils.range_resolution import (
+    build_axis_order_map,
+    sort_by_order,
+)
 
 # Recursive JSON alias used for serialized AST payloads.
 NodeValue: TypeAlias = (
@@ -210,6 +214,24 @@ class ASTToJSONVisitor(NodeVisitor):
                             if sheet_match:
                                 record["sheet_code"] = sheet_match.group(1)
 
+                # Build {code: order} per axis from the stored display order
+                # carried on each record (row_order/column_order/sheet_order),
+                # so the x/y/z coordinates follow the table layout rather than
+                # the code text. ``None`` (axis not fully ordered) falls back to
+                # a lexicographic sort, matching the previous behaviour.
+                row_orders = build_axis_order_map(
+                    [r.get("row_code") for r in data_records],
+                    [r.get("row_order") for r in data_records],
+                )
+                col_orders = build_axis_order_map(
+                    [r.get("column_code") for r in data_records],
+                    [r.get("column_order") for r in data_records],
+                )
+                sheet_orders = build_axis_order_map(
+                    [r.get("sheet_code") for r in data_records],
+                    [r.get("sheet_order") for r in data_records],
+                )
+
                 # Group data entries by row_code
                 entries_by_row: dict[str, list[dict[str, Any]]] = {}
                 for record in data_records:
@@ -218,8 +240,12 @@ class ASTToJSONVisitor(NodeVisitor):
                         entries_by_row[row_code] = []
                     entries_by_row[row_code].append(record)
 
-                # Sort rows to ensure consistent numerical ordering for x-coordinate calculation
-                rows = sorted(entries_by_row.keys())
+                # Order rows for the x-coordinate by stored display order.
+                rows = (
+                    sort_by_order(entries_by_row.keys(), row_orders)
+                    if row_orders
+                    else sorted(entries_by_row.keys())
+                )
 
                 # Helper function to detect range syntax (e.g., '0010-0080')
                 def _has_range_syntax(values: Any) -> bool:
@@ -251,8 +277,12 @@ class ASTToJSONVisitor(NodeVisitor):
                         if col and col not in seen_cols:
                             context_cols.append(col)
                             seen_cols.add(col)
-                    # Sort to ensure consistent numerical ordering for y-coordinate calculation
-                    context_cols.sort()
+                    # Order columns for the y-coordinate by display order.
+                    context_cols = (
+                        sort_by_order(context_cols, col_orders)
+                        if col_orders
+                        else sorted(context_cols)
+                    )
 
                 # Build sheet order from data for z-coordinate calculation
                 # Extract unique sheets and sort them for consistent ordering
@@ -263,7 +293,11 @@ class ASTToJSONVisitor(NodeVisitor):
                     if sheet and sheet not in seen_sheets:
                         context_sheets.append(sheet)
                         seen_sheets.add(sheet)
-                context_sheets.sort()
+                context_sheets = (
+                    sort_by_order(context_sheets, sheet_orders)
+                    if sheet_orders
+                    else sorted(context_sheets)
+                )
 
                 # Transform the data to match expected JSON structure
                 transformed_data: list[dict[str, Any]] = []
@@ -525,6 +559,55 @@ class ASTToJSONVisitor(NodeVisitor):
             "class_name": "Constant",
             "type_": getattr(node, "type_", getattr(node, "type", None)),
             "value": node.value,
+        }
+
+    def visit_Set(self, node: Any) -> NodeDict:
+        """Visit Set nodes (set literals, including ``{}``)."""
+        return {
+            "class_name": "Set",
+            "children": [self.visit(child) for child in node.children],
+        }
+
+    def visit_SetOfOp(self, node: Any) -> NodeDict:
+        """Visit SetOfOp nodes (``set_of(recordset)``)."""
+        return {
+            "class_name": "SetOfOp",
+            "op": node.op,
+            "operand": self.visit(node.operand),
+        }
+
+    def visit_UnionSetOp(self, node: Any) -> NodeDict:
+        """Visit UnionSetOp nodes (variadic ``union(...)``)."""
+        return {
+            "class_name": "UnionSetOp",
+            "op": node.op,
+            "operands": [self.visit(operand) for operand in node.operands],
+        }
+
+    def visit_IntersectSetOp(self, node: Any) -> NodeDict:
+        """Visit IntersectSetOp nodes (variadic ``intersect(...)``)."""
+        return {
+            "class_name": "IntersectSetOp",
+            "op": node.op,
+            "operands": [self.visit(operand) for operand in node.operands],
+        }
+
+    def visit_SetdiffOp(self, node: Any) -> NodeDict:
+        """Visit SetdiffOp nodes (``setdiff(left, right)``)."""
+        return {
+            "class_name": "SetdiffOp",
+            "op": node.op,
+            "left": self.visit(node.left),
+            "right": self.visit(node.right),
+        }
+
+    def visit_SymdiffOp(self, node: Any) -> NodeDict:
+        """Visit SymdiffOp nodes (``symdiff(left, right)``)."""
+        return {
+            "class_name": "SymdiffOp",
+            "op": node.op,
+            "left": self.visit(node.left),
+            "right": self.visit(node.right),
         }
 
     def visit_ParExpr(self, node: Any) -> NodeDict:

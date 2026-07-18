@@ -60,3 +60,13 @@ Unlike `test_data.db`, the XBRL fixtures **are** committed:
 The xbrl.org core schemas the SEG/FIB DTSes reference are served
 from Arelle's bundled resource cache, so the related tests run
 fully offline.
+
+## Parity fixtures (modelling services)
+
+`parity_dpm.db` plus the `parity/` directory of golden CSVs activate
+`tests/integration/validation/test_model_validation_parity.py`, which
+checks the Python `ModelValidationService` against a SQL Server run of
+the original `check_modelling_rules_tidy` stored procedure. They are
+produced from `input/DPM_REFIT_EBA_DEV_260715.bacpac` — see
+[`scripts/parity/README.md`](../../scripts/parity/README.md) for the
+workflow. Absent fixtures skip those tests, same as `test_data.db`.

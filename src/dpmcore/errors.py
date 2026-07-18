@@ -71,7 +71,6 @@ centralised_messages: Dict[str, str] = {
         "Cannot specify {argument} more than one"
         " time in the same cell reference."
     ),
-    "0-3": ("Cannot use null literal, you must use the isnull function"),
     # Variable not found
     "1-1": "The following items were not found: {items}.",
     "1-2": ("Cell expression {cell_expression} was not found."),

@@ -229,10 +229,14 @@ class SemanticService:
                 if exists is None:
                     raise SemanticError("1-21", release_id=release_id)
 
-            ast = self._syntax.parse(expression)
-            self.ast = ast
-
             with collect_warnings() as wc:
+                # ``parse`` is inside the collector so warnings emitted from
+                # AST construction (e.g. deprecated ``"null"`` string literal
+                # in ``visitLiteral``) are captured alongside the ones from
+                # the analyzer pass.
+                ast = self._syntax.parse(expression)
+                self.ast = ast
+
                 oc = OperandsChecking(
                     session=self.session,
                     expression=expression,

@@ -22,19 +22,20 @@ extensions = [
     "sphinx_autodoc_typehints",
     "sphinx.ext.intersphinx",
     "sphinx.ext.viewcode",
-    "sphinx_multiversion",
 ]
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
-# -- Sphinx-multiversion ---------------------------------------------
+# -- sphinx-polyversion ----------------------------------------------
+# When built via `sphinx-polyversion` (see docs/poly.py), load() reads the
+# POLYVERSION_DATA env var and injects the `current`/`revisions`/`tags`/
+# `branches` context used by the version selector. A plain `sphinx-build`
+# (single-version, local dev) sets no such var, so build normally.
+if os.getenv("POLYVERSION_DATA"):
+    from sphinx_polyversion import load
 
-smv_tag_whitelist = r"^v\d+\.\d+\.\d+$"
-smv_branch_whitelist = r"^master$"
-smv_remote_whitelist = r"^.*$"
-smv_outputdir_format = "{ref.name}"
-smv_prefer_remote_refs = False
+    load(globals())
 
 # -- HTML output -----------------------------------------------------
 

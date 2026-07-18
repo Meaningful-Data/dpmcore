@@ -148,6 +148,7 @@ class Organisation(Base):
         acronym: Short form.
         id_prefix: Numeric prefix (unique).
         row_guid: FK to Concept.
+        url: Organisation website.
     """
 
     __tablename__ = "Organisation"
@@ -169,6 +170,7 @@ class Organisation(Base):
             name="fk_org_concept",
         ),
     )
+    url: Mapped[Optional[str]] = mapped_column("URL", String(255))
 
     concept: Mapped[Optional["Concept"]] = relationship(
         "Concept", foreign_keys=[row_guid]

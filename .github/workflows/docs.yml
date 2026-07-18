@@ -10,6 +10,7 @@ on:
   workflow_dispatch:
   push:
     branches: [master]
+  pull_request:
 
 permissions:
   contents: read
@@ -17,7 +18,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: "pages-${{ github.ref }}"
   cancel-in-progress: false
 
 jobs:
@@ -29,6 +30,8 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup Pages
+        # Pages APIs need write scope, which PRs (esp. Dependabot/forks) lack.
+        if: github.event_name != 'pull_request'
         id: pages
         uses: actions/configure-pages@v6
       - name: Install poetry
@@ -43,9 +46,17 @@ jobs:
         # the layout exporter, ...). Without them autodoc fails to import the
         # modules and the API pages render empty.
         run: poetry install --all-extras --with docs
-      - name: Build with Sphinx Multi-Version
-        run: poetry run sphinx-multiversion docs _site
+      - name: Verify docs build (PR)
+        # PRs run a read-only token, so we can't deploy. Build the working tree
+        # single-version with warnings-as-errors -- this is the gate that
+        # catches broken autodoc imports / incompatible Sphinx upgrades.
+        if: github.event_name == 'pull_request'
+        run: poetry run sphinx-build -W --keep-going docs docs/_build/html
+      - name: Build versioned docs
+        if: github.event_name != 'pull_request'
+        run: poetry run sphinx-polyversion docs/poly.py
       - name: Generate root redirect
+        if: github.event_name != 'pull_request'
         run: |
           cat > _site/index.html <<'EOF'
           <!DOCTYPE html>
@@ -60,12 +71,15 @@ jobs:
           </html>
           EOF
       - name: Copy CNAME to root
+        if: github.event_name != 'pull_request'
         run: cp docs/CNAME _site/CNAME
       - name: Upload artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v5
 
   deploy:
     needs: build
+    if: github.event_name != 'pull_request'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

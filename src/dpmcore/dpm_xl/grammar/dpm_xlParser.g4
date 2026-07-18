@@ -55,7 +55,7 @@ expression:
     | left=expression op=(PLUS|MINUS) right=expression                                                  #numericExpr
     | left=expression op=CONCAT right=expression                                                        #concatExpr
     | left=expression op=comparisonOperators right=expression                                           #compExpr
-    | left=expression op=IN setExpression                                                               #inExpr
+    | left=expression op=IN right=expression                                                            #inExpr
     | left=expression op=AND right=expression                                                           #boolExpr
     | left=expression op=(OR|XOR) right=expression                                                      #boolExpr
     | IF conditionalExpr=expression THEN thenExpr=expression (ELSE elseExpr=expression)? ENDIF          #ifExpr
@@ -64,26 +64,33 @@ expression:
     | keyNames                                                                                          #keyNamesExpr
     | literal                                                                                           #literalExpr
     | select                                                                                            #selectExpr
+    | setExpression                                                                                     #setExpr
     ;
 
+// A set literal: an explicit enumeration of elements, or `{}` for the empty
+// set. The leading token of an element (`[` for an item signature, or a
+// literal) cannot begin a `select`, so a set literal is never confused with a
+// Subcategory selection such as `{c020}`.
 setOperand:
-    CURLY_BRACKET_LEFT setElements CURLY_BRACKET_RIGHT
+    CURLY_BRACKET_LEFT setElements? CURLY_BRACKET_RIGHT
     ;
 
 setElements:
     itemReference (COMMA itemReference)*
     | literal (COMMA literal)*
-    | parameterRef
     ;
 
+// Set-valued Operators. Operands are ordinary expressions: a set literal, a
+// Subcategory selection, a `set-*` Parameter, another set Operator, or a
+// Recordset/Subcategory selection coerced to its Scalar Set (see §13). Whether
+// an Operand is a valid set is decided by semantic analysis, not by the grammar.
 setExpression:
     setOperand                                                              #setLiteralExpr
     | SET_OF LPAREN op=expression RPAREN                                     #setOfExpr
-    | UNION LPAREN setExpression (COMMA setExpression)+ RPAREN               #unionSetExpr
-    | INTERSECT LPAREN setExpression (COMMA setExpression)+ RPAREN           #intersectSetExpr
-    | SETDIFF LPAREN left=setExpression COMMA right=setExpression RPAREN     #setdiffSetExpr
-    | SYMDIFF LPAREN left=setExpression COMMA right=setExpression RPAREN     #symdiffSetExpr
-    | select                                                                #subcategorySelectExpr
+    | UNION LPAREN expression (COMMA expression)+ RPAREN                     #unionSetExpr
+    | INTERSECT LPAREN expression (COMMA expression)+ RPAREN                 #intersectSetExpr
+    | SETDIFF LPAREN left=expression COMMA right=expression RPAREN           #setdiffSetExpr
+    | SYMDIFF LPAREN left=expression COMMA right=expression RPAREN           #symdiffSetExpr
     ;
 
 functions:
@@ -135,7 +142,6 @@ aggregateOperators:
         |AVG
         |MEDIAN) LPAREN expression (groupingClause | analyticClause)? RPAREN   #commonAggrOp
     | RANK LPAREN expression analyticClause RPAREN                              #rankOp
-    | COUNT LPAREN setExpression RPAREN                                         #countSetOp
     ;
 
 groupingClause:

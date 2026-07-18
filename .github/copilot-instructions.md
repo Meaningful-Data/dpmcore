@@ -111,13 +111,19 @@ Sphinx-based documentation published at <https://docs.dpmcore.meaningfuldata.eu>
 - `docs/guide/` — User guide (installation, quickstart, migration)
 - `docs/api/` — API reference (autodoc)
 - `docs/cli.rst` — CLI reference
-- `docs/conf.py` — Sphinx config (theme: `sphinx_rtd_theme`, versioning: `sphinx-multiversion`)
+- `docs/conf.py` — Sphinx config (theme: `sphinx_rtd_theme`, versioning: `sphinx-polyversion`)
+- `docs/poly.py` — sphinx-polyversion config (refs to build, isolated per-version Poetry envs)
 
-Build docs locally:
+Build docs locally (`--all-extras` is required so autodoc can import `dpmcore.services.*`; without the optional deps the API pages render empty):
 
 ```bash
-poetry install --with docs
-poetry run sphinx-build -b html docs docs/_build/html
+poetry install --all-extras --with docs
+# Fast single-version build (what CI runs on PRs; -W = warnings are errors):
+poetry run sphinx-build -W --keep-going docs docs/_build/html
+# Working tree through sphinx-polyversion (mock data, no git checkout):
+poetry run sphinx-polyversion --local docs/poly.py
+# Full versioned build across git refs (what CI deploys on push/release):
+poetry run sphinx-polyversion docs/poly.py
 ```
 
 ## Git Workflow
