@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 from dpmcore.loaders import _sqlite_output
 from dpmcore.loaders.xbrl.mapper import MappingOutcome, TaxonomyMapper
@@ -94,6 +94,7 @@ class XbrlTaxonomyImportService:
         output_path: Optional[Path] = None,
         max_enumerated_columns: int = 512,
         single_module: bool = False,
+        generate_variables: bool = True,
     ) -> XbrlImportResult:
         """Import the taxonomy at *source* into the database.
 
@@ -124,6 +125,12 @@ class XbrlTaxonomyImportService:
                 module (code/name taken from the framework) comprising
                 all tables in discovery order. Ignored for dpm1, which
                 reads its modules from ``mod/*.xsd`` schemas.
+            generate_variables: When ``True`` (the default), cells are
+                mapped without inline variables and the official
+                variable-generation service computes and persists the
+                variables, versions, contexts, compound keys and
+                filing indicators. When ``False``, the mapper's inline
+                per-cell variable creation is used instead.
 
         Returns:
             An :class:`XbrlImportResult`.
@@ -165,6 +172,7 @@ class XbrlTaxonomyImportService:
             release_code=release_code,
             release_date=release_date,
             fresh=not into_existing,
+            generate_variables=generate_variables,
         )
 
         database_path = None
@@ -302,6 +310,7 @@ class XbrlTaxonomyImportService:
         release_code: str,
         release_date: Optional[date],
         fresh: bool,
+        generate_variables: bool,
     ) -> MappingOutcome:
         session = sessionmaker(bind=self._engine)()
         try:
@@ -312,8 +321,13 @@ class XbrlTaxonomyImportService:
                 release_code=release_code,
                 release_date=release_date,
                 fresh=fresh,
+                defer_variables=generate_variables,
             )
             outcome = mapper.map_model(model)
+            if generate_variables:
+                self._generate_variables(
+                    session, mapper, release_code
+                )
             session.commit()
             return outcome
         except Exception as exc:
@@ -325,6 +339,47 @@ class XbrlTaxonomyImportService:
             ) from exc
         finally:
             session.close()
+
+    def _generate_variables(
+        self,
+        session: "Session",
+        mapper: TaxonomyMapper,
+        release_code: str,
+    ) -> None:
+        """Run the generation service and persist its plan.
+
+        The mapper laid down the model with variables deferred (cells
+        carry no ``variable_vid``). Here the official EBA generation
+        (``variable_generation_tidy`` port) computes the plan over the
+        just-mapped model and the persister writes it. The model-
+        validation gate is skipped: an import materialises the model
+        as published, and the 119 modelling rules would otherwise
+        block generation on findings the importer cannot fix.
+        """
+        from dpmcore.loaders.xbrl.variable_persister import (
+            VariablePlanPersister,
+        )
+        from dpmcore.services.variable_generation.service import (
+            VariableGenerationService,
+        )
+        from dpmcore.services.variable_generation.types import (
+            GenerationStatus,
+        )
+
+        session.flush()
+        result = VariableGenerationService(session).generate(
+            release_code=release_code, validate_first=False
+        )
+        if result.status != GenerationStatus.COMPLETED:
+            details = "; ".join(
+                v.message for v in result.consistency_violations[:5]
+            )
+            raise XbrlImportError(
+                "Variable generation did not complete "
+                f"({result.status.value})"
+                + (f": {details}" if details else ".")
+            )
+        VariablePlanPersister(mapper).persist(result)
 
 
 # ------------------------------------------------------------------ #

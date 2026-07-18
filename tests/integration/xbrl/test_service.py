@@ -12,11 +12,22 @@ from dpmcore.loaders.xbrl import (
     XbrlImportError,
     XbrlTaxonomyImportService,
 )
+from dpmcore.orm.glossary import Category
 from dpmcore.orm.packaging import (
     ModuleVersion,
     ModuleVersionComposition,
 )
+from dpmcore.orm.rendering import TableVersionCell
+from dpmcore.orm.variables import CompoundKey, Variable
 from dpmcore.services.schema_validation import SchemaValidationService
+
+
+def _cells_unassigned(session):
+    return (
+        session.query(TableVersionCell)
+        .filter(TableVersionCell.variable_vid.is_(None))
+        .count()
+    )
 
 
 @pytest.fixture
@@ -168,6 +179,69 @@ class TestSingleModule:
                 .count()
             )
             assert comps == 2
+        finally:
+            session.close()
+
+
+class TestVariableGeneration:
+    """The import's official variable-generation path (dpm1)."""
+
+    def test_generation_is_the_default(
+        self, memory_service, xbrl_fixtures_dir
+    ):
+        service, engine = memory_service
+        result = service.import_taxonomy(
+            xbrl_fixtures_dir / "mini_dpm1",
+            framework_code="MINI",
+            release_code="1.0.0",
+        )
+        session = sessionmaker(bind=engine)()
+        try:
+            # Every cell is assigned a generated variable version.
+            assert _cells_unassigned(session) == 0
+            assert result.created["Variable"] > 0
+            assert result.created["VariableVersion"] > 0
+            # The official generation produces objects the inline path
+            # never did: a compound key, a filing indicator and the
+            # Templates category that anchors it.
+            assert session.query(CompoundKey).count() == 1
+            assert (
+                session.query(Variable)
+                .filter(Variable.type == "filingindicator")
+                .count()
+                == 1
+            )
+            assert (
+                session.query(Category)
+                .filter(Category.name == "Templates")
+                .count()
+                == 1
+            )
+        finally:
+            session.close()
+
+    def test_inline_fallback_when_disabled(
+        self, memory_service, xbrl_fixtures_dir
+    ):
+        service, engine = memory_service
+        service.import_taxonomy(
+            xbrl_fixtures_dir / "mini_dpm1",
+            framework_code="MINI",
+            release_code="1.0.0",
+            generate_variables=False,
+        )
+        session = sessionmaker(bind=engine)()
+        try:
+            # The inline mapper still assigns every cell, but never
+            # synthesises compound keys or filing indicators.
+            assert _cells_unassigned(session) == 0
+            assert session.query(CompoundKey).count() == 0
+            assert (
+                session.query(Variable)
+                .filter(Variable.type == "filingindicator")
+                .count()
+                == 0
+            )
         finally:
             session.close()
 

@@ -287,6 +287,16 @@ def export_csv(source: str, output_dir: str) -> None:
         "of one module per t-*.xsd entry point."
     ),
 )
+@click.option(
+    "--no-variable-generation",
+    "no_variable_generation",
+    is_flag=True,
+    default=False,
+    help=(
+        "Skip the official variable-generation service and use the "
+        "mapper's inline per-cell variable creation instead."
+    ),
+)
 def import_xbrl(  # noqa: C901 - thin option plumbing
     source: str,
     framework_code: str,
@@ -304,6 +314,7 @@ def import_xbrl(  # noqa: C901 - thin option plumbing
     owner_name: str,
     max_columns: int,
     single_module: bool,
+    no_variable_generation: bool,
 ) -> None:
     """Import an XBRL taxonomy into a DPM database."""
     from pathlib import Path
@@ -357,6 +368,7 @@ def import_xbrl(  # noqa: C901 - thin option plumbing
             output_path=Path(output_path) if output_path else None,
             max_enumerated_columns=max_columns,
             single_module=single_module,
+            generate_variables=not no_variable_generation,
         )
     except XbrlImportError as exc:
         console.print(f"[red]Error:[/red] {exc}")

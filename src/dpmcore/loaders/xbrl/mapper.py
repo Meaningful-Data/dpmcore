@@ -262,14 +262,23 @@ class TaxonomyMapper:
         release_code: str,
         release_date: Optional[date] = None,
         fresh: bool = True,
+        defer_variables: bool = False,
     ) -> None:
-        """Initialise the mapper; see class docstring."""
+        """Initialise the mapper; see class docstring.
+
+        When *defer_variables* is set, cells are created without an
+        inline ``VariableVersion`` (``variable_vid`` left unset and no
+        ``Variable``/``Context`` rows synthesised); the caller is
+        expected to run the variable-generation service and persist
+        its plan afterwards.
+        """
         self._session = session
         self._owner_name = owner_name
         self._owner_acronym = owner_acronym
         self._release_code = release_code
         self._release_date = release_date
         self._fresh = fresh
+        self._defer_variables = defer_variables
 
         self.outcome = MappingOutcome()
         self._ids = IdAllocator(session, fresh=fresh)
@@ -1392,7 +1401,11 @@ class TaxonomyMapper:
                 f"{xcell.column_node_id}); skipped."
             )
             return
-        variable_version = self._variable_for(xcell, xtable.code)
+        variable_version = (
+            None
+            if self._defer_variables
+            else self._variable_for(xcell, xtable.code)
+        )
         guid_key = (
             self._framework_code,
             xtable.code,
@@ -1424,7 +1437,11 @@ class TaxonomyMapper:
                 is_nullable=True,
                 is_excluded=False,
                 is_void=False,
-                variable_vid=variable_version.variable_vid,
+                variable_vid=(
+                    variable_version.variable_vid
+                    if variable_version is not None
+                    else None
+                ),
                 row_guid=stable_uuid("TableVersionCell", *guid_key),
             )
         )
