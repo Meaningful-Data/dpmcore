@@ -34,6 +34,7 @@ from dpmcore.loaders.xbrl.model import (
     ARCHITECTURE_EUROFILING_2006,
     TaxonomyModel,
     XbrlImportError,
+    XModule,
     merge_models,
 )
 
@@ -92,6 +93,7 @@ class XbrlTaxonomyImportService:
         cache_dir: Optional[Path] = None,
         output_path: Optional[Path] = None,
         max_enumerated_columns: int = 512,
+        single_module: bool = False,
     ) -> XbrlImportResult:
         """Import the taxonomy at *source* into the database.
 
@@ -116,6 +118,12 @@ class XbrlTaxonomyImportService:
                 to the conventional name.
             max_enumerated_columns: Column-enumeration bound for the
                 2006 architecture.
+            single_module: 2006 architecture only. When ``True``, the
+                per-table modules synthesised from the discovered
+                ``t-*.xsd`` entry points are collapsed into a single
+                module (code/name taken from the framework) comprising
+                all tables in discovery order. Ignored for dpm1, which
+                reads its modules from ``mod/*.xsd`` schemas.
 
         Returns:
             An :class:`XbrlImportResult`.
@@ -146,6 +154,7 @@ class XbrlTaxonomyImportService:
                 offline=offline,
                 cache_dir=cache_dir,
                 max_enumerated_columns=max_enumerated_columns,
+                single_module=single_module,
             )
 
         self._prepare_database(into_existing)
@@ -187,6 +196,7 @@ class XbrlTaxonomyImportService:
         offline: bool,
         cache_dir: Optional[Path],
         max_enumerated_columns: int,
+        single_module: bool,
     ) -> TaxonomyModel:
         if architecture == ARCHITECTURE_DPM1:
             from dpmcore.loaders.xbrl.reader_dpm1 import read_taxonomy
@@ -204,6 +214,7 @@ class XbrlTaxonomyImportService:
             offline=offline,
             cache_dir=cache_dir,
             max_enumerated_columns=max_enumerated_columns,
+            single_module=single_module,
         )
 
     def _read_eurofiling2006(
@@ -216,6 +227,7 @@ class XbrlTaxonomyImportService:
         offline: bool,
         cache_dir: Optional[Path],
         max_enumerated_columns: int,
+        single_module: bool,
     ) -> TaxonomyModel:
         from dpmcore.loaders.xbrl.arelle_engine import ArelleEngine
         from dpmcore.loaders.xbrl.reader_eurofiling2006 import (
@@ -254,6 +266,10 @@ class XbrlTaxonomyImportService:
                         "their own release.",
                     ),
                 }
+            )
+        if single_module:
+            merged = _collapse_to_single_module(
+                merged, framework_code, framework_name
             )
         return merged
 
@@ -429,3 +445,30 @@ def _duplicate_table_codes(
                 duplicates.add(table.code)
             seen.add(table.code)
     return duplicates
+
+
+def _collapse_to_single_module(
+    model: TaxonomyModel,
+    framework_code: str,
+    framework_name: str,
+) -> TaxonomyModel:
+    """Replace per-table modules with one framework-wide module.
+
+    The 2006 reader synthesises one module per ``t-*.xsd`` entry
+    point (the architecture has no native module concept). When the
+    caller asks for a single module, those are collapsed into one
+    module — coded/named after the framework — that comprises every
+    table in discovery order. The earliest per-table validity date is
+    kept as the module's ``from_date``.
+    """
+    from_dates = [
+        mod.from_date for mod in model.modules if mod.from_date is not None
+    ]
+    single = XModule(
+        code=framework_code,
+        name=framework_name,
+        entry_point="",
+        table_codes=tuple(table.code for table in model.tables),
+        from_date=min(from_dates) if from_dates else None,
+    )
+    return TaxonomyModel(**{**model.__dict__, "modules": (single,)})

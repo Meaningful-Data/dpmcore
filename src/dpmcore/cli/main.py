@@ -259,6 +259,16 @@ def export_csv(source: str, output_dir: str) -> None:
         "(sheet) dimensions."
     ),
 )
+@click.option(
+    "--single-module",
+    is_flag=True,
+    default=False,
+    help=(
+        "eurofiling2006 only: collapse the per-table modules into a "
+        "single framework-wide module comprising all tables, instead "
+        "of one module per t-*.xsd entry point."
+    ),
+)
 def import_xbrl(  # noqa: C901 - thin option plumbing
     source: str,
     framework_code: str,
@@ -275,6 +285,7 @@ def import_xbrl(  # noqa: C901 - thin option plumbing
     owner_acronym: str,
     owner_name: str,
     max_columns: int,
+    single_module: bool,
 ) -> None:
     """Import an XBRL taxonomy into a DPM database."""
     from pathlib import Path
@@ -327,6 +338,7 @@ def import_xbrl(  # noqa: C901 - thin option plumbing
             cache_dir=Path(cache_dir) if cache_dir else None,
             output_path=Path(output_path) if output_path else None,
             max_enumerated_columns=max_columns,
+            single_module=single_module,
         )
     except XbrlImportError as exc:
         console.print(f"[red]Error:[/red] {exc}")

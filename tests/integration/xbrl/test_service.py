@@ -6,10 +6,15 @@ from datetime import date
 
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from dpmcore.loaders.xbrl import (
     XbrlImportError,
     XbrlTaxonomyImportService,
+)
+from dpmcore.orm.packaging import (
+    ModuleVersion,
+    ModuleVersionComposition,
 )
 from dpmcore.services.schema_validation import SchemaValidationService
 
@@ -112,6 +117,59 @@ class TestFreshImport:
             for w in result.warnings
         )
         assert result.created["TableVersion"] == 1
+
+
+class TestSingleModule:
+    """The 2006 ``single_module`` collapse option.
+
+    Combines the SEG and FIB fixtures into one taxonomy root so that
+    discovery yields two ``t-*.xsd`` entry points (tables ``Segr`` and
+    ``FinInstr``); the two folders share identical ``d-*`` schemas.
+    """
+
+    @pytest.fixture
+    def combined_dir(self, xbrl_fixtures_dir, tmp_path):
+        workdir = tmp_path / "combined"
+        shutil.copytree(xbrl_fixtures_dir / "seg2008", workdir)
+        for path in (xbrl_fixtures_dir / "fib2008").iterdir():
+            shutil.copy(path, workdir / path.name)
+        return workdir
+
+    def test_default_is_one_module_per_table(
+        self, memory_service, combined_dir
+    ):
+        service, _ = memory_service
+        result = service.import_taxonomy(combined_dir, **seg_kwargs())
+        assert result.created["TableVersion"] == 2
+        assert result.created["ModuleVersion"] == 2
+
+    def test_single_module_collapses_all_tables(
+        self, memory_service, combined_dir
+    ):
+        service, engine = memory_service
+        result = service.import_taxonomy(
+            combined_dir, **seg_kwargs(single_module=True)
+        )
+        assert result.created["TableVersion"] == 2
+        assert result.created["ModuleVersion"] == 1
+        session = sessionmaker(bind=engine)()
+        try:
+            version = session.query(ModuleVersion).one()
+            # Coded/named after the framework, not a table.
+            assert version.code == "SEG"
+            assert version.name == "Segregation"
+            # The one module comprises both discovered tables.
+            comps = (
+                session.query(ModuleVersionComposition)
+                .filter(
+                    ModuleVersionComposition.module_vid
+                    == version.module_vid
+                )
+                .count()
+            )
+            assert comps == 2
+        finally:
+            session.close()
 
 
 class TestExistingImport:
