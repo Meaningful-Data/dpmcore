@@ -66,9 +66,11 @@ operand_elements = ["table", "rows", "cols", "sheets", "default", "interval"]
 # These are special dimensions that arise from the reporting context itself
 # - refPeriod: The reference period of the report (date type "d")
 # - entityID: The identifier of the reporting entity (string type "s")
+# - baseCurrency: The reporting currency of the entity (string type "s")
 IMPLICIT_OPEN_KEYS = {
     "refPeriod": "d",  # date type
     "entityID": "s",  # string type
+    "baseCurrency": "s",  # string type
 }
 
 
