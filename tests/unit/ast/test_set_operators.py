@@ -34,9 +34,22 @@ def test_set_of_op_node():
     node = SetOfOp(operand=operand)
     assert node.op == "set_of"
     assert node.operand is operand
+    assert node.component is None
     j = node.toJSON()
     assert j["class_name"] == "SetOfOp"
     assert "operand" in j
+    assert j["component"] is None
+
+
+def test_set_of_op_node_with_component():
+    operand = Constant(type_="Integer", value=1)
+    node = SetOfOp(operand=operand, component="INC")
+    assert node.op == "set_of"
+    assert node.operand is operand
+    assert node.component == "INC"
+    j = node.toJSON()
+    assert j["class_name"] == "SetOfOp"
+    assert j["component"] == "INC"
 
 
 def test_union_set_op_node():
@@ -104,6 +117,12 @@ VALID_IN_EXPRESSIONS = [
     "{tT1, r001} in {1, 2, 3}",
     # set_of
     "{tT1, r001} in set_of({tT2, r001-010})",
+    # set_of alias without underscore
+    "{tT1, r001} in setof({tT2, r001-010})",
+    # set_of with component projection (2-arg form)
+    "{tT1, r001} in set_of({tT2, r001-010}, INC)",
+    # setof with component projection (2-arg form, no underscore)
+    "{tT1, r001} in setof({tT2, r001-010}, INC)",
     # union (2 operands)
     "{tT1, r001} in union({1, 2}, {3, 4})",
     # union (3 operands)
@@ -150,6 +169,48 @@ def test_in_set_of_produces_bin_op_with_set_of_op():
     assert isinstance(node, BinOp)
     assert node.op == "in"
     assert isinstance(node.right, SetOfOp)
+    assert node.right.component is None
+
+
+def test_setof_alias_produces_same_ast_as_set_of():
+    """``setof`` (no underscore) is lexed as the same ``SET_OF`` token."""
+    with_underscore = SyntaxService().parse("set_of({tT1, r001-010})")
+    without_underscore = SyntaxService().parse("setof({tT1, r001-010})")
+    node_a = with_underscore.children[0]
+    node_b = without_underscore.children[0]
+    assert isinstance(node_a, SetOfOp)
+    assert isinstance(node_b, SetOfOp)
+    assert node_a.component is None
+    assert node_b.component is None
+
+
+def test_set_of_with_component_projection():
+    """``set_of(recordset, component)`` produces a SetOfOp with the
+    component captured on the node.
+    """
+    ast = SyntaxService().parse("set_of({tT2, r001-010}, INC)")
+    node = ast.children[0]
+    assert isinstance(node, SetOfOp)
+    assert node.component == "INC"
+
+
+def test_setof_alias_with_component_projection():
+    """The no-underscore spelling accepts the component projection too."""
+    ast = SyntaxService().parse("setof({tT2, r001-010}, INC)")
+    node = ast.children[0]
+    assert isinstance(node, SetOfOp)
+    assert node.component == "INC"
+
+
+def test_setof_component_with_escaped_identifier():
+    """A backtick-escaped component code (used for reserved words like
+    ``f``, the fact component) is stripped and stored bare on the node,
+    mirroring how ``keyNames`` unwraps escaped identifiers elsewhere.
+    """
+    ast = SyntaxService().parse("setof({tT2, r001-010}, `f`)")
+    node = ast.children[0]
+    assert isinstance(node, SetOfOp)
+    assert node.component == "f"
 
 
 def test_in_union_produces_bin_op_with_union_set_op():

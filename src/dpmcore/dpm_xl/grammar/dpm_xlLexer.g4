@@ -71,7 +71,7 @@ MIN:                            'min';
 IN:                     'in';
 
 // Set operators
-SET_OF:                 'set_of';
+SET_OF:                 'set_of' | 'setof';
 UNION:                  'union';
 INTERSECT:              'intersect';
 SETDIFF:                'setdiff';
@@ -422,7 +422,7 @@ CLAUSE_DAY:                    'day' -> type(DAY);
 CLAUSE_DATE:                   'date' -> type(DATE);
 
 // Set operators
-CLAUSE_SET_OF:                 'set_of'    -> type(SET_OF);
+CLAUSE_SET_OF:                 ('set_of' | 'setof')    -> type(SET_OF);
 CLAUSE_UNION:                  'union'     -> type(UNION);
 CLAUSE_INTERSECT:              'intersect' -> type(INTERSECT);
 CLAUSE_SETDIFF:                'setdiff'   -> type(SETDIFF);

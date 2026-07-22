@@ -712,6 +712,27 @@ class ASTVisitor(dpm_xlParserVisitor):
     def visitSetOfExpr(self, ctx: dpm_xlParser.SetOfExprContext) -> SetOfOp:
         return SetOfOp(operand=self._visit(ctx.getChild(2)))
 
+    def visitSetOfProjectExpr(
+        self, ctx: dpm_xlParser.SetOfProjectExprContext
+    ) -> SetOfOp:
+        operand = self._visit(ctx.op)
+        # The grammar guarantees a component sub-tree on this alternative;
+        # the parser would have failed before reaching the visitor if it
+        # were missing. ``cast`` narrows the ``Optional`` on the generated
+        # attribute type without adding a runtime guard.
+        component_ctx = cast(dpm_xlParser.PropertyCodeContext, ctx.component)
+        component_text = component_ctx.getText()
+        # ``propertyCode`` echoes an escaped identifier wrapped in backticks
+        # (e.g. `f` for the fact component); strip them so downstream code
+        # sees the bare component name it expects.
+        if (
+            len(component_text) >= 2
+            and component_text.startswith("`")
+            and component_text.endswith("`")
+        ):
+            component_text = component_text[1:-1]
+        return SetOfOp(operand=operand, component=component_text)
+
     def visitUnionSetExpr(
         self, ctx: dpm_xlParser.UnionSetExprContext
     ) -> UnionSetOp:

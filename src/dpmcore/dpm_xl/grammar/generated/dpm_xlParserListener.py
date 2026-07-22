@@ -296,6 +296,15 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by dpm_xlParser#setOfProjectExpr.
+    def enterSetOfProjectExpr(self, ctx:dpm_xlParser.SetOfProjectExprContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#setOfProjectExpr.
+    def exitSetOfProjectExpr(self, ctx:dpm_xlParser.SetOfProjectExprContext):
+        pass
+
+
     # Enter a parse tree produced by dpm_xlParser#setOfExpr.
     def enterSetOfExpr(self, ctx:dpm_xlParser.SetOfExprContext):
         pass

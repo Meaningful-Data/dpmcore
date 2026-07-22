@@ -1220,16 +1220,35 @@ class TemporaryIdentifier(AST):
 
 
 class SetOfOp(AST):
-    """AST node for set_of(expression), projects a Recordset's fact values to a ScalarSet."""
+    """AST node for ``set_of(...)`` / ``setof(...)``.
 
-    def __init__(self, operand: AST) -> None:
+    Two shapes are supported:
+
+    - ``set_of(recordset)`` — projects the recordset's fact values to a
+      ``ScalarSet`` (unary coercion, ``component=None``).
+    - ``set_of(recordset, component)`` — projects the recordset to the
+      scalar set of a single component (a property/dimension code, e.g.
+      ``INC``). Emits the values of that component instead of the fact
+      column.
+
+    Both spellings ``set_of`` and ``setof`` are accepted by the lexer as
+    aliases of the same token.
+    """
+
+    def __init__(self, operand: AST, component: str | None = None) -> None:
         super().__init__()
         self.op: str = "set_of"
         self.operand: AST = operand
+        self.component: str | None = component
 
     def __str__(self) -> str:
-        return "<AST(name='{name}', operand={operand})>".format(
-            name=self.__class__.__name__, operand=self.operand
+        return (
+            "<AST(name='{name}', operand={operand}, "
+            "component={component})>".format(
+                name=self.__class__.__name__,
+                operand=self.operand,
+                component=self.component,
+            )
         )
 
     __repr__ = __str__
@@ -1239,6 +1258,7 @@ class SetOfOp(AST):
             "class_name": self.__class__.__name__,
             "op": self.op,
             "operand": self.operand,
+            "component": self.component,
         }
 
 
