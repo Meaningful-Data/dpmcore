@@ -99,6 +99,12 @@ jobs:
             }
             core.info(`Found ${prNumbers.size} PRs: ${[...prNumbers].join(', ')}`);
 
+            // Compare link falls back to the commit list for the first release
+            // (no previous tag), so it is valid whether or not PRs were found.
+            const compareUrl = previousTag
+              ? `https://github.com/${context.repo.owner}/${context.repo.repo}/compare/${previousTag}...${tagName}`
+              : `https://github.com/${context.repo.owner}/${context.repo.repo}/commits/${tagName}`;
+
             if (prNumbers.size === 0) {
               core.info('No PRs found, creating release with empty notes');
               await github.rest.repos.createRelease({
@@ -106,7 +112,7 @@ jobs:
                 repo: context.repo.repo,
                 tag_name: tagName,
                 name: releaseName,
-                body: `**Full Changelog**: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/${previousTag}...${tagName}`,
+                body: `**Full Changelog**: ${compareUrl}`,
                 prerelease: isPrerelease,
               });
               return;
@@ -283,9 +289,6 @@ jobs:
               }
             }
 
-            const compareUrl = previousTag
-              ? `https://github.com/${context.repo.owner}/${context.repo.repo}/compare/${previousTag}...${tagName}`
-              : `https://github.com/${context.repo.owner}/${context.repo.repo}/commits/${tagName}`;
             sections.push(`**Full Changelog**: ${compareUrl}`);
 
             const body = sections.join('\n\n');
