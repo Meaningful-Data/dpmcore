@@ -436,6 +436,26 @@ class OperationScopeService:
                 ).difference(set(modules_preconditions))
 
             if missing_precondition_modules:
+                # Only filing-indicator preconditions constrain module scope.
+                # A precondition variable that is *not* a filing indicator
+                # (e.g. a business-model attribute used in a value condition,
+                # ``{vBM} in {'G-SIB', ...}``) has no module version by design
+                # and must not fail scope calculation. Keep as "missing" only
+                # those items that are genuinely filing indicators absent from
+                # the release's modules.
+                filing_indicator_items = (
+                    ModuleVersionQuery.get_filing_indicator_codes(
+                        session=session,
+                        codes=missing_precondition_modules,
+                    )
+                )
+                missing_precondition_modules = {
+                    code
+                    for code in missing_precondition_modules
+                    if code in filing_indicator_items
+                }
+
+            if missing_precondition_modules:
                 raise errors.SemanticError(
                     "1-14", precondition_items=missing_precondition_modules
                 )
