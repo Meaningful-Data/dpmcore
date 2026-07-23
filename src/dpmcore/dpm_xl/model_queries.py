@@ -13,6 +13,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Collection,
     Hashable,
     Sequence,
 )
@@ -1162,7 +1163,7 @@ class ModuleVersionQuery:
     @staticmethod
     def get_filing_indicator_codes(
         session: "Session",
-        codes: Sequence[str],
+        codes: Collection[str],
     ) -> set[str]:
         """Return the subset of ``codes`` that are filing-indicator variables.
 
