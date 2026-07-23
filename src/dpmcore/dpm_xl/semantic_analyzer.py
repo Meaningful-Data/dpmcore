@@ -134,6 +134,9 @@ class InputAnalyzer(ASTTemplate, ABC):
             "entityID": ScalarFactory().database_types_mapping(
                 "s"
             )(),  # string type
+            "baseCurrency": ScalarFactory().database_types_mapping(
+                "s"
+            )(),  # string type
         }
 
     # Start of visiting nodes.
