@@ -572,6 +572,12 @@ class InputAnalyzer(ASTTemplate, ABC):
     def visit_ParameterRef(  # type: ignore[override]
         self, node: ParameterRef
     ) -> Operand:
+        # Simplified form ``{pCode}``: the parameter's scalar type is
+        # deferred to runtime (the engine's parameter registry supplies
+        # it). Represent the operand as a ``Scalar`` of ``Mixed`` type so
+        # downstream operators propagate it without a false type clash.
+        if node.param_type is None:
+            return Scalar(type_=Mixed(), name=None, origin=node.code)
         element_keyword = (
             node.param_type[len("set-") :] if node.is_set else node.param_type
         )
@@ -595,17 +601,21 @@ class InputAnalyzer(ASTTemplate, ABC):
         # Explicit null is always accepted (the implicit default is null too).
         if isinstance(default, Constant) and default.type == "Null":
             return
+        # This helper is only reached for the verbose ``{p_code, type, ...}``
+        # form; the simplified ``{pCode}`` branch returns before invoking it,
+        # so ``node.param_type`` is guaranteed non-None here.
+        declared_type = cast(str, node.param_type)
         if node.is_set:
             # A set-typed parameter takes a set default (``default: {...}``)
             # whose elements each match the declared element type, per the
             # DPM-XL spec. (A set default on a *cell* selection is a different
             # rule and stays rejected with 3-9 in ``visit_VarID``.)
             self.__check_set_parameter_default(
-                default, element_keyword, element_type, node.param_type
+                default, element_keyword, element_type, declared_type
             )
             return
         self.__check_scalar_parameter_default(
-            default, element_keyword, element_type, node.param_type
+            default, element_keyword, element_type, declared_type
         )
 
     def __check_set_parameter_default(
