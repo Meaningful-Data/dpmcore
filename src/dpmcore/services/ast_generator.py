@@ -272,7 +272,12 @@ class ASTGeneratorService:
             # scope-wide invariant. ``is_set`` is recoverable from the ``set-``
             # prefix and ``default`` is a per-reference fallback the engine
             # binds per scope, so neither belongs in this registry.
-            parameters_block: Dict[str, str] = {
+            #
+            # A ``None`` value means the DPM-XL expression used the simplified
+            # ``{pCode}`` spelling: the parameter's identity is known but its
+            # scalar type is resolved from the engine's own parameter registry
+            # at binding time rather than being carried in the enriched AST.
+            parameters_block: Dict[str, Optional[str]] = {
                 prm_code: prm.declared_type
                 for prm_code, prm in sorted(referenced_parameters.items())
             }
