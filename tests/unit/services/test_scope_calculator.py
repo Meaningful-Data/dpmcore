@@ -372,6 +372,89 @@ class TestDetectAlternativeDependencies:
         )
         assert result == []
 
+    @staticmethod
+    def _assert_disjoint(result):
+        """No module URI appears in more than one group."""
+        seen: set = set()
+        for group in result:
+            assert not (seen & set(group)), "groups overlap"
+            seen |= set(group)
+
+    def test_three_interchangeable_modules_form_one_group(self):
+        """3+ interchangeable modules collapse to one disjoint group (#242).
+
+        A, B and C are each the sole external of the same operation and
+        never co-occur, so they are mutually interchangeable. This must
+        surface as the single group ``[[A, B, C]]``, not the overlapping
+        pairs ``[[A, B], [A, C], [B, C]]``.
+        """
+        svc, SR = self._make_svc(
+            {10: "http://uri/a", 20: "http://uri/b", 30: "http://uri/c"},
+        )
+        sr = SR(
+            scopes=[
+                _scope([1, 10]),
+                _scope([1, 20]),
+                _scope([1, 30]),
+            ],
+        )
+        result = svc.detect_alternative_dependencies(
+            scope_results=[sr], primary_module_vid=1
+        )
+        assert result == [
+            sorted(["http://uri/a", "http://uri/b", "http://uri/c"])
+        ]
+        self._assert_disjoint(result)
+
+    def test_disjoint_alternative_groups(self):
+        """Independent interchangeable sets stay as separate groups (#242)."""
+        svc, SR = self._make_svc(
+            {
+                10: "http://uri/a",
+                20: "http://uri/b",
+                30: "http://uri/c",
+                40: "http://uri/d",
+            },
+        )
+        # Two operations, each with its own pair of interchangeables; the
+        # two pairs never share an operation, so they must not merge.
+        sr1 = SR(scopes=[_scope([1, 10]), _scope([1, 20])])
+        sr2 = SR(scopes=[_scope([1, 30]), _scope([1, 40])])
+        result = svc.detect_alternative_dependencies(
+            scope_results=[sr1, sr2], primary_module_vid=1
+        )
+        assert result == [
+            sorted(["http://uri/a", "http://uri/b"]),
+            sorted(["http://uri/c", "http://uri/d"]),
+        ]
+        self._assert_disjoint(result)
+
+    def test_non_transitive_merges_into_one_group(self):
+        """Non-transitive alternatives merge via connected components (#242).
+
+        A-B and B-C are interchangeable, but A and C co-occur (so they are
+        conjunctive, not alternatives). Connected components keep the
+        result disjoint by merging all three into one group.
+        """
+        svc, SR = self._make_svc(
+            {10: "http://uri/a", 20: "http://uri/b", 30: "http://uri/c"},
+        )
+        sr = SR(
+            scopes=[
+                _scope([1, 10]),
+                _scope([1, 20]),
+                _scope([1, 30]),
+                _scope([1, 10, 30]),  # A and C required together.
+            ],
+        )
+        result = svc.detect_alternative_dependencies(
+            scope_results=[sr], primary_module_vid=1
+        )
+        assert result == [
+            sorted(["http://uri/a", "http://uri/b", "http://uri/c"])
+        ]
+        self._assert_disjoint(result)
+
 
 # ------------------------------------------------------------------ #
 # detect_cross_module_dependencies (Fix 2)
