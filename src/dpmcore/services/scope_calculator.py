@@ -441,7 +441,7 @@ class ScopeCalculatorService:
         release_code: Optional[str] = None,
         valid_module_uris: Optional[Set[str]] = None,
     ) -> List[List[str]]:
-        """Detect pairs of external modules that are alternatives.
+        """Detect disjoint groups of interchangeable external modules.
 
         Two external modules are alternatives only when they are
         interchangeable dependencies of the *same* operation (#202):
@@ -450,6 +450,10 @@ class ScopeCalculatorService:
         scope. Each ``ScopeResult`` is one operation, so candidate pairs
         are collected per scope result — being the sole external of two
         *different* operations does not make two modules alternatives.
+
+        Interchangeable pairs are then collapsed into disjoint groups so
+        that when three or more modules are mutually interchangeable they
+        surface as one group rather than every overlapping pair (#242).
 
         Args:
             scope_results: One entry per operation.
@@ -462,7 +466,9 @@ class ScopeCalculatorService:
                 never name a module absent from ``dependency_modules``
                 (#202 dangling references).
 
-        Returns a list of ``[uri_a, uri_b]`` pairs (sorted).
+        Returns a list of disjoint groups; each group is a sorted list
+        of two or more interchangeable module URIs, and no module appears
+        in more than one group.
         """
         # Validate the release inputs (rejects an unknown code, or both
         # arguments at once). The resolved id is not threaded further:
@@ -495,7 +501,11 @@ class ScopeCalculatorService:
                 if pair[0] in valid_module_uris
                 and pair[1] in valid_module_uris
             ]
-        return uri_pairs
+        # Interchangeable pairs overlap when 3+ modules are mutually
+        # interchangeable (A-B, A-C, B-C). Collapse them into the disjoint
+        # groups the consumer expects: one connected component == one
+        # dependency slot fillable by any module in it (#242).
+        return self._group_alternative_pairs(uri_pairs)
 
     @staticmethod
     def _collect_external_vid_sets(
@@ -550,6 +560,38 @@ class ScopeCalculatorService:
                     for v2 in sorted_vids[i + 1 :]:
                         co_occurring.add((v1, v2))
         return co_occurring
+
+    @staticmethod
+    def _group_alternative_pairs(
+        uri_pairs: List[List[str]],
+    ) -> List[List[str]]:
+        """Collapse overlapping interchangeable pairs into disjoint groups.
+
+        Nodes are module URIs, edges are interchangeable pairs; each
+        connected component becomes one group. Guarantees the returned
+        groups share no module (disjoint), which is the shape the
+        consuming engine's dependency report expects (#242).
+        """
+        adjacency: Dict[str, Set[str]] = {}
+        for a, b in uri_pairs:
+            adjacency.setdefault(a, set()).add(b)
+            adjacency.setdefault(b, set()).add(a)
+
+        seen: Set[str] = set()
+        groups: List[List[str]] = []
+        for start in sorted(adjacency):
+            if start in seen:
+                continue
+            stack, component = [start], set()
+            while stack:
+                node = stack.pop()
+                if node in seen:
+                    continue
+                seen.add(node)
+                component.add(node)
+                stack.extend(adjacency[node] - seen)
+            groups.append(sorted(component))
+        return sorted(groups)
 
     def _map_pairs_to_uris(
         self,

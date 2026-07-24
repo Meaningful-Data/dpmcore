@@ -1221,7 +1221,7 @@ class ASTGeneratorService:
             )
 
         # Restrict alternatives to the script's genuine dependency modules
-        # so the pairs can never name a module absent from
+        # so the groups can never name a module absent from
         # ``dependency_modules`` (#202 dangling references).
         alt_deps = self._scope_calc.detect_alternative_dependencies(
             scope_results=all_scope_results,
