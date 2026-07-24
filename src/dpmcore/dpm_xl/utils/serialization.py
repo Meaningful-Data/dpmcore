@@ -37,15 +37,12 @@ class ASTToJSONVisitor(NodeVisitor):
         return result
 
     def visit_BinOp(self, node: Any) -> NodeDict:
-        """Visit BinOp nodes."""
-        # Handle match operations as MatchCharactersOp
-        if node.op == "match":
-            return {
-                "class_name": "MatchCharactersOp",
-                "operand": self.visit(node.left),
-                "pattern": self.visit(node.right),
-            }
+        """Visit BinOp nodes.
 
+        ``match`` is a regular binary operator on the wire: the engine
+        consumes it as a ``BinOp`` with ``op == "match"`` (operand on the
+        left, pattern on the right), not as a dedicated node class.
+        """
         return {
             "class_name": "BinOp",
             "op": node.op,
