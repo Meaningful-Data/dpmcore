@@ -71,6 +71,27 @@ class OperationScopeService:
                 self._require_session()
             )
 
+        # Only filing-indicator preconditions constrain module scope. A
+        # precondition may also carry value conditions on non-filing-indicator
+        # items (e.g. a business-model attribute compared against a set of
+        # values, ``{vBM} in {'G-SIB', ...}``). Such items have no module
+        # version, so if left in ``precondition_items`` they would inflate the
+        # operand count (making every module fail the intra-module test and
+        # collapsing the scope to empty) and fail resolution with error 1-14.
+        # Drop them up front so only genuine filing indicators participate.
+        if precondition_items:
+            filing_indicator_items = (
+                ModuleVersionQuery.get_filing_indicator_codes(
+                    session=self._require_session(),
+                    codes=list(precondition_items),
+                )
+            )
+            precondition_items = [
+                item
+                for item in precondition_items
+                if item in filing_indicator_items
+            ]
+
         modules_info_dataframe = self.extract_module_info(
             tables_vids=tables_vids,
             precondition_items=precondition_items,

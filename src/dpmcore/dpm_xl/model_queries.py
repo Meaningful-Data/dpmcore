@@ -13,6 +13,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Collection,
     Hashable,
     Sequence,
 )
@@ -1158,6 +1159,37 @@ class ModuleVersionQuery:
         return _resolve_with_ghost_fallback(
             session, build_query, materialize, cols, release_id
         )
+
+    @staticmethod
+    def get_filing_indicator_codes(
+        session: "Session",
+        codes: Collection[str],
+    ) -> set[str]:
+        """Return the subset of ``codes`` that are filing-indicator variables.
+
+        Only filing-indicator preconditions constrain an operation's module
+        scope. Precondition variables that are *not* filing indicators (for
+        example a business-model attribute compared against a set of values,
+        ``{vBM} in {'G-SIB', ...}``) are value conditions, not scoping
+        conditions, and must not force module resolution or fail scope
+        calculation. This helper lets scope calculation tell the two apart,
+        so a genuinely-missing filing indicator still errors while a value
+        condition is simply ignored.
+        """
+        if not codes:
+            return set()
+        rows = (
+            session.query(VariableVersion.code)
+            .join(
+                Variable,
+                VariableVersion.variable_id == Variable.variable_id,
+            )
+            .filter(VariableVersion.code.in_(list(codes)))
+            .filter(_is_filing_indicator())
+            .distinct()
+            .all()
+        )
+        return {row[0] for row in rows}
 
     @staticmethod
     def get_module_version_by_vid(
