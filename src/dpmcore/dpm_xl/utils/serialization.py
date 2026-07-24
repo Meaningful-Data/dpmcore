@@ -299,6 +299,12 @@ class ASTToJSONVisitor(NodeVisitor):
                     else sorted(context_sheets)
                 )
 
+                # A cell reference resolves to more than one data point
+                # when it spans an open axis (e.g. an open sheet). Each such
+                # data point needs a coordinate to be identified, regardless
+                # of its data type.
+                multiple_datapoints = len(data_records) > 1
+
                 # Transform the data to match expected JSON structure
                 transformed_data: list[dict[str, Any]] = []
                 for x_index, row_code in enumerate(rows, 1):
@@ -332,8 +338,13 @@ class ASTToJSONVisitor(NodeVisitor):
                         column_code = record.get("column_code", "")
                         sheet_code = record.get("sheet_code", "")
 
-                        # Add x/y/z coordinates for non-scalar types only
-                        if not is_scalar_type:
+                        # Add x/y/z coordinates for non-scalar types, and for
+                        # any cell that resolves to more than one data point:
+                        # a scalar cell spanning an open axis still needs a
+                        # coordinate per entry so the two data points can be
+                        # told apart. A single-entry scalar cell keeps no
+                        # coordinates (it is a positionless value).
+                        if not is_scalar_type or multiple_datapoints:
                             transformed_record["x"] = x_index
 
                             # Find y coordinate based on column position in context
@@ -415,6 +426,14 @@ class ASTToJSONVisitor(NodeVisitor):
                             common_coords.append(coord)
                         elif len(values) > 1:  # Coordinate varies
                             variable_coords.append(coord)
+
+                    # A variable resolving to more than one data point must
+                    # keep at least one coordinate so the engine can identify
+                    # each datum. If nothing varies across the entries, treat
+                    # no coordinate as "common" (prune none) rather than
+                    # stripping every entry down to zero coordinates.
+                    if multiple_datapoints and not variable_coords:
+                        common_coords = []
 
                     # For variable coordinates, add dimension codes to each entry
                     # Map coordinates to their dimension codes from original data
