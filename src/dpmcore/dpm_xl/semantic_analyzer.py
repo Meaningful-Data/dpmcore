@@ -861,6 +861,16 @@ class InputAnalyzer(ASTTemplate, ABC):
         operand = self.visit(node.operand)
         if not isinstance(operand, RecordSet):
             raise errors.SemanticError("4-7-1", op="set_of")
+        # Two-argument form ``set_of(recordset, component)`` projects onto
+        # a single component of the recordset (typically a property/
+        # dimension code, e.g. ``INC``). The component's scalar type
+        # becomes the element type of the returned ScalarSet.
+        if node.component is not None:
+            components = operand.structure.components
+            component = components.get(node.component)
+            if component is None:
+                raise errors.SemanticError("1-5", open_keys=[node.component])
+            return ScalarSet(type_=component.type, name=None, origin="set_of")
         fact_type = operand.get_fact_component().type
         return ScalarSet(type_=fact_type, name=None, origin="set_of")
 

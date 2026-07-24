@@ -86,6 +86,7 @@ setElements:
 // an Operand is a valid set is decided by semantic analysis, not by the grammar.
 setExpression:
     setOperand                                                              #setLiteralExpr
+    | SET_OF LPAREN op=expression COMMA component=propertyCode RPAREN       #setOfProjectExpr
     | SET_OF LPAREN op=expression RPAREN                                     #setOfExpr
     | UNION LPAREN expression (COMMA expression)+ RPAREN                     #unionSetExpr
     | INTERSECT LPAREN expression (COMMA expression)+ RPAREN                 #intersectSetExpr

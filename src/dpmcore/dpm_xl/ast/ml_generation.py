@@ -791,6 +791,32 @@ class MLGeneration(ASTTemplate):
         node.operand.argument = "operand"
         self.visit(node.operand)
 
+        # Two-argument form ``set_of(recordset, component)``: emit a
+        # ``component`` operand ref alongside the recordset, following
+        # the shape ``visit_GetOp`` uses when serialising ``[get X]``.
+        if node.component is None:
+            return
+        element = AST()
+        element.parent = operand_node
+        element.argument = "component"
+        element.source_reference = "property"
+        component_node = self.create_operation_node(element, is_leaf=True)
+        op_ref: OperandReference
+        if property_ref_period_mangement(node.component):
+            op_ref = OperandReference(
+                operation_node=component_node, operand_reference="refPeriod"
+            )
+        else:
+            property_id = ItemCategoryQuery.get_property_id_from_code(
+                code=node.component, session=self.session_queries
+            )[0]
+            op_ref = OperandReference(
+                operation_node=component_node,
+                operand_reference=element.source_reference,
+                property_id=property_id,
+            )
+        self.session.add(op_ref)
+
     def visit_UnionSetOp(self, node: UnionSetOp) -> None:
         operand_node = self.create_operation_node(node)
         for operand in node.operands:

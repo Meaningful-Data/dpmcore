@@ -169,6 +169,11 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by dpm_xlParser#setOfProjectExpr.
+    def visitSetOfProjectExpr(self, ctx:dpm_xlParser.SetOfProjectExprContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by dpm_xlParser#setOfExpr.
     def visitSetOfExpr(self, ctx:dpm_xlParser.SetOfExprContext):
         return self.visitChildren(ctx)
