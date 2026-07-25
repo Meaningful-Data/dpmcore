@@ -699,6 +699,156 @@ class TestDetectCrossModuleDependencies:
         assert "T_01" in dm["http://uri/mod_20"]["tables"]
         assert dm["http://uri/mod_20"]["variables"] == {"v1": "x"}
 
+    def test_referenced_home_variables_declared(self):
+        """Regression for #251: a cross-validation's home-module operand
+        datapoints must appear in the dependency module's ``variables``
+        map, or the engine cannot build the home operand.
+        """
+        svc, SR = self._make_svc()
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "F_01.03": {
+                "variables": {"56987": "m"},
+                "open_keys": {},
+            }
+        }
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [mv]
+
+        sr = SR(
+            scopes=[_scope([10, 20])],
+            is_cross_module=True,
+        )
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+            # {tC_01.00,...} <= {tF_01.03,...}: 32673 is the home operand.
+            referenced_variables={"32673": "m", "56987": "m"},
+        )
+        dep = info["dependency_modules"]["http://uri/mod_20"]
+        assert dep["variables"] == {"32673": "m", "56987": "m"}
+        # tables stay dependency-side only.
+        assert set(dep["tables"]) == {"F_01.03"}
+
+    def test_declares_only_referenced_tables_and_datapoints(self):
+        """Regression for #250: a dependency module is declared as the
+        subset the cross-rules reference, not whole.
+        """
+        svc, SR = self._make_svc()
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "F_22.02": {
+                "variables": {"1": "m", "2": "m", "3": "m"},
+                "open_keys": {"qAS": "e"},
+            },
+            # Referenced by no cross-rule: must not be declared.
+            "F_99.00": {"variables": {"9": "m"}, "open_keys": {}},
+        }
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [mv]
+
+        info = svc.detect_cross_module_dependencies(
+            scope_result=SR(scopes=[_scope([10, 20])], is_cross_module=True),
+            primary_module_vid=10,
+            referenced_tables={"G_01.00", "F_22.02"},
+            referenced_variables={"1": "m", "500": "m"},
+        )
+        dep = info["dependency_modules"]["http://uri/mod_20"]
+        assert set(dep["tables"]) == {"F_22.02"}
+        assert dep["tables"]["F_22.02"]["variables"] == {"1": "m"}
+        # open_keys survive the narrowing (#122).
+        assert dep["tables"]["F_22.02"]["open_keys"] == {"qAS": "e"}
+        # 500 is the home operand grafted in by #251.
+        assert dep["variables"] == {"1": "m", "500": "m"}
+
+    def test_whole_module_declared_when_no_refs_supplied(self):
+        """Callers passing no reference info keep the unnarrowed module."""
+        svc, SR = self._make_svc()
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "F_22.02": {"variables": {"1": "m"}, "open_keys": {}},
+            "F_99.00": {"variables": {"9": "m"}, "open_keys": {}},
+        }
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [mv]
+
+        info = svc.detect_cross_module_dependencies(
+            scope_result=SR(scopes=[_scope([10, 20])], is_cross_module=True),
+            primary_module_vid=10,
+        )
+        dep = info["dependency_modules"]["http://uri/mod_20"]
+        assert set(dep["tables"]) == {"F_22.02", "F_99.00"}
+
+    def test_dependency_kept_whole_when_narrowing_empties_it(self):
+        """Narrowing must never drop a genuine cross-instance dependency:
+        if nothing matches, the module is declared unnarrowed.
+        """
+        svc, SR = self._make_svc()
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "F_22.02": {"variables": {"1": "m"}, "open_keys": {}},
+        }
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [mv]
+
+        info = svc.detect_cross_module_dependencies(
+            scope_result=SR(scopes=[_scope([10, 20])], is_cross_module=True),
+            primary_module_vid=10,
+            referenced_tables={"Z_00.00"},
+            referenced_variables={"777": "m"},
+        )
+        dep = info["dependency_modules"]["http://uri/mod_20"]
+        assert set(dep["tables"]) == {"F_22.02"}
+        assert dep["variables"] == {"1": "m", "777": "m"}
+
+    def test_module_definition_wins_over_referenced_type(self):
+        """A datapoint the dependency module defines keeps that type."""
+        svc, SR = self._make_svc()
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "F_01.03": {"variables": {"56987": "m"}, "open_keys": {}}
+        }
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [mv]
+
+        info = svc.detect_cross_module_dependencies(
+            scope_result=SR(scopes=[_scope([10, 20])], is_cross_module=True),
+            primary_module_vid=10,
+            referenced_variables={"56987": ""},
+        )
+        dep = info["dependency_modules"]["http://uri/mod_20"]
+        assert dep["variables"] == {"56987": "m"}
+
     def test_dependency_table_open_keys_propagate(self):
         """Regression for #122: a dependency module's table entries must
         keep their ``open_keys`` so the engine can join on them.
