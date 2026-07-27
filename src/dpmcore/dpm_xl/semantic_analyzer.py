@@ -69,6 +69,7 @@ from dpmcore.dpm_xl.types.scalar import (
     Null,
     ScalarFactory,
     ScalarType,
+    String,
 )
 from dpmcore.dpm_xl.utils.data_handlers import filter_all_data
 from dpmcore.dpm_xl.utils.operands_mapping import set_operand_label
@@ -90,6 +91,7 @@ from dpmcore.dpm_xl.utils.tokens import (
     FILTER,
     GET,
     IF,
+    ISNULL,
     RENAME,
     STANDARD,
     SUB,
@@ -208,8 +210,10 @@ class InputAnalyzer(ASTTemplate, ABC):
     def visit_UnaryOp(  # type: ignore[override]
         self, node: UnaryOp
     ) -> Operand:
-        operand_symbol = self.visit(node.operand)
         op = cast(str, node.op)
+        if op == ISNULL:
+            self.__warn_if_isnull_has_non_null_default(node)
+        operand_symbol = self.visit(node.operand)
         if op in UNARY_OP_MAPPING:
             result = UNARY_OP_MAPPING[op].validate_types(operand_symbol)
         else:
@@ -266,10 +270,63 @@ class InputAnalyzer(ASTTemplate, ABC):
         # default on a Number cell (String → Number is an Explicit cast).
         # Null already promotes to every type; a Mixed cell has unknown type
         # (no dict entry, empty ``cell_implicities``) and accepts any default.
+        # String is the sink of the implicit-promotion table (every scalar
+        # promotes to String), which would let e.g. ``default:0`` land on a
+        # String cell — reject that explicitly; only String and Null defaults
+        # are meaningful on a String cell.
+        if isinstance(type_, String) and not isinstance(
+            default_type, (String, Null)
+        ):
+            raise errors.SemanticError(
+                "3-6", expected_type=type_, default_type=default_type
+            )
         if cell_implicities and not type_.is_included(default_implicities):
             raise errors.SemanticError(
                 "3-6", expected_type=type_, default_type=default_type
             )
+
+    @staticmethod
+    def __warn_if_isnull_has_non_null_default(node: UnaryOp) -> None:
+        """Emit a warning if ``isnull(x)``'s operand has a non-null default.
+
+        Such a call is tautologically false — the default guarantees the
+        operand is never null. Parentheses around the operand parse to a
+        ``ParExpr`` wrapper that carries no ``default`` attribute, so the
+        check would miss ``isnull((x))``; unwrap those first. Only VarID
+        and ParameterRef carry ``default:``; every other operand shape is
+        silently ignored. ``default:null`` materialises as
+        ``Constant(type_="Null")`` (see visitDefault in the AST
+        constructor) and stays warning-free.
+        """
+        inner: Any = node.operand
+        while isinstance(inner, ParExpr):
+            inner = inner.expression
+        default = getattr(inner, "default", None)
+        if default is None or getattr(default, "type", None) == "Null":
+            return
+        selection = InputAnalyzer.__isnull_operand_repr(inner)
+        add_semantic_warning(
+            f"isnull({selection}) is always false: operand has a "
+            f"non-null default (default:{getattr(default, 'value', '?')})"
+        )
+
+    @staticmethod
+    def __isnull_operand_repr(node: Any) -> str:
+        """Render the operand of an ``isnull(...)`` warning message.
+
+        Uses the same formatting as ``generate_operand_expression`` for
+        VarID (``{ tXXX, rY, cZ }``); falls back to the AST class name
+        for anything else, since the warning only fires when a default
+        was found (which limits us to VarID/ParameterRef in practice).
+        """
+        if isinstance(node, VarID):
+            from dpmcore.dpm_xl.utils.operands_mapping import (
+                generate_operand_expression,
+            )
+
+            return generate_operand_expression(node)
+        name = getattr(node, "name", None) or getattr(node, "label", None)
+        return str(name) if name else type(node).__name__
 
     def visit_VarID(  # type: ignore[override]
         self, node: VarID
