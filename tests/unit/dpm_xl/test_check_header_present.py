@@ -94,6 +94,46 @@ class TestCheckHeaderPresentMixedSpecification:
         oc._check_header_present("SomeTable", "cols")  # must not raise
 
 
+class TestCheckHeaderPresentSheetsAlwaysExplicit:
+    """Unlike rows/cols, omitting sheets always raises, even uniformly."""
+
+    def test_single_operand_omits_sheets_raises(self):
+        nodes = [_varid("C_07.00.b", rows=["r0110"], cols=["c0210"])]
+        oc = _make_oc(nodes)
+        with pytest.raises(SemanticError) as exc_info:
+            oc._check_header_present("C_07.00.b", "sheets")
+        assert str(exc_info.value) == (
+            "Missing explicit sheets on the expression for table C_07.00.b"
+        )
+
+    def test_all_operands_omit_sheets_raises(self):
+        nodes = [
+            _varid("C_07.00.b", rows=["r0110"], cols=["c0210"]),
+            _varid("C_07.00.b", rows=["r0120"], cols=["c0210"]),
+        ]
+        oc = _make_oc(nodes)
+        with pytest.raises(SemanticError) as exc_info:
+            oc._check_header_present("C_07.00.b", "sheets")
+        assert str(exc_info.value) == (
+            "Missing explicit sheets on the expression for table C_07.00.b"
+        )
+
+    def test_all_operands_declare_sheets_no_raise(self):
+        nodes = [
+            _varid("C_07.00.b", rows=["r0110"], cols=["c0210"], sheets=["s0010"]),
+        ]
+        oc = _make_oc(nodes)
+        oc._check_header_present("C_07.00.b", "sheets")  # must not raise
+
+    def test_partial_selection_with_sheets_skips_check(self):
+        ps = _varid("C_07.00.b", sheets=["s0010"])
+        nodes = [
+            _varid("C_07.00.b", rows=["r0110"], cols=["c0210"]),
+        ]
+        oc = _make_oc(nodes, partial_selection=ps)
+        oc._check_header_present("C_07.00.b", "sheets")  # must not raise
+
+
 def test_range_filter_uses_between():
     """A range like r0090-0110 must translate to BETWEEN, not an exact match."""
     col = MagicMock()

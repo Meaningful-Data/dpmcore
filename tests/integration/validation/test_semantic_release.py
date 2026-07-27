@@ -465,3 +465,18 @@ def test_no_false_2_6_on_multi_release_headers(
         f"Expected valid at release {release_code!r}, got {result.error_code}: "
         f"{result.error_message}"
     )
+
+
+def test_single_reference_omitting_closed_sheets_axis_rejected(fixture_session):
+    """A lone reference omitting a closed sheets axis must be rejected."""
+    expression = """
+    if {tF_01.02, r0020, c0010, default:0} > 0
+    then {tC_07.00.b, r0110, c0210, default:0} > 0
+    endif
+    """
+    svc = SemanticService(fixture_session)
+    result = svc.validate(expression, release_id=1)
+    assert not result.is_valid, (
+        f"Expected invalid, got: {result.error_message}"
+    )
+    assert result.error_code == "1-20"
