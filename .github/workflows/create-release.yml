@@ -29,8 +29,13 @@ jobs:
               return;
             }
             const version = versionMatch[1];
-            const tagName = `v${version}`;
-            core.info(`Version: ${version}, Tag: ${tagName}`);
+            const tagName = version;
+            // Release name mirrors the manual convention: "<tag>(DD-MM-YYYY)".
+            const now = new Date();
+            const dd = String(now.getUTCDate()).padStart(2, '0');
+            const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+            const releaseName = `${tagName}(${dd}-${mm}-${now.getUTCFullYear()})`;
+            core.info(`Version: ${version}, Tag: ${tagName}, Name: ${releaseName}`);
 
             // 2. Determine if pre-release
             const isPrerelease = /rc|alpha|beta|dev/.test(version);
@@ -94,14 +99,20 @@ jobs:
             }
             core.info(`Found ${prNumbers.size} PRs: ${[...prNumbers].join(', ')}`);
 
+            // Compare link falls back to the commit list for the first release
+            // (no previous tag), so it is valid whether or not PRs were found.
+            const compareUrl = previousTag
+              ? `https://github.com/${context.repo.owner}/${context.repo.repo}/compare/${previousTag}...${tagName}`
+              : `https://github.com/${context.repo.owner}/${context.repo.repo}/commits/${tagName}`;
+
             if (prNumbers.size === 0) {
               core.info('No PRs found, creating release with empty notes');
               await github.rest.repos.createRelease({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 tag_name: tagName,
-                name: tagName,
-                body: `**Full Changelog**: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/${previousTag}...${tagName}`,
+                name: releaseName,
+                body: `**Full Changelog**: ${compareUrl}`,
                 prerelease: isPrerelease,
               });
               return;
@@ -278,9 +289,6 @@ jobs:
               }
             }
 
-            const compareUrl = previousTag
-              ? `https://github.com/${context.repo.owner}/${context.repo.repo}/compare/${previousTag}...${tagName}`
-              : `https://github.com/${context.repo.owner}/${context.repo.repo}/commits/${tagName}`;
             sections.push(`**Full Changelog**: ${compareUrl}`);
 
             const body = sections.join('\n\n');
@@ -291,7 +299,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag_name: tagName,
-              name: tagName,
+              name: releaseName,
               body: body,
               prerelease: isPrerelease,
             });

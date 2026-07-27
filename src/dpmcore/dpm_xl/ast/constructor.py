@@ -630,13 +630,17 @@ class ASTVisitor(dpm_xlParserVisitor):
     ) -> ParameterRef:
         ctx_list = list(ctx.getChildren())
         code = _parameter_code(self._symbol_text(ctx_list[0]))
-        # parameterType holds a single keyword terminal (e.g. ``number`` or
-        # ``set-item``); the grammar restricts it to the 12 supported types.
-        # ``is_set`` is derived from this keyword on the node itself.
-        param_type = self._symbol_text(ctx_list[2].getChild(0))
+        # The grammar makes the (parameterType [, default]) tail optional.
+        # When present, ``parameterType`` holds a single keyword terminal
+        # (e.g. ``number`` or ``set-item``); when absent, ``param_type``
+        # is left ``None`` and the semantic pass resolves it from the
+        # parameter registry.
+        param_type: str | None = None
         default: AST | None = None
         for child in ctx_list:
-            if isinstance(child, dpm_xlParser.DefaultContext):
+            if isinstance(child, dpm_xlParser.ParameterTypeContext):
+                param_type = self._symbol_text(child.getChild(0))
+            elif isinstance(child, dpm_xlParser.DefaultContext):
                 default = self.visitDefault(child)
         return ParameterRef(
             code=code,

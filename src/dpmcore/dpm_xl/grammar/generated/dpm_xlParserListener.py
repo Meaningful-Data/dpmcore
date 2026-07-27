@@ -1,4 +1,4 @@
-# Generated from /home/victorp/dpmcore/src/dpmcore/dpm_xl/grammar/dpm_xlParser.g4 by ANTLR 4.9.2
+# Generated from dpm_xlParser.g4 by ANTLR 4.9.2
 from antlr4 import *
 if __name__ is not None and "." in __name__:
     from .dpm_xlParser import dpm_xlParser

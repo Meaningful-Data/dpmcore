@@ -40,13 +40,18 @@ class ParameterInfo:
     expression needs (and their declared types/defaults); the downstream engine
     resolves and binds their values.
 
+    ``declared_type`` is ``None`` when the parameter was referenced with the
+    simplified ``{pCode}`` spelling — the expression pins the identity of the
+    parameter but defers its scalar type to the engine's parameter registry.
+
     ``is_set`` is a derived property (``Set`` prefix of the canonical
     ``declared_type``), not a stored field, so there is one source of truth for
-    set-ness.
+    set-ness; a parameter without a declared type is not classified as a set
+    at this stage.
     """
 
     code: str
-    declared_type: str
+    declared_type: Optional[str]
     default: Any = None
 
     @property
@@ -55,8 +60,13 @@ class ParameterInfo:
 
         The canonical ``declared_type`` is ``SetNumber``/``SetItem``/…; no
         scalar type name starts with ``Set``, so the prefix is unambiguous.
+        A parameter with no declared type (simplified ``{pCode}`` form) is
+        reported as ``False`` here; the engine registry resolves set-ness
+        together with the type at binding time.
         """
-        return self.declared_type.startswith("Set")
+        return self.declared_type is not None and (
+            self.declared_type.startswith("Set")
+        )
 
 
 @dataclass(frozen=True)
@@ -87,7 +97,15 @@ def _parameters_from_oc(
     seen: dict[str, ParameterInfo] = {}
     for node in oc.parameters:
         # Surface the engine's canonical type name (``number`` -> ``Number``).
-        declared = canonical_param_type(node.param_type)
+        # A simplified ``{pCode}`` reference has no inline type; leave
+        # ``declared_type`` as ``None`` and let the engine's parameter
+        # registry supply it at binding time. A verbose reference that
+        # follows still wins the type declaration on the same code.
+        declared: Optional[str] = (
+            canonical_param_type(node.param_type)
+            if node.param_type is not None
+            else None
+        )
         existing = seen.get(node.code)
         if existing is None:
             seen[node.code] = ParameterInfo(
@@ -95,7 +113,19 @@ def _parameters_from_oc(
                 declared_type=declared,
                 default=parameter_default_value(node.default),
             )
-        elif existing.declared_type != declared:
+        elif existing.declared_type is None and declared is not None:
+            # A later verbose reference upgrades the entry with its declared
+            # type; the default carried on the first-seen reference is kept.
+            seen[node.code] = ParameterInfo(
+                code=existing.code,
+                declared_type=declared,
+                default=existing.default,
+            )
+        elif (
+            existing.declared_type is not None
+            and declared is not None
+            and existing.declared_type != declared
+        ):
             raise SemanticError(
                 "3-8",
                 parameter=node.code,
@@ -256,8 +286,16 @@ class SemanticService:
                 results = analyzer.visit(ast)
 
             if self.oc_parameters:
+                # Feed the cross-op check only the parameters whose type is
+                # actually declared here; a simplified ``{pCode}`` reference
+                # cannot conflict with a co-scoped op because it has no
+                # declared type on our side.
                 self._check_persisted_scope(
-                    {p.code: p.declared_type for p in self.oc_parameters},
+                    {
+                        p.code: p.declared_type
+                        for p in self.oc_parameters
+                        if p.declared_type is not None
+                    },
                     list(oc.tables.keys()) if oc.tables else [],
                     release_id,
                 )
@@ -397,5 +435,10 @@ class SemanticService:
         decls: dict[str, str] = {}
         for ref in _walk_parameter_refs(ast):
             # Canonical names so the comparison matches ParameterInfo.
+            # A simplified ``{pCode}`` reference in the persisted expression
+            # carries no declared type, so it contributes nothing to the
+            # cross-scope check and is skipped.
+            if ref.param_type is None:
+                continue
             decls.setdefault(ref.code, canonical_param_type(ref.param_type))
         return decls

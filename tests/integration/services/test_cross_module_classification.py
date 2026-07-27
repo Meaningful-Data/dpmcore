@@ -85,3 +85,100 @@ def test_primary_hosting_no_tables_is_not_intra(fixture_session):
     assert result["intra"] == []
     assert result["cross"] == 0
     assert result["tables"] == []
+
+
+def _operand_datapoints(node) -> set[str]:
+    """Every ``VarID`` datapoint id in a serialised operation AST."""
+    found: set[str] = set()
+    if isinstance(node, dict):
+        if node.get("class_name") == "VarID":
+            for entry in node.get("data") or []:
+                if isinstance(entry, dict) and entry.get("datapoint"):
+                    found.add(str(entry["datapoint"]))
+        for value in node.values():
+            if isinstance(value, (dict, list)):
+                found |= _operand_datapoints(value)
+    elif isinstance(node, list):
+        for item in node:
+            if isinstance(item, (dict, list)):
+                found |= _operand_datapoints(item)
+    return found
+
+
+def test_cross_validation_operands_declared_in_dependency(fixture_session):
+    """Regression for #251: every operand datapoint of a cross-instance
+    validation — home-module ones included — is declared in the
+    ``variables`` map of each module the validation depends on.
+    """
+    code = "v22973_m"
+    expression = _latest_expression(fixture_session, code)
+    result = ASTGeneratorService(fixture_session).script(
+        expressions=[(expression, code)],
+        module_code="IF_CLASS2",
+        module_version="1.4.0",
+    )
+    assert result["success"], result["error"]
+    module = next(iter(result["enriched_ast"].values()))
+    dep_modules = module["dependency_modules"]
+    assert dep_modules, "v22973_m must be cross-instance for IF_CLASS2"
+
+    operands = _operand_datapoints(module["operations"][code]["ast"])
+    assert operands, "the validation must reference at least one datapoint"
+    home_variables = set(module["variables"])
+    assert operands & home_variables, (
+        "v22973_m has home-module operands: they are what #251 was about"
+    )
+
+    for uri, dep in dep_modules.items():
+        missing = operands - set(dep["variables"])
+        assert not missing, f"{uri} omits operand datapoints {sorted(missing)}"
+
+
+def test_dependency_declares_only_referenced_subset(fixture_session):
+    """Regression for #250: a dependency module is declared as the subset
+    the cross-rules reference, not as the whole module.
+    """
+    code = "v22973_m"
+    expression = _latest_expression(fixture_session, code)
+    result = ASTGeneratorService(fixture_session).script(
+        expressions=[(expression, code)],
+        module_code="IF_CLASS2",
+        module_version="1.4.0",
+    )
+    assert result["success"], result["error"]
+    module = next(iter(result["enriched_ast"].values()))
+    dep_modules = module["dependency_modules"]
+    assert dep_modules, "v22973_m must be cross-instance for IF_CLASS2"
+
+    referenced_tables = set(
+        _referenced_tables(module["operations"][code]["ast"])
+    )
+    operands = _operand_datapoints(module["operations"][code]["ast"])
+    for uri, dep in dep_modules.items():
+        assert set(dep["tables"]) <= referenced_tables, (
+            f"{uri} declares tables no operation references: "
+            f"{sorted(set(dep['tables']) - referenced_tables)}"
+        )
+        for tcode, table in dep["tables"].items():
+            assert table["variables"], f"{uri}/{tcode} declares no variables"
+            extra = set(table["variables"]) - operands
+            assert not extra, (
+                f"{uri}/{tcode} declares unreferenced datapoints "
+                f"{sorted(extra)[:10]}"
+            )
+
+
+def _referenced_tables(node) -> set[str]:
+    """Every ``VarID`` table code in a serialised operation AST."""
+    found: set[str] = set()
+    if isinstance(node, dict):
+        if node.get("class_name") == "VarID" and node.get("table"):
+            found.add(node["table"])
+        for value in node.values():
+            if isinstance(value, (dict, list)):
+                found |= _referenced_tables(value)
+    elif isinstance(node, list):
+        for item in node:
+            if isinstance(item, (dict, list)):
+                found |= _referenced_tables(item)
+    return found

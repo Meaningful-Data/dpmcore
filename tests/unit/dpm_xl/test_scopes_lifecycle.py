@@ -34,6 +34,15 @@ def _patch_orm(monkeypatch):
         "info",
     }
 
+    # calculate_operation_scope now filters precondition_items down to
+    # filing indicators up front via ModuleVersionQuery. These lifecycle
+    # tests intend every precondition to be a filing indicator, so mock the
+    # classifier as an identity filter (returns the codes it is given).
+    model_queries_stub = MagicMock()
+    model_queries_stub.ModuleVersionQuery.get_filing_indicator_codes.side_effect = (
+        lambda session, codes: set(codes)
+    )
+
     stubs = {
         "dpmcore": pkg,
         "dpmcore.connection": MagicMock(),
@@ -45,7 +54,7 @@ def _patch_orm(monkeypatch):
         "dpmcore.orm.variables": MagicMock(),
         "dpmcore.errors": MagicMock(),
         "dpmcore.dpm_xl": dpm_xl,
-        "dpmcore.dpm_xl.model_queries": MagicMock(),
+        "dpmcore.dpm_xl.model_queries": model_queries_stub,
         "dpmcore.dpm_xl.utils": MagicMock(),
         "dpmcore.dpm_xl.utils.tokens": tokens_stub,
     }

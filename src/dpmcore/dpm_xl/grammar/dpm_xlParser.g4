@@ -241,7 +241,7 @@ selectOperand:
     ;
 
 parameterRef:
-    PARAMETER_REFERENCE COMMA parameterType (COMMA default)?
+    PARAMETER_REFERENCE (COMMA parameterType (COMMA default)?)?
     ;
 
 parameterType:

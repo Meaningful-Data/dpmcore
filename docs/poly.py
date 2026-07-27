@@ -29,9 +29,10 @@ from sphinx_polyversion.sphinx import SphinxBuilder
 #: Branches to build docs for.
 BRANCH_REGEX = r"^master$"
 
-#: Tags to build docs for. Existing tags are "0.1.1"-style (no leading "v") and
-#: match nothing yet; start tagging vX.Y.Z to publish versioned docs.
-TAG_REGEX = r"^v\d+\.\d+\.\d+$"
+#: Tags to build docs for. Tags follow "0.1.2rc3"-style versioning (no leading
+#: "v", optional rc<N> prerelease suffix); this matches every such tag so each
+#: published release/prerelease gets its own versioned docs build.
+TAG_REGEX = r"^\d+\.\d+\.\d+(rc\d+)?$"
 
 #: Output directory (relative to the project root).
 OUTPUT_DIR = "_site"

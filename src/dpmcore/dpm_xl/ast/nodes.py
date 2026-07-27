@@ -1368,26 +1368,37 @@ class CountSetOp(AST):
 
 
 class ParameterRef(AST):
-    """AST object for a Parameter Selection (``{p_code, type [, default]}``).
+    """AST object for a Parameter Selection.
 
-    A parameter is an execution-time input supplied to an Operation at runtime;
-    it is not a DPM entity, so its data type is declared inline rather than
-    resolved from the database.
+    Two spellings are accepted by the grammar:
+
+    - **Verbose**: ``{p_code, type [, default: value]}`` — the parameter's
+      scalar type is declared inline.
+    - **Simplified**: ``{p_code}`` — the type is left ``None`` and the
+      semantic analyser resolves it later from the taxonomy's parameter
+      registry.
+
+    A parameter is an execution-time input supplied to an Operation at
+    runtime; the verbose form is what the AST-only tooling has always
+    used, while the simplified form matches the historical DPM-XL corpus
+    where parameters are declared once at the module level.
 
     :parameter code: Parameter code (the ``p``/``p_``/backtick prefix stripped).
     :parameter param_type: Declared type keyword, e.g. ``"number"`` or
-        ``"set-item"`` (the full keyword, including the ``set-`` prefix).
+        ``"set-item"`` (the full keyword, including the ``set-`` prefix),
+        or ``None`` when the simplified form is used.
     :parameter default: Declared default as an AST node (``Constant``/``Scalar``/
         ``Set``) or ``None`` when omitted (implicit ``null``).
 
-    ``is_set`` is a derived property (``set-*`` prefix of ``param_type``), not a
-    stored field, so there is one source of truth for set-ness.
+    ``is_set`` is a derived property (``set-*`` prefix of ``param_type``),
+    not a stored field, so there is one source of truth for set-ness; a
+    simplified reference without a declared type is not a set by default.
     """
 
     def __init__(
         self,
         code: str,
-        param_type: str,
+        param_type: "str | None",
         default: "AST | None" = None,
     ) -> None:
         super().__init__()
@@ -1397,8 +1408,15 @@ class ParameterRef(AST):
 
     @property
     def is_set(self) -> bool:
-        """``True`` for the ``set-*`` variants (derived from ``param_type``)."""
-        return self.param_type.startswith("set-")
+        """``True`` for the ``set-*`` variants (derived from ``param_type``).
+
+        A simplified reference (``param_type is None``) is not classified
+        as a set here; the semantic analyser upgrades the classification
+        after resolving the parameter's registered type.
+        """
+        return self.param_type is not None and self.param_type.startswith(
+            "set-"
+        )
 
     def __str__(self) -> str:
         return (
@@ -1417,13 +1435,20 @@ class ParameterRef(AST):
     def toJSON(self) -> dict[str, Any]:
         # ``is_set`` is not serialised (derivable from the ``set-`` prefix).
         # ``param_type`` is emitted in the engine's canonical PascalCase
-        # (``number`` -> ``Number``). ``default`` IS serialised: it is the
-        # per-reference fallback carried on the node (it has no home in the flat
+        # (``number`` -> ``Number``); a ``None`` type stays ``None`` in the
+        # payload, so downstream consumers can distinguish the simplified
+        # form and defer resolution to the same registry the semantic
+        # analyser used. ``default`` IS serialised: it is the per-reference
+        # fallback carried on the node (it has no home in the flat
         # ``{code: type}`` parameters meta-dictionary, which stays type-only).
         return {
             "class_name": self.__class__.__name__,
             "code": self.code,
-            "param_type": canonical_param_type(self.param_type),
+            "param_type": (
+                canonical_param_type(self.param_type)
+                if self.param_type is not None
+                else None
+            ),
             "default": parameter_default_value(self.default),
         }
 

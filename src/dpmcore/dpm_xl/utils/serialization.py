@@ -37,15 +37,12 @@ class ASTToJSONVisitor(NodeVisitor):
         return result
 
     def visit_BinOp(self, node: Any) -> NodeDict:
-        """Visit BinOp nodes."""
-        # Handle match operations as MatchCharactersOp
-        if node.op == "match":
-            return {
-                "class_name": "MatchCharactersOp",
-                "operand": self.visit(node.left),
-                "pattern": self.visit(node.right),
-            }
+        """Visit BinOp nodes.
 
+        ``match`` is a regular binary operator on the wire: the engine
+        consumes it as a ``BinOp`` with ``op == "match"`` (operand on the
+        left, pattern on the right), not as a dedicated node class.
+        """
         return {
             "class_name": "BinOp",
             "op": node.op,
@@ -299,6 +296,12 @@ class ASTToJSONVisitor(NodeVisitor):
                     else sorted(context_sheets)
                 )
 
+                # A cell reference resolves to more than one data point
+                # when it spans an open axis (e.g. an open sheet). Each such
+                # data point needs a coordinate to be identified, regardless
+                # of its data type.
+                multiple_datapoints = len(data_records) > 1
+
                 # Transform the data to match expected JSON structure
                 transformed_data: list[dict[str, Any]] = []
                 for x_index, row_code in enumerate(rows, 1):
@@ -332,8 +335,13 @@ class ASTToJSONVisitor(NodeVisitor):
                         column_code = record.get("column_code", "")
                         sheet_code = record.get("sheet_code", "")
 
-                        # Add x/y/z coordinates for non-scalar types only
-                        if not is_scalar_type:
+                        # Add x/y/z coordinates for non-scalar types, and for
+                        # any cell that resolves to more than one data point:
+                        # a scalar cell spanning an open axis still needs a
+                        # coordinate per entry so the two data points can be
+                        # told apart. A single-entry scalar cell keeps no
+                        # coordinates (it is a positionless value).
+                        if not is_scalar_type or multiple_datapoints:
                             transformed_record["x"] = x_index
 
                             # Find y coordinate based on column position in context
@@ -415,6 +423,14 @@ class ASTToJSONVisitor(NodeVisitor):
                             common_coords.append(coord)
                         elif len(values) > 1:  # Coordinate varies
                             variable_coords.append(coord)
+
+                    # A variable resolving to more than one data point must
+                    # keep at least one coordinate so the engine can identify
+                    # each datum. If nothing varies across the entries, treat
+                    # no coordinate as "common" (prune none) rather than
+                    # stripping every entry down to zero coordinates.
+                    if multiple_datapoints and not variable_coords:
+                        common_coords = []
 
                     # For variable coordinates, add dimension codes to each entry
                     # Map coordinates to their dimension codes from original data
@@ -796,10 +812,18 @@ class ASTToJSONVisitor(NodeVisitor):
             parameter_default_value,
         )
 
+        # ``param_type`` is ``None`` for the simplified ``{pCode}`` spelling,
+        # in which case the engine resolves the type from the parameter
+        # registry at binding time. Emit ``None`` verbatim so the payload
+        # carries the "unresolved" signal.
         return {
             "class_name": "ParameterRef",
             "code": node.code,
-            "param_type": canonical_param_type(node.param_type),
+            "param_type": (
+                canonical_param_type(node.param_type)
+                if node.param_type is not None
+                else None
+            ),
             "default": parameter_default_value(node.default),
         }
 
