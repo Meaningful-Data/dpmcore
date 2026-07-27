@@ -211,21 +211,8 @@ class InputAnalyzer(ASTTemplate, ABC):
         self, node: UnaryOp
     ) -> Operand:
         op = cast(str, node.op)
-        # ``isnull(x)`` on a selection with a non-null default is tautologically
-        # false (the default guarantees the operand is never null). Warn so the
-        # user notices the modelling mistake instead of relying on ``not(...)``
-        # around a constant. ``default:null`` is materialised as a ``Constant``
-        # with ``type_ == "Null"`` (see visitDefault in the AST constructor).
         if op == ISNULL:
-            default = getattr(node.operand, "default", None)
-            if (
-                default is not None
-                and getattr(default, "type", None) != "Null"
-            ):
-                add_semantic_warning(
-                    "isnull(...) on a selection with a non-null default is "
-                    "always false"
-                )
+            self.__warn_if_isnull_has_non_null_default(node)
         operand_symbol = self.visit(node.operand)
         if op in UNARY_OP_MAPPING:
             result = UNARY_OP_MAPPING[op].validate_types(operand_symbol)
@@ -297,6 +284,49 @@ class InputAnalyzer(ASTTemplate, ABC):
             raise errors.SemanticError(
                 "3-6", expected_type=type_, default_type=default_type
             )
+
+    @staticmethod
+    def __warn_if_isnull_has_non_null_default(node: UnaryOp) -> None:
+        """Emit a warning if ``isnull(x)``'s operand has a non-null default.
+
+        Such a call is tautologically false — the default guarantees the
+        operand is never null. Parentheses around the operand parse to a
+        ``ParExpr`` wrapper that carries no ``default`` attribute, so the
+        check would miss ``isnull((x))``; unwrap those first. Only VarID
+        and ParameterRef carry ``default:``; every other operand shape is
+        silently ignored. ``default:null`` materialises as
+        ``Constant(type_="Null")`` (see visitDefault in the AST
+        constructor) and stays warning-free.
+        """
+        inner: Any = node.operand
+        while isinstance(inner, ParExpr):
+            inner = inner.expression
+        default = getattr(inner, "default", None)
+        if default is None or getattr(default, "type", None) == "Null":
+            return
+        selection = InputAnalyzer.__isnull_operand_repr(inner)
+        add_semantic_warning(
+            f"isnull({selection}) is always false: operand has a "
+            f"non-null default (default:{getattr(default, 'value', '?')})"
+        )
+
+    @staticmethod
+    def __isnull_operand_repr(node: Any) -> str:
+        """Render the operand of an ``isnull(...)`` warning message.
+
+        Uses the same formatting as ``generate_operand_expression`` for
+        VarID (``{ tXXX, rY, cZ }``); falls back to the AST class name
+        for anything else, since the warning only fires when a default
+        was found (which limits us to VarID/ParameterRef in practice).
+        """
+        if isinstance(node, VarID):
+            from dpmcore.dpm_xl.utils.operands_mapping import (
+                generate_operand_expression,
+            )
+
+            return generate_operand_expression(node)
+        name = getattr(node, "name", None) or getattr(node, "label", None)
+        return str(name) if name else type(node).__name__
 
     def visit_VarID(  # type: ignore[override]
         self, node: VarID

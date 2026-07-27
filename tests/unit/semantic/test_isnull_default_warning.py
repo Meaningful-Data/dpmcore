@@ -9,9 +9,20 @@ constant.
 
 import contextlib
 
-from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp, VarID
+from dpmcore.dpm_xl.ast.nodes import Constant, ParExpr, UnaryOp, VarID
 from dpmcore.dpm_xl.semantic_analyzer import InputAnalyzer
 from dpmcore.dpm_xl.warning_collector import collect_warnings
+
+
+def _varid(table="C_34.06", cols=("c0010",), default=None):
+    return VarID(
+        table=table,
+        rows=None,
+        cols=list(cols) if cols else None,
+        sheets=None,
+        interval=None,
+        default=default,
+    )
 
 
 def _run_visit(node: UnaryOp) -> list[str]:
@@ -30,34 +41,81 @@ def _run_visit(node: UnaryOp) -> list[str]:
 
 
 def test_isnull_warns_when_operand_has_integer_default():
-    """``isnull({..., default:0})`` should emit a warning."""
-    operand = VarID(
-        table="tC_34.06",
-        rows=["r0010"],
-        cols=["c0010"],
-        sheets=None,
-        interval=None,
-        default=Constant(type_="Integer", value=0),
-    )
+    """``isnull({..., default:0})`` should emit a warning naming the selection."""
+    operand = _varid(default=Constant(type_="Integer", value=0))
     node = UnaryOp(op="isnull", operand=operand)
 
     warnings = _run_visit(node)
 
-    assert any("isnull" in w and "always false" in w for w in warnings), (
+    assert any("always false" in w for w in warnings), (
         f"expected an isnull-tautology warning, got {warnings!r}"
+    )
+    # The message must identify the selection so multiple isnull calls in
+    # the same expression yield distinct lines (andres-sole review on
+    # PR #255).
+    assert any("c0010" in w for w in warnings), (
+        f"warning should name the operand columns, got {warnings!r}"
+    )
+
+
+def test_isnull_warns_through_parentheses():
+    """``isnull((x))`` — parens around the operand must not defeat the check.
+
+    Regression: the AST wraps the operand in a ``ParExpr`` when the user
+    adds redundant parentheses; the naive ``node.operand.default`` lookup
+    misses the underlying VarID.
+    """
+    operand = _varid(default=Constant(type_="Integer", value=0))
+    paren = ParExpr(expression=operand)
+    node = UnaryOp(op="isnull", operand=paren)
+
+    warnings = _run_visit(node)
+
+    assert any("always false" in w and "c0010" in w for w in warnings), (
+        f"expected warning through ParExpr, got {warnings!r}"
+    )
+
+
+def test_isnull_warns_through_nested_parentheses():
+    """``isnull(((x)))`` — multiple ParExpr layers must all be unwrapped."""
+    operand = _varid(default=Constant(type_="Integer", value=0))
+    wrapped = ParExpr(
+        expression=ParExpr(expression=ParExpr(expression=operand))
+    )
+    node = UnaryOp(op="isnull", operand=wrapped)
+
+    warnings = _run_visit(node)
+
+    assert any("always false" in w for w in warnings), (
+        f"expected warning through nested ParExpr, got {warnings!r}"
+    )
+
+
+def test_isnull_warning_identifies_distinct_selections():
+    """Two isnull calls on different selections yield two distinct warnings.
+
+    Reported by andres-sole on PR #255: a shared boilerplate message
+    collapsed to two identical lines in
+    ``isnull({c0040}) and isnull({c0130})``. The message must include the
+    selection so the two lines differ.
+    """
+    a = _varid(cols=("c0040",), default=Constant(type_="Integer", value=0))
+    b = _varid(cols=("c0130",), default=Constant(type_="Integer", value=0))
+    wa = _run_visit(UnaryOp(op="isnull", operand=a))
+    wb = _run_visit(UnaryOp(op="isnull", operand=b))
+
+    combined = wa + wb
+    assert any("c0040" in w for w in combined)
+    assert any("c0130" in w for w in combined)
+    # The two messages must not be identical.
+    assert wa != wb, (
+        f"expected distinct warnings per selection, both were {wa!r}"
     )
 
 
 def test_isnull_does_not_warn_when_operand_has_null_default():
     """``isnull({..., default:null})`` is a legitimate pattern — no warning."""
-    operand = VarID(
-        table="tC_34.06",
-        rows=["r0010"],
-        cols=["c0010"],
-        sheets=None,
-        interval=None,
-        default=Constant(type_="Null", value=None),
-    )
+    operand = _varid(default=Constant(type_="Null", value=None))
     node = UnaryOp(op="isnull", operand=operand)
 
     warnings = _run_visit(node)
@@ -69,15 +127,7 @@ def test_isnull_does_not_warn_when_operand_has_null_default():
 
 def test_isnull_does_not_warn_when_operand_has_no_default():
     """``isnull({..., no default})`` — no warning."""
-    operand = VarID(
-        table="tC_34.06",
-        rows=["r0010"],
-        cols=["c0010"],
-        sheets=None,
-        interval=None,
-        default=None,
-    )
-    node = UnaryOp(op="isnull", operand=operand)
+    node = UnaryOp(op="isnull", operand=_varid(default=None))
 
     warnings = _run_visit(node)
 
@@ -88,14 +138,7 @@ def test_isnull_does_not_warn_when_operand_has_no_default():
 
 def test_non_isnull_unary_op_never_warns():
     """The tautology warning is specific to isnull; other unary ops don't fire it."""
-    operand = VarID(
-        table="tC_34.06",
-        rows=["r0010"],
-        cols=["c0010"],
-        sheets=None,
-        interval=None,
-        default=Constant(type_="Integer", value=0),
-    )
+    operand = _varid(default=Constant(type_="Integer", value=0))
     node = UnaryOp(op="not", operand=operand)
 
     warnings = _run_visit(node)
