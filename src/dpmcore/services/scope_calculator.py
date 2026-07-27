@@ -411,6 +411,17 @@ class ScopeCalculatorService:
         if not tables_dict:
             return None
 
+        # The timeshift is a module-level property carried by the dependency
+        # module's tables. Compute it BEFORE narrowing: narrowing drops any
+        # table not referenced by the cross-rules, and a dropped table takes
+        # its timeshift with it — a module whose only timeshifted table is
+        # not referenced would otherwise fall back to ref_period T.
+        ref_period = "T"
+        for tbl_code in tables_dict:
+            rp = ts.get(tbl_code)
+            if rp and rp != "T":
+                ref_period = rp
+
         # #250: declare only the tables and datapoints the cross-rules
         # actually reference — a whole dependency module is 100+ tables and
         # 10k+ variables, where native EBA scripts declare a handful.
@@ -419,12 +430,6 @@ class ScopeCalculatorService:
         )
         if narrowed:
             tables_dict = narrowed
-
-        ref_period = "T"
-        for tbl_code in tables_dict:
-            rp = ts.get(tbl_code)
-            if rp and rp != "T":
-                ref_period = rp
 
         module_entry: Dict[str, Any] = {
             "URI": uri,
