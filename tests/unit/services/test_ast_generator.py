@@ -199,6 +199,69 @@ class TestExtractReferencedTables:
 
 
 # ------------------------------------------------------------------ #
+# _extract_operand_datapoints (#251)
+# ------------------------------------------------------------------ #
+
+
+class TestExtractOperandDatapoints:
+    def test_collects_datapoints_with_types_across_modules(self):
+        """Both sides of a cross-module rule are collected (#251)."""
+        _, Cls, _ = _bare_svc()
+        ast = {
+            "class_name": "BinOp",
+            "op": "<=",
+            "left": {
+                "class_name": "VarID",
+                "table": "C_01.00",
+                "data": [{"datapoint": 32673, "data_type": "m"}],
+            },
+            "right": {
+                "class_name": "VarID",
+                "table": "F_01.03",
+                "data": [{"datapoint": 56987, "data_type": "m"}],
+            },
+        }
+        assert Cls._extract_operand_datapoints(ast) == {
+            "32673": "m",
+            "56987": "m",
+        }
+
+    def test_collects_every_datapoint_of_a_multi_cell_operand(self):
+        _, Cls, _ = _bare_svc()
+        ast = {
+            "class_name": "VarID",
+            "table": "C_04.00",
+            "data": [
+                {"datapoint": 1, "data_type": "i"},
+                {"datapoint": 2, "data_type": "e"},
+            ],
+        }
+        assert Cls._extract_operand_datapoints(ast) == {"1": "i", "2": "e"}
+
+    def test_missing_type_falls_back_to_empty_string(self):
+        _, Cls, _ = _bare_svc()
+        ast = {"class_name": "VarID", "data": [{"datapoint": 9}]}
+        assert Cls._extract_operand_datapoints(ast) == {"9": ""}
+
+    def test_entries_without_datapoint_are_skipped(self):
+        _, Cls, _ = _bare_svc()
+        ast = {
+            "class_name": "VarID",
+            "data": [{"data_type": "m"}, {"datapoint": None}, "junk"],
+        }
+        assert Cls._extract_operand_datapoints(ast) == {}
+
+    def test_ignores_non_varid_nodes(self):
+        _, Cls, _ = _bare_svc()
+        ast = {
+            "class_name": "Constant",
+            "value": 0,
+            "data": [{"datapoint": 5}],
+        }
+        assert Cls._extract_operand_datapoints(ast) == {}
+
+
+# ------------------------------------------------------------------ #
 # _build_module_info / _build_release_info / _build_dates
 # ------------------------------------------------------------------ #
 
@@ -693,11 +756,11 @@ class TestBuildDependencyInfo:
         )
 
     def test_none_when_primary_missing(self):
-        svc, _, _ = _bare_svc()
+        svc, _, mod = _bare_svc()
         svc._scope_calc = _scope_calc_mock()
         assert (
             svc._build_dependency_info(
-                scope_pairs=[(("e",), MagicMock(), {})],
+                scope_pairs=[(("e",), MagicMock(), {}, mod._OperandRefs())],
                 primary_module_vid=None,
                 release_id=None,
             )
@@ -715,7 +778,7 @@ class TestBuildDependencyInfo:
         )
 
     def test_aggregates_and_dedupes_intra(self):
-        svc, _, _ = _bare_svc()
+        svc, _, mod = _bare_svc()
         svc._scope_calc = _scope_calc_mock(
             detect_return={
                 "intra_instance_validations": ["v1"],
@@ -724,8 +787,8 @@ class TestBuildDependencyInfo:
             }
         )
         scope_pairs = [
-            (("e1", "v1"), MagicMock(), {}),
-            (("e2", "v1"), MagicMock(), {}),
+            (("e1", "v1"), MagicMock(), {}, mod._OperandRefs()),
+            (("e2", "v1"), MagicMock(), {}, mod._OperandRefs()),
         ]
         out = svc._build_dependency_info(
             scope_pairs=scope_pairs,
@@ -751,27 +814,38 @@ class TestMergeDepModules:
         )
         assert "http://a" in existing
 
-    def test_existing_uri_merges_tables_without_overwriting(self):
+    def test_existing_uri_unions_repeated_table_variables(self):
+        """Two operations referencing different cells of the same
+        dependency table must both end up declared (#250).
+        """
         _, Cls, _ = _bare_svc()
         existing = {
             "http://a": {
-                "tables": {"T1": {"variables": {}, "open_keys": {}}},
+                "tables": {
+                    "T1": {"variables": {"v1": "x"}, "open_keys": {"qA": "e"}}
+                },
                 "variables": {"v1": "x"},
             }
         }
         new = {
             "http://a": {
                 "tables": {
-                    "T1": {"variables": {"NEW": "y"}, "open_keys": {}},
-                    "T2": {"variables": {}, "open_keys": {}},
+                    "T1": {"variables": {"v2": "y"}, "open_keys": {"qA": "e"}},
+                    "T2": {"variables": {"v3": "z"}, "open_keys": {}},
                 },
-                "variables": {"v2": "y"},
+                "variables": {"v2": "y", "v3": "z"},
             }
         }
         Cls._merge_dep_modules(existing, new)
-        assert existing["http://a"]["tables"]["T1"]["variables"] == {}
+        t1 = existing["http://a"]["tables"]["T1"]
+        assert t1["variables"] == {"v1": "x", "v2": "y"}
+        assert t1["open_keys"] == {"qA": "e"}
         assert "T2" in existing["http://a"]["tables"]
-        assert existing["http://a"]["variables"] == {"v1": "x", "v2": "y"}
+        assert existing["http://a"]["variables"] == {
+            "v1": "x",
+            "v2": "y",
+            "v3": "z",
+        }
 
 
 # ------------------------------------------------------------------ #
