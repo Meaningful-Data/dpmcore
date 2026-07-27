@@ -120,7 +120,9 @@ class TestCheckHeaderPresentSheetsAlwaysExplicit:
 
     def test_all_operands_declare_sheets_no_raise(self):
         nodes = [
-            _varid("C_07.00.b", rows=["r0110"], cols=["c0210"], sheets=["s0010"]),
+            _varid(
+                "C_07.00.b", rows=["r0110"], cols=["c0210"], sheets=["s0010"]
+            ),
         ]
         oc = _make_oc(nodes)
         oc._check_header_present("C_07.00.b", "sheets")  # must not raise

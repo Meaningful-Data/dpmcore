@@ -467,7 +467,9 @@ def test_no_false_2_6_on_multi_release_headers(
     )
 
 
-def test_single_reference_omitting_closed_sheets_axis_rejected(fixture_session):
+def test_single_reference_omitting_closed_sheets_axis_rejected(
+    fixture_session,
+):
     """A lone reference omitting a closed sheets axis must be rejected."""
     expression = """
     if {tF_01.02, r0020, c0010, default:0} > 0
