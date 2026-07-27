@@ -237,6 +237,8 @@ class ScopeCalculatorService:
         time_shifts: Optional[Dict[str, str]] = None,
         compute_alternative_deps: bool = True,
         release_code: Optional[str] = None,
+        referenced_variables: Optional[Dict[str, str]] = None,
+        referenced_tables: Optional[Set[str]] = None,
     ) -> Dict[str, Any]:
         """Build dependency information for a scope result.
 
@@ -256,6 +258,15 @@ class ScopeCalculatorService:
             release_code: Optional release code; resolved to
                 ``release_id`` via :class:`Release.code`. Mutually
                 exclusive with ``release_id``.
+            referenced_variables: Optional ``{datapoint: type_code}`` of
+                every operand datapoint the operation references, across
+                all modules it spans — home module included. Declared in
+                each dependency module's ``variables`` map (#251).
+            referenced_tables: Optional table codes the operation
+                references. Together with ``referenced_variables`` this
+                narrows each dependency module's declaration to the
+                subset the operation uses (#250); omit both to declare
+                the dependency modules whole.
 
         Returns a dict with:
         - ``intra_instance_validations``
@@ -343,6 +354,8 @@ class ScopeCalculatorService:
                 release_id=release_id,
                 ts=ts,
                 operation_code=operation_code,
+                referenced_variables=referenced_variables,
+                referenced_tables=referenced_tables,
             )
             if entry is None:
                 continue
@@ -375,6 +388,8 @@ class ScopeCalculatorService:
         release_id: Optional[int],
         ts: Dict[str, str],
         operation_code: Optional[str],
+        referenced_variables: Optional[Dict[str, str]] = None,
+        referenced_tables: Optional[Set[str]] = None,
     ) -> Optional[Tuple[Dict[str, Any], str, Dict[str, Any]]]:
         """Build a single (cross_dep, uri, dependency_module) triple.
 
@@ -396,11 +411,25 @@ class ScopeCalculatorService:
         if not tables_dict:
             return None
 
+        # The timeshift is a module-level property carried by the dependency
+        # module's tables. Compute it BEFORE narrowing: narrowing drops any
+        # table not referenced by the cross-rules, and a dropped table takes
+        # its timeshift with it — a module whose only timeshifted table is
+        # not referenced would otherwise fall back to ref_period T.
         ref_period = "T"
         for tbl_code in tables_dict:
             rp = ts.get(tbl_code)
             if rp and rp != "T":
                 ref_period = rp
+
+        # #250: declare only the tables and datapoints the cross-rules
+        # actually reference — a whole dependency module is 100+ tables and
+        # 10k+ variables, where native EBA scripts declare a handful.
+        narrowed = self._narrow_dependency_tables(
+            tables_dict, referenced_tables, referenced_variables
+        )
+        if narrowed:
+            tables_dict = narrowed
 
         module_entry: Dict[str, Any] = {
             "URI": uri,
@@ -419,15 +448,63 @@ class ScopeCalculatorService:
             "from_reference_date": (str(from_date) if from_date else ""),
             "to_reference_date": (str(to_date) if to_date else ""),
         }
+        variables: Dict[str, str] = {
+            k: v
+            for tbl in tables_dict.values()
+            for k, v in tbl.get("variables", {}).items()
+        }
+        # #251: the engine resolves *every* operand of a cross-instance
+        # validation against this map — including operands owned by the
+        # home module. A referenced datapoint missing here leaves the
+        # engine unable to build that operand: a bare single-cell home
+        # operand fails with "Scalar can't be created for this data" and
+        # an aggregated one silently computes 0. The dependency module's
+        # own definition of a datapoint wins over the referencing AST's.
+        for var_id, type_code in sorted((referenced_variables or {}).items()):
+            variables.setdefault(var_id, type_code)
         dep_module = {
             "tables": tables_dict,
-            "variables": {
-                k: v
-                for tbl in tables_dict.values()
-                for k, v in tbl.get("variables", {}).items()
-            },
+            "variables": variables,
         }
         return cross_dep, uri, dep_module
+
+    @staticmethod
+    def _narrow_dependency_tables(
+        tables_dict: Dict[str, Any],
+        referenced_tables: Optional[Set[str]],
+        referenced_variables: Optional[Dict[str, str]],
+    ) -> Dict[str, Any]:
+        """Restrict a dependency module to its referenced tables/datapoints.
+
+        Returns ``{}`` when the caller supplied no reference information,
+        or when narrowing would leave nothing declarable. The caller then
+        keeps the unnarrowed module: over-declaring is wrong, but dropping
+        a genuine cross-instance dependency outright is worse.
+        """
+        if referenced_tables is None and referenced_variables is None:
+            return {}
+
+        narrowed: Dict[str, Any] = {}
+        for tcode, tdata in tables_dict.items():
+            if (
+                referenced_tables is not None
+                and tcode not in referenced_tables
+            ):
+                continue
+            variables = tdata.get("variables", {})
+            if referenced_variables is not None:
+                variables = {
+                    var_id: type_code
+                    for var_id, type_code in variables.items()
+                    if var_id in referenced_variables
+                }
+            # An empty variables map violates the engine schema's
+            # ``minProperties: 1``, so a table narrowed down to nothing is
+            # dropped rather than declared empty.
+            if not variables:
+                continue
+            narrowed[tcode] = {**tdata, "variables": variables}
+        return narrowed
 
     # ------------------------------------------------------------------ #
     # Alternative dependency detection (Fix 3)

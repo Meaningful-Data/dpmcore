@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 import zlib
+from dataclasses import dataclass, field
 from datetime import date as date_cls
 from typing import (
     TYPE_CHECKING,
@@ -42,6 +43,19 @@ _TABLE_CODE_NORMALIZER = re.compile(r"^([A-Z]+)_(\d+)_(\d+)$")
 _DEFAULT_FROM_DATE = "2001-01-01"
 _DEFAULT_NAMESPACE = "default_module"
 _DATA_FIELDS_TO_STRIP = ("data_type", "cell_code", "table_code", "table_vid")
+
+
+@dataclass(frozen=True)
+class _OperandRefs:
+    """What a single operation's operands reference.
+
+    ``tables`` are the table codes of its ``VarID`` nodes; ``variables``
+    maps every operand datapoint id to its scalar type code, across all
+    modules the operation spans (home module included).
+    """
+
+    tables: set[str] = field(default_factory=set)
+    variables: Dict[str, str] = field(default_factory=dict)
 
 
 def _normalize_variable_code(code: str) -> str:
@@ -179,7 +193,12 @@ class ASTGeneratorService:
             operations: Dict[str, Dict[str, Any]] = {}
             failed_operations: Dict[str, str] = {}
             scope_pairs: List[
-                Tuple[Tuple[str, str], "ScopeResult", Dict[str, str]]
+                Tuple[
+                    Tuple[str, str],
+                    "ScopeResult",
+                    Dict[str, str],
+                    _OperandRefs,
+                ]
             ] = []
             referenced_table_codes: set[str] = set()
             referenced_parameters: Dict[str, ParameterInfo] = {}
@@ -198,10 +217,14 @@ class ASTGeneratorService:
 
                 ast = self._semantic.ast
                 ast_dict = serialize_ast(ast)
-                self._clean_ast_data_entries(ast_dict)
-                referenced_table_codes.update(
-                    self._extract_referenced_tables(ast_dict)
+                # Operand refs come off the *raw* serialisation: cleaning
+                # strips the ``data_type`` each datapoint is typed by.
+                op_refs = _OperandRefs(
+                    tables=self._extract_referenced_tables(ast_dict),
+                    variables=self._extract_operand_datapoints(ast_dict),
                 )
+                self._clean_ast_data_entries(ast_dict)
+                referenced_table_codes.update(op_refs.tables)
                 self._accumulate_parameters(
                     referenced_parameters, result.parameters
                 )
@@ -238,7 +261,7 @@ class ASTGeneratorService:
                         "failed_operations": failed_operations,
                     }
                 ts = self._extract_time_shifts(ast)
-                scope_pairs.append((item, sr, ts))
+                scope_pairs.append((item, sr, ts, op_refs))
 
             primary_tables_full = self._scope_calc._get_module_tables(
                 primary_module_vid, release_id=release_id
@@ -1050,8 +1073,8 @@ class ASTGeneratorService:
         for entry in data:
             if not isinstance(entry, dict):
                 continue
-            for field in _DATA_FIELDS_TO_STRIP:
-                entry.pop(field, None)
+            for name in _DATA_FIELDS_TO_STRIP:
+                entry.pop(name, None)
 
     @staticmethod
     def _extract_referenced_tables(ast_dict: Any) -> set[str]:
@@ -1074,6 +1097,55 @@ class ASTGeneratorService:
 
         _walk(ast_dict)
         return codes
+
+    @staticmethod
+    def _extract_operand_datapoints(ast_dict: Any) -> Dict[str, str]:
+        """Walk a serialised AST and return ``{datapoint: data_type}``.
+
+        Every ``VarID`` node carries one ``data`` entry per data point its
+        cell reference resolves to, each holding the datapoint id (the
+        variable id) and its scalar type code. Must run *before*
+        :meth:`_clean_ast_data_entries`, which strips ``data_type``.
+
+        A datapoint with no type resolves to ``""`` — the same fallback
+        :meth:`ScopeCalculatorService._get_module_tables` uses when a
+        property carries no data type.
+        """
+        datapoints: Dict[str, str] = {}
+
+        def _walk(node: Any) -> None:
+            if isinstance(node, dict):
+                ASTGeneratorService._collect_varid_datapoints(node, datapoints)
+                children: Iterable[Any] = node.values()
+            elif isinstance(node, list):
+                children = node
+            else:
+                return
+            for child in children:
+                if isinstance(child, (dict, list)):
+                    _walk(child)
+
+        _walk(ast_dict)
+        return datapoints
+
+    @staticmethod
+    def _collect_varid_datapoints(
+        node: Dict[str, Any],
+        into: Dict[str, str],
+    ) -> None:
+        """Record one ``VarID`` node's datapoints and types into *into*."""
+        if node.get("class_name") != "VarID":
+            return
+        data = node.get("data")
+        if not isinstance(data, list):
+            return
+        for entry in data:
+            if not isinstance(entry, dict):
+                continue
+            dp = entry.get("datapoint")
+            if dp is None:
+                continue
+            into[str(dp)] = entry.get("data_type") or ""
 
     def _accumulate_parameters(
         self,
@@ -1175,7 +1247,12 @@ class ASTGeneratorService:
     def _build_dependency_info(
         self,
         scope_pairs: List[
-            Tuple[Tuple[str, str], "ScopeResult", Dict[str, str]]
+            Tuple[
+                Tuple[str, str],
+                "ScopeResult",
+                Dict[str, str],
+                _OperandRefs,
+            ]
         ],
         primary_module_vid: Optional[int],
         release_id: Optional[int],
@@ -1199,7 +1276,7 @@ class ASTGeneratorService:
         all_dep_modules: Dict[str, Any] = {}
         all_scope_results: List["ScopeResult"] = []
 
-        for item, sr, ts in scope_pairs:
+        for item, sr, ts, refs in scope_pairs:
             all_scope_results.append(sr)
             op_code = item[1]
             current = self._scope_calc.detect_cross_module_dependencies(
@@ -1209,6 +1286,8 @@ class ASTGeneratorService:
                 release_id=release_id,
                 time_shifts=ts,
                 compute_alternative_deps=False,
+                referenced_variables=refs.variables,
+                referenced_tables=refs.tables,
             )
             all_intra.extend(current.get("intra_instance_validations", []))
             self._merge_cross_deps(
@@ -1284,19 +1363,26 @@ class ASTGeneratorService:
     ) -> None:
         """Merge *new* dependency_modules into *existing*.
 
-        Avoids table duplicates within each module URI.
+        Avoids table duplicates within each module URI. Two operations
+        can reference different cells of the same dependency table, and
+        each declares only the datapoints it uses (#250), so a repeated
+        table unions its ``variables`` rather than keeping the first.
         """
         for uri, data in new.items():
             if uri not in existing:
                 existing[uri] = data
-            else:
-                for tbl, tbl_data in data.get("tables", {}).items():
-                    existing[uri].setdefault("tables", {}).setdefault(
-                        tbl, tbl_data
-                    )
-                existing[uri].setdefault("variables", {}).update(
-                    data.get("variables", {})
-                )
+                continue
+            tables = existing[uri].setdefault("tables", {})
+            for tbl, tbl_data in data.get("tables", {}).items():
+                if tbl not in tables:
+                    tables[tbl] = tbl_data
+                    continue
+                merged_vars = dict(tables[tbl].get("variables", {}))
+                merged_vars.update(tbl_data.get("variables", {}))
+                tables[tbl] = {**tables[tbl], "variables": merged_vars}
+            existing[uri].setdefault("variables", {}).update(
+                data.get("variables", {})
+            )
 
     @staticmethod
     def _to_ref_period(internal: str) -> str:
