@@ -69,6 +69,7 @@ from dpmcore.dpm_xl.types.scalar import (
     Null,
     ScalarFactory,
     ScalarType,
+    String,
 )
 from dpmcore.dpm_xl.utils.data_handlers import filter_all_data
 from dpmcore.dpm_xl.utils.operands_mapping import set_operand_label
@@ -90,6 +91,7 @@ from dpmcore.dpm_xl.utils.tokens import (
     FILTER,
     GET,
     IF,
+    ISNULL,
     RENAME,
     STANDARD,
     SUB,
@@ -208,8 +210,23 @@ class InputAnalyzer(ASTTemplate, ABC):
     def visit_UnaryOp(  # type: ignore[override]
         self, node: UnaryOp
     ) -> Operand:
-        operand_symbol = self.visit(node.operand)
         op = cast(str, node.op)
+        # ``isnull(x)`` on a selection with a non-null default is tautologically
+        # false (the default guarantees the operand is never null). Warn so the
+        # user notices the modelling mistake instead of relying on ``not(...)``
+        # around a constant. ``default:null`` is materialised as a ``Constant``
+        # with ``type_ == "Null"`` (see visitDefault in the AST constructor).
+        if op == ISNULL:
+            default = getattr(node.operand, "default", None)
+            if (
+                default is not None
+                and getattr(default, "type", None) != "Null"
+            ):
+                add_semantic_warning(
+                    "isnull(...) on a selection with a non-null default is "
+                    "always false"
+                )
+        operand_symbol = self.visit(node.operand)
         if op in UNARY_OP_MAPPING:
             result = UNARY_OP_MAPPING[op].validate_types(operand_symbol)
         else:
@@ -266,6 +283,16 @@ class InputAnalyzer(ASTTemplate, ABC):
         # default on a Number cell (String → Number is an Explicit cast).
         # Null already promotes to every type; a Mixed cell has unknown type
         # (no dict entry, empty ``cell_implicities``) and accepts any default.
+        # String is the sink of the implicit-promotion table (every scalar
+        # promotes to String), which would let e.g. ``default:0`` land on a
+        # String cell — reject that explicitly; only String and Null defaults
+        # are meaningful on a String cell.
+        if isinstance(type_, String) and not isinstance(
+            default_type, (String, Null)
+        ):
+            raise errors.SemanticError(
+                "3-6", expected_type=type_, default_type=default_type
+            )
         if cell_implicities and not type_.is_included(default_implicities):
             raise errors.SemanticError(
                 "3-6", expected_type=type_, default_type=default_type

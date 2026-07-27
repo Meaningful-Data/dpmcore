@@ -37,35 +37,58 @@ class TestCheckDefaultValue:
             default_value, expected_type
         )
 
-    def test_integer_default_for_string_is_valid(self):
-        """Integer default for String operand should be valid (Integer can be promoted to String)."""
+    def test_integer_default_for_string_raises_error(self):
+        """Integer default for String operand should raise SemanticError 3-6.
+
+        Issue #254: Integer→String is a formatting cast, not a meaningful
+        default for a String cell — the user almost certainly meant
+        ``default:"0"`` or ``default:null``.
+        """
         default_value = self._create_constant("Integer", 0)
         expected_type = String()
 
-        # Should not raise any exception
-        InputAnalyzer._InputAnalyzer__check_default_value(
-            default_value, expected_type
-        )
+        with pytest.raises(SemanticError) as exc_info:
+            InputAnalyzer._InputAnalyzer__check_default_value(
+                default_value, expected_type
+            )
 
-    def test_number_default_for_string_is_valid(self):
-        """Number default for String operand should be valid (Number can be promoted to String)."""
+        assert "Invalid default type" in str(exc_info.value)
+        assert "Integer" in str(exc_info.value)
+        assert "String" in str(exc_info.value)
+
+    def test_number_default_for_string_raises_error(self):
+        """Number default for String operand should raise SemanticError 3-6.
+
+        Issue #254: see ``test_integer_default_for_string_raises_error``.
+        """
         default_value = self._create_constant("Number", 0.0)
         expected_type = String()
 
-        # Should not raise any exception
-        InputAnalyzer._InputAnalyzer__check_default_value(
-            default_value, expected_type
-        )
+        with pytest.raises(SemanticError) as exc_info:
+            InputAnalyzer._InputAnalyzer__check_default_value(
+                default_value, expected_type
+            )
 
-    def test_boolean_default_for_string_is_valid(self):
-        """Boolean default for String operand should be valid (Boolean can be promoted to String)."""
+        assert "Invalid default type" in str(exc_info.value)
+        assert "Number" in str(exc_info.value)
+        assert "String" in str(exc_info.value)
+
+    def test_boolean_default_for_string_raises_error(self):
+        """Boolean default for String operand should raise SemanticError 3-6.
+
+        Issue #254: see ``test_integer_default_for_string_raises_error``.
+        """
         default_value = self._create_constant("Boolean", True)
         expected_type = String()
 
-        # Should not raise any exception
-        InputAnalyzer._InputAnalyzer__check_default_value(
-            default_value, expected_type
-        )
+        with pytest.raises(SemanticError) as exc_info:
+            InputAnalyzer._InputAnalyzer__check_default_value(
+                default_value, expected_type
+            )
+
+        assert "Invalid default type" in str(exc_info.value)
+        assert "Boolean" in str(exc_info.value)
+        assert "String" in str(exc_info.value)
 
     def test_boolean_default_for_boolean_is_valid(self):
         """Boolean default for Boolean operand should be valid."""
@@ -191,15 +214,22 @@ class TestCheckDefaultValue:
         assert "Integer" in str(exc_info.value)
         assert "TimeInterval" in str(exc_info.value)
 
-    def test_item_default_for_string_is_valid(self):
-        """Item default for String operand should be valid (Item can be promoted to String)."""
+    def test_item_default_for_string_raises_error(self):
+        """Item default for String operand should raise SemanticError 3-6.
+
+        Issue #254: see ``test_integer_default_for_string_raises_error``.
+        """
         default_value = self._create_constant("Item", "[x1]")
         expected_type = String()
 
-        # Should not raise any exception
-        InputAnalyzer._InputAnalyzer__check_default_value(
-            default_value, expected_type
-        )
+        with pytest.raises(SemanticError) as exc_info:
+            InputAnalyzer._InputAnalyzer__check_default_value(
+                default_value, expected_type
+            )
+
+        assert "Invalid default type" in str(exc_info.value)
+        assert "Item" in str(exc_info.value)
+        assert "String" in str(exc_info.value)
 
     def test_none_default_value_is_valid(self):
         """None default value should be valid (no check performed)."""
