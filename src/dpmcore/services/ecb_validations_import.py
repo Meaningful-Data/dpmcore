@@ -72,6 +72,13 @@ class EcbValidationsImportResult:
 class EcbValidationsImportService:
     """Import ECB validation rules from a CSV export into a DPM database."""
 
+    # Fixed floor for every ID this service assigns, so ECB's IDs stay put
+    # across releases instead of drifting with the native EBA/DPM dataset.
+    _ECB_ID_BASE = 1_030_000_000
+
+    # Required headroom between the native max ID and `_ECB_ID_BASE`.
+    _ECB_ID_BASE_MIN_MARGIN = 1_000_000
+
     def __init__(self, engine: Engine) -> None:
         """Initialise the service with a SQLAlchemy engine."""
         self._engine = engine
@@ -183,10 +190,57 @@ class EcbValidationsImportService:
         return match.group(1) if match else None
 
     @staticmethod
-    def _next_int_id(session: Session, model: Any, attr_name: str) -> int:
+    def _next_int_id(
+        session: Session,
+        model: Any,
+        attr_name: str,
+        *,
+        floor: Optional[int] = None,
+    ) -> int:
+        """Return the next available ID for ``attr_name`` on ``model``.
+
+        Without ``floor`` this is a plain "max + 1" over the whole table,
+        which drifts release to release as the surrounding EBA/DPM dataset
+        grows. Passing ``floor`` scopes the scan to IDs already inside that
+        reserved block, so the first assigned ID stays the same run after
+        run regardless of how large the rest of the table has become.
+        """
         column = getattr(model, attr_name)
-        current = session.query(func.max(column)).scalar()
-        return int(current or 0) + 1
+        query = session.query(func.max(column))
+        if floor is not None:
+            query = query.filter(column >= floor)
+        current = query.scalar()
+        if current is None:
+            return floor if floor is not None else 1
+        return int(current) + 1
+
+    @staticmethod
+    def _assert_id_floor_margin(
+        session: Session,
+        model: Any,
+        attr_name: str,
+        *,
+        floor: int,
+        min_margin: int,
+    ) -> None:
+        """Fail loudly if native IDs have drifted too close to ``floor``.
+
+        ``floor`` only keeps ECB's IDs stable as long as every *native*
+        (non-ECB) row in the table stays comfortably below it. Only ECB
+        import ever writes IDs `>= floor`, so ``max(id) < floor`` is always
+        the native high-water mark, regardless of whether this run is a
+        fresh import or a re-run over an already-imported database.
+        """
+        column = getattr(model, attr_name)
+        native_max = (
+            session.query(func.max(column)).filter(column < floor).scalar()
+        )
+        if native_max is not None and floor - int(native_max) < min_margin:
+            raise EcbValidationsImportError(
+                f"Native {model.__name__}.{attr_name} max ({native_max})"
+                f" is within {min_margin} of _ECB_ID_BASE ({floor});"
+                " bump _ECB_ID_BASE."
+            )
 
     def _create_operation_concept(
         self,
@@ -383,9 +437,14 @@ class EcbValidationsImportService:
         if not table_codes:
             return 0
 
-        next_node_id = self._next_int_id(session, OperationNode, "node_id")
+        next_node_id = self._next_int_id(
+            session, OperationNode, "node_id", floor=self._ECB_ID_BASE
+        )
         next_ref_id = self._next_int_id(
-            session, OperandReference, "operand_reference_id"
+            session,
+            OperandReference,
+            "operand_reference_id",
+            floor=self._ECB_ID_BASE,
         )
 
         node = OperationNode(
@@ -537,14 +596,29 @@ class EcbValidationsImportService:
             default=None,
         )
 
+        for model, attr_name in (
+            (Operation, "operation_id"),
+            (OperationVersion, "operation_vid"),
+            (OperationNode, "node_id"),
+            (OperandReference, "operand_reference_id"),
+        ):
+            self._assert_id_floor_margin(
+                session,
+                model,
+                attr_name,
+                floor=self._ECB_ID_BASE,
+                min_margin=self._ECB_ID_BASE_MIN_MARGIN,
+            )
+
         counters = {
             "operation_id": self._next_int_id(
-                session, Operation, "operation_id"
+                session, Operation, "operation_id", floor=self._ECB_ID_BASE
             ),
             "operation_vid": self._next_int_id(
                 session,
                 OperationVersion,
                 "operation_vid",
+                floor=self._ECB_ID_BASE,
             ),
         }
         operations_created = 0

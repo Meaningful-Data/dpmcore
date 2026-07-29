@@ -238,6 +238,106 @@ class TestEcbValidationsImport:
         finally:
             session.close()
 
+    def test_next_int_id_with_floor_ignores_rows_below_floor(
+        self, service_with_schema, sqlite_engine_with_schema
+    ):
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            # Rows below the floor (e.g. another org's growing dataset)
+            # must not influence the floor-scoped block's next ID.
+            session.add(
+                Organisation(org_id=5, name="Org5", acronym="O5", id_prefix=1)
+            )
+            session.flush()
+            result = EcbValidationsImportService._next_int_id(
+                session, Organisation, "org_id", floor=1000
+            )
+            assert result == 1000
+        finally:
+            session.close()
+
+    def test_next_int_id_with_floor_returns_max_plus_one_inside_block(
+        self, service_with_schema, sqlite_engine_with_schema
+    ):
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            session.add(
+                Organisation(org_id=5, name="Org5", acronym="O5", id_prefix=1)
+            )
+            session.add(
+                Organisation(
+                    org_id=1000, name="Org1000", acronym="O1K", id_prefix=2
+                )
+            )
+            session.flush()
+            result = EcbValidationsImportService._next_int_id(
+                session, Organisation, "org_id", floor=1000
+            )
+            assert result == 1001
+        finally:
+            session.close()
+
+    def test_assert_id_floor_margin_passes_with_sufficient_margin(
+        self, service_with_schema, sqlite_engine_with_schema
+    ):
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            session.add(
+                Organisation(org_id=5, name="Org5", acronym="O5", id_prefix=1)
+            )
+            session.flush()
+            EcbValidationsImportService._assert_id_floor_margin(
+                session,
+                Organisation,
+                "org_id",
+                floor=1000,
+                min_margin=100,
+            )
+        finally:
+            session.close()
+
+    def test_assert_id_floor_margin_passes_when_no_native_rows(
+        self, service_with_schema, sqlite_engine_with_schema
+    ):
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            EcbValidationsImportService._assert_id_floor_margin(
+                session,
+                Organisation,
+                "org_id",
+                floor=1000,
+                min_margin=100,
+            )
+        finally:
+            session.close()
+
+    def test_assert_id_floor_margin_raises_when_native_ids_drift_too_close(
+        self, service_with_schema, sqlite_engine_with_schema
+    ):
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            # Native org_id has drifted within the reserved margin of the
+            # floor: the reservation is no longer a safe anchor.
+            session.add(
+                Organisation(
+                    org_id=950, name="Org950", acronym="O950", id_prefix=1
+                )
+            )
+            session.flush()
+            with pytest.raises(
+                EcbValidationsImportError,
+                match="within 100 of _ECB_ID_BASE",
+            ):
+                EcbValidationsImportService._assert_id_floor_margin(
+                    session,
+                    Organisation,
+                    "org_id",
+                    floor=1000,
+                    min_margin=100,
+                )
+        finally:
+            session.close()
+
     def test_get_or_create_ecb_organisation_creates_new(
         self, service_with_schema, sqlite_engine_with_schema
     ):
@@ -494,6 +594,59 @@ class TestEcbValidationsImport:
         result = service_with_schema.import_csv(str(csv_file))
 
         assert result.operation_versions_created == 1
+
+    def test_operation_ids_stable_despite_growing_dataset(self, tmp_path):
+        """Regression: ECB IDs must not drift as the EBA/DPM dataset grows.
+
+        Before this fix, ECB Operation/OperationVersion IDs were assigned
+        as ``max(id) + 1`` over the *whole* table, so they silently
+        shifted release to release as unrelated EBA validations were
+        added ahead of them. Anchoring to the fixed ``_ECB_ID_BASE`` floor
+        keeps the assigned ID the same regardless of how large the rest
+        of the table has grown.
+        """
+        from dpmcore.orm.base import Base
+        from dpmcore.orm.operations import Operation
+
+        csv_file = tmp_path / "ecb.csv"
+        csv_file.write_text(
+            "vr_code,start_release\nV1,4.0\n", encoding="utf-8"
+        )
+
+        def _assigned_operation_id(dummy_count: int) -> int:
+            engine = create_engine("sqlite:///:memory:")
+            Base.metadata.create_all(engine)
+
+            session = sessionmaker(bind=engine)()
+            for i in range(1, dummy_count + 1):
+                session.add(
+                    Operation(
+                        operation_id=i,
+                        code=f"DUMMY_{i}",
+                        type="validation",
+                        source="hierarchy",
+                    )
+                )
+            session.commit()
+            session.close()
+
+            EcbValidationsImportService(engine).import_csv(str(csv_file))
+
+            session = sessionmaker(bind=engine)()
+            try:
+                operation = (
+                    session.query(Operation)
+                    .filter(Operation.code == "V1")
+                    .one()
+                )
+                return operation.operation_id
+            finally:
+                session.close()
+
+        small_dataset_id = _assigned_operation_id(10)
+        large_dataset_id = _assigned_operation_id(5000)
+
+        assert small_dataset_id == large_dataset_id
 
     def test_extract_table_codes_for_empty_expression_returns_empty_set(
         self, service_with_schema, sqlite_engine_with_schema
