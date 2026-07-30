@@ -5,11 +5,12 @@ Each reference file `scripts/mdpm_references/<MODULE>-<VERSION>.json` defines
 one module to test. For each, we:
   1. Call `generate_module` (DB → ASTGeneratorService) to produce dpmcore's
      equivalent JSON in memory.
-  2. Compare seven blocks against the MDPM reference: operations (keys +
+  2. Compare eight blocks against the MDPM reference: operations (keys +
      per-code AST fingerprint / severity / root_operator_id), preconditions,
-     tables, variables, dependency_modules (dep URIs + per-URI tables /
-     variables + per-(uri, table) variables), and dependency_information
-     (intra classification + cross-scope fingerprint + alternative deps).
+     tables (keys + per-table variables / open_keys), variables,
+     dependency_modules (dep URIs + per-URI tables / variables + per-(uri,
+     table) variables), and dependency_information (intra classification +
+     cross-scope fingerprint + alternative deps).
   3. Aggregate per-module deltas and totals, categorise findings against the
      known divergence classes (see
      `~/.claude/projects/-home-victorp-dpmcore/memory/project_mdpm_parity_findings.md`),
@@ -193,6 +194,108 @@ def _dep_module_totals(dep_diff: dict) -> dict:
         "table_variables_only_in_new_total": over_tv,
         "table_variables_only_in_ref_total": under_tv,
         "tables_with_variable_diff": tv_tables_with_diff,
+    }
+
+
+def _diff_tables_content(ref_tables: dict, new_tables: dict) -> dict:
+    """For tables present on both sides, diff their internal blocks.
+
+    Each table entry carries ``variables`` (a ``{variable_id: data_type}``
+    map, i.e. what datapoints of the table appear in this module's
+    scripts) and ``open_keys`` (a ``{property_code: data_type}`` map with
+    the dimensions the table exposes). The top-level ``tables`` diff only
+    compares which table codes are present; without this content diff a
+    silent re-assignment inside a table — a new open-key added, a
+    datapoint's type flipped, a datapoint dropped — goes unnoticed.
+
+    Related past commits that touched this area:
+      - ``feat(semantic): add baseCurrency as an implicit open-key``
+        (dbacdea, reverted) — would add ``baseCurrency`` to some tables.
+      - #240 / ``fix(dpm-xl): don't fail scope calc on non-filing-indicator
+        preconditions`` — changes which tables surface open-keys.
+    """
+    ref_tables = ref_tables or {}
+    new_tables = new_tables or {}
+    shared = set(ref_tables) & set(new_tables)
+
+    variables_diff_count = 0
+    open_keys_diff_count = 0
+    variables_only_in_new_total = 0
+    variables_only_in_ref_total = 0
+    variables_type_mismatch_total = 0
+    open_keys_only_in_new_total = 0
+    open_keys_only_in_ref_total = 0
+    open_keys_type_mismatch_total = 0
+    per_table: dict[str, dict] = {}
+
+    for tbl in sorted(shared):
+        r = ref_tables[tbl] or {}
+        n = new_tables[tbl] or {}
+        r_vars = r.get("variables") or {}
+        n_vars = n.get("variables") or {}
+        r_keys = r.get("open_keys") or {}
+        n_keys = n.get("open_keys") or {}
+
+        v_only_ref = sorted(set(r_vars) - set(n_vars))
+        v_only_new = sorted(set(n_vars) - set(r_vars))
+        v_type_mismatches = [
+            {"variable_id": vid, "ref": r_vars[vid], "new": n_vars[vid]}
+            for vid in sorted(set(r_vars) & set(n_vars))
+            if r_vars[vid] != n_vars[vid]
+        ]
+        k_only_ref = sorted(set(r_keys) - set(n_keys))
+        k_only_new = sorted(set(n_keys) - set(r_keys))
+        k_type_mismatches = [
+            {"property_code": pc, "ref": r_keys[pc], "new": n_keys[pc]}
+            for pc in sorted(set(r_keys) & set(n_keys))
+            if r_keys[pc] != n_keys[pc]
+        ]
+
+        if v_only_ref or v_only_new or v_type_mismatches:
+            variables_diff_count += 1
+        if k_only_ref or k_only_new or k_type_mismatches:
+            open_keys_diff_count += 1
+
+        variables_only_in_new_total += len(v_only_new)
+        variables_only_in_ref_total += len(v_only_ref)
+        variables_type_mismatch_total += len(v_type_mismatches)
+        open_keys_only_in_new_total += len(k_only_new)
+        open_keys_only_in_ref_total += len(k_only_ref)
+        open_keys_type_mismatch_total += len(k_type_mismatches)
+
+        if (
+            v_only_ref
+            or v_only_new
+            or v_type_mismatches
+            or k_only_ref
+            or (k_only_new or k_type_mismatches)
+        ):
+            entry: dict = {}
+            if v_only_ref or v_only_new or v_type_mismatches:
+                entry["variables"] = {
+                    "only_in_ref": v_only_ref[:20],
+                    "only_in_new": v_only_new[:20],
+                    "type_mismatches": v_type_mismatches[:20],
+                }
+            if k_only_ref or k_only_new or k_type_mismatches:
+                entry["open_keys"] = {
+                    "only_in_ref": k_only_ref,
+                    "only_in_new": k_only_new,
+                    "type_mismatches": k_type_mismatches,
+                }
+            per_table[tbl] = entry
+
+    return {
+        "shared_count": len(shared),
+        "tables_with_variables_diff": variables_diff_count,
+        "tables_with_open_keys_diff": open_keys_diff_count,
+        "variables_only_in_new_total": variables_only_in_new_total,
+        "variables_only_in_ref_total": variables_only_in_ref_total,
+        "variables_type_mismatch_total": variables_type_mismatch_total,
+        "open_keys_only_in_new_total": open_keys_only_in_new_total,
+        "open_keys_only_in_ref_total": open_keys_only_in_ref_total,
+        "open_keys_type_mismatch_total": open_keys_type_mismatch_total,
+        "per_table_sample": dict(list(per_table.items())[:20]),
     }
 
 
@@ -540,6 +643,19 @@ def _classify(module_result: dict) -> list[str]:
     if ops_content.get("root_operator_diff_count"):
         tags.append("finding12_operation_root_operator_diff")
 
+    # Finding 13 (tables content): internal variables map of a table diverges.
+    # Catches datapoint additions/drops/type-flips inside an already-shared
+    # table code — invisible without opening the table entry.
+    tables_content = cmp.get("tables_content") or {}
+    if tables_content.get("tables_with_variables_diff"):
+        tags.append("finding13_table_variables_diff")
+
+    # Finding 14 (tables content): open_keys map of a table diverges. Adding
+    # baseCurrency to a table's open_keys (dbacdea, reverted) or dropping
+    # a real property would fire here.
+    if tables_content.get("tables_with_open_keys_diff"):
+        tags.append("finding14_table_open_keys_diff")
+
     # Anything else weird → unclassified
     unexplained = (
         bool(ops.get("only_in_ref"))  # MDPM-only ops (dpmcore should have ALL)
@@ -644,6 +760,11 @@ def check_module(session: Session, ref_path: Path) -> dict:
         new_root.get("operations") or {},
     )
 
+    tables_content_diff = _diff_tables_content(
+        ref_root.get("tables") or {},
+        new_root.get("tables") or {},
+    )
+
     module_result = {
         "file": ref_path.name,
         "module_code": module_code,
@@ -653,6 +774,7 @@ def check_module(session: Session, ref_path: Path) -> dict:
             "operations": _diff_set(ref_ops, new_ops),
             "operations_content": ops_content_diff,
             "tables": _diff_set(ref_tables, new_tables),
+            "tables_content": tables_content_diff,
             "variables": _diff_set(ref_vars, new_vars),
             "preconditions": _diff_preconditions(
                 ref_root.get("preconditions") or {},
@@ -723,6 +845,8 @@ def _summary_line(r: dict) -> str:
         "finding10_operation_ast_diff": "🧬",
         "finding11_operation_severity_diff": "⚠️",
         "finding12_operation_root_operator_diff": "🌳",
+        "finding13_table_variables_diff": "📊",
+        "finding14_table_open_keys_diff": "🔑",
         "unclassified": "❓",
     }
     tags = r.get("tags") or []
@@ -754,6 +878,7 @@ def _summary_line(r: dict) -> str:
         + di_tot.get("cross_affected_op_diffs", 0)
     )
     oc = cmp.get("operations_content") or {}
+    tc = cmp.get("tables_content") or {}
     return (
         f"{emoji:4} {r['file']:40} "
         f"ops={ops['new_count']:>4}/{ops['ref_count']:<4} "
@@ -768,6 +893,8 @@ def _summary_line(r: dict) -> str:
         f"di_cross_diff={cross_diff:>3} "
         f"ast_diff={oc.get('ast_diff_count', 0):>3}"
         f"/{oc.get('shared_count', 0):<4} "
+        f"tbl_vars_diff={tc.get('tables_with_variables_diff', 0):>2} "
+        f"tbl_keys_diff={tc.get('tables_with_open_keys_diff', 0):>2} "
         f"tags={','.join(tags)}"
     )
 
