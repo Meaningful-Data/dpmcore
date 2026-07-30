@@ -64,6 +64,14 @@ def _diff_set(ref: set, new: set) -> dict:
 def _diff_preconditions(ref_pc: dict, new_pc: dict) -> dict:
     """MDPM keys are p_<OperationID>; dpmcore keys are p_<variable_vid>.
     Compare on (variable_id, variable_code) instead — that's the AST identity.
+
+    Compound preconditions used to fingerprint via
+    ``json.dumps(ast, sort_keys=True)`` on the raw dict, so any DB-side
+    surrogate (``operand_reference_id``, ``variable_id`` deeper in the
+    tree) caused a false structural mismatch. Route them through the same
+    normalisation as ``_diff_operations_content``: strip DB-specific ids
+    and keep everything else, so compounds that match structurally match
+    here too.
     """
 
     def fingerprint(pc_dict):
@@ -73,7 +81,7 @@ def _diff_preconditions(ref_pc: dict, new_pc: dict) -> dict:
             if ast.get("class_name") == "PreconditionItem":
                 key = (ast.get("variable_id"), ast.get("variable_code"))
             else:
-                key = ("compound", json.dumps(ast, sort_keys=True))
+                key = ("compound", _ast_fingerprint(ast))
             out[key] = (k, v)
         return out
 
