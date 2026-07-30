@@ -197,6 +197,35 @@ def _dep_module_totals(dep_diff: dict) -> dict:
     }
 
 
+def _diff_dict_values(ref_map: dict, new_map: dict) -> dict:
+    """Diff two ``key -> value`` maps.
+
+    Extends :func:`_diff_set` (which only reports key set membership) by
+    also flagging entries whose keys are shared but whose values differ.
+    Used for ``variables[vid] -> data type marker`` and
+    ``precondition_variables[vid] -> data type marker`` at the module
+    top level. Silent type flips on a shared datapoint are the exact
+    shape catchable here.
+    """
+    ref_map = ref_map or {}
+    new_map = new_map or {}
+    ref_keys = set(ref_map)
+    new_keys = set(new_map)
+    mismatches = [
+        {"key": k, "ref": ref_map[k], "new": new_map[k]}
+        for k in sorted(ref_keys & new_keys)
+        if ref_map[k] != new_map[k]
+    ]
+    return {
+        "ref_count": len(ref_keys),
+        "new_count": len(new_keys),
+        "only_in_ref": sorted(ref_keys - new_keys),
+        "only_in_new": sorted(new_keys - ref_keys),
+        "value_mismatches_count": len(mismatches),
+        "value_mismatches_sample": mismatches[:20],
+    }
+
+
 def _diff_tables_content(ref_tables: dict, new_tables: dict) -> dict:
     """For tables present on both sides, diff their internal blocks.
 
@@ -656,6 +685,30 @@ def _classify(module_result: dict) -> list[str]:
     if tables_content.get("tables_with_open_keys_diff"):
         tags.append("finding14_table_open_keys_diff")
 
+    # Finding 15 (variables values): shared variable_id has a different
+    # data-type marker on each side (e.g. "m" vs "n"). Silent type flips
+    # on a datapoint that both scripts declare would otherwise be missed.
+    vars_diff = cmp.get("variables") or {}
+    if vars_diff.get("value_mismatches_count"):
+        tags.append("finding15_variable_type_mismatch")
+
+    # Finding 16 (precondition_variables): same shape as finding15 but for
+    # the ``precondition_variables`` block that the parity used to ignore.
+    pv_diff = cmp.get("precondition_variables") or {}
+    if (
+        pv_diff.get("value_mismatches_count")
+        or pv_diff.get("only_in_ref")
+        or pv_diff.get("only_in_new")
+    ):
+        tags.append("finding16_precondition_variables_diff")
+
+    # Finding 17 (metadata): module_code, module_version, framework_code,
+    # dpm_release or dates disagree. Rare, but a canary for infrastructure
+    # errors in the generator.
+    meta = cmp.get("metadata") or {}
+    if meta.get("mismatches"):
+        tags.append("finding17_metadata_mismatch")
+
     # Anything else weird → unclassified
     unexplained = (
         bool(ops.get("only_in_ref"))  # MDPM-only ops (dpmcore should have ALL)
@@ -765,6 +818,42 @@ def check_module(session: Session, ref_path: Path) -> dict:
         new_root.get("tables") or {},
     )
 
+    variables_diff = _diff_dict_values(
+        ref_root.get("variables") or {},
+        new_root.get("variables") or {},
+    )
+    pv_diff = _diff_dict_values(
+        ref_root.get("precondition_variables") or {},
+        new_root.get("precondition_variables") or {},
+    )
+
+    # `parameters` is dpmcore-only (the reference never carries it).
+    # Report the count for coherence tracking, without diffing.
+    parameters_new = new_root.get("parameters") or {}
+
+    metadata_diff = {
+        "module_code": {
+            "ref": ref_root.get("module_code"),
+            "new": new_root.get("module_code"),
+        },
+        "module_version": {
+            "ref": ref_root.get("module_version"),
+            "new": new_root.get("module_version"),
+        },
+        "framework_code": {
+            "ref": ref_root.get("framework_code"),
+            "new": new_root.get("framework_code"),
+        },
+        "dpm_release": {
+            "ref": ref_root.get("dpm_release"),
+            "new": new_root.get("dpm_release"),
+        },
+        "dates": {"ref": ref_root.get("dates"), "new": new_root.get("dates")},
+    }
+    metadata_mismatches = [
+        k for k, v in metadata_diff.items() if v["ref"] != v["new"]
+    ]
+
     module_result = {
         "file": ref_path.name,
         "module_code": module_code,
@@ -775,13 +864,22 @@ def check_module(session: Session, ref_path: Path) -> dict:
             "operations_content": ops_content_diff,
             "tables": _diff_set(ref_tables, new_tables),
             "tables_content": tables_content_diff,
-            "variables": _diff_set(ref_vars, new_vars),
+            "variables": variables_diff,
+            "precondition_variables": pv_diff,
             "preconditions": _diff_preconditions(
                 ref_root.get("preconditions") or {},
                 new_root.get("preconditions") or {},
             ),
             "dependency_modules": dep_diff,
             "dependency_information": di_diff,
+            "parameters": {
+                "ref_present": False,
+                "new_count": len(parameters_new),
+            },
+            "metadata": {
+                "mismatches": metadata_mismatches,
+                "details": metadata_diff if metadata_mismatches else {},
+            },
         },
         "dep_module_totals": dep_totals,
         "dep_info_totals": di_totals,
@@ -847,6 +945,9 @@ def _summary_line(r: dict) -> str:
         "finding12_operation_root_operator_diff": "🌳",
         "finding13_table_variables_diff": "📊",
         "finding14_table_open_keys_diff": "🔑",
+        "finding15_variable_type_mismatch": "♻️",
+        "finding16_precondition_variables_diff": "🎯",
+        "finding17_metadata_mismatch": "🚨",
         "unclassified": "❓",
     }
     tags = r.get("tags") or []
@@ -879,12 +980,21 @@ def _summary_line(r: dict) -> str:
     )
     oc = cmp.get("operations_content") or {}
     tc = cmp.get("tables_content") or {}
+    var_types = vars_.get("value_mismatches_count", 0)
+    pv = cmp.get("precondition_variables") or {}
+    pv_diff = (
+        pv.get("value_mismatches_count", 0)
+        + len(pv.get("only_in_new", []))
+        + len(pv.get("only_in_ref", []))
+    )
+    meta_mm = len((cmp.get("metadata") or {}).get("mismatches", []))
     return (
         f"{emoji:4} {r['file']:40} "
         f"ops={ops['new_count']:>4}/{ops['ref_count']:<4} "
         f"(+{len(ops['only_in_new']):>3}/-{len(ops['only_in_ref']):>3}) "
         f"tables={tabs['new_count']:>3}/{tabs['ref_count']:<3} "
         f"vars={vars_['new_count']:>5}/{vars_['ref_count']:<5} "
+        f"(vtype_mm={var_types:>3}) "
         f"pc_ast={pcs['ast_matched']:>2}/{pcs['ref_count']:<2} "
         f"pc_naming_diff={pcs['naming_mismatches']:>2} "
         f"dm={dm.get('new_count', 0):>2}/{dm.get('ref_count', 0):<2} "
@@ -895,6 +1005,7 @@ def _summary_line(r: dict) -> str:
         f"/{oc.get('shared_count', 0):<4} "
         f"tbl_vars_diff={tc.get('tables_with_variables_diff', 0):>2} "
         f"tbl_keys_diff={tc.get('tables_with_open_keys_diff', 0):>2} "
+        f"pv_diff={pv_diff:>3} meta_mm={meta_mm:>1} "
         f"tags={','.join(tags)}"
     )
 
