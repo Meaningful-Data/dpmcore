@@ -5,10 +5,11 @@ Each reference file `scripts/mdpm_references/<MODULE>-<VERSION>.json` defines
 one module to test. For each, we:
   1. Call `generate_module` (DB → ASTGeneratorService) to produce dpmcore's
      equivalent JSON in memory.
-  2. Compare four blocks against the MDPM reference: operations, preconditions,
-     tables, variables.
+  2. Compare five blocks against the MDPM reference: operations, preconditions,
+     tables, variables, and dependency_modules (dep URIs + per-URI tables /
+     variables + per-(uri, table) variables).
   3. Aggregate per-module deltas and totals, categorise findings against the
-     three known divergence classes (see
+     known divergence classes (see
      `~/.claude/projects/-home-victorp-dpmcore/memory/project_mdpm_parity_findings.md`),
      and flag anything that doesn't fit a known pattern as a "new" finding.
 
@@ -106,6 +107,93 @@ def _diff_preconditions(ref_pc: dict, new_pc: dict) -> dict:
     }
 
 
+def _diff_dependency_modules(ref_dm: dict, new_dm: dict) -> dict:
+    """Diff ``dependency_modules`` at three levels.
+
+    Level 1 — set of dependency URIs (``only_in_ref`` / ``only_in_new``).
+    Level 2 — per-URI ``tables`` and ``variables`` sets, for URIs present
+              on both sides.
+    Level 3 — per-``(uri, table)`` ``variables`` map (datapoint → type),
+              for tables present on both sides. Only tables whose variable
+              sets actually differ are reported to keep the payload small.
+
+    The block was invisible to the parity check until this addition: bugs
+    #250 (over-declaration of dep-module tables / variables) and #251
+    (missing home-module operand variables inside a dep module) both live
+    strictly inside ``dependency_modules`` and were surfaced only after
+    #253 shipped. Diffing here catches future regressions of the same
+    shape at QA time.
+    """
+    ref_dm = ref_dm or {}
+    new_dm = new_dm or {}
+    ref_uris = set(ref_dm.keys())
+    new_uris = set(new_dm.keys())
+
+    per_uri: dict[str, dict] = {}
+    for uri in ref_uris & new_uris:
+        ref_entry = ref_dm.get(uri) or {}
+        new_entry = new_dm.get(uri) or {}
+        ref_tables = set((ref_entry.get("tables") or {}).keys())
+        new_tables = set((new_entry.get("tables") or {}).keys())
+        ref_variables = set((ref_entry.get("variables") or {}).keys())
+        new_variables = set((new_entry.get("variables") or {}).keys())
+
+        table_variables: dict[str, dict] = {}
+        for tbl in ref_tables & new_tables:
+            ref_tv = set(
+                (
+                    (ref_entry["tables"][tbl] or {}).get("variables") or {}
+                ).keys()
+            )
+            new_tv = set(
+                (
+                    (new_entry["tables"][tbl] or {}).get("variables") or {}
+                ).keys()
+            )
+            if ref_tv != new_tv:
+                table_variables[tbl] = _diff_set(ref_tv, new_tv)
+
+        per_uri[uri] = {
+            "tables": _diff_set(ref_tables, new_tables),
+            "variables": _diff_set(ref_variables, new_variables),
+            "table_variables": table_variables,
+        }
+
+    return {
+        "ref_count": len(ref_uris),
+        "new_count": len(new_uris),
+        "only_in_ref": sorted(ref_uris - new_uris),
+        "only_in_new": sorted(new_uris - ref_uris),
+        "per_uri": per_uri,
+    }
+
+
+def _dep_module_totals(dep_diff: dict) -> dict:
+    """Roll up counts across all shared URIs for at-a-glance signalling."""
+    over_tables = under_tables = 0
+    over_vars = under_vars = 0
+    over_tv = under_tv = 0
+    tv_tables_with_diff = 0
+    for uri_diff in dep_diff.get("per_uri", {}).values():
+        over_tables += len(uri_diff["tables"]["only_in_new"])
+        under_tables += len(uri_diff["tables"]["only_in_ref"])
+        over_vars += len(uri_diff["variables"]["only_in_new"])
+        under_vars += len(uri_diff["variables"]["only_in_ref"])
+        for tv_diff in uri_diff["table_variables"].values():
+            over_tv += len(tv_diff["only_in_new"])
+            under_tv += len(tv_diff["only_in_ref"])
+            tv_tables_with_diff += 1
+    return {
+        "tables_only_in_new_total": over_tables,
+        "tables_only_in_ref_total": under_tables,
+        "variables_only_in_new_total": over_vars,
+        "variables_only_in_ref_total": under_vars,
+        "table_variables_only_in_new_total": over_tv,
+        "table_variables_only_in_ref_total": under_tv,
+        "tables_with_variable_diff": tv_tables_with_diff,
+    }
+
+
 def _classify(module_result: dict) -> list[str]:
     """Tag each module with the known finding labels that explain its deltas.
     Anything left unexplained surfaces as 'unclassified'.
@@ -115,6 +203,8 @@ def _classify(module_result: dict) -> list[str]:
     ops = cmp.get("operations") or {}
     pcs = cmp.get("preconditions") or {}
     tabs = cmp.get("tables") or {}
+    dm = cmp.get("dependency_modules") or {}
+    dm_totals = module_result.get("dep_module_totals") or {}
 
     # Finding 1: dpmcore over-includes ops & those extras carry compound-AND /
     # abs / .b table-variant expressions
@@ -130,6 +220,35 @@ def _classify(module_result: dict) -> list[str]:
     # and dpmcore lacks no others.
     if tabs.get("only_in_ref") and not tabs.get("only_in_new"):
         tags.append("finding3_tables_vars_missing")
+
+    # Finding 4 (dep_modules): dependency URIs differ. Extras on either side
+    # signal a scope-detection divergence; keep them as separate tags because
+    # the two failure modes are opposite (dpmcore invents a dep vs dpmcore
+    # forgets one).
+    if dm.get("only_in_ref"):
+        tags.append("finding4_dep_uri_missing_in_new")
+    if dm.get("only_in_new"):
+        tags.append("finding4_dep_uri_extra_in_new")
+
+    # Finding 5 (dep_modules): for shared URIs, dpmcore over-declares dep
+    # tables / variables / per-table variables — the shape of #250 (whole
+    # module emitted instead of the referenced subset).
+    if (
+        dm_totals.get("tables_only_in_new_total")
+        or dm_totals.get("variables_only_in_new_total")
+        or dm_totals.get("table_variables_only_in_new_total")
+    ):
+        tags.append("finding5_dep_over_declaration")
+
+    # Finding 6 (dep_modules): for shared URIs, dpmcore under-declares dep
+    # tables / variables / per-table variables — the shape of #251 (home
+    # operand not grafted into the dep module's variables map).
+    if (
+        dm_totals.get("tables_only_in_ref_total")
+        or dm_totals.get("variables_only_in_ref_total")
+        or dm_totals.get("table_variables_only_in_ref_total")
+    ):
+        tags.append("finding6_dep_under_declaration")
 
     # Anything else weird → unclassified
     unexplained = (
@@ -218,6 +337,12 @@ def check_module(session: Session, ref_path: Path) -> dict:
     ]
     finding1_signal = _looks_like_finding_1(extras_exprs)
 
+    dep_diff = _diff_dependency_modules(
+        ref_root.get("dependency_modules") or {},
+        new_root.get("dependency_modules") or {},
+    )
+    dep_totals = _dep_module_totals(dep_diff)
+
     module_result = {
         "file": ref_path.name,
         "module_code": module_code,
@@ -231,7 +356,9 @@ def check_module(session: Session, ref_path: Path) -> dict:
                 ref_root.get("preconditions") or {},
                 new_root.get("preconditions") or {},
             ),
+            "dependency_modules": dep_diff,
         },
+        "dep_module_totals": dep_totals,
         "finding1_signal": finding1_signal,
     }
     module_result["tags"] = _classify(module_result)
@@ -243,6 +370,30 @@ def check_module(session: Session, ref_path: Path) -> dict:
             if len(c[k]) > 50:
                 c[f"{k}_truncated_total"] = len(c[k])
                 c[k] = c[k][:50]
+
+    # Same guard for dependency_modules at all three levels.
+    dm = module_result["comparison"]["dependency_modules"]
+    for k in ("only_in_ref", "only_in_new"):
+        if len(dm[k]) > 50:
+            dm[f"{k}_truncated_total"] = len(dm[k])
+            dm[k] = dm[k][:50]
+    for uri_diff in dm["per_uri"].values():
+        for sub in ("tables", "variables"):
+            for k in ("only_in_ref", "only_in_new"):
+                if len(uri_diff[sub][k]) > 50:
+                    uri_diff[sub][f"{k}_truncated_total"] = len(
+                        uri_diff[sub][k]
+                    )
+                    uri_diff[sub][k] = uri_diff[sub][k][:50]
+        # Cap the number of tables whose variables are enumerated to keep the
+        # report readable when dozens of tables in one dep module differ.
+        if len(uri_diff["table_variables"]) > 50:
+            uri_diff["table_variables_truncated_total"] = len(
+                uri_diff["table_variables"]
+            )
+            uri_diff["table_variables"] = dict(
+                list(uri_diff["table_variables"].items())[:50]
+            )
 
     return module_result
 
@@ -258,6 +409,10 @@ def _summary_line(r: dict) -> str:
         "finding1_dpmcore_extra_ops": "📈",
         "finding2_precondition_naming": "🔤",
         "finding3_tables_vars_missing": "📉",
+        "finding4_dep_uri_missing_in_new": "🔻",
+        "finding4_dep_uri_extra_in_new": "🔺",
+        "finding5_dep_over_declaration": "🌊",
+        "finding6_dep_under_declaration": "🕳️",
         "unclassified": "❓",
     }
     tags = r.get("tags") or []
@@ -267,6 +422,18 @@ def _summary_line(r: dict) -> str:
     tabs = cmp["tables"]
     vars_ = cmp["variables"]
     pcs = cmp["preconditions"]
+    dm = cmp.get("dependency_modules") or {}
+    dm_tot = r.get("dep_module_totals") or {}
+    dm_over = (
+        dm_tot.get("tables_only_in_new_total", 0)
+        + dm_tot.get("variables_only_in_new_total", 0)
+        + dm_tot.get("table_variables_only_in_new_total", 0)
+    )
+    dm_under = (
+        dm_tot.get("tables_only_in_ref_total", 0)
+        + dm_tot.get("variables_only_in_ref_total", 0)
+        + dm_tot.get("table_variables_only_in_ref_total", 0)
+    )
     return (
         f"{emoji:4} {r['file']:40} "
         f"ops={ops['new_count']:>4}/{ops['ref_count']:<4} "
@@ -275,6 +442,8 @@ def _summary_line(r: dict) -> str:
         f"vars={vars_['new_count']:>5}/{vars_['ref_count']:<5} "
         f"pc_ast={pcs['ast_matched']:>2}/{pcs['ref_count']:<2} "
         f"pc_naming_diff={pcs['naming_mismatches']:>2} "
+        f"dm={dm.get('new_count', 0):>2}/{dm.get('ref_count', 0):<2} "
+        f"(+{dm_over:>4}/-{dm_under:<4}) "
         f"tags={','.join(tags)}"
     )
 
