@@ -5,7 +5,8 @@ Each reference file `scripts/mdpm_references/<MODULE>-<VERSION>.json` defines
 one module to test. For each, we:
   1. Call `generate_module` (DB → ASTGeneratorService) to produce dpmcore's
      equivalent JSON in memory.
-  2. Compare six blocks against the MDPM reference: operations, preconditions,
+  2. Compare seven blocks against the MDPM reference: operations (keys +
+     per-code AST fingerprint / severity / root_operator_id), preconditions,
      tables, variables, dependency_modules (dep URIs + per-URI tables /
      variables + per-(uri, table) variables), and dependency_information
      (intra classification + cross-scope fingerprint + alternative deps).
@@ -192,6 +193,106 @@ def _dep_module_totals(dep_diff: dict) -> dict:
         "table_variables_only_in_new_total": over_tv,
         "table_variables_only_in_ref_total": under_tv,
         "tables_with_variable_diff": tv_tables_with_diff,
+    }
+
+
+_AST_DB_SPECIFIC_FIELDS = ("operand_reference_id", "variable_id")
+
+
+def _normalize_ast(node):
+    """Return a canonical form of *node* stripped of DB-specific ids.
+
+    ``operand_reference_id`` and ``variable_id`` are database-assigned
+    surrogate keys that legitimately differ between environments; leaving
+    them in would report every operation as diverging. Everything else —
+    including ``datapoint`` codes, ``row``/``column``/``sheet`` labels,
+    literal values, operator names, and nested children — is preserved
+    so a real structural change surfaces.
+    """
+    if isinstance(node, dict):
+        return {
+            k: _normalize_ast(v)
+            for k, v in node.items()
+            if k not in _AST_DB_SPECIFIC_FIELDS
+        }
+    if isinstance(node, list):
+        return [_normalize_ast(item) for item in node]
+    return node
+
+
+def _ast_fingerprint(ast) -> str:
+    """Stable string fingerprint of a normalised AST."""
+    return json.dumps(_normalize_ast(ast), sort_keys=True, default=str)
+
+
+def _diff_operations_content(ref_ops: dict, new_ops: dict) -> dict:
+    """For operations present in both sides, diff scalar fields and AST.
+
+    Compares ``severity``, ``root_operator_id`` and a canonical AST
+    fingerprint (see :func:`_ast_fingerprint`). ``expression`` is checked
+    separately as a string equality after collapsing whitespace, because
+    reference and dpmcore both derive the string from the same tokens but
+    formatting may drift. ``version_id`` is intentionally NOT compared
+    (it is a DB surrogate that always differs).
+
+    Regressions of the shape of #254 (``isnull`` warning path), ``match``
+    binop serialisation (e36b4fe), ``{pCode}`` (9cf5b4b), ``baseCurrency``
+    (dbacdea) — all changed the AST payload — are the intended catch.
+    """
+    shared = set(ref_ops) & set(new_ops)
+
+    ast_diffs = 0
+    severity_diffs = []
+    root_op_diffs = []
+    expression_diffs = 0
+    ast_diff_samples: list[dict] = []
+
+    def _collapse_ws(s: str) -> str:
+        return " ".join((s or "").split())
+
+    for code in sorted(shared):
+        r = ref_ops[code] or {}
+        n = new_ops[code] or {}
+
+        r_fp = _ast_fingerprint(r.get("ast"))
+        n_fp = _ast_fingerprint(n.get("ast"))
+        if r_fp != n_fp:
+            ast_diffs += 1
+            if len(ast_diff_samples) < 5:
+                ast_diff_samples.append({"code": code})
+
+        if r.get("severity") != n.get("severity"):
+            severity_diffs.append(
+                {
+                    "code": code,
+                    "ref": r.get("severity"),
+                    "new": n.get("severity"),
+                }
+            )
+
+        if r.get("root_operator_id") != n.get("root_operator_id"):
+            root_op_diffs.append(
+                {
+                    "code": code,
+                    "ref": r.get("root_operator_id"),
+                    "new": n.get("root_operator_id"),
+                }
+            )
+
+        if _collapse_ws(r.get("expression")) != _collapse_ws(
+            n.get("expression")
+        ):
+            expression_diffs += 1
+
+    return {
+        "shared_count": len(shared),
+        "ast_diff_count": ast_diffs,
+        "ast_diff_samples": ast_diff_samples,
+        "severity_diff_count": len(severity_diffs),
+        "severity_diff_samples": severity_diffs[:10],
+        "root_operator_diff_count": len(root_op_diffs),
+        "root_operator_diff_samples": root_op_diffs[:10],
+        "expression_diff_count": expression_diffs,
     }
 
 
@@ -421,6 +522,24 @@ def _classify(module_result: dict) -> list[str]:
     if di_totals.get("alt_only_in_new") or di_totals.get("alt_only_in_ref"):
         tags.append("finding9_alternative_deps_diff")
 
+    # Finding 10 (operations content): among operations present on both
+    # sides, the AST fingerprint differs. Catches regressions of the
+    # shape of #254 (isnull semantic), match serialisation (e36b4fe),
+    # {pCode} parameterRef (9cf5b4b), baseCurrency (dbacdea) — every
+    # dpm-xl change that touches the AST payload lives here and would
+    # be invisible with only key-level diffing of operations.
+    ops_content = cmp.get("operations_content") or {}
+    if ops_content.get("ast_diff_count"):
+        tags.append("finding10_operation_ast_diff")
+
+    # Finding 11 (operations content): severity mismatch on shared codes.
+    if ops_content.get("severity_diff_count"):
+        tags.append("finding11_operation_severity_diff")
+
+    # Finding 12 (operations content): root_operator_id mismatch.
+    if ops_content.get("root_operator_diff_count"):
+        tags.append("finding12_operation_root_operator_diff")
+
     # Anything else weird → unclassified
     unexplained = (
         bool(ops.get("only_in_ref"))  # MDPM-only ops (dpmcore should have ALL)
@@ -520,6 +639,11 @@ def check_module(session: Session, ref_path: Path) -> dict:
     )
     di_totals = _dep_info_totals(di_diff)
 
+    ops_content_diff = _diff_operations_content(
+        ref_root.get("operations") or {},
+        new_root.get("operations") or {},
+    )
+
     module_result = {
         "file": ref_path.name,
         "module_code": module_code,
@@ -527,6 +651,7 @@ def check_module(session: Session, ref_path: Path) -> dict:
         "input_stats": result.get("input_stats"),
         "comparison": {
             "operations": _diff_set(ref_ops, new_ops),
+            "operations_content": ops_content_diff,
             "tables": _diff_set(ref_tables, new_tables),
             "variables": _diff_set(ref_vars, new_vars),
             "preconditions": _diff_preconditions(
@@ -595,6 +720,9 @@ def _summary_line(r: dict) -> str:
         "finding7_intra_classification_diff": "🏷️",
         "finding8_cross_dependency_diff": "🔗",
         "finding9_alternative_deps_diff": "🔀",
+        "finding10_operation_ast_diff": "🧬",
+        "finding11_operation_severity_diff": "⚠️",
+        "finding12_operation_root_operator_diff": "🌳",
         "unclassified": "❓",
     }
     tags = r.get("tags") or []
@@ -625,6 +753,7 @@ def _summary_line(r: dict) -> str:
         + di_tot.get("cross_only_in_ref", 0)
         + di_tot.get("cross_affected_op_diffs", 0)
     )
+    oc = cmp.get("operations_content") or {}
     return (
         f"{emoji:4} {r['file']:40} "
         f"ops={ops['new_count']:>4}/{ops['ref_count']:<4} "
@@ -637,6 +766,8 @@ def _summary_line(r: dict) -> str:
         f"(+{dm_over:>4}/-{dm_under:<4}) "
         f"di_intra_diff={intra_diff:>3} "
         f"di_cross_diff={cross_diff:>3} "
+        f"ast_diff={oc.get('ast_diff_count', 0):>3}"
+        f"/{oc.get('shared_count', 0):<4} "
         f"tags={','.join(tags)}"
     )
 
