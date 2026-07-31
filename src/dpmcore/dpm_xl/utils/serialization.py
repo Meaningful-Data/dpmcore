@@ -812,18 +812,10 @@ class ASTToJSONVisitor(NodeVisitor):
             parameter_default_value,
         )
 
-        # ``param_type`` is ``None`` for the simplified ``{pCode}`` spelling,
-        # in which case the engine resolves the type from the parameter
-        # registry at binding time. Emit ``None`` verbatim so the payload
-        # carries the "unresolved" signal.
         return {
             "class_name": "ParameterRef",
             "code": node.code,
-            "param_type": (
-                canonical_param_type(node.param_type)
-                if node.param_type is not None
-                else None
-            ),
+            "param_type": canonical_param_type(node.param_type),
             "default": parameter_default_value(node.default),
         }
 
