@@ -859,7 +859,7 @@ conversions (e.g., Integer + Decimal → Decimal).
 | Boolean | `AND`, `OR`, `NOT` |
 | Conditional | `IF-THEN-ELSE` |
 | Aggregate | `SUM`, `AVG`, `MIN`, `MAX`, `COUNT` |
-| Clause | `WHERE`, `FILTER`, `RENAME`, `SUB` |
+| Clause | `WHERE`, `GET`, `FILTER`, `RENAME`, `SUB` |
 | String | String manipulation operators |
 | Time | `TIMESHIFT` and temporal operators |
 
@@ -877,6 +877,21 @@ Component (abstract)
 
 Structure (component set with unique keys + single fact)
 ```
+
+Which components a clause operator may target:
+
+| Operator | DPM Key | Standard Key (`r`/`c`/`s`) | Fact (`f`) | Attribute |
+|----------|---------|----------------------------|------------|-----------|
+| `WHERE`  | yes     | no                         | yes        | yes       |
+| `GET`    | yes     | no                         | no         | yes       |
+| `RENAME` | yes     | no                         | no         | yes       |
+| `SUB`    | yes     | no                         | no         | no        |
+
+`WHERE` filters on the fact value and leaves the structure untouched, so it
+accepts the Fact Component; projecting onto it (`GET`), renaming it or
+substituting it stays invalid (`4-5-0-1`). `GET` re-types the result Fact
+Component to the data type of the selected component. Attribute Components
+are accepted structurally but no selection currently produces any.
 
 ### 10.6 Semantic Analyzer
 

@@ -11,6 +11,7 @@ from dpmcore.dpm_xl.ast.ml_generation import MLGeneration
 from dpmcore.dpm_xl.ast.nodes import (
     Constant,
     CountSetOp,
+    Dimension,
     IntersectSetOp,
     Set,
     SetdiffOp,
@@ -20,6 +21,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     UnionSetOp,
     VarID,
 )
+from dpmcore.dpm_xl.utils.tokens import FACT
 from dpmcore.orm.operations import (
     OperandReference,
     OperandReferenceLocation,
@@ -252,3 +254,23 @@ def test_visit_var_id_builds_operand_reference_and_location_with_real_attributes
     assert op_ref.operand_reference == "variable"
     assert op_ref_loc.cell_id == 7
     assert op_ref_loc.table == "T1"
+
+
+def test_visit_dimension_on_the_fact_emits_a_leaf_without_operand_refs(
+    ml_generation,
+):
+    """The Fact Component is not a Property, so there is nothing to reference.
+
+    ``visit_Dimension`` normally resolves the code to a ``property_id`` and
+    adds an ``OperandReference``; the dictionary has no row for "f", so the
+    component name is stored on the node itself instead — the same mechanism
+    literal arguments use.
+    """
+    ml_generation.session = MagicMock()
+    node = Dimension(dimension_code=FACT)
+
+    ml_generation.visit_Dimension(node)
+
+    assert node.scalar == FACT
+    assert ml_generation.create_operation_node.call_count == 1
+    assert ml_generation.session.add.call_count == 0
