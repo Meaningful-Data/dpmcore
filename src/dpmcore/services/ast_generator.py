@@ -729,12 +729,18 @@ class ASTGeneratorService:
     def _resolve_root_operator_id(ast: Any, session: "Session") -> int:
         """Resolve the OperatorID at the root of an expression AST.
 
-        Walks past structural wrappers (``Start``, ``ParExpr``,
-        ``WithExpression``, ``PersistentAssignment`` /
-        ``TemporaryAssignment``) down to the first node carrying an
-        ``op`` attribute, then looks up ``Operator.OperatorID`` by
-        ``Symbol`` via the same DataFrame
+        Walks past structural wrappers (``Start``, ``WithExpression``,
+        ``PersistentAssignment`` / ``TemporaryAssignment``) down to the
+        first node carrying an ``op`` attribute, then looks up
+        ``Operator.OperatorID`` by ``Symbol`` via the same DataFrame
         ``MLGeneration.create_operation_node`` uses.
+
+        ``ParExpr`` is treated as the operator itself (Symbol ``()``,
+        OperatorID 37 in the reference operator table), mirroring pydpm:
+        an expression whose body is wrapped in parentheses roots at the
+        paren operator, not at the operator inside. ``CondExpr`` and
+        ``ParExpr`` carry no ``op`` attribute but map to fixed synthetic
+        symbols.
 
         Raises ``RuntimeError`` if no operator is resolvable.
         """
@@ -750,9 +756,6 @@ class ASTGeneratorService:
                     break
                 node = children[0]
                 continue
-            if class_name == "ParExpr":
-                node = node.expression
-                continue
             if class_name == "WithExpression":
                 node = node.expression
                 continue
@@ -762,14 +765,20 @@ class ASTGeneratorService:
                 continue
             break
 
+        class_name = type(node).__name__
         op_symbol = getattr(node, "op", None)
-        if not op_symbol and type(node).__name__ == "CondExpr":
+        if not op_symbol and class_name == "CondExpr":
             # CondExpr carries no ``op`` attribute; its operator is fixed.
             op_symbol = "if-then-else"
+        elif not op_symbol and class_name == "ParExpr":
+            # ParExpr carries no ``op`` attribute either; the root of
+            # a body wrapped in parentheses is the paren operator, not
+            # the operator inside. pydpm serialises this as OperatorID 37.
+            op_symbol = "()"
         if not op_symbol:
             raise RuntimeError(
                 f"Cannot resolve root operator: AST root "
-                f"{type(node).__name__!r} has no 'op' attribute."
+                f"{class_name!r} has no 'op' attribute."
             )
 
         df = OperatorQuery.get_operators(session)

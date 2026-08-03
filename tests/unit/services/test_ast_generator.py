@@ -637,6 +637,43 @@ class TestResolveRootOperatorId:
         )
         assert Cls._resolve_root_operator_id(with_expr, MagicMock()) == 30
 
+    def test_parexpr_root_resolves_to_paren_operator(self, monkeypatch):
+        # A ParExpr root has no 'op' attribute; when the whole expression
+        # body is wrapped in parentheses the operator IS the paren itself,
+        # not the operator inside — mirroring pydpm's OperatorID 37 for
+        # the "()" symbol. Regression guard for the previous walk that
+        # descended into ParExpr.expression and returned the inner op.
+        _, Cls, _ = _bare_svc()
+        ParExpr = type("ParExpr", (), {})
+        node = ParExpr()
+        node.op = None
+        inner = type("BinOp", (), {})()
+        inner.op = ">="  # would have been picked before the fix
+        node.expression = inner
+
+        WithExpression = type("WithExpression", (), {})
+        with_expr = WithExpression()
+        with_expr.expression = node
+
+        class FakeOperatorQuery:
+            @staticmethod
+            def get_operators(session):  # noqa: ARG004
+                import pandas as pd
+
+                return pd.DataFrame(
+                    [
+                        {"Symbol": "()", "OperatorID": 37},
+                        {"Symbol": ">=", "OperatorID": 15},
+                    ]
+                )
+
+        monkeypatch.setitem(
+            sys.modules,
+            "dpmcore.dpm_xl.model_queries",
+            SimpleNamespace(OperatorQuery=FakeOperatorQuery),
+        )
+        assert Cls._resolve_root_operator_id(with_expr, MagicMock()) == 37
+
     def test_unresolvable_root_raises(self, monkeypatch):
         _, Cls, _ = _bare_svc()
         # No 'op' attribute anywhere.
