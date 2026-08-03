@@ -71,6 +71,17 @@ def get_open_keys_for_tables(
                 TableVersion.end_release_id > release_id,
             ),
             TableVersion.start_release_id <= release_id,
+            # ItemCategory has its own release window: a property can
+            # be renamed across releases (e.g. ``LES`` up to release 3,
+            # ``qLES`` from release 3 onwards) and both rows share the
+            # same ``ItemID``. Without this filter both codes end up in
+            # the open_keys map for any release, duplicating each
+            # property with its historical alias.
+            or_(
+                ItemCategory.end_release_id.is_(None),
+                ItemCategory.end_release_id > release_id,
+            ),
+            ItemCategory.start_release_id <= release_id,
         )
 
     query = query.distinct().order_by(TableVersion.code, ItemCategory.code)
