@@ -344,6 +344,18 @@ class ScopeCalculatorService:
         )
         mv_by_vid = {mv.module_vid: mv for mv in mv_rows}
 
+        # Tables owned by the primary (home) module — a dep module that
+        # also lists any of these is sharing a table with the home; the
+        # sharing belongs to the home declaration, not to the dep, so
+        # exclude them from dependency_modules[<dep>].tables. Without
+        # this, cross-module ops that touch a shared table declare it
+        # twice (once in home, once in every dep that also owns it).
+        primary_tables = set(
+            self._get_module_tables(
+                primary_module_vid, release_id=release_id
+            ).keys()
+        )
+
         for vid in sorted_vids:
             mv = mv_by_vid.get(vid)
             if not mv:
@@ -356,6 +368,7 @@ class ScopeCalculatorService:
                 operation_code=operation_code,
                 referenced_variables=referenced_variables,
                 referenced_tables=referenced_tables,
+                home_module_tables=primary_tables,
             )
             if entry is None:
                 continue
@@ -390,6 +403,7 @@ class ScopeCalculatorService:
         operation_code: Optional[str],
         referenced_variables: Optional[Dict[str, str]] = None,
         referenced_tables: Optional[Set[str]] = None,
+        home_module_tables: Optional[Set[str]] = None,
     ) -> Optional[Tuple[Dict[str, Any], str, Dict[str, Any]]]:
         """Build a single (cross_dep, uri, dependency_module) triple.
 
@@ -397,6 +411,14 @@ class ScopeCalculatorService:
         when every one of its tables is variable-less (and therefore
         dropped, since the engine schema requires
         ``minProperties: 1`` on each table's variables map).
+
+        ``home_module_tables`` is the set of table codes owned by the
+        primary (home) module. Tables that appear in both the home and
+        the dependency (a shared table like ``I_05.00`` present in both
+        IF_CLASS2 and IF_CLASS3) belong to the home declaration and
+        must be excluded from ``dependency_modules[<dep>].tables`` —
+        otherwise the engine sees the same table declared on both sides
+        and downstream lookups can pick the wrong copy.
         """
         uri = self._get_module_uri(module_vid=vid, mv=mv)
         if not uri:
@@ -410,6 +432,21 @@ class ScopeCalculatorService:
         }
         if not tables_dict:
             return None
+        # Drop tables the primary (home) module also declares — the shared
+        # ones belong to the home declaration. Skip if the exclusion would
+        # leave the dep empty (a dep whose entire table set is contained in
+        # the home is either a genuine full overlap we still want to declare
+        # or a test fixture where the mock returns the same tables for
+        # every vid).
+        home = home_module_tables or set()
+        if home:
+            filtered = {
+                tcode: tdata
+                for tcode, tdata in tables_dict.items()
+                if tcode not in home
+            }
+            if filtered:
+                tables_dict = filtered
 
         # The timeshift is a module-level property carried by the dependency
         # module's tables. Compute it BEFORE narrowing: narrowing drops any
