@@ -627,13 +627,20 @@ class ASTGeneratorService:
         return mv.end_release_id
 
     def _latest_release_in_window(self, mv: Any) -> Any:
-        """Pick the latest ``released`` Release covering *mv*'s window.
+        """Pick the latest Release covering *mv*'s window.
 
-        Comparison runs against the date-based sort order of each
-        candidate (``Release.date``), not the opaque ``ReleaseID`` FK; an
-        undated (unpublished) release ranks as the latest candidate.
-        Falls back to the latest of any status if no released row
-        matches.
+        A release marked ``is_current`` in the DB is the DB's own signal
+        that this row represents "the current release" — pick that one
+        first (there can only be one). When no candidate is marked
+        current, fall back to the latest by date-based sort order
+        (``Release.date`` via :func:`compute_sort_order`), then to the
+        latest of any status if no released row matches.
+
+        The previous logic filtered candidates to ``status='released'``
+        before ordering by date, which silently downgraded a newer
+        release still in ``status='validation'`` — the exact shape that
+        made dpmcore emit ``4.2`` while the reference declared ``4.2.1``
+        for the same fixture DB.
         """
         from dpmcore.orm.infrastructure import Release
         from dpmcore.orm.release_sort_order import (
@@ -670,6 +677,9 @@ class ASTGeneratorService:
             candidates.append((so, r))
         if not candidates:
             return None
+        current = [(so, r) for so, r in candidates if r.is_current]
+        if current:
+            return max(current, key=lambda pair: pair[0])[1]
         released = [(so, r) for so, r in candidates if r.status == "released"]
         pool = released or candidates
         return max(pool, key=lambda pair: pair[0])[1]
