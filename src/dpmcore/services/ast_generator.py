@@ -22,7 +22,10 @@ from dpmcore.dpm_xl.utils.tokens import (
     SEVERITY_WARNING,
     VALID_SEVERITIES,
 )
-from dpmcore.errors import SemanticError
+from dpmcore.services._parameters import merge_parameters
+from dpmcore.services._precondition_codes import (
+    extract_precondition_codes as _extract_precondition_codes,
+)
 from dpmcore.services.semantic import ParameterInfo, SemanticService
 from dpmcore.services.syntax import SyntaxService
 
@@ -1165,19 +1168,12 @@ class ASTGeneratorService:
         it co-executes with, so its declared type is intrinsic and must stay
         consistent script-wide — the flat registry holds one type per code.
         Raises ``SemanticError`` ``3-8`` on a conflicting redeclaration rather
-        than silently letting one reference win.
+        than silently letting one reference win. The merge itself lives in
+        :func:`~dpmcore.services._parameters.merge_parameters`, shared with
+        :meth:`~dpmcore.services.semantic.SemanticService.validate`, which
+        applies the same rule across an expression and its precondition.
         """
-        for prm in parameters:
-            prior = accumulated.get(prm.code)
-            if prior is None:
-                accumulated[prm.code] = prm
-            elif prior.declared_type != prm.declared_type:
-                raise SemanticError(
-                    "3-8",
-                    parameter=prm.code,
-                    type_1=prior.declared_type,
-                    type_2=prm.declared_type,
-                )
+        merge_parameters(accumulated, parameters)
 
     def _build_precondition_index(
         self,
@@ -1216,37 +1212,12 @@ class ASTGeneratorService:
     def _extract_precondition_codes(ast: Any) -> List[str]:
         """Return the variable codes referenced by a precondition AST.
 
-        Walks the AST collecting:
-        - ``PreconditionItem.variable_code``
-        - ``VarRef.variable``
-
-        Either kind unambiguously identifies a precondition variable
-        for scope-calculation purposes.
+        Delegates to :func:`~dpmcore.services._precondition_codes.\
+extract_precondition_codes`, shared with
+        :class:`~dpmcore.services.scope_calculator.ScopeCalculatorService`.
+        Kept as a method so it stays an overridable seam.
         """
-        from dpmcore.dpm_xl.ast.template import ASTTemplate
-
-        codes: List[str] = []
-
-        class _Extractor(ASTTemplate):
-            def visit_PreconditionItem(self, node: Any) -> None:
-                vc = getattr(node, "variable_code", None)
-                if vc and vc not in codes:
-                    codes.append(vc)
-
-            def visit_VarRef(self, node: Any) -> None:
-                v = getattr(node, "variable", None)
-                if v and v not in codes:
-                    codes.append(v)
-
-        try:
-            _Extractor().visit(ast)
-        except Exception:
-            logger.exception(
-                "Failed to extract precondition codes; "
-                "continuing without them.",
-            )
-            return []
-        return codes
+        return _extract_precondition_codes(ast)
 
     def _build_dependency_info(
         self,

@@ -22,13 +22,19 @@ class SyntaxValidationResult(TypedDict):
 
 
 class SemanticValidationResult(TypedDict):
-    """Shape of ``DpmXlService.validate_semantic`` return value."""
+    """Shape of ``DpmXlService.validate_semantic`` return value.
+
+    ``is_valid`` is pair-wide when a precondition expression was supplied, and
+    ``error_source`` then names the failing half. See
+    :class:`~dpmcore.services.semantic.SemanticResult`.
+    """
 
     is_valid: bool
     error_message: str | None
     error_code: str | None
     expression: str
     warning: str | None
+    error_source: str | None
 
 
 class DpmXlService:
@@ -68,14 +74,16 @@ class DpmXlService:
     def validate_semantic(
         self,
         expression: str,
+        precondition_expression: Optional[str] = None,
         release_id: Optional[int] = None,
         release_code: Optional[str] = None,
     ) -> SemanticValidationResult:
-        """Full semantic validation (requires DB)."""
+        """Full semantic validation, optionally gated (requires DB)."""
         if self.semantic is None:
             raise RuntimeError("No database session provided.")
         result = self.semantic.validate(
             expression,
+            precondition_expression=precondition_expression,
             release_id=release_id,
             release_code=release_code,
         )
@@ -85,6 +93,7 @@ class DpmXlService:
             "error_code": result.error_code,
             "expression": result.expression,
             "warning": result.warning,
+            "error_source": result.error_source,
         }
 
     def get_parameters(

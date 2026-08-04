@@ -589,7 +589,8 @@ POST /api/v1/scope
 | `expression` | string | yes | DPM-XL expression to analyse |
 | `release_id` | int \| null | no | Restrict lookup to a specific release (by database ID) |
 | `release_code` | string \| null | no | Restrict lookup to a specific release (by code, e.g. `"3.4"`) |
-| `precondition_items` | `[string]` \| null | no | List of precondition item codes to apply |
+| `precondition_items` | `[string]` \| null | no | List of filing-indicator variable codes to apply |
+| `precondition_expression` | string \| null | no | Full DPM-XL gate expression. Its own operands join the scope resolution: table references widen the table set, mandatory filing-indicator references widen the precondition set. A gate that fails to resolve fails the call with `error_source: "precondition"`. |
 
 **Response body:**
 
@@ -600,6 +601,8 @@ POST /api/v1/scope
 | `module_versions` | `[int]` | Database IDs of the module versions involved |
 | `has_error` | bool | `true` if scope calculation failed |
 | `error_message` | string \| null | Error description if `has_error` is `true`, otherwise `null` |
+| `warning` | string \| null | Set when a supplied `precondition_expression` changed the computed scope, naming the module versions before and after |
+| `error_source` | string \| null | `"expression"` or `"precondition"` — which half a failure belongs to. `null` unless `has_error` |
 
 **Example:**
 

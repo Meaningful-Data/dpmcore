@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from sqlalchemy import func
@@ -26,6 +26,7 @@ from dpmcore.orm.operations import (
     OperationVersion,
 )
 from dpmcore.orm.query_utils import chunked_in
+from dpmcore.services._parameters import merge_parameters
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -61,7 +62,23 @@ class ParameterInfo:
 
 @dataclass(frozen=True)
 class SemanticResult:
-    """Outcome of a semantic validation."""
+    """Outcome of a semantic validation.
+
+    When a ``precondition_expression`` is supplied, ``is_valid`` is the verdict
+    for the **pair**: it is ``False`` if either the expression or its gate
+    failed, because a row whose gate does not resolve is not evaluable. The
+    gate's own independent verdict is ``precondition``; ``error_source`` says
+    which half a failure belongs to — ``"expression"``, ``"precondition"``, or
+    ``"both"`` — so attribution never needs string matching. ``error_message``
+    names *every* failure that occurred, each from the gate prefixed
+    ``"Precondition: "``, and ``warning`` merges both halves' warnings the same
+    way, so a caller reading only the outer result never misses half the story.
+    ``error_code`` holds a single value: the expression's when it failed,
+    otherwise the gate's.
+
+    ``precondition`` is ``None`` exactly when the caller supplied no gate —
+    never as a way of signalling that one failed.
+    """
 
     is_valid: bool
     error_message: Optional[str]
@@ -70,6 +87,11 @@ class SemanticResult:
     results: Optional[Any] = None
     warning: Optional[str] = None
     parameters: tuple[ParameterInfo, ...] = field(default_factory=tuple)
+    # Populated only when a precondition expression was supplied.
+    precondition: Optional["SemanticResult"] = None
+    # Which input a failure belongs to: "expression", "precondition", or
+    # "both". Set whenever ``is_valid`` is False, matching ``ScopeResult``.
+    error_source: Optional[str] = None
 
 
 def _parameters_from_oc(
@@ -187,10 +209,11 @@ class SemanticService:
     def validate(
         self,
         expression: str,
+        precondition_expression: Optional[str] = None,
         release_id: Optional[int] = None,
         release_code: Optional[str] = None,
     ) -> SemanticResult:
-        """Full semantic validation of *expression*.
+        """Full semantic validation of *expression* and its optional gate.
 
         Returns a :class:`SemanticResult` — never raises on validation
         failure.
@@ -201,34 +224,108 @@ class SemanticService:
         parameter and is scoped in SQL to co-located operations, so it adds no
         overhead to a parameter-free database.
 
+        When ``precondition_expression`` is supplied, both halves are validated
+        against the same release, resolved once, and ``is_valid`` becomes the
+        verdict for the **pair** — ``False`` if either half failed, since a row
+        whose gate does not resolve is not evaluable. ``precondition`` carries
+        the gate's own verdict and ``error_source`` names the failing half.
+        Two checks then apply that a single expression never sees:
+
+        * The gate is validated *as a gate*, so its result must be a boolean
+          (``2-1``). A numeric selection is a valid expression but not a valid
+          precondition.
+        * Parameter declarations are cross-checked across the halves
+          (``3-8``). A gate co-executes with its expression, so a parameter
+          bound across them must declare one type.
+
+        The halves are evaluated gate-first, so the per-call state this service
+        publishes (``ast``, ``oc_data``, ``oc_tables``, ``oc_parameters``)
+        describes the *main* expression when the call returns — what existing
+        consumers of this method already rely on.
+
         Args:
             expression: The DPM-XL expression to validate.
+            precondition_expression: Optional DPM-XL gate expression. When
+                ``None``, the result is exactly as before this argument
+                existed: ``precondition`` is ``None`` and ``is_valid``
+                describes ``expression`` alone.
             release_id: Optional release ID filter. When neither this nor
                 ``release_code`` is given, defaults to the latest release.
             release_code: Optional release code (mutually exclusive
                 with ``release_id``).
         """
         try:
-            release_id = resolve_release_id(
-                self.session,
-                release_id=release_id,
-                release_code=release_code,
+            resolved = self._resolve_release(release_id, release_code)
+        except SemanticError as exc:
+            code = getattr(exc, "code", None)
+            return self._resolution_failure(
+                expression, precondition_expression, exc, code
             )
-            # Default to the latest release when none is specified, matching
-            # the DPM-XL engine convention (see scopes_calculator). This keeps
-            # the co-scope parameter check release-scoped instead of spanning
-            # every release. ``None`` only survives on an empty schema.
-            if release_id is None:
-                release_id = ModuleVersionQuery.get_last_release(self.session)
-            if release_id is not None:
-                exists = (
-                    self.session.query(Release.release_id)
-                    .filter(Release.release_id == release_id)
-                    .first()
-                )
-                if exists is None:
-                    raise SemanticError("1-21", release_id=release_id)
+        except Exception as exc:
+            return self._resolution_failure(
+                expression, precondition_expression, exc, "UNKNOWN"
+            )
 
+        if precondition_expression is None:
+            return self._validate_resolved(expression, resolved)
+
+        # Gate first, main expression last: the trailing ``self.ast`` /
+        # ``self.oc_*`` must describe the main expression (see docstring).
+        precondition = self._validate_resolved(
+            precondition_expression, resolved, as_precondition=True
+        )
+        main = self._validate_resolved(expression, resolved)
+        return self._combine(main, self._cross_check(main, precondition))
+
+    # ------------------------------------------------------------------ #
+    # Internals
+    # ------------------------------------------------------------------ #
+
+    def _resolve_release(
+        self,
+        release_id: Optional[int],
+        release_code: Optional[str],
+    ) -> Optional[int]:
+        """Resolve the release once, raising on an unknown or absent one."""
+        resolved = resolve_release_id(
+            self.session,
+            release_id=release_id,
+            release_code=release_code,
+        )
+        # Default to the latest release when none is specified, matching
+        # the DPM-XL engine convention (see scopes_calculator). This keeps
+        # the co-scope parameter check release-scoped instead of spanning
+        # every release. ``None`` only survives on an empty schema.
+        if resolved is None:
+            resolved = ModuleVersionQuery.get_last_release(self.session)
+        if resolved is not None:
+            exists = (
+                self.session.query(Release.release_id)
+                .filter(Release.release_id == resolved)
+                .first()
+            )
+            if exists is None:
+                raise SemanticError("1-21", release_id=resolved)
+        return resolved
+
+    def _validate_resolved(
+        self,
+        expression: str,
+        release_id: Optional[int],
+        *,
+        as_precondition: bool = False,
+    ) -> SemanticResult:
+        """Validate *expression* against an already-resolved release.
+
+        Args:
+            expression: The DPM-XL expression to validate.
+            release_id: Release the expression is checked against.
+            as_precondition: When ``True``, the expression is treated as a
+                precondition gate, so the analyzer enforces a boolean result
+                (``2-1``) even though the expression itself contains no
+                precondition item.
+        """
+        try:
             with collect_warnings() as wc:
                 # ``parse`` is inside the collector so warnings emitted from
                 # AST construction (e.g. deprecated ``"null"`` string literal
@@ -251,7 +348,7 @@ class SemanticService:
                 analyzer.data = oc.data
                 analyzer.key_components = oc.key_components
                 analyzer.open_keys = oc.open_keys
-                analyzer.preconditions = oc.preconditions
+                analyzer.preconditions = as_precondition or oc.preconditions
 
                 results = analyzer.visit(ast)
 
@@ -273,35 +370,143 @@ class SemanticService:
             )
 
         except SemanticError as exc:
-            self.oc_data = None
-            self.oc_tables = None
-            self.oc_parameters = None
+            return self._failure(expression, exc, getattr(exc, "code", None))
+        except Exception as exc:
+            return self._failure(expression, exc, "UNKNOWN")
+
+    def _failure(
+        self,
+        expression: str,
+        exc: Exception,
+        error_code: Optional[str],
+    ) -> SemanticResult:
+        """Clear the published per-call state and build a failing result.
+
+        ``ast`` is cleared alongside ``oc_*``; leaving the previous call's AST
+        readable after a failure invited consumers to act on stale state.
+        """
+        self.ast = None
+        self.oc_data = None
+        self.oc_tables = None
+        self.oc_parameters = None
+        return SemanticResult(
+            is_valid=False,
+            error_message=str(exc),
+            error_code=error_code,
+            expression=expression,
+            error_source="expression",
+        )
+
+    def _resolution_failure(
+        self,
+        expression: str,
+        precondition_expression: Optional[str],
+        exc: Exception,
+        error_code: Optional[str],
+    ) -> SemanticResult:
+        """Report a release-resolution failure across every supplied half.
+
+        The failure belongs to neither half — no expression was even parsed —
+        so it is attributed to ``"expression"`` and mirrored onto the gate's
+        own verdict when one was supplied.
+        """
+        failure = self._failure(expression, exc, error_code)
+        if precondition_expression is None:
+            return failure
+        return replace(
+            failure,
+            error_source="expression",
+            precondition=self._failure(
+                precondition_expression, exc, error_code
+            ),
+        )
+
+    @staticmethod
+    def _cross_check(
+        main: SemanticResult, precondition: SemanticResult
+    ) -> SemanticResult:
+        """Reject a parameter declared with different types across the halves.
+
+        A gate co-executes with its expression, so a parameter bound across the
+        pair must declare one type. The clash is reported on the *precondition*
+        half — it carries the second, conflicting declaration — leaving the
+        main expression's own verdict intact.
+        """
+        if not (
+            main.is_valid
+            and precondition.is_valid
+            and main.parameters
+            and precondition.parameters
+        ):
+            return precondition
+        accumulated: dict[str, ParameterInfo] = {}
+        try:
+            merge_parameters(accumulated, main.parameters)
+            merge_parameters(accumulated, precondition.parameters)
+        except SemanticError as exc:
             return SemanticResult(
                 is_valid=False,
                 error_message=str(exc),
                 error_code=getattr(exc, "code", None),
-                expression=expression,
+                expression=precondition.expression,
+                error_source="expression",
             )
-        except Exception as exc:
-            self.oc_data = None
-            self.oc_tables = None
-            self.oc_parameters = None
-            return SemanticResult(
+        return precondition
+
+    @staticmethod
+    def _combine(
+        main: SemanticResult, precondition: SemanticResult
+    ) -> SemanticResult:
+        """Fold the gate's verdict into the pair's result.
+
+        Every summary field on the outer result describes the *pair*, so a
+        caller reading only that result never misses half the story:
+        ``is_valid`` is pair-wide, warnings from both halves are merged, and
+        every failure that occurred is named — so ``is_valid=False`` never
+        arrives without a complete explanation. The ``"Precondition: "`` prefix
+        matches ``ScopeResult``'s, so both services read the same way.
+        """
+        warning = main.warning
+        if precondition.warning:
+            gate_warning = f"Precondition: {precondition.warning}"
+            # Newline-joined, matching WarningCollector.get_combined_warning.
+            warning = f"{warning}\n{gate_warning}" if warning else gate_warning
+        combined = replace(main, warning=warning, precondition=precondition)
+        gate_message = f"Precondition: {precondition.error_message}"
+
+        if main.is_valid and precondition.is_valid:
+            return combined
+        if main.is_valid:
+            return replace(
+                combined,
                 is_valid=False,
-                error_message=str(exc),
-                error_code="UNKNOWN",
-                expression=expression,
+                error_message=gate_message,
+                error_code=precondition.error_code,
+                error_source="precondition",
             )
+        if precondition.is_valid:
+            return replace(combined, error_source="expression")
+        # Both halves failed. Naming only the expression would read as "the
+        # gate is fine", costing the caller a round trip to discover it is not,
+        # so both messages are surfaced and ``error_source`` says ``"both"``.
+        # ``error_code`` holds a single value, so it stays the expression's.
+        return replace(
+            combined,
+            error_message=f"{main.error_message}\n{gate_message}",
+            error_source="both",
+        )
 
     def is_valid(
         self,
         expression: str,
+        precondition_expression: Optional[str] = None,
         release_id: Optional[int] = None,
         release_code: Optional[str] = None,
     ) -> bool:
-        """Quick boolean check."""
+        """Quick boolean check, pair-wide when a gate is supplied."""
         return self.validate(
             expression,
+            precondition_expression=precondition_expression,
             release_id=release_id,
             release_code=release_code,
         ).is_valid
