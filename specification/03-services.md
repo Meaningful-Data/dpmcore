@@ -820,7 +820,7 @@ It is not part of the public API but is documented here for completeness.
 
 ### 10.1 Grammar & Parser
 
-- **ANTLR4 grammar**: `dpm_xl.g4` defines the DPM-XL language syntax
+- **ANTLR4 grammar**: `dpm_xlLexer.g4` and `dpm_xlParser.g4` define the DPM-XL language syntax
 - **Generated parser**: Auto-generated lexer, parser, and listener from the grammar
 - **ANTLR version**: 4.9.2 (specific version required)
 
@@ -893,24 +893,27 @@ substituting it stays invalid (`4-5-0-1`). `GET` re-types the result Fact
 Component to the data type of the selected component. Attribute Components
 are accepted structurally but no selection currently produces any.
 
-A condition naming only the Fact Component needs no open key, so it applies
-to a selection on a table that declares none — but the selection must still
-be a recordset. On a single datapoint, whose only key components are the
-implicit globals (`refPeriod`, `entityID`, `baseCurrency`), there is nothing
-to filter and the clause is rejected with `4-5-2-3`.
+A `WHERE` condition naming only the Fact Component needs no open key, so it
+applies to a selection on a table that declares none. The selection must
+still be a recordset: on a single datapoint — one whose only key components
+are the implicit globals `refPeriod`, `entityID` and `baseCurrency` — the
+condition is rejected with `4-5-2-3`.
 
 #### The `where` block of a `with` clause
 
-`with partial_selection [where_expression]: expression` carries a clause that
-applies to every operand arising from a selection operator inside the body
-(DPM-XL §3.2.5), unless that operand has its own `where` or `sub`, which
-overrides it in full — even when the inner clause names other properties
-(§3.2.6).
+`dpm_xlParser.g4`, rule `expressionWithoutAssignment`:
 
-`ASTConstructor.visitExprWithSelection` desugars the block: it stores the
-condition on `WithExpression.where_condition` for introspection and grafts a
-copy of it onto each body selection as an ordinary `WhereClauseOp`. These two
-forms therefore build the same AST and serialize to the same payload:
+```antlr
+    | WITH partialSelection
+    (SQUARE_BRACKET_LEFT WHERE expression SQUARE_BRACKET_RIGHT)?
+    COLON expression                                                            #exprWithSelection
+```
+
+The optional block applies to every selection in the body, except a selection
+carrying its own `WHERE` or `SUB`, which overrides it in full — including when
+the inner clause names other components. Filtering precedes `GET` and `RENAME`
+on the same selection, so the condition names components as the selection
+declares them. These two are equivalent:
 
 ```
 with {tX}[where qEEA = [eba_qAE:qx2023]]: {c0250} + {c0260} >= 0
@@ -918,14 +921,9 @@ with {tX}: {c0250}[where qEEA = [eba_qAE:qx2023]]
          + {c0260}[where qEEA = [eba_qAE:qx2023]] >= 0
 ```
 
-Two consequences. The wrapper goes *inside* any `get`/`rename` on the operand,
-so the condition still names the components the selection had before those
-clauses reshaped it. And because each selection is then validated against the
-clause individually, a body selection whose table does not carry the
-referenced component is an error (`2-8`, or `1-5` when the property has no
-dictionary row at all) rather than a silent no-op — which matters for a body
-that mixes tables. `where_condition` is metadata only: the condition it holds
-is already in the body, so no visitor descends into it.
+Each selection is checked against the condition on its own: one whose table
+does not carry a referenced component raises `2-8`, and a component with no
+dictionary row raises `1-5`.
 
 ### 10.6 Semantic Analyzer
 

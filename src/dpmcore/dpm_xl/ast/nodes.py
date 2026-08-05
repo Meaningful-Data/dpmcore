@@ -387,11 +387,9 @@ class WithExpression(AST):
     Example: {Table 1, row 1} + {Table 1, row 2} -> with {Table 1}: {row 1} + {row 2}
     :parameter partial_selection: Cell reference to be used
     :parameter expression: Expression after the double points to be modified by the partial selection
-    :parameter where_condition: Condition of the optional ``[where ...]`` block of the with clause,
-        kept for introspection only. The constructor has already grafted a copy of it onto every
-        selection in ``expression`` (see ``ast.where_clause.graft_where_onto_selections``), so no
-        visitor may descend into this field: doing so would count its dimensions and items twice in
-        ``OperandsChecking`` and renumber nodes in ``MLGeneration``.
+    :parameter where_condition: Condition of the optional ``[where ...]`` block, or None. It is
+        already applied to every selection in ``expression``, so it is exposed for inspection only
+        and must not be visited -- see ``ast.where_clause.graft_where_onto_selections``.
     """
 
     def __init__(
