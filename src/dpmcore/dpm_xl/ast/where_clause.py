@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TypeGuard
+
 from dpmcore.dpm_xl.ast.nodes import (
     AST,
     BinOp,
@@ -42,6 +44,18 @@ def _equality_value(node: AST) -> str | None:
     return None
 
 
+def _is_key_dimension(node: AST) -> TypeGuard[Dimension]:
+    """Whether ``node`` references a component a join can be keyed on.
+
+    Args:
+        node: One side of an ``=`` condition.
+
+    Returns:
+        ``True`` for a ``Dimension`` other than the Fact Component.
+    """
+    return isinstance(node, Dimension) and node.dimension_code != tokens.FACT
+
+
 def _equality_pin(node: BinOp) -> tuple[str, str] | None:
     """Return ``(dimension_code, value)`` for a ``dimension = value`` node.
 
@@ -49,17 +63,21 @@ def _equality_pin(node: BinOp) -> tuple[str, str] | None:
     when the equality is not between exactly one ``Dimension`` and one
     literal value (e.g. ``value = value`` or ``dimension = dimension``).
 
+    The Fact Component ("f") never yields a pin: pins exist only to spot an
+    inner join that can never match, and the join is over *Key Components*.
+    Two operands filtering on different fact values are perfectly joinable.
+
     Args:
         node: An ``=`` ``BinOp`` from a where condition.
 
     Returns:
         The pinned dimension code and value, or ``None``.
     """
-    if isinstance(node.left, Dimension):
+    if _is_key_dimension(node.left):
         value = _equality_value(node.right)
         if value is not None:
             return node.left.dimension_code, value
-    if isinstance(node.right, Dimension):
+    if _is_key_dimension(node.right):
         value = _equality_value(node.left)
         if value is not None:
             return node.right.dimension_code, value
