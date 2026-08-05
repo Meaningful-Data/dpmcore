@@ -24,7 +24,6 @@ from dpmcore.services.ecb_validations_import import (
 )
 from dpmcore.services.scope_calculator import ScopeResult
 
-
 # ---------------------------------------------------------------------------
 # Chain builders for _assert_id_floor_margin's join-based ownership check:
 # each seeds a native (non-ECB) Operation plus the FK chain down to *model*,
@@ -336,9 +335,7 @@ class TestEcbValidationsImport:
     ):
         session = sessionmaker(bind=sqlite_engine_with_schema)()
         try:
-            session.add(
-                Operation(operation_id=5, code="A", owner_id=999)
-            )
+            session.add(Operation(operation_id=5, code="A", owner_id=999))
             session.flush()
             EcbValidationsImportService._assert_id_floor_margin(
                 session,
@@ -374,9 +371,7 @@ class TestEcbValidationsImport:
         try:
             # Native operation_id has drifted within the reserved margin of
             # the floor: the reservation is no longer a safe anchor.
-            session.add(
-                Operation(operation_id=950, code="A", owner_id=999)
-            )
+            session.add(Operation(operation_id=950, code="A", owner_id=999))
             session.flush()
             with pytest.raises(
                 EcbValidationsImportError,
@@ -397,12 +392,11 @@ class TestEcbValidationsImport:
         self, service_with_schema, sqlite_engine_with_schema
     ):
         """A row ECB itself created in a previous run must not trip the
-        check -- only *non-ECB* rows at/above the floor are a problem."""
+        check -- only *non-ECB* rows at/above the floor are a problem.
+        """
         session = sessionmaker(bind=sqlite_engine_with_schema)()
         try:
-            session.add(
-                Operation(operation_id=1000, code="V1", owner_id=1)
-            )
+            session.add(Operation(operation_id=1000, code="V1", owner_id=1))
             session.flush()
             EcbValidationsImportService._assert_id_floor_margin(
                 session,
@@ -420,9 +414,7 @@ class TestEcbValidationsImport:
     ):
         session = sessionmaker(bind=sqlite_engine_with_schema)()
         try:
-            session.add(
-                Operation(operation_id=1000, code="A", owner_id=999)
-            )
+            session.add(Operation(operation_id=1000, code="A", owner_id=999))
             session.flush()
             with pytest.raises(
                 EcbValidationsImportError,
@@ -492,7 +484,8 @@ class TestEcbValidationsImport:
         self, service_with_schema, sqlite_engine_with_schema, chain_builder
     ):
         """The four tables without their own owner column are joined back
-        to Operation.owner_id to answer the same native-vs-ECB question."""
+        to Operation.owner_id to answer the same native-vs-ECB question.
+        """
         session = sessionmaker(bind=sqlite_engine_with_schema)()
         try:
             model, attr_name = chain_builder(
@@ -518,7 +511,8 @@ class TestEcbValidationsImport:
         self, service_with_schema, sqlite_engine_with_schema
     ):
         """An ECB-owned OperationVersion at/above the floor -- e.g. from a
-        previous run -- must not be flagged by the join-based check."""
+        previous run -- must not be flagged by the join-based check.
+        """
         session = sessionmaker(bind=sqlite_engine_with_schema)()
         try:
             session.add(Operation(operation_id=1, code="V1", owner_id=1))
@@ -1357,7 +1351,8 @@ class TestScopeDeduplicationAcrossReleases:
     ):
         """OperationScope.operation_scope_id must come from the same
         reserved block as the other ECB tables, not the database's own
-        max+1."""
+        max+1.
+        """
         self._seed_releases(sqlite_engine_with_schema)
         csv_file = tmp_path / "ecb.csv"
         csv_file.write_text(
