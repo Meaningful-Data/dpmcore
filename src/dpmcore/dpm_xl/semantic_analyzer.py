@@ -120,9 +120,12 @@ def _check_duplicate_persistent_assignments(children: list[AST]) -> None:
     """Raise ``6-1`` when two statements assign the same ``{cellRef}``/``{varRef}``."""
     seen: dict[tuple[Any, ...], str] = {}
     for child in children:
-        if not isinstance(child, PersistentAssignment):
+        target = child
+        if isinstance(target, TemporaryAssignment):
+            target = target.right
+        if not isinstance(target, PersistentAssignment):
             continue
-        left = child.left
+        left = target.left
         if isinstance(left, VarID):
             key: tuple[Any, ...] = (
                 "VarID",

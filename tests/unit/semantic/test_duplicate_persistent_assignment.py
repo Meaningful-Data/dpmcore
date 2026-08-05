@@ -21,6 +21,7 @@ DUPLICATE_TARGET_SCRIPTS = [
         "{tF_01.01, r0010, c0010, s0010} <- 2;",
         "s0010",
     ),
+    ("v1 := {vFoo} <- 1; v2 := {vFoo} <- 2;", "Foo"),
 ]
 
 NON_DUPLICATE_SCRIPTS = [
@@ -30,6 +31,8 @@ NON_DUPLICATE_SCRIPTS = [
     "{vFoo} <- 1; {vBar} <- 2;",
     # A lone assignment never collides with itself
     "{tF_01.01, r0010, c0010} <- 1;",
+    # Different variable-reference targets, both wrapped in a temp assignment
+    "v1 := {vFoo} <- 1; v2 := {vBar} <- 2;",
 ]
 
 

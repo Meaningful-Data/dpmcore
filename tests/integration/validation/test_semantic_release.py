@@ -516,3 +516,22 @@ def test_equality_alias_of_a_different_cell_remains_valid(fixture_session):
     assert result.is_valid, (
         f"Expected valid, but got error: {result.error_message}"
     )
+
+
+def test_duplicate_persistent_assignment_inside_temporary_assignment_rejected(
+    fixture_session,
+):
+    """Also catches ``v := {cell} <- expr``, not just bare cells.
+
+    ``v0172_m``/``v0173_m`` must be real operation codes, else an
+    unrelated check rejects the script first.
+    """
+    script = (
+        "v0172_m := {tF_01.01, r0010, c0010} <- 1; "
+        "v0173_m := {tF_01.01, r0010, c0010} <- 2;"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert not result.is_valid, "Expected invalid, but validation passed"
+    assert result.error_code == "6-1"
