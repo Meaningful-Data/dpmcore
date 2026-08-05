@@ -535,3 +535,16 @@ def test_duplicate_persistent_assignment_inside_temporary_assignment_rejected(
 
     assert not result.is_valid, "Expected invalid, but validation passed"
     assert result.error_code == "6-1"
+
+
+def test_duplicate_target_with_rows_in_different_order_rejected(fixture_session):
+    """Same rows, listed in a different order, are still the same target."""
+    script = (
+        "{tF_01.01, (r0010, r0020), c0010} <- 1; "
+        "{tF_01.01, (r0020, r0010), c0010} <- 2;"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert not result.is_valid, "Expected invalid, but validation passed"
+    assert result.error_code == "6-1"

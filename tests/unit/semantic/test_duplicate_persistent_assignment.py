@@ -22,6 +22,12 @@ DUPLICATE_TARGET_SCRIPTS = [
         "s0010",
     ),
     ("v1 := {vFoo} <- 1; v2 := {vFoo} <- 2;", "Foo"),
+    # Same rows, listed in a different order
+    (
+        "{tF_01.01, (r0010, r0020), c0010} <- 1; "
+        "{tF_01.01, (r0020, r0010), c0010} <- 2;",
+        "F_01.01",
+    ),
 ]
 
 NON_DUPLICATE_SCRIPTS = [
