@@ -893,6 +893,11 @@ substituting it stays invalid (`4-5-0-1`). `GET` re-types the result Fact
 Component to the data type of the selected component. Attribute Components
 are accepted structurally but no selection currently produces any.
 
+Every Structure has exactly one Fact Component, so a `WHERE` condition
+naming only the Fact Component is applicable to any table selection —
+including selections on tables with no open keys, which contribute no DPM Key
+Components of their own.
+
 ### 10.6 Semantic Analyzer
 
 The `InputAnalyzer` walks the AST and:
