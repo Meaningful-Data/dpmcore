@@ -1,4 +1,12 @@
-"""Import ECB validation rules from a CSV file into the DPM database."""
+"""Import ECB validation rules from a CSV file into the DPM database.
+
+ECB's IDs are pinned to a reserved block so they stay stable across
+releases, instead of drifting with the rest of the dataset. That only
+holds the first time this runs against a database -- ``update-db`` and
+``meili-build`` always start from a fresh one, but running this twice
+directly against an already-imported database can leave ECB IDs split
+across two ranges.
+"""
 
 from __future__ import annotations
 
