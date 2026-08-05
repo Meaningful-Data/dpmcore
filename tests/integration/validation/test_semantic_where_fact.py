@@ -16,11 +16,40 @@ RELEASE = "4.2.1"
 # monetary cell whose selection carries an open key (``qEEA``).
 OPERAND = "{tC_08.01.a, r0020, c0260}"
 
+# C_01.00 carries no open keys at all, so its selection contributes no DPM
+# Key Components. The Fact Component must resolve there just the same.
+NO_KEY_OPERAND = "{tC_01.00, r0010, c0010}"
+
 
 def test_where_on_fact_is_valid(fixture_session):
     """A Fact-only where condition passes semantic validation."""
     result = SemanticService(fixture_session).validate(
         f"{OPERAND}[where f > 0] >= 0", release_code=RELEASE
+    )
+    assert result.is_valid, result.error_message
+
+
+def test_where_on_fact_is_valid_without_open_keys(fixture_session):
+    """A selection with no DPM Key Components still carries a Fact.
+
+    Nothing in the ``where`` path asserts this on its own; it holds because
+    ``InputAnalyzer.visit_VarID`` always injects the global variables as key
+    components, which is what keeps a table selection a ``RecordSet`` — and
+    therefore ``get_fact_component()`` reachable — instead of the bare
+    ``Scalar`` it returns for a structure with no components. Narrow that
+    injection and this expression starts failing with ``4-5-0-2``.
+    """
+    result = SemanticService(fixture_session).validate(
+        f"{NO_KEY_OPERAND}[where f > 0] >= 0", release_code=RELEASE
+    )
+    assert result.is_valid, result.error_message
+
+
+def test_with_clause_where_on_fact_without_open_keys(fixture_session):
+    """Issue #266 item 6, verbatim: the ``with`` clause form of the above."""
+    result = SemanticService(fixture_session).validate(
+        "with {tC_01.00}: {r0010, c0010}[where f > 0] >= 0",
+        release_code=RELEASE,
     )
     assert result.is_valid, result.error_message
 
