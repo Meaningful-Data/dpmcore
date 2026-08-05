@@ -23,6 +23,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
+from dpmcore.errors import DpmCoreError
 from dpmcore.orm.infrastructure import Concept, DpmClass, Organisation, Release
 from dpmcore.orm.operations import (
     OperandReference,
@@ -61,7 +62,7 @@ def _format_warnings(warnings: List[str], limit: int = 20) -> str:
     return f" Warnings logged: {shown}{tail}"
 
 
-class EcbValidationsImportError(Exception):
+class EcbValidationsImportError(DpmCoreError):
     """Raised when ECB validations cannot be imported."""
 
 
