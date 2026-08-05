@@ -205,8 +205,13 @@ class EcbValidationsImportService:
         Without ``floor`` this is a plain "max + 1" over the whole table,
         which drifts release to release as the surrounding EBA/DPM dataset
         grows. Passing ``floor`` scopes the scan to IDs already inside that
-        reserved block, so the first assigned ID stays the same run after
-        run regardless of how large the rest of the table has become.
+        reserved block, so the first ID handed out from it stays the same
+        regardless of how large the rest of the table has become.
+
+        This does not guarantee a stable ID per ECB code across a full
+        reimport: codes are enumerated via ``sorted(unique_codes)``, so
+        adding a new code that sorts before existing ones shifts every
+        code after it.
         """
         column = getattr(model, attr_name)
         query = session.query(func.max(column))
