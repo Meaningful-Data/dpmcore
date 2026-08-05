@@ -21,6 +21,7 @@ from dpmcore.orm.operations import (
     OperandReferenceLocation,
     Operation,
     OperationNode,
+    OperationScope,
     OperationVersion,
 )
 from dpmcore.orm.rendering import Cell, TableVersion
@@ -256,6 +257,14 @@ class EcbValidationsImportService:
             query = query.join(
                 OperationVersion,
                 OperationVersion.operation_vid == OperationNode.operation_vid,
+            ).join(
+                Operation,
+                Operation.operation_id == OperationVersion.operation_id,
+            )
+        elif model is OperationScope:
+            query = query.join(
+                OperationVersion,
+                OperationVersion.operation_vid == OperationScope.operation_vid,
             ).join(
                 Operation,
                 Operation.operation_id == OperationVersion.operation_id,
@@ -663,6 +672,7 @@ class EcbValidationsImportService:
             (OperationVersion, "operation_vid"),
             (OperationNode, "node_id"),
             (OperandReference, "operand_reference_id"),
+            (OperationScope, "operation_scope_id"),
         ):
             self._assert_id_floor_margin(
                 session,
@@ -681,6 +691,12 @@ class EcbValidationsImportService:
                 session,
                 OperationVersion,
                 "operation_vid",
+                floor=self._ECB_ID_BASE,
+            ),
+            "operation_scope_id": self._next_int_id(
+                session,
+                OperationScope,
+                "operation_scope_id",
                 floor=self._ECB_ID_BASE,
             ),
         }
@@ -893,6 +909,10 @@ class EcbValidationsImportService:
                             continue
                         seen_module_vid_sets.add(module_vids)
 
+                        scope.operation_scope_id = counters[
+                            "operation_scope_id"
+                        ]
+                        counters["operation_scope_id"] += 1
                         scope.operation_vid = operation_version.operation_vid
                         scope.is_active = active_value
                         scope.severity = severity_value
