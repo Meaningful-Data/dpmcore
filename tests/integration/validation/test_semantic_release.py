@@ -548,3 +548,24 @@ def test_duplicate_target_with_rows_in_different_order_rejected(fixture_session)
 
     assert not result.is_valid, "Expected invalid, but validation passed"
     assert result.error_code == "6-1"
+
+
+def test_different_operation_ref_targets_are_not_duplicates(fixture_session):
+    """Two operation-ref targets with the same row/col are different cells."""
+    script = "{oOp1, r0010, c0010} <- 1; {oOp2, r0010, c0010} <- 2;"
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert result.is_valid, (
+        f"Expected valid, but got error: {result.error_message}"
+    )
+
+
+def test_same_operation_ref_target_rejected(fixture_session):
+    """The same operation-ref target assigned twice is a genuine duplicate."""
+    script = "{oOp1, r0010, c0010} <- 1; {oOp1, r0010, c0010} <- 2;"
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert not result.is_valid, "Expected invalid, but validation passed"
+    assert result.error_code == "6-1"

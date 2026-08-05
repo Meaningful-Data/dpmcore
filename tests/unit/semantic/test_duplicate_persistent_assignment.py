@@ -28,10 +28,12 @@ DUPLICATE_TARGET_SCRIPTS = [
         "{tF_01.01, (r0020, r0010), c0010} <- 2;",
         "F_01.01",
     ),
+    # Same operation reference, same row/col
+    ("{oOp1, r0010, c0010} <- 1; {oOp1, r0010, c0010} <- 2;", "oOp1"),
 ]
 
 NON_DUPLICATE_SCRIPTS = [
-    # Different cells: a dependency/alias, not a duplicate output
+    # Different cells: distinct outputs, not a duplicate target
     "{tF_01.01, r0010, c0010} <- 1; {tF_01.01, r0020, c0010} <- 2;",
     # Different variable-reference targets
     "{vFoo} <- 1; {vBar} <- 2;",
@@ -39,6 +41,10 @@ NON_DUPLICATE_SCRIPTS = [
     "{tF_01.01, r0010, c0010} <- 1;",
     # Different variable-reference targets, both wrapped in a temp assignment
     "v1 := {vFoo} <- 1; v2 := {vBar} <- 2;",
+    # Different operation references, same row/col
+    "{oOp1, r0010, c0010} <- 1; {oOp2, r0010, c0010} <- 2;",
+    # A table and a same-named table group are different targets
+    "{gF_01.01, r0010, c0010} <- 1; {tF_01.01, r0010, c0010} <- 2;",
 ]
 
 

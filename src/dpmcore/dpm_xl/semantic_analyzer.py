@@ -130,11 +130,14 @@ def _check_duplicate_persistent_assignments(children: list[AST]) -> None:
             key: tuple[Any, ...] = (
                 "VarID",
                 left.table,
+                left.operation,
+                left.is_table_group,
                 tuple(sorted(left.rows)) if left.rows else None,
                 tuple(sorted(left.cols)) if left.cols else None,
                 tuple(sorted(left.sheets)) if left.sheets else None,
             )
-            parts = [left.table]
+            head = f"o{left.operation}" if left.operation else left.table
+            parts = [head]
             if left.rows:
                 parts.append(", ".join(f"r{row}" for row in left.rows))
             if left.cols:
