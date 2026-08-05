@@ -6,8 +6,16 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from dpmcore.errors import DpmCoreError
 from dpmcore.orm.infrastructure import Organisation, Release
-from dpmcore.orm.operations import OperationScope, OperationScopeComposition
+from dpmcore.orm.operations import (
+    OperandReference,
+    Operation,
+    OperationNode,
+    OperationScope,
+    OperationScopeComposition,
+    OperationVersion,
+)
 from dpmcore.services.ecb_validations_import import (
     EcbValidationsImportError,
     EcbValidationsImportService,
@@ -15,6 +23,49 @@ from dpmcore.services.ecb_validations_import import (
     _stable_uuid,
 )
 from dpmcore.services.scope_calculator import ScopeResult
+
+
+# ---------------------------------------------------------------------------
+# Chain builders for _assert_id_floor_margin's join-based ownership check:
+# each seeds a native (non-ECB) Operation plus the FK chain down to *model*,
+# with a row of *model* landing at ``floor``.
+# ---------------------------------------------------------------------------
+
+
+def _seed_operation_version_chain(session, *, floor, native_owner_id):
+    session.add(
+        Operation(operation_id=1, code="NATIVE", owner_id=native_owner_id)
+    )
+    session.add(OperationVersion(operation_vid=floor, operation_id=1))
+    return OperationVersion, "operation_vid"
+
+
+def _seed_operation_node_chain(session, *, floor, native_owner_id):
+    session.add(
+        Operation(operation_id=1, code="NATIVE", owner_id=native_owner_id)
+    )
+    session.add(OperationVersion(operation_vid=1, operation_id=1))
+    session.add(OperationNode(node_id=floor, operation_vid=1))
+    return OperationNode, "node_id"
+
+
+def _seed_operand_reference_chain(session, *, floor, native_owner_id):
+    session.add(
+        Operation(operation_id=1, code="NATIVE", owner_id=native_owner_id)
+    )
+    session.add(OperationVersion(operation_vid=1, operation_id=1))
+    session.add(OperationNode(node_id=1, operation_vid=1))
+    session.add(OperandReference(operand_reference_id=floor, node_id=1))
+    return OperandReference, "operand_reference_id"
+
+
+def _seed_operation_scope_chain(session, *, floor, native_owner_id):
+    session.add(
+        Operation(operation_id=1, code="NATIVE", owner_id=native_owner_id)
+    )
+    session.add(OperationVersion(operation_vid=1, operation_id=1))
+    session.add(OperationScope(operation_scope_id=floor, operation_vid=1))
+    return OperationScope, "operation_scope_id"
 
 
 @pytest.fixture
@@ -42,6 +93,9 @@ def service_with_schema(sqlite_engine_with_schema):
 
 
 class TestEcbValidationsImport:
+    def test_error_is_a_dpm_core_error(self):
+        assert issubclass(EcbValidationsImportError, DpmCoreError)
+
     def test_missing_required_columns_raise(self, service, tmp_path):
         csv_file = tmp_path / "ecb_validations_file.csv"
         csv_file.write_text("code,start\nA,4.0\n", encoding="utf-8")
@@ -283,15 +337,16 @@ class TestEcbValidationsImport:
         session = sessionmaker(bind=sqlite_engine_with_schema)()
         try:
             session.add(
-                Organisation(org_id=5, name="Org5", acronym="O5", id_prefix=1)
+                Operation(operation_id=5, code="A", owner_id=999)
             )
             session.flush()
             EcbValidationsImportService._assert_id_floor_margin(
                 session,
-                Organisation,
-                "org_id",
+                Operation,
+                "operation_id",
                 floor=1000,
                 min_margin=100,
+                ecb_org_id=1,
             )
         finally:
             session.close()
@@ -303,10 +358,11 @@ class TestEcbValidationsImport:
         try:
             EcbValidationsImportService._assert_id_floor_margin(
                 session,
-                Organisation,
-                "org_id",
+                Operation,
+                "operation_id",
                 floor=1000,
                 min_margin=100,
+                ecb_org_id=1,
             )
         finally:
             session.close()
@@ -316,25 +372,166 @@ class TestEcbValidationsImport:
     ):
         session = sessionmaker(bind=sqlite_engine_with_schema)()
         try:
-            # Native org_id has drifted within the reserved margin of the
-            # floor: the reservation is no longer a safe anchor.
+            # Native operation_id has drifted within the reserved margin of
+            # the floor: the reservation is no longer a safe anchor.
             session.add(
-                Organisation(
-                    org_id=950, name="Org950", acronym="O950", id_prefix=1
-                )
+                Operation(operation_id=950, code="A", owner_id=999)
             )
             session.flush()
             with pytest.raises(
                 EcbValidationsImportError,
-                match="within 100 of _ECB_ID_BASE",
+                match="too close to the ECB block",
             ):
+                EcbValidationsImportService._assert_id_floor_margin(
+                    session,
+                    Operation,
+                    "operation_id",
+                    floor=1000,
+                    min_margin=100,
+                    ecb_org_id=1,
+                )
+        finally:
+            session.close()
+
+    def test_assert_id_floor_margin_passes_when_row_at_floor_is_ecb_owned(
+        self, service_with_schema, sqlite_engine_with_schema
+    ):
+        """A row ECB itself created in a previous run must not trip the
+        check -- only *non-ECB* rows at/above the floor are a problem."""
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            session.add(
+                Operation(operation_id=1000, code="V1", owner_id=1)
+            )
+            session.flush()
+            EcbValidationsImportService._assert_id_floor_margin(
+                session,
+                Operation,
+                "operation_id",
+                floor=1000,
+                min_margin=100,
+                ecb_org_id=1,
+            )
+        finally:
+            session.close()
+
+    def test_assert_id_floor_margin_raises_when_native_row_at_or_above_floor(
+        self, service_with_schema, sqlite_engine_with_schema
+    ):
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            session.add(
+                Operation(operation_id=1000, code="A", owner_id=999)
+            )
+            session.flush()
+            with pytest.raises(
+                EcbValidationsImportError,
+                match="already inside the ECB block",
+            ):
+                EcbValidationsImportService._assert_id_floor_margin(
+                    session,
+                    Operation,
+                    "operation_id",
+                    floor=1000,
+                    min_margin=100,
+                    ecb_org_id=1,
+                )
+        finally:
+            session.close()
+
+    def test_assert_id_floor_margin_raises_when_owner_is_null(
+        self, service_with_schema, sqlite_engine_with_schema
+    ):
+        """A row with no owner at all is not ECB's either."""
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            session.add(Operation(operation_id=1000, code="A", owner_id=None))
+            session.flush()
+            with pytest.raises(
+                EcbValidationsImportError,
+                match="already inside the ECB block",
+            ):
+                EcbValidationsImportService._assert_id_floor_margin(
+                    session,
+                    Operation,
+                    "operation_id",
+                    floor=1000,
+                    min_margin=100,
+                    ecb_org_id=1,
+                )
+        finally:
+            session.close()
+
+    def test_assert_id_floor_margin_raises_for_unsupported_model(
+        self, service_with_schema, sqlite_engine_with_schema
+    ):
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            with pytest.raises(ValueError, match="No owner join defined"):
                 EcbValidationsImportService._assert_id_floor_margin(
                     session,
                     Organisation,
                     "org_id",
                     floor=1000,
                     min_margin=100,
+                    ecb_org_id=1,
                 )
+        finally:
+            session.close()
+
+    @pytest.mark.parametrize(
+        "chain_builder",
+        [
+            _seed_operation_version_chain,
+            _seed_operation_node_chain,
+            _seed_operand_reference_chain,
+            _seed_operation_scope_chain,
+        ],
+    )
+    def test_assert_id_floor_margin_raises_via_join_for_each_table(
+        self, service_with_schema, sqlite_engine_with_schema, chain_builder
+    ):
+        """The four tables without their own owner column are joined back
+        to Operation.owner_id to answer the same native-vs-ECB question."""
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            model, attr_name = chain_builder(
+                session, floor=1000, native_owner_id=999
+            )
+            session.flush()
+            with pytest.raises(
+                EcbValidationsImportError,
+                match="already inside the ECB block",
+            ):
+                EcbValidationsImportService._assert_id_floor_margin(
+                    session,
+                    model,
+                    attr_name,
+                    floor=1000,
+                    min_margin=100,
+                    ecb_org_id=1,
+                )
+        finally:
+            session.close()
+
+    def test_assert_id_floor_margin_passes_for_ecb_owned_row_via_join(
+        self, service_with_schema, sqlite_engine_with_schema
+    ):
+        """An ECB-owned OperationVersion at/above the floor -- e.g. from a
+        previous run -- must not be flagged by the join-based check."""
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            session.add(Operation(operation_id=1, code="V1", owner_id=1))
+            session.add(OperationVersion(operation_vid=1000, operation_id=1))
+            session.flush()
+            EcbValidationsImportService._assert_id_floor_margin(
+                session,
+                OperationVersion,
+                "operation_vid",
+                floor=1000,
+                min_margin=100,
+                ecb_org_id=1,
+            )
         finally:
             session.close()
 
@@ -346,6 +543,8 @@ class TestEcbValidationsImport:
             org = service_with_schema._get_or_create_ecb_organisation(session)
             assert org.acronym == "ECB"
             assert org.name == "European Central Bank"
+            assert org.org_id == EcbValidationsImportService._ECB_ORG_ID
+            assert org.id_prefix == EcbValidationsImportService._ECB_ID_PREFIX
         finally:
             session.close()
 
@@ -358,6 +557,50 @@ class TestEcbValidationsImport:
             session.flush()
             org2 = service_with_schema._get_or_create_ecb_organisation(session)
             assert org1.org_id == org2.org_id
+        finally:
+            session.close()
+
+    def test_get_or_create_ecb_organisation_raises_on_org_id_conflict(
+        self, service_with_schema, sqlite_engine_with_schema
+    ):
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            session.add(
+                Organisation(
+                    org_id=EcbValidationsImportService._ECB_ORG_ID,
+                    name="Someone Else",
+                    acronym="OTHER",
+                    id_prefix=1,
+                )
+            )
+            session.flush()
+            with pytest.raises(
+                EcbValidationsImportError,
+                match="already occupies the reserved ECB org_id/id_prefix",
+            ):
+                service_with_schema._get_or_create_ecb_organisation(session)
+        finally:
+            session.close()
+
+    def test_get_or_create_ecb_organisation_raises_on_id_prefix_conflict(
+        self, service_with_schema, sqlite_engine_with_schema
+    ):
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            session.add(
+                Organisation(
+                    org_id=1,
+                    name="Someone Else",
+                    acronym="OTHER",
+                    id_prefix=EcbValidationsImportService._ECB_ID_PREFIX,
+                )
+            )
+            session.flush()
+            with pytest.raises(
+                EcbValidationsImportError,
+                match="already occupies the reserved ECB org_id/id_prefix",
+            ):
+                service_with_schema._get_or_create_ecb_organisation(session)
         finally:
             session.close()
 
@@ -618,17 +861,19 @@ class TestEcbValidationsImport:
             Base.metadata.create_all(engine)
 
             session = sessionmaker(bind=engine)()
-            for i in range(1, dummy_count + 1):
-                session.add(
-                    Operation(
-                        operation_id=i,
-                        code=f"DUMMY_{i}",
-                        type="validation",
-                        source="hierarchy",
+            try:
+                for i in range(1, dummy_count + 1):
+                    session.add(
+                        Operation(
+                            operation_id=i,
+                            code=f"DUMMY_{i}",
+                            type="validation",
+                            source="hierarchy",
+                        )
                     )
-                )
-            session.commit()
-            session.close()
+                session.commit()
+            finally:
+                session.close()
 
             EcbValidationsImportService(engine).import_csv(str(csv_file))
 
@@ -644,9 +889,10 @@ class TestEcbValidationsImport:
                 session.close()
 
         small_dataset_id = _assigned_operation_id(10)
-        large_dataset_id = _assigned_operation_id(5000)
+        large_dataset_id = _assigned_operation_id(50)
 
         assert small_dataset_id == large_dataset_id
+        assert small_dataset_id == EcbValidationsImportService._ECB_ID_BASE
 
     def test_extract_table_codes_for_empty_expression_returns_empty_set(
         self, service_with_schema, sqlite_engine_with_schema
@@ -1105,6 +1351,57 @@ class TestScopeDeduplicationAcrossReleases:
 
         assert result.scopes_created == 1
         assert result.scope_compositions_created == 1
+
+    def test_scope_ids_are_assigned_from_the_reserved_block(
+        self, service_with_schema, sqlite_engine_with_schema, tmp_path
+    ):
+        """OperationScope.operation_scope_id must come from the same
+        reserved block as the other ECB tables, not the database's own
+        max+1."""
+        self._seed_releases(sqlite_engine_with_schema)
+        csv_file = tmp_path / "ecb.csv"
+        csv_file.write_text(
+            "vr_code,expression,start_release\nV1,check(T_01),4.0\n",
+            encoding="utf-8",
+        )
+
+        with (
+            patch(
+                "dpmcore.services.ecb_validations_import.SyntaxService"
+            ) as syntax_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import.OperandsChecking"
+            ) as checker_cls,
+            patch(
+                "dpmcore.services.ecb_validations_import"
+                ".ScopeCalculatorService"
+            ) as calc_cls,
+        ):
+            syntax_cls.return_value.parse.return_value = object()
+            checker_cls.side_effect = RuntimeError("skip table extraction")
+            calc_cls.return_value.calculate_from_expression.side_effect = [
+                _scope_result_for((100,)),
+                _scope_result_for((100, 200)),
+                _scope_result_for((100, 200)),
+            ]
+
+            service_with_schema.import_csv(str(csv_file))
+
+        session = sessionmaker(bind=sqlite_engine_with_schema)()
+        try:
+            scope_ids = sorted(
+                scope_id
+                for (scope_id,) in session.query(
+                    OperationScope.operation_scope_id
+                ).all()
+            )
+        finally:
+            session.close()
+
+        assert scope_ids == [
+            EcbValidationsImportService._ECB_ID_BASE,
+            EcbValidationsImportService._ECB_ID_BASE + 1,
+        ]
 
     def test_different_module_sets_across_releases_creates_each_once(
         self, service_with_schema, sqlite_engine_with_schema, tmp_path
