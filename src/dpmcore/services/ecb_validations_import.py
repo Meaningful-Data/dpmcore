@@ -224,24 +224,71 @@ class EcbValidationsImportService:
         *,
         floor: int,
         min_margin: int,
+        ecb_org_id: int,
     ) -> None:
-        """Fail loudly if native IDs have drifted too close to ``floor``.
+        """Fail loudly if the reserved block isn't exclusively ECB's.
 
-        ``floor`` only keeps ECB's IDs stable as long as every *native*
-        (non-ECB) row in the table stays comfortably below it. Only ECB
-        import ever writes IDs `>= floor`, so ``max(id) < floor`` is always
-        the native high-water mark, regardless of whether this run is a
-        fresh import or a re-run over an already-imported database.
+        Two independent ways that can happen: a native ID below ``floor``
+        has grown within ``min_margin`` of it, or a native row already
+        sits at/above ``floor`` (e.g. the pinned ``id_prefix``/``org_id``
+        got taken by another organisation upstream). Only ``Operation``
+        records ownership (``owner_id``); the other tables are joined back
+        to it through their FKs to answer the same question.
         """
         column = getattr(model, attr_name)
+
         native_max = (
             session.query(func.max(column)).filter(column < floor).scalar()
         )
         if native_max is not None and floor - int(native_max) < min_margin:
             raise EcbValidationsImportError(
                 f"Native {model.__name__}.{attr_name} max ({native_max})"
-                f" is within {min_margin} of _ECB_ID_BASE ({floor});"
-                " bump _ECB_ID_BASE."
+                f" is too close to the ECB block ({floor})."
+            )
+
+        query = session.query(func.count(column)).filter(column >= floor)
+        if model is OperationVersion:
+            query = query.join(
+                Operation,
+                Operation.operation_id == OperationVersion.operation_id,
+            )
+        elif model is OperationNode:
+            query = query.join(
+                OperationVersion,
+                OperationVersion.operation_vid == OperationNode.operation_vid,
+            ).join(
+                Operation,
+                Operation.operation_id == OperationVersion.operation_id,
+            )
+        elif model is OperandReference:
+            query = (
+                query.join(
+                    OperationNode,
+                    OperationNode.node_id == OperandReference.node_id,
+                )
+                .join(
+                    OperationVersion,
+                    OperationVersion.operation_vid
+                    == OperationNode.operation_vid,
+                )
+                .join(
+                    Operation,
+                    Operation.operation_id == OperationVersion.operation_id,
+                )
+            )
+        elif model is not Operation:
+            raise ValueError(f"No owner join defined for {model.__name__}")
+
+        native_in_block = query.filter(
+            or_(
+                Operation.owner_id != ecb_org_id,
+                Operation.owner_id.is_(None),
+            )
+        ).scalar()
+        if native_in_block:
+            raise EcbValidationsImportError(
+                f"{native_in_block} non-ECB {model.__name__}.{attr_name}"
+                f" row(s) already inside the ECB block ({floor})."
             )
 
     def _create_operation_concept(
@@ -623,6 +670,7 @@ class EcbValidationsImportService:
                 attr_name,
                 floor=self._ECB_ID_BASE,
                 min_margin=self._ECB_ID_BASE_MIN_MARGIN,
+                ecb_org_id=ecb_org.org_id,
             )
 
         counters = {
