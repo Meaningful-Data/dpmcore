@@ -16,6 +16,11 @@ DUPLICATE_TARGET_SCRIPTS = [
         "F_01.01",
     ),
     ("{vFoo} <- 1; {vFoo} <- 2;", "Foo"),
+    (
+        "{tF_01.01, r0010, c0010, s0010} <- 1; "
+        "{tF_01.01, r0010, c0010, s0010} <- 2;",
+        "s0010",
+    ),
 ]
 
 NON_DUPLICATE_SCRIPTS = [

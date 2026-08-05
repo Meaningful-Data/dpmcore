@@ -143,6 +143,7 @@ def _check_duplicate_persistent_assignments(children: list[AST]) -> None:
             key = ("VarRef", left.variable)
             variable = left.variable
         else:
+            # assignmentTarget only ever produces a VarID or a VarRef
             continue
         if key in seen:
             raise errors.SemanticError("6-1", variable=variable)
