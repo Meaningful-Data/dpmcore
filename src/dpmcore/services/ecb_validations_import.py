@@ -10,7 +10,7 @@ from hashlib import md5
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -72,9 +72,11 @@ class EcbValidationsImportResult:
 class EcbValidationsImportService:
     """Import ECB validation rules from a CSV export into a DPM database."""
 
-    # Fixed floor for every ID this service assigns, so ECB's IDs stay put
-    # across releases instead of drifting with the native EBA/DPM dataset.
-    _ECB_ID_BASE = 1_030_000_000
+    # Pinned instead of computed via max+1, so they no longer drift as
+    # organisations/prefixes are added upstream.
+    _ECB_ID_PREFIX = 103
+    _ECB_ID_BASE = _ECB_ID_PREFIX * 10_000_000
+    _ECB_ORG_ID = 1_030_000
 
     # Required headroom between the native max ID and `_ECB_ID_BASE`.
     _ECB_ID_BASE_MIN_MARGIN = 1_000_000
@@ -274,14 +276,27 @@ class EcbValidationsImportService:
         if org is not None:
             return org
 
-        next_org_id = self._next_int_id(session, Organisation, "org_id")
-        max_prefix = session.query(func.max(Organisation.id_prefix)).scalar()
+        conflicting = (
+            session.query(Organisation)
+            .filter(
+                or_(
+                    Organisation.org_id == self._ECB_ORG_ID,
+                    Organisation.id_prefix == self._ECB_ID_PREFIX,
+                )
+            )
+            .first()
+        )
+        if conflicting is not None:
+            raise EcbValidationsImportError(
+                f"Organisation {conflicting.acronym!r} already occupies"
+                " the reserved ECB org_id/id_prefix."
+            )
 
         org = Organisation(
-            org_id=next_org_id,
+            org_id=self._ECB_ORG_ID,
             name="European Central Bank",
             acronym="ECB",
-            id_prefix=int(max_prefix or 0) + 1,
+            id_prefix=self._ECB_ID_PREFIX,
         )
         session.add(org)
         session.flush()
