@@ -78,6 +78,40 @@ def test_get_open_keys_for_table_matches_shared_helper(
     assert public == shared
 
 
+def test_open_keys_dedupe_renamed_property_at_release(fixture_session):
+    """A property renamed across releases must appear under only one
+    code per release, not both.
+
+    Regression for the DORA-1.1.0 duplication: ``B_02.02`` carries the
+    same open key under two ``ItemCategory`` rows sharing an ``ItemID``
+    — ``LES`` with window ``[2, 3)`` and ``qLES`` with window
+    ``[3, None)``. Without the release-window filter on
+    ``ItemCategory`` (mirroring the one on ``TableVersion``) both codes
+    end up in ``open_keys`` at every release.
+    """
+    from dpmcore.services._open_keys import get_open_keys_for_tables
+
+    def open_keys_at(release_id):
+        return get_open_keys_for_tables(
+            fixture_session, ["B_02.02"], release_id=release_id
+        ).get("B_02.02", {})
+
+    keys_pre = open_keys_at(2)  # release 3.5, before the rename
+    keys_post = open_keys_at(5)  # release 4.2, after the rename
+
+    if not keys_pre and not keys_post:
+        pytest.skip("Fixture DB has no open keys on B_02.02")
+
+    assert "LES" in keys_pre, "pre-rename release should carry LES"
+    assert "qLES" not in keys_pre, (
+        "pre-rename release must not carry the post-rename alias"
+    )
+    assert "qLES" in keys_post, "post-rename release should carry qLES"
+    assert "LES" not in keys_post, (
+        "post-rename release must not carry the pre-rename alias"
+    )
+
+
 def test_get_open_keys_for_tables_batch(service, fixture_session):
     release_id = _release_id(fixture_session, _RELEASE_CODE)
 

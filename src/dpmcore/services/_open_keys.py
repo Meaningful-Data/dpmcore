@@ -65,23 +65,46 @@ def get_open_keys_for_tables(
     )
 
     if release_id is not None:
+        # ``ReleaseID`` values are opaque from DPM 4.2.1 onwards — 4.2.1
+        # is ``1010000003`` while older releases stay in 1..5, and the
+        # transitional ``Playground`` release has an ID larger than
+        # 4.2.1's despite predating it. Release-range comparisons must
+        # therefore go through the date-based sort order in
+        # :mod:`dpmcore.orm.release_sort_order` rather than compare the
+        # numeric IDs directly — a numeric filter happens to give the
+        # right answer for a monotonic ID sequence but silently returns
+        # the wrong window when a release lands out of numeric order.
+        from dpmcore.orm.release_sort_order import (
+            load_release_sort_orders,
+            release_ids_for_sort_order,
+        )
+
+        sort_orders = load_release_sort_orders(session)
+        target_sort = sort_orders.get(release_id)
+        if target_sort is None:
+            raise ValueError(
+                f"release {release_id} has no sort_order — "
+                "no Release row matches that ID."
+            )
+        start_ids = release_ids_for_sort_order(sort_orders, le=target_sort)
+        end_ids = release_ids_for_sort_order(sort_orders, gt=target_sort)
         query = query.filter(
+            TableVersion.start_release_id.in_(start_ids),
             or_(
                 TableVersion.end_release_id.is_(None),
-                TableVersion.end_release_id > release_id,
+                TableVersion.end_release_id.in_(end_ids),
             ),
-            TableVersion.start_release_id <= release_id,
             # ItemCategory has its own release window: a property can
             # be renamed across releases (e.g. ``LES`` up to release 3,
             # ``qLES`` from release 3 onwards) and both rows share the
             # same ``ItemID``. Without this filter both codes end up in
             # the open_keys map for any release, duplicating each
             # property with its historical alias.
+            ItemCategory.start_release_id.in_(start_ids),
             or_(
                 ItemCategory.end_release_id.is_(None),
-                ItemCategory.end_release_id > release_id,
+                ItemCategory.end_release_id.in_(end_ids),
             ),
-            ItemCategory.start_release_id <= release_id,
         )
 
     query = query.distinct().order_by(TableVersion.code, ItemCategory.code)
