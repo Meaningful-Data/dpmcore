@@ -482,3 +482,37 @@ def test_single_reference_omitting_closed_sheets_axis_rejected(
         f"Expected invalid, got: {result.error_message}"
     )
     assert result.error_code == "1-20"
+
+
+def test_duplicate_persistent_assignment_rejected(fixture_session):
+    """Two independent formulas assigning the same cell must be rejected.
+
+    Regression test for GitHub issue #289: a DPM-XL variable can only have
+    one value per reference period, so two unrelated formulas for the same
+    cell can't both be right.
+    """
+    script = "{tF_01.01, r0010, c0010} <- 1; {tF_01.01, r0010, c0010} <- 2;"
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert not result.is_valid, "Expected invalid, but validation passed"
+    assert result.error_code == "6-1"
+
+
+def test_equality_alias_of_a_different_cell_remains_valid(fixture_session):
+    """A plain equality alias of another cell is not a duplicate output.
+
+    Companion case for GitHub issue #289: aliasing one cell's value into
+    another (``{B} <- {A}``) is a normal dependency, not a conflicting
+    formula for the same output, and must remain valid.
+    """
+    script = (
+        "{tF_01.01, r0010, c0010} <- 1; "
+        "{tF_01.01, r0020, c0010} <- {tF_01.01, r0010, c0010};"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert result.is_valid, (
+        f"Expected valid, but got error: {result.error_message}"
+    )

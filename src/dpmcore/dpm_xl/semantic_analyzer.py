@@ -5,6 +5,7 @@ import pandas as pd
 
 from dpmcore import errors
 from dpmcore.dpm_xl.ast.nodes import (
+    AST,
     AggregationOp,
     AnnualiseOp,
     BinOp,
@@ -115,6 +116,39 @@ _PARAMETER_SCALAR_TYPES: dict[str, str] = {
 }
 
 
+def _check_duplicate_persistent_assignments(children: list[AST]) -> None:
+    """Raise ``6-1`` when two statements assign the same ``{cellRef}``/``{varRef}``."""
+    seen: dict[tuple[Any, ...], str] = {}
+    for child in children:
+        if not isinstance(child, PersistentAssignment):
+            continue
+        left = child.left
+        if isinstance(left, VarID):
+            key: tuple[Any, ...] = (
+                "VarID",
+                left.table,
+                tuple(left.rows) if left.rows else None,
+                tuple(left.cols) if left.cols else None,
+                tuple(left.sheets) if left.sheets else None,
+            )
+            parts = [left.table]
+            if left.rows:
+                parts.append(", ".join(f"r{row}" for row in left.rows))
+            if left.cols:
+                parts.append(", ".join(f"c{col}" for col in left.cols))
+            if left.sheets:
+                parts.append(", ".join(f"s{sheet}" for sheet in left.sheets))
+            variable = ", ".join(part for part in parts if part)
+        elif isinstance(left, VarRef):
+            key = ("VarRef", left.variable)
+            variable = left.variable
+        else:
+            continue
+        if key in seen:
+            raise errors.SemanticError("6-1", variable=variable)
+        seen[key] = variable
+
+
 class InputAnalyzer(ASTTemplate, ABC):
     def __init__(self, expression: str) -> None:
         super().__init__()
@@ -146,6 +180,8 @@ class InputAnalyzer(ASTTemplate, ABC):
     def visit_Start(  # type: ignore[override]
         self, node: Start
     ) -> Operand | list[Operand]:
+
+        _check_duplicate_persistent_assignments(node.children)
 
         result: list[Operand] = []
         for child in node.children:
