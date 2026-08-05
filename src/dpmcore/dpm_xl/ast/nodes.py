@@ -387,17 +387,29 @@ class WithExpression(AST):
     Example: {Table 1, row 1} + {Table 1, row 2} -> with {Table 1}: {row 1} + {row 2}
     :parameter partial_selection: Cell reference to be used
     :parameter expression: Expression after the double points to be modified by the partial selection
+    :parameter where_condition: Condition of the optional ``[where ...]`` block of the with clause,
+        kept for introspection only. The constructor has already grafted a copy of it onto every
+        selection in ``expression`` (see ``ast.where_clause.graft_where_onto_selections``), so no
+        visitor may descend into this field: doing so would count its dimensions and items twice in
+        ``OperandsChecking`` and renumber nodes in ``MLGeneration``.
     """
 
-    def __init__(self, partial_selection: "VarID", expression: AST) -> None:
+    def __init__(
+        self,
+        partial_selection: "VarID",
+        expression: AST,
+        where_condition: AST | None = None,
+    ) -> None:
         super().__init__()
         self.partial_selection: VarID = partial_selection
         self.expression: AST = expression
+        self.where_condition: AST | None = where_condition
 
     def __str__(self) -> str:
-        return "<AST(name='{name}', partial_selection={partial_selection}, expression={expression})>".format(
+        return "<AST(name='{name}', partial_selection={partial_selection}, where_condition={where_condition}, expression={expression})>".format(
             name=self.__class__.__name__,
             partial_selection=self.partial_selection,
+            where_condition=self.where_condition,
             expression=self.expression,
         )
 
@@ -407,6 +419,7 @@ class WithExpression(AST):
         return {
             "class_name": self.__class__.__name__,
             "partial_selection": self.partial_selection,
+            "where_condition": self.where_condition,
             "expression": self.expression,
         }
 
