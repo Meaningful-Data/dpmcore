@@ -893,11 +893,12 @@ substituting it stays invalid (`4-5-0-1`). `GET` re-types the result Fact
 Component to the data type of the selected component. Attribute Components
 are accepted structurally but no selection currently produces any.
 
-A `WHERE` condition naming only the Fact Component needs no open key, so it
-applies to a selection on a table that declares none. The selection must
-still be a recordset: on a single datapoint — one whose only key components
-are the implicit globals `refPeriod`, `entityID` and `baseCurrency` — the
-condition is rejected with `4-5-2-3`.
+Every Structure has exactly one Fact Component, so a `WHERE` condition naming
+only the Fact Component needs no open key: it applies to a selection on a
+table that declares none, and so contributes no DPM Key Components of its
+own. The selection must still be a recordset: on a single datapoint — one
+whose only key components are the implicit globals `refPeriod`, `entityID`
+and `baseCurrency` — the condition is rejected with `4-5-2-3`.
 
 #### The `where` block of a `with` clause
 

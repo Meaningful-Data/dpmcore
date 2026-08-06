@@ -8,7 +8,6 @@ database is involved.
 
 import pytest
 
-import dpmcore.dpm_xl.semantic_analyzer  # noqa: F401 (resolves circular imports)
 from dpmcore.dpm_xl.ast.nodes import BinOp, Constant, Dimension
 from dpmcore.dpm_xl.ast.where_clause import collect_where_equality_pins
 from dpmcore.dpm_xl.operators.arithmetic import BinPlus
