@@ -636,3 +636,46 @@ def test_bare_target_paired_with_different_with_tables_remains_valid(
     assert result.is_valid, (
         f"Expected valid, but got error: {result.error_message}"
     )
+
+
+def test_group_target_overlapping_member_table_rejected(fixture_session):
+    """A table-group target and one of its real member tables collide."""
+    script = (
+        "{gAdditional_Liquidity_Monitoring, r0010, c0010} <- 1; "
+        "{tC_67.00.a, r0010, c0010} <- 2;"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert not result.is_valid, "Expected invalid, but validation passed"
+    assert result.error_code == "6-1"
+
+
+def test_group_target_and_unrelated_table_remain_valid(fixture_session):
+    """A table-group target doesn't collide with a table outside the group."""
+    script = (
+        "{gAdditional_Liquidity_Monitoring, r0010, c0010} <- 1; "
+        "{tF_01.01, r0010, c0010} <- 2;"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert result.is_valid, (
+        f"Expected valid, but got error: {result.error_message}"
+    )
+
+
+def test_group_target_overlapping_member_table_different_cell_remains_valid(
+    fixture_session,
+):
+    """A table-group target and a member table stay distinct cells apart."""
+    script = (
+        "{gAdditional_Liquidity_Monitoring, r0010, c0010} <- 1; "
+        "{tC_67.00.a, r0020, c0010} <- 2;"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert result.is_valid, (
+        f"Expected valid, but got error: {result.error_message}"
+    )

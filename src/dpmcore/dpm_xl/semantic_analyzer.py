@@ -51,7 +51,7 @@ from dpmcore.dpm_xl.ast.where_clause import (
     collect_where_equality_pins,
     merge_where_constraints,
 )
-from dpmcore.dpm_xl.model_queries import ViewDatapointsQuery
+from dpmcore.dpm_xl.model_queries import TableGroupQuery, ViewDatapointsQuery
 from dpmcore.dpm_xl.operators.clause import Sub as SubOperator
 from dpmcore.dpm_xl.symbols import (
     Component,
@@ -156,19 +156,28 @@ def _check_duplicate_persistent_assignments(
         variable = ", ".join(part for part in parts if part)
 
         for other in seen_ids:
-            if (
-                other.table != left.table
-                or other.operation != left.operation
-                or other.is_table_group != left.is_table_group
-            ):
+            if other.operation != left.operation:
                 continue
-            # Operation/table-group refs keep exact-match, only plain table refs resolve via the DB below
-            if (
-                session is not None
-                and left.operation is None
-                and not left.is_table_group
-            ):
-                table = cast(str, left.table)
+            if other.is_table_group == left.is_table_group:
+                if other.table != left.table:
+                    continue
+                # A group has no member table to resolve rows/cols against, so it keeps the exact-match below
+                table = left.table if not left.is_table_group else None
+            elif session is not None and left.operation is None:
+                # Group vs. plain table: only comparable if the table is an actual member of the group
+                group_side, plain_side = (
+                    (other, left) if other.is_table_group else (left, other)
+                )
+                member_codes = TableGroupQuery.get_member_table_codes(
+                    session, cast(str, group_side.table), release_id
+                )
+                if plain_side.table not in member_codes:
+                    continue
+                table = plain_side.table
+            else:
+                continue
+
+            if session is not None and left.operation is None and table:
                 df_other = ViewDatapointsQuery.get_table_data(
                     session,
                     table,
