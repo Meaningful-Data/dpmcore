@@ -584,3 +584,55 @@ def test_same_operation_ref_target_rejected(fixture_session):
 
     assert not result.is_valid, "Expected invalid, but validation passed"
     assert result.error_code == "6-1"
+
+
+def test_wildcard_target_overlapping_specific_row_rejected(fixture_session):
+    """A row wildcard target covers every row, including one assigned elsewhere."""
+    script = "{tF_01.01, r*, c0010} <- 1; {tF_01.01, r0010, c0010} <- 2;"
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert not result.is_valid, "Expected invalid, but validation passed"
+    assert result.error_code == "6-1"
+
+
+def test_row_range_overlapping_enumerated_rows_rejected(fixture_session):
+    """A row range and the same rows spelled out individually are one target."""
+    script = (
+        "{tF_01.01, r0010-0030, c0010} <- 1; "
+        "{tF_01.01, (r0010, r0020, r0030), c0010} <- 2;"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert not result.is_valid, "Expected invalid, but validation passed"
+    assert result.error_code == "6-1"
+
+
+def test_non_overlapping_row_ranges_remain_valid(fixture_session):
+    """Two targets stay distinct when their row ranges don't actually overlap."""
+    script = (
+        "{tF_01.01, r0010-0020, c0010} <- 1; {tF_01.01, r0030, c0010} <- 2;"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert result.is_valid, (
+        f"Expected valid, but got error: {result.error_message}"
+    )
+
+
+def test_bare_target_paired_with_different_with_tables_remains_valid(
+    fixture_session,
+):
+    """A table-less target can't be proven to collide across statements."""
+    script = (
+        "{r0010, c0010} <- with {tF_01.01}: {r0020, c0010}; "
+        "{r0010, c0010} <- with {tF_01.02}: {r0020, c0010};"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert result.is_valid, (
+        f"Expected valid, but got error: {result.error_message}"
+    )

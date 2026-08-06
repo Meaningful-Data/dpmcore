@@ -51,6 +51,8 @@ NON_DUPLICATE_SCRIPTS = [
     "{oOp1, r0010, c0010} <- 1; {oOp2, r0010, c0010} <- 2;",
     # A table and a same-named table group are different targets
     "{gF_01.01, r0010, c0010} <- 1; {tF_01.01, r0010, c0010} <- 2;",
+    # Bare compRef target has no table, never compared
+    "{r0010, c0010} <- 1; {r0010, c0010} <- 2;",
 ]
 
 

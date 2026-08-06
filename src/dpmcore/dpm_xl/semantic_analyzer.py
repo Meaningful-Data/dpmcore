@@ -2,6 +2,7 @@ from abc import ABC
 from typing import Any, cast
 
 import pandas as pd
+from sqlalchemy.orm import Session
 
 from dpmcore import errors
 from dpmcore.dpm_xl.ast.nodes import (
@@ -50,6 +51,7 @@ from dpmcore.dpm_xl.ast.where_clause import (
     collect_where_equality_pins,
     merge_where_constraints,
 )
+from dpmcore.dpm_xl.model_queries import ViewDatapointsQuery
 from dpmcore.dpm_xl.operators.clause import Sub as SubOperator
 from dpmcore.dpm_xl.symbols import (
     Component,
@@ -116,44 +118,94 @@ _PARAMETER_SCALAR_TYPES: dict[str, str] = {
 }
 
 
-def _check_duplicate_persistent_assignments(children: list[AST]) -> None:
+def _check_duplicate_persistent_assignments(
+    children: list[AST],
+    session: Session | None,
+    release_id: int | None,
+) -> None:
     """Raise ``6-1`` when two statements assign the same ``{cellRef}``/``{varRef}``."""
-    seen: set[tuple[Any, ...]] = set()
+    seen_refs: set[str] = set()
+    seen_ids: list[VarID] = []
     for child in children:
-        target = child
-        if isinstance(target, TemporaryAssignment):
-            target = target.right
+        target = (
+            child.right if isinstance(child, TemporaryAssignment) else child
+        )
         if not isinstance(target, PersistentAssignment):
             continue
         left = target.left
-        if isinstance(left, VarID):
-            key: tuple[Any, ...] = (
-                "VarID",
-                left.table,
-                left.operation,
-                left.is_table_group,
-                frozenset(left.rows) if left.rows else None,
-                frozenset(left.cols) if left.cols else None,
-                frozenset(left.sheets) if left.sheets else None,
-            )
-            head = f"o{left.operation}" if left.operation else left.table
-            parts = [head]
-            if left.rows:
-                parts.append(", ".join(f"r{row}" for row in left.rows))
-            if left.cols:
-                parts.append(", ".join(f"c{col}" for col in left.cols))
-            if left.sheets:
-                parts.append(", ".join(f"s{sheet}" for sheet in left.sheets))
-            variable = ", ".join(part for part in parts if part)
-        elif isinstance(left, VarRef):
-            key = ("VarRef", left.variable)
-            variable = left.variable
-        else:
+        if isinstance(left, VarRef):
+            if left.variable in seen_refs:
+                raise errors.SemanticError("6-1", variable=left.variable)
+            seen_refs.add(left.variable)
+            continue
+        if not isinstance(left, VarID):
             # assignmentTarget only ever produces a VarID or a VarRef
             continue
-        if key in seen:
-            raise errors.SemanticError("6-1", variable=variable)
-        seen.add(key)
+        if left.table is None and left.operation is None:
+            # No table/operation to identify this target by, never compare it.
+            continue
+
+        head = f"o{left.operation}" if left.operation else left.table
+        parts = [head]
+        if left.rows:
+            parts.append(", ".join(f"r{row}" for row in left.rows))
+        if left.cols:
+            parts.append(", ".join(f"c{col}" for col in left.cols))
+        if left.sheets:
+            parts.append(", ".join(f"s{sheet}" for sheet in left.sheets))
+        variable = ", ".join(part for part in parts if part)
+
+        for other in seen_ids:
+            if (
+                other.table != left.table
+                or other.operation != left.operation
+                or other.is_table_group != left.is_table_group
+            ):
+                continue
+            # Operation/table-group refs keep exact-match, only plain table refs resolve via the DB below
+            if (
+                session is not None
+                and left.operation is None
+                and not left.is_table_group
+            ):
+                table = cast(str, left.table)
+                df_other = ViewDatapointsQuery.get_table_data(
+                    session,
+                    table,
+                    other.rows,
+                    other.cols,
+                    other.sheets,
+                    release_id,
+                )
+                df_left = ViewDatapointsQuery.get_table_data(
+                    session,
+                    table,
+                    left.rows,
+                    left.cols,
+                    left.sheets,
+                    release_id,
+                )
+                collides = (
+                    not df_other.empty
+                    and not df_left.empty
+                    and (
+                        not set(df_other["cell_code"]).isdisjoint(
+                            df_left["cell_code"]
+                        )
+                    )
+                )
+            else:
+                collides = (
+                    (frozenset(other.rows) if other.rows else None)
+                    == (frozenset(left.rows) if left.rows else None)
+                    and (frozenset(other.cols) if other.cols else None)
+                    == (frozenset(left.cols) if left.cols else None)
+                    and (frozenset(other.sheets) if other.sheets else None)
+                    == (frozenset(left.sheets) if left.sheets else None)
+                )
+            if collides:
+                raise errors.SemanticError("6-1", variable=variable)
+        seen_ids.append(left)
 
 
 class InputAnalyzer(ASTTemplate, ABC):
@@ -165,6 +217,12 @@ class InputAnalyzer(ASTTemplate, ABC):
         self.result: bool = False
         self._expression: str = expression  # For debugging purposes only
         self.preconditions: bool = False
+        # Only set by SemanticService.validate(); a bare InputAnalyzer (as
+        # constructed directly in unit tests) has neither, so the
+        # duplicate-assignment guard below falls back to exact-match
+        # comparison instead of resolving ranges/wildcards against the DB.
+        self.session: Session | None = None
+        self.release_id: int | None = None
 
         self.calculations_outputs: dict[str, Operand] = {}
 
@@ -188,7 +246,9 @@ class InputAnalyzer(ASTTemplate, ABC):
         self, node: Start
     ) -> Operand | list[Operand]:
 
-        _check_duplicate_persistent_assignments(node.children)
+        _check_duplicate_persistent_assignments(
+            node.children, self.session, self.release_id
+        )
 
         result: list[Operand] = []
         for child in node.children:
