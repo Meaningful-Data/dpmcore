@@ -74,11 +74,17 @@ class DpmXlService:
     def validate_semantic(
         self,
         expression: str,
-        precondition_expression: Optional[str] = None,
         release_id: Optional[int] = None,
         release_code: Optional[str] = None,
+        *,
+        precondition_expression: Optional[str] = None,
     ) -> SemanticValidationResult:
-        """Full semantic validation, optionally gated (requires DB)."""
+        """Full semantic validation, optionally gated (requires DB).
+
+        ``precondition_expression`` is keyword-only and appended after the
+        pre-existing arguments, so ``validate_semantic(expr, 5)`` still means
+        ``release_id=5``.
+        """
         if self.semantic is None:
             raise RuntimeError("No database session provided.")
         result = self.semantic.validate(

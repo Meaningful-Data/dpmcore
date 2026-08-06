@@ -76,14 +76,25 @@ def _code_of(node: Any) -> Optional[str]:
 
 
 def _mandatory(node: Any) -> Set[str]:
-    """Codes that must hold for *node* to be evaluable.
+    """Codes that must be **true** for *node* to hold.
 
-    ``or``/``xor`` intersects its operands' requirements, because either side
-    alone can satisfy the gate; ``not`` requires nothing. Everything else —
-    ``and``, comparisons, arithmetic, function calls — unions its children's
-    requirements, since a code appearing inside one is genuinely needed to
-    evaluate it. That makes the union the default and the only special cases
-    the two that weaken a requirement.
+    The criterion is "must be true", not "must be readable". That is what
+    scope needs: a module hosts the operation only if the gate can be true
+    there, and ``precondition_items`` excludes any module that does not carry
+    the code. Requiring a code the gate needs to be *false* would exclude
+    exactly the modules the rule targets.
+
+    So ``or``/``xor`` intersects its operands — either side alone can satisfy
+    the gate, so neither is individually mandatory — and ``not`` contributes
+    nothing, since its operand has to be false. Those are one rule, not two:
+    ``{v_A} or {v_B}`` yields ``[]`` for the same reason ``not {v_A}`` does.
+    Consequently ``not {v_A} and {v_B}`` yields only ``B`` — ``A`` is dropped
+    on purpose, because the gate is *for* the modules that do not file ``A``.
+
+    Everything else — ``and``, comparisons, arithmetic, function calls —
+    unions its children, since a code inside one genuinely has to hold. That
+    makes the union the default and the only special cases the two that
+    weaken a requirement.
     """
     # Deferred like the ``ASTTemplate`` import above, so this module pulls in
     # nothing from the engine at import time.
@@ -129,10 +140,13 @@ def required_precondition_codes(ast: Any) -> List[str]:
     """Return the codes a module must provide to evaluate a precondition AST.
 
     Scope calculation counts every precondition code as an operand the module
-    has to supply, so only *mandatory* codes may be passed to it. A disjunctive
-    gate such as ``{v_A} or {v_B}`` requires neither code specifically, and
-    returns ``[]`` — the gate then constrains scope exactly as much as it
-    should, which is not at all.
+    has to supply, so only codes that must be **true** for the gate to hold
+    may be passed to it (see :func:`_mandatory`). A disjunctive gate such as
+    ``{v_A} or {v_B}`` requires neither code specifically, and returns ``[]``
+    — the gate then constrains scope exactly as much as it should, which is
+    not at all. A negated one behaves the same way: ``not {v_A}`` returns
+    ``[]``, and ``not {v_A} and {v_B}`` returns only ``B``, because a module
+    that never files ``A`` is precisely where such a gate is meant to fire.
 
     Order follows :func:`extract_precondition_codes` (first-seen), so the
     result is deterministic. Returns ``[]`` on any walk failure, matching

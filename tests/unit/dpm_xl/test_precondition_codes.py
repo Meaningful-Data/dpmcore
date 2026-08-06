@@ -69,11 +69,32 @@ class TestRequiredPreconditionCodes:
             ("{v_C_06.02} or {v_C_105.01} or {v_C_27.00}", []),
             # ``not`` requires nothing: the gate holds when the code does not.
             ("not {v_C_01.00}", []),
+            ("not ({v_A} or {v_B})", []),
             # A comparison is opaque, so its operands stay required.
             ("{v_C_01.00} and {tC_01.00, r0010, c0010} > 0", ["C_01.00"]),
         ],
     )
     def test_mandatory_set(self, expression, expected):
+        assert required_precondition_codes(_ast(expression)) == expected
+
+    @pytest.mark.parametrize(
+        ("expression", "expected"),
+        [
+            ("not {v_A} and {v_B}", ["B"]),
+            ("{v_A} and not {v_B}", ["A"]),
+        ],
+    )
+    def test_a_negated_conjunct_drops_out_of_the_union(
+        self, expression, expected
+    ):
+        """A negated code is dropped even inside a conjunction.
+
+        The set is "codes that must be **true**", not "codes the engine has
+        to read" — the same criterion that makes ``{v_A} or {v_B}`` require
+        neither. Each returned code is counted as an operand the module must
+        supply, so requiring the operand of a ``not`` would exclude exactly
+        the modules a "template not filed" gate is written for.
+        """
         assert required_precondition_codes(_ast(expression)) == expected
 
     def test_repeated_disjunct_is_still_optional(self):

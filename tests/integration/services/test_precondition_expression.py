@@ -150,7 +150,9 @@ class TestErrorAttribution:
 
 class TestValidateWithPrecondition:
     def test_both_halves_valid(self, semantic):
-        result = semantic.validate(MAIN, CROSS_GATE, release_code=RELEASE)
+        result = semantic.validate(
+            MAIN, release_code=RELEASE, precondition_expression=CROSS_GATE
+        )
         assert result.is_valid
         assert result.precondition.is_valid
         assert result.error_source is None
@@ -161,7 +163,11 @@ class TestValidateWithPrecondition:
         assert result.precondition is None
 
     def test_filing_indicator_gate_is_valid(self, semantic):
-        result = semantic.validate(MAIN, CROSS_FI_GATE, release_code=RELEASE)
+        result = semantic.validate(
+            MAIN,
+            release_code=RELEASE,
+            precondition_expression=CROSS_FI_GATE,
+        )
         assert result.is_valid
 
     def test_non_boolean_gate_fails_the_pair_with_2_1(self, semantic):
@@ -170,7 +176,9 @@ class TestValidateWithPrecondition:
         numeric = "{tC_01.00, r0010, c0010}"
         assert semantic.validate(numeric, release_code=RELEASE).is_valid
 
-        result = semantic.validate(MAIN, numeric, release_code=RELEASE)
+        result = semantic.validate(
+            MAIN, release_code=RELEASE, precondition_expression=numeric
+        )
         assert not result.is_valid
         assert result.error_source == "precondition"
         assert result.error_code == "2-1"
@@ -179,7 +187,9 @@ class TestValidateWithPrecondition:
 
     def test_broken_gate_invalidates_the_pair(self, semantic):
         result = semantic.validate(
-            MAIN, "{tNOPE, r0010, c0010} > 0", release_code=RELEASE
+            MAIN,
+            release_code=RELEASE,
+            precondition_expression="{tNOPE, r0010, c0010} > 0",
         )
         assert not result.is_valid
         assert result.error_source == "precondition"
@@ -187,7 +197,9 @@ class TestValidateWithPrecondition:
 
     def test_broken_expression_is_attributed_to_the_expression(self, semantic):
         result = semantic.validate(
-            "{tNOPE, r0010, c0010} >= 0", CROSS_GATE, release_code=RELEASE
+            "{tNOPE, r0010, c0010} >= 0",
+            release_code=RELEASE,
+            precondition_expression=CROSS_GATE,
         )
         assert not result.is_valid
         assert result.error_source == "expression"
@@ -197,8 +209,8 @@ class TestValidateWithPrecondition:
     def test_both_halves_broken_names_both(self, semantic):
         result = semantic.validate(
             "{tNOPE, r0010, c0010} >= 0",
-            "{v_ALSONOPE}",
             release_code=RELEASE,
+            precondition_expression="{v_ALSONOPE}",
         )
         assert not result.is_valid
         assert result.error_source == "both"
@@ -213,14 +225,18 @@ class TestValidateWithPrecondition:
     def test_published_state_describes_the_main_expression(self, semantic):
         # The gate selects C_01.00; the main expression selects F_01.02. After
         # the call, the state consumers read must be the main expression's.
-        semantic.validate(MAIN, CROSS_GATE, release_code=RELEASE)
+        semantic.validate(
+            MAIN, release_code=RELEASE, precondition_expression=CROSS_GATE
+        )
         assert list(semantic.oc_tables) == ["F_01.02"]
 
     def test_cross_half_parameter_conflict_fails_the_pair(self, semantic):
         result = semantic.validate(
             "{tF_01.02, r0010, c0010} >= {p_thr, number}",
-            "{tC_01.00, r0010, c0010} > {p_thr, integer}",
             release_code=RELEASE,
+            precondition_expression=(
+                "{tC_01.00, r0010, c0010} > {p_thr, integer}"
+            ),
         )
         assert not result.is_valid
         assert result.error_source == "precondition"
@@ -229,18 +245,26 @@ class TestValidateWithPrecondition:
     def test_cross_half_parameter_agreement_passes(self, semantic):
         result = semantic.validate(
             "{tF_01.02, r0010, c0010} >= {p_thr, number}",
-            "{tC_01.00, r0010, c0010} > {p_thr, number}",
             release_code=RELEASE,
+            precondition_expression=(
+                "{tC_01.00, r0010, c0010} > {p_thr, number}"
+            ),
         )
         assert result.is_valid
 
     def test_unknown_release_code_is_mirrored_onto_the_gate(self, semantic):
-        result = semantic.validate(MAIN, CROSS_GATE, release_code="9.9.9")
+        result = semantic.validate(
+            MAIN, release_code="9.9.9", precondition_expression=CROSS_GATE
+        )
         assert not result.is_valid
         assert result.error_message == result.precondition.error_message
 
     def test_is_valid_shortcut_is_pair_wide(self, semantic):
-        assert semantic.is_valid(MAIN, CROSS_GATE, release_code=RELEASE)
+        assert semantic.is_valid(
+            MAIN, release_code=RELEASE, precondition_expression=CROSS_GATE
+        )
         assert not semantic.is_valid(
-            MAIN, "{tC_01.00, r0010, c0010}", release_code=RELEASE
+            MAIN,
+            release_code=RELEASE,
+            precondition_expression="{tC_01.00, r0010, c0010}",
         )

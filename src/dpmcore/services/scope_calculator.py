@@ -248,6 +248,7 @@ class ScopeCalculatorService:
         release_id: Optional[int] = None,
         precondition_items: Optional[List[str]] = None,
         release_code: Optional[str] = None,
+        *,
         precondition_expression: Optional[str] = None,
     ) -> ScopeResult:
         """Calculate scopes for *expression*, optionally gated.
@@ -291,6 +292,8 @@ class ScopeCalculatorService:
             release_code: Optional release code (mutually exclusive
                 with ``release_id``).
             precondition_expression: Optional DPM-XL gate expression.
+                Keyword-only, matching ``SemanticService.validate``, so the
+                pre-existing positional arguments keep their meaning.
         """
         base_items = list(precondition_items or [])
         try:

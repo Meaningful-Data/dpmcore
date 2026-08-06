@@ -86,7 +86,7 @@ class TestPairWideIsValid:
     def test_both_halves_valid(self, monkeypatch):
         svc = _svc()
         _stub(svc, monkeypatch)
-        result = svc.validate("main", "gate")
+        result = svc.validate("main", precondition_expression="gate")
         assert result.is_valid
         assert result.precondition.is_valid
 
@@ -95,7 +95,7 @@ class TestPairWideIsValid:
         # pair-wide verdict is False.
         svc = _svc()
         _stub(svc, monkeypatch, results={"gate": _bad("gate", "2-1")})
-        result = svc.validate("main", "gate")
+        result = svc.validate("main", precondition_expression="gate")
         assert not result.is_valid
         assert result.error_source == "precondition"
         assert result.error_code == "2-1"
@@ -104,12 +104,27 @@ class TestPairWideIsValid:
         assert not result.precondition.is_valid
         assert result.precondition.error_message == "broken: gate"
 
+    def test_nested_gate_verdict_names_its_own_half(self, monkeypatch):
+        # A standalone failure attributes itself to "expression" — the only
+        # half it knows about. Nested under ``precondition`` that would read
+        # as a claim about the main expression, so it is restamped.
+        svc = _svc()
+        _stub(svc, monkeypatch, results={"gate": _bad("gate")})
+        result = svc.validate("main", precondition_expression="gate")
+        assert result.precondition.error_source == "precondition"
+
+    def test_a_healthy_gate_carries_no_attribution(self, monkeypatch):
+        svc = _svc()
+        _stub(svc, monkeypatch)
+        result = svc.validate("main", precondition_expression="gate")
+        assert result.precondition.error_source is None
+
     def test_broken_expression_is_attributed_to_the_expression(
         self, monkeypatch
     ):
         svc = _svc()
         _stub(svc, monkeypatch, results={"main": _bad("main")})
-        result = svc.validate("main", "gate")
+        result = svc.validate("main", precondition_expression="gate")
         assert not result.is_valid
         assert result.error_source == "expression"
         assert result.error_message == "broken: main"
@@ -124,7 +139,7 @@ class TestPairWideIsValid:
             monkeypatch,
             results={"main": _bad("main"), "gate": _bad("gate", "2-1")},
         )
-        result = svc.validate("main", "gate")
+        result = svc.validate("main", precondition_expression="gate")
         assert not result.is_valid
         assert result.error_source == "both"
         assert result.error_message == (
@@ -144,14 +159,14 @@ class TestPairWideIsValid:
             {"main": _bad("main"), "gate": _bad("gate")},
         ):
             _stub(svc, monkeypatch, results=results)
-            result = svc.validate("main", "gate")
+            result = svc.validate("main", precondition_expression="gate")
             if result.error_source == "expression":
                 assert result.precondition.is_valid
 
     def test_an_invalid_pair_always_carries_a_message(self, monkeypatch):
         svc = _svc()
         _stub(svc, monkeypatch, results={"gate": _bad("gate")})
-        result = svc.validate("main", "gate")
+        result = svc.validate("main", precondition_expression="gate")
         assert not result.is_valid
         assert result.error_message
         assert result.error_code
@@ -167,7 +182,7 @@ class TestPairWideIsValid:
                 "gate": _ok("gate", warning="gate is odd"),
             },
         )
-        result = svc.validate("main", "gate")
+        result = svc.validate("main", precondition_expression="gate")
         assert result.warning == "main is odd\nPrecondition: gate is odd"
 
     def test_gate_warning_alone_still_surfaces(self, monkeypatch):
@@ -175,21 +190,84 @@ class TestPairWideIsValid:
         _stub(
             svc, monkeypatch, results={"gate": _ok("gate", warning="odd gate")}
         )
-        assert svc.validate("main", "gate").warning == "Precondition: odd gate"
+        assert (
+            svc.validate("main", precondition_expression="gate").warning
+            == "Precondition: odd gate"
+        )
 
     def test_no_warnings_stays_none(self, monkeypatch):
         svc = _svc()
         _stub(svc, monkeypatch)
-        assert svc.validate("main", "gate").warning is None
+        assert (
+            svc.validate("main", precondition_expression="gate").warning
+            is None
+        )
 
     def test_error_source_distinguishes_which_half_broke(self, monkeypatch):
         # Without this field a caller could not tell "the expression is broken"
         # from "only the gate is broken" except by matching on the prefix.
         svc = _svc()
         _stub(svc, monkeypatch, results={"gate": _bad("gate")})
-        assert svc.validate("main", "gate").error_source == "precondition"
+        assert (
+            svc.validate("main", precondition_expression="gate").error_source
+            == "precondition"
+        )
         _stub(svc, monkeypatch, results={"main": _bad("main")})
-        assert svc.validate("main", "gate").error_source == "expression"
+        assert (
+            svc.validate("main", precondition_expression="gate").error_source
+            == "expression"
+        )
+
+
+class TestSignatureIsBackwardCompatible:
+    """The gate is appended, keyword-only: positional callers are untouched.
+
+    Inserting it as the second parameter would have silently reinterpreted
+    every existing ``validate(expression, 5)`` call as a gated validation
+    against release ``None``.
+    """
+
+    def _capture(self, svc, monkeypatch, seen):
+        monkeypatch.setattr(
+            svc,
+            "_resolve_release",
+            lambda release_id, release_code: (
+                seen.append((release_id, release_code)) or 42
+            ),
+        )
+        monkeypatch.setattr(
+            svc,
+            "_validate_resolved",
+            lambda expression, release_id, **_kw: _ok(expression),
+        )
+
+    def test_second_positional_is_still_release_id(self, monkeypatch):
+        svc = _svc()
+        seen: list = []
+        self._capture(svc, monkeypatch, seen)
+        result = svc.validate("main", 5)
+        assert seen == [(5, None)]
+        assert result.precondition is None
+
+    def test_third_positional_is_still_release_code(self, monkeypatch):
+        svc = _svc()
+        seen: list = []
+        self._capture(svc, monkeypatch, seen)
+        svc.validate("main", None, "4.2.1")
+        assert seen == [(None, "4.2.1")]
+
+    def test_is_valid_keeps_its_positional_order_too(self, monkeypatch):
+        svc = _svc()
+        seen: list = []
+        self._capture(svc, monkeypatch, seen)
+        assert svc.is_valid("main", 5)
+        assert seen == [(5, None)]
+
+    @pytest.mark.parametrize("method", ["validate", "is_valid"])
+    def test_gate_cannot_be_passed_positionally(self, method):
+        svc = _svc()
+        with pytest.raises(TypeError):
+            getattr(svc, method)("main", None, None, "gate")
 
 
 class TestReleaseHandling:
@@ -207,7 +285,7 @@ class TestReleaseHandling:
                 calls.append((expression, release_id)) or _ok(expression)
             ),
         )
-        svc.validate("main", "gate")
+        svc.validate("main", precondition_expression="gate")
         assert len(seen) == 1
         assert [release for _, release in calls] == [42, 42]
 
@@ -218,11 +296,12 @@ class TestReleaseHandling:
             raise SemanticError("1-21", release_id=999)
 
         monkeypatch.setattr(svc, "_resolve_release", boom)
-        result = svc.validate("main", "gate")
+        result = svc.validate("main", precondition_expression="gate")
         assert not result.is_valid
         assert result.error_code == "1-21"
         assert result.error_source == "expression"
         assert result.precondition.error_code == "1-21"
+        assert result.precondition.error_source == "precondition"
 
     def test_resolution_failure_keeps_none_when_no_gate_supplied(
         self, monkeypatch
@@ -244,7 +323,7 @@ class TestGateIsValidatedAsAGate:
         svc = _svc()
         calls = []
         _stub(svc, monkeypatch, calls=calls)
-        svc.validate("main", "gate")
+        svc.validate("main", precondition_expression="gate")
         assert ("gate", True, 42) in calls
         assert ("main", False, 42) in calls
 
@@ -254,7 +333,7 @@ class TestGateIsValidatedAsAGate:
         svc = _svc()
         calls = []
         _stub(svc, monkeypatch, calls=calls)
-        svc.validate("main", "gate")
+        svc.validate("main", precondition_expression="gate")
         assert [expression for expression, _, _ in calls] == ["gate", "main"]
 
 
@@ -269,12 +348,13 @@ class TestCrossHalfParameterCheck:
                 "gate": _ok("gate", [ParameterInfo("thr", "Integer")]),
             },
         )
-        result = svc.validate("main", "gate")
+        result = svc.validate("main", precondition_expression="gate")
         assert not result.is_valid
         # The clash belongs to the second declaration, not the expression.
         assert result.error_source == "precondition"
         assert result.error_code == "3-8"
         assert result.precondition.error_code == "3-8"
+        assert result.precondition.error_source == "precondition"
 
     def test_agreeing_declarations_pass(self, monkeypatch):
         svc = _svc()
@@ -286,7 +366,7 @@ class TestCrossHalfParameterCheck:
                 "gate": _ok("gate", [ParameterInfo("thr", "Number")]),
             },
         )
-        assert svc.validate("main", "gate").is_valid
+        assert svc.validate("main", precondition_expression="gate").is_valid
 
     def test_disjoint_parameters_pass(self, monkeypatch):
         svc = _svc()
@@ -298,7 +378,7 @@ class TestCrossHalfParameterCheck:
                 "gate": _ok("gate", [ParameterInfo("b", "String")]),
             },
         )
-        assert svc.validate("main", "gate").is_valid
+        assert svc.validate("main", precondition_expression="gate").is_valid
 
     def test_not_run_when_a_half_already_failed(self, monkeypatch):
         # An already-invalid half carries no parameters worth comparing, and
@@ -312,7 +392,7 @@ class TestCrossHalfParameterCheck:
                 "gate": _ok("gate", [ParameterInfo("thr", "Integer")]),
             },
         )
-        result = svc.validate("main", "gate")
+        result = svc.validate("main", precondition_expression="gate")
         assert result.error_source == "expression"
         assert result.error_code == "1-2"
 
@@ -344,4 +424,4 @@ class TestIsValidShortcut:
             monkeypatch,
             results={"gate": _bad("gate")} if gate_broken else {},
         )
-        assert svc.is_valid("main", gate) is expected
+        assert svc.is_valid("main", precondition_expression=gate) is expected

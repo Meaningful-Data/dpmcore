@@ -77,7 +77,9 @@ class SemanticResult:
     otherwise the gate's.
 
     ``precondition`` is ``None`` exactly when the caller supplied no gate —
-    never as a way of signalling that one failed.
+    never as a way of signalling that one failed. On that nested result
+    ``error_source`` is ``"precondition"`` whenever it failed, since it
+    describes the gate alone.
     """
 
     is_valid: bool
@@ -185,6 +187,20 @@ def _module_vids_for(
     return frozenset(int(vid) for vid in df["ModuleVID"].tolist())
 
 
+def _as_gate_verdict(result: SemanticResult) -> SemanticResult:
+    """Stamp a gate's own verdict with the half it describes.
+
+    A standalone validation attributes its failure to ``"expression"``,
+    because that is the only half it knows about. Nested under
+    ``SemanticResult.precondition`` that reads as a claim about the *main*
+    expression, so the gate's verdict is restamped: on the nested result the
+    failing half is always the precondition.
+    """
+    if result.is_valid:
+        return result
+    return replace(result, error_source="precondition")
+
+
 class SemanticService:
     """Validate DPM-XL expressions against the data dictionary.
 
@@ -209,9 +225,10 @@ class SemanticService:
     def validate(
         self,
         expression: str,
-        precondition_expression: Optional[str] = None,
         release_id: Optional[int] = None,
         release_code: Optional[str] = None,
+        *,
+        precondition_expression: Optional[str] = None,
     ) -> SemanticResult:
         """Full semantic validation of *expression* and its optional gate.
 
@@ -245,14 +262,16 @@ class SemanticService:
 
         Args:
             expression: The DPM-XL expression to validate.
-            precondition_expression: Optional DPM-XL gate expression. When
-                ``None``, the result is exactly as before this argument
-                existed: ``precondition`` is ``None`` and ``is_valid``
-                describes ``expression`` alone.
             release_id: Optional release ID filter. When neither this nor
                 ``release_code`` is given, defaults to the latest release.
             release_code: Optional release code (mutually exclusive
                 with ``release_id``).
+            precondition_expression: Optional DPM-XL gate expression.
+                Keyword-only, and appended after the pre-existing arguments,
+                so ``validate(expr, 5)`` still means ``release_id=5``. When
+                ``None``, the result is exactly as before this argument
+                existed: ``precondition`` is ``None`` and ``is_valid``
+                describes ``expression`` alone.
         """
         try:
             resolved = self._resolve_release(release_id, release_code)
@@ -271,8 +290,10 @@ class SemanticService:
 
         # Gate first, main expression last: the trailing ``self.ast`` /
         # ``self.oc_*`` must describe the main expression (see docstring).
-        precondition = self._validate_resolved(
-            precondition_expression, resolved, as_precondition=True
+        precondition = _as_gate_verdict(
+            self._validate_resolved(
+                precondition_expression, resolved, as_precondition=True
+            )
         )
         main = self._validate_resolved(expression, resolved)
         return self._combine(main, self._cross_check(main, precondition))
@@ -416,8 +437,8 @@ class SemanticService:
         return replace(
             failure,
             error_source="expression",
-            precondition=self._failure(
-                precondition_expression, exc, error_code
+            precondition=_as_gate_verdict(
+                self._failure(precondition_expression, exc, error_code)
             ),
         )
 
@@ -449,7 +470,7 @@ class SemanticService:
                 error_message=str(exc),
                 error_code=getattr(exc, "code", None),
                 expression=precondition.expression,
-                error_source="expression",
+                error_source="precondition",
             )
         return precondition
 
@@ -499,9 +520,10 @@ class SemanticService:
     def is_valid(
         self,
         expression: str,
-        precondition_expression: Optional[str] = None,
         release_id: Optional[int] = None,
         release_code: Optional[str] = None,
+        *,
+        precondition_expression: Optional[str] = None,
     ) -> bool:
         """Quick boolean check, pair-wide when a gate is supplied."""
         return self.validate(
