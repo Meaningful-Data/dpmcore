@@ -73,6 +73,55 @@ def test_where_on_fact_then_get_on_a_key_is_valid(fixture_session):
     assert result.is_valid, result.error_message
 
 
+def test_get_on_a_key_then_where_on_fact_is_valid(fixture_session):
+    """The reverse order: ``where`` sees the Fact the ``get`` installed.
+
+    ``ClauseOperator.generate_result_structure`` replaces the result Fact
+    Component with one carrying the selected component's type, so after
+    ``[get qEEA]`` the Fact is an Item and comparing it against an item of
+    ``qEEA``'s domain type-checks.
+
+    The numeric form is here because it is the one the review asked for,
+    but note it is *not* evidence of the re-typing on its own: comparison
+    against a number is permissive for Item operands generally — plain
+    ``[where qEEA > 0]`` is accepted too, and was before this change. The
+    assertion that actually pins the re-typing is the neighbouring
+    ``test_where_on_fact_after_get_uses_the_retyped_fact``.
+    """
+    service = SemanticService(fixture_session)
+    for expression in (
+        f"{OPERAND}[get qEEA][where f = [eba_qAE:qx2018]] >= 0",
+        f"{OPERAND}[get qEEA][where f > 0] >= 0",
+    ):
+        result = service.validate(expression, release_code=RELEASE)
+        assert result.is_valid, f"{expression}: {result.error_message}"
+
+
+def test_where_on_fact_after_get_uses_the_retyped_fact(fixture_session):
+    """The re-typed Fact is what ``f`` resolves to, not the original one.
+
+    A bare ``[where f]`` is a ``3-3`` either way, so the reported type is
+    the discriminator: ``Item`` — ``qEEA``'s type, installed by the
+    ``get`` — rather than the ``Number`` of the monetary cell the
+    selection started from. Type ``f`` from the pre-``get`` operand
+    instead and the first assertion flips to ``Number``.
+    """
+    service = SemanticService(fixture_session)
+
+    retyped = service.validate(
+        f"{OPERAND}[get qEEA][where f] >= 0", release_code=RELEASE
+    )
+    assert not retyped.is_valid
+    assert retyped.error_code == "3-3"
+    assert "type_op_1=Item" in retyped.error_message
+
+    original = service.validate(
+        f"{OPERAND}[where f] >= 0", release_code=RELEASE
+    )
+    assert original.error_code == "3-3"
+    assert "type_op_1=Number" in original.error_message
+
+
 def test_disjoint_fact_filters_do_not_yield_2_2(fixture_session):
     """Unlike a key, the Fact cannot make an inner join empty.
 
