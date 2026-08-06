@@ -118,7 +118,7 @@ _PARAMETER_SCALAR_TYPES: dict[str, str] = {
 
 def _check_duplicate_persistent_assignments(children: list[AST]) -> None:
     """Raise ``6-1`` when two statements assign the same ``{cellRef}``/``{varRef}``."""
-    seen: dict[tuple[Any, ...], str] = {}
+    seen: set[tuple[Any, ...]] = set()
     for child in children:
         target = child
         if isinstance(target, TemporaryAssignment):
@@ -153,7 +153,7 @@ def _check_duplicate_persistent_assignments(children: list[AST]) -> None:
             continue
         if key in seen:
             raise errors.SemanticError("6-1", variable=variable)
-        seen[key] = variable
+        seen.add(key)
 
 
 class InputAnalyzer(ASTTemplate, ABC):
