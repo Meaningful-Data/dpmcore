@@ -42,6 +42,7 @@ from dpmcore.dpm_xl.model_queries import (
     ViewOpenKeysQuery,
 )
 from dpmcore.dpm_xl.types.scalar import Integer, Mixed, Number, ScalarFactory
+from dpmcore.dpm_xl.utils import tokens
 from dpmcore.dpm_xl.utils.data_handlers import filter_all_data
 from dpmcore.dpm_xl.utils.filters import filter_by_release
 from dpmcore.dpm_xl.utils.operands_mapping import (
@@ -72,6 +73,17 @@ IMPLICIT_OPEN_KEYS = {
     "entityID": "s",  # string type
     "baseCurrency": "s",  # string type
 }
+
+# Component names that a clause operator may legitimately mention but that are
+# *not* open keys, so they must never be looked up in the dictionary.
+# Currently only the Fact Component ("f"), which every Recordset carries and
+# whose data type is per-operand (resolved in
+# ``InputAnalyzer.visit_Dimension``). Deliberately kept apart from
+# ``IMPLICIT_OPEN_KEYS``: entries there are also injected as DPM key
+# components into every Recordset, which is exactly what the Fact must not
+# become. Whether a given clause operator accepts it is decided structurally,
+# by ``ClauseOperator.allow_fact`` in ``dpm_xl/operators/clause.py``.
+NON_KEY_COMPONENT_CODES = frozenset({tokens.FACT})
 
 
 _HEADERS_CACHE: Dict[
@@ -351,14 +363,19 @@ class OperandsChecking(ASTTemplate, ABC):
         if len(self.dimension_codes) == 0:
             return
 
-        # Separate implicit keys from database-backed keys
-        implicit_codes = [
-            code for code in self.dimension_codes if code in IMPLICIT_OPEN_KEYS
-        ]
-        database_codes = [
+        # The Fact Component is not an open key: it has no dictionary row, so
+        # looking it up would raise 1-5 before the clause operator ever gets a
+        # chance to accept it (``where``) or reject it (``get``/``rename``).
+        codes = [
             code
             for code in self.dimension_codes
-            if code not in IMPLICIT_OPEN_KEYS
+            if code not in NON_KEY_COMPONENT_CODES
+        ]
+
+        # Separate implicit keys from database-backed keys
+        implicit_codes = [code for code in codes if code in IMPLICIT_OPEN_KEYS]
+        database_codes = [
+            code for code in codes if code not in IMPLICIT_OPEN_KEYS
         ]
 
         # Query database only for non-implicit keys
@@ -427,16 +444,19 @@ class OperandsChecking(ASTTemplate, ABC):
         if len(self.getop_components) == 0:
             return
 
-        # Separate implicit keys from database-backed keys
-        implicit_codes = [
+        # ``[get f]`` stays invalid, but it is rejected structurally with
+        # 4-5-0-1 by ``ClauseOperator.validate``; skipping the lookup here only
+        # stops the misleading "open keys not found: ['f']" from pre-empting it.
+        codes = [
             code
             for code in self.getop_components
-            if code in IMPLICIT_OPEN_KEYS
+            if code not in NON_KEY_COMPONENT_CODES
         ]
+
+        # Separate implicit keys from database-backed keys
+        implicit_codes = [code for code in codes if code in IMPLICIT_OPEN_KEYS]
         database_codes = [
-            code
-            for code in self.getop_components
-            if code not in IMPLICIT_OPEN_KEYS
+            code for code in codes if code not in IMPLICIT_OPEN_KEYS
         ]
 
         # Query property_ids for GetOp components (same query as dimensions)
