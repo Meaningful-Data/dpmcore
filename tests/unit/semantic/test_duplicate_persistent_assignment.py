@@ -30,6 +30,12 @@ DUPLICATE_TARGET_SCRIPTS = [
     ),
     # Same operation reference, same row/col
     ("{oOp1, r0010, c0010} <- 1; {oOp1, r0010, c0010} <- 2;", "oOp1"),
+    # A repeated row in a list is still just that one row
+    (
+        "{tF_01.01, (r0010, r0010), c0010} <- 1; "
+        "{tF_01.01, r0010, c0010} <- 2;",
+        "F_01.01",
+    ),
 ]
 
 NON_DUPLICATE_SCRIPTS = [
