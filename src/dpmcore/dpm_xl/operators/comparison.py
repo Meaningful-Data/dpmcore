@@ -50,6 +50,32 @@ def _reject_scalarset_mixed_with_recordset(
         )
 
 
+def _propagate_empty_set_type(
+    left: BinaryOperand, right: BinaryOperand
+) -> tuple[BinaryOperand, BinaryOperand]:
+    """Unify the type of the empty set literal ``{}`` to the other operand.
+
+    ``visit_Set`` gives the empty set literal a placeholder ``Item`` type
+    because there are no elements from which to infer one. That
+    placeholder is not a real element type; ``_visit_set_operands``
+    already filters it out of the homogeneity check for
+    ``union``/``intersect``/``setdiff``/``symdiff``. Apply the same
+    convention to ``=`` / ``!=`` set equality so patterns like
+    ``setdiff(A, B) = {}`` do not raise a spurious "Implicit promotion
+    between <T> and Item" warning against the placeholder.
+    """
+    if isinstance(left, ScalarSet) and isinstance(right, ScalarSet):
+        if left.origin == "{}" and right.origin != "{}":
+            left = ScalarSet(
+                type_=right.type, name=left.name, origin=left.origin
+            )
+        elif right.origin == "{}" and left.origin != "{}":
+            right = ScalarSet(
+                type_=left.type, name=right.name, origin=right.origin
+            )
+    return left, right
+
+
 class Equal(Binary):
     op: ClassVar[str | None] = tokens.EQ
     py_op: ClassVar[PyOp | None] = operator.eq
@@ -61,6 +87,7 @@ class Equal(Binary):
         cls, left: BinaryOperand, right: BinaryOperand
     ) -> "Scalar | RecordSet":  # type: ignore[name-defined]  # noqa: F821
         _reject_scalarset_mixed_with_recordset(left, right, cls.op or "=")
+        left, right = _propagate_empty_set_type(left, right)
         return super().validate(left, right)
 
 
@@ -75,6 +102,7 @@ class NotEqual(Binary):
         cls, left: BinaryOperand, right: BinaryOperand
     ) -> "Scalar | RecordSet":  # type: ignore[name-defined]  # noqa: F821
         _reject_scalarset_mixed_with_recordset(left, right, cls.op or "!=")
+        left, right = _propagate_empty_set_type(left, right)
         return super().validate(left, right)
 
 

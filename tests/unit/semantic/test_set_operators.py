@@ -425,3 +425,79 @@ def test_notequal_scalar_set_and_recordset_rejected_both_directions():
     with pytest.raises(SemanticError) as exc2:
         NotEqual.validate(rs, ss)
     assert exc2.value.code == "3-3"
+
+
+# ---------------------------------------------------------------------------
+# Issue #293: set equality against the empty set literal must not raise
+# a spurious "Implicit promotion between <T> and Item" warning.
+#
+# ``visit_Set`` gives the empty set literal ``{}`` a placeholder ``Item``
+# type — no elements to infer from. For union/intersect/setdiff/symdiff
+# that placeholder is already filtered out of the homogeneity check
+# (``_visit_set_operands``). ``=`` / ``!=`` between two ScalarSets used
+# to forward the placeholder to ``binary_implicit_type_promotion``,
+# clashing with the other operand's real type. The canonical pattern
+# ``setdiff(A, B) = {}`` (used across BdI DORA validations) therefore
+# emitted a false-positive warning even though the expression is valid
+# per §13.7 set equality.
+# ---------------------------------------------------------------------------
+
+
+def _implicit_promotion_warnings(expression: str) -> list[str]:
+    from dpmcore.dpm_xl.warning_collector import collect_warnings
+    from dpmcore.services.syntax import SyntaxService
+
+    ast = SyntaxService().parse(expression)
+    with collect_warnings() as collector:
+        _analyzer().visit(ast)
+    return [w for w in collector.get_warnings() if "Implicit promotion" in w]
+
+
+def test_set_equality_setdiff_empty_rhs_does_not_warn():
+    """``setdiff(strings) = {}`` must not raise implicit-promotion warning."""
+    assert (
+        _implicit_promotion_warnings('setdiff({"a", "b"}, {"c"}) = {}') == []
+    )
+
+
+def test_set_equality_empty_lhs_setdiff_rhs_does_not_warn():
+    """Operand order is irrelevant — ``{} = setdiff(...)`` also OK."""
+    assert (
+        _implicit_promotion_warnings('{} = setdiff({"a", "b"}, {"c"})') == []
+    )
+
+
+def test_set_inequality_setdiff_empty_rhs_does_not_warn():
+    assert (
+        _implicit_promotion_warnings('setdiff({"a", "b"}, {"c"}) != {}') == []
+    )
+
+
+def test_set_equality_empty_and_empty_still_returns_boolean_scalar():
+    """``{} = {}`` stays valid (returns Boolean Scalar, no warning)."""
+    from dpmcore.services.syntax import SyntaxService
+
+    ast = SyntaxService().parse("{} = {}")
+    result = _analyzer().visit(ast)
+    assert isinstance(result, Scalar)
+    assert str(result.type) == "Boolean"
+    assert _implicit_promotion_warnings("{} = {}") == []
+
+
+def test_set_equality_string_set_and_empty_does_not_warn():
+    """Non-set-operator literal on the LHS — placeholder propagation must
+    still kick in.
+    """
+    assert _implicit_promotion_warnings('{"a", "b"} = {}') == []
+
+
+def test_set_equality_mismatched_real_types_still_warns():
+    """The fix must only bypass promotion for the empty-set placeholder;
+    two typed sets with mismatched element types must still emit the
+    implicit-promotion warning like any other binary op.
+    """
+    # Integer vs String — real type mismatch, not the placeholder.
+    warnings = _implicit_promotion_warnings('{1, 2} = {"a"}')
+    assert any("Integer" in w and "String" in w for w in warnings), (
+        f"expected Integer/String promotion warning, got {warnings!r}"
+    )
