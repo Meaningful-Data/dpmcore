@@ -112,6 +112,32 @@ def test_open_keys_dedupe_renamed_property_at_release(fixture_session):
     )
 
 
+def test_open_keys_dedupe_renamed_property_without_release(fixture_session):
+    """Without a target release the current alias must still win.
+
+    Companion to :func:`test_open_keys_dedupe_renamed_property_at_release`
+    for the ``release_id is None`` path. ``B_02.02`` carries the same
+    open key under two ``ItemCategory`` rows sharing an ``ItemID`` —
+    ``LES`` (end-of-life at release 3) and ``qLES`` (still open). The
+    no-release call must return only the currently open alias
+    (``qLES``), not both, matching Andrés's review on PR #272.
+    """
+    from dpmcore.services._open_keys import get_open_keys_for_tables
+
+    keys = get_open_keys_for_tables(fixture_session, ["B_02.02"]).get(
+        "B_02.02", {}
+    )
+
+    if not keys:
+        pytest.skip("Fixture DB has no open keys on B_02.02")
+
+    assert "qLES" in keys, "no-release call should carry the current alias"
+    assert "LES" not in keys, (
+        "no-release call must not carry the historical alias when a "
+        "current one exists for the same ItemID"
+    )
+
+
 def test_get_open_keys_for_tables_batch(service, fixture_session):
     release_id = _release_id(fixture_session, _RELEASE_CODE)
 

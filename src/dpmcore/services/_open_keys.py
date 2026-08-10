@@ -106,6 +106,14 @@ def get_open_keys_for_tables(
                 ItemCategory.end_release_id.in_(end_ids),
             ),
         )
+    else:
+        # No target release: keep only the currently open ItemCategory
+        # row per ItemID. Without this a property renamed across
+        # releases (e.g. ``LES`` up to release 3, ``qLES`` from release
+        # 3+ sharing the same ``ItemID``) returns both codes for the
+        # same table, duplicating each open key with its historical
+        # alias.
+        query = query.filter(ItemCategory.end_release_id.is_(None))
 
     query = query.distinct().order_by(TableVersion.code, ItemCategory.code)
     rows = chunked_in(query, TableVersion.code, table_codes)
