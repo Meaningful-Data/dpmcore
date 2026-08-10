@@ -35,6 +35,7 @@ from dpmcore.orm.variables import Variable, VariableVersion
 from dpmcore.services._open_keys import (
     get_open_keys_for_tables as _get_open_keys_for_tables,
 )
+from dpmcore.services._precondition_codes import required_precondition_codes
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -45,7 +46,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ScopeResult:
-    """Outcome of a scope calculation."""
+    """Outcome of a scope calculation.
+
+    ``warning`` is only ever set when a ``precondition_expression`` changed the
+    computed scope. ``error_source`` names the half a failure belongs to and is
+    set whenever ``has_error`` is true. Neither changes ``error_message`` for a
+    call that passes no precondition expression.
+    """
 
     scopes: list[Any] = field(default_factory=list)
     total_scopes: int = 0
@@ -53,6 +60,10 @@ class ScopeResult:
     module_versions: List[int] = field(default_factory=list)
     has_error: bool = False
     error_message: Optional[str] = None
+    # Set when the precondition expression changes the computed scope.
+    warning: Optional[str] = None
+    # Which half a failure belongs to: "expression" or "precondition".
+    error_source: Optional[str] = None
 
 
 class ScopeCalculatorService:
@@ -96,21 +107,195 @@ class ScopeCalculatorService:
             for s in scopes
         )
 
+    @staticmethod
+    def _scope_signature(scopes: list[Any]) -> frozenset[frozenset[int]]:
+        """Canonical identity of a scope set: the set of module-VID sets.
+
+        Comparing ``module_versions`` alone would miss a re-partitioning —
+        two intra-module scopes ``[[462], [513]]`` collapsing into one
+        cross-module scope ``[[462, 513]]`` lists the same module versions but
+        means something materially different. Comparing ``total_scopes`` alone
+        would miss a coincidental equal count. The set of module sets catches
+        module additions and removals, intra/cross re-grouping, splits, and the
+        empty case.
+        """
+        return frozenset(
+            frozenset(
+                c.module_vid
+                for c in getattr(s, "operation_scope_compositions", [])
+            )
+            for s in scopes
+        )
+
+    @staticmethod
+    def _module_vids(scopes: list[Any]) -> List[int]:
+        """Module VIDs across *scopes*, deduped in first-seen order."""
+        mvids: List[int] = []
+        for scope in scopes:
+            for comp in getattr(scope, "operation_scope_compositions", []):
+                if comp.module_vid not in mvids:
+                    mvids.append(comp.module_vid)
+        return mvids
+
+    def _result_from_scopes(self, scopes: list[Any]) -> ScopeResult:
+        """Project a computed scope list into a :class:`ScopeResult`."""
+        return ScopeResult(
+            scopes=scopes,
+            total_scopes=len(scopes),
+            is_cross_module=self._compute_cross_module(scopes),
+            module_versions=self._module_vids(scopes),
+        )
+
+    def _operand_tables(
+        self, expression: str, release_id: Optional[int]
+    ) -> tuple[Any, List[str]]:
+        """Parse *expression*, returning its AST and its table codes."""
+        ast = self._syntax.parse(expression)
+        oc = OperandsChecking(
+            session=self.session,
+            expression=expression,
+            ast=ast,
+            release_id=release_id,
+        )
+        return ast, (list(oc.tables.keys()) if oc.tables else [])
+
+    def _check_tables_hosted(
+        self, table_codes: List[str], release_id: Optional[int]
+    ) -> None:
+        """Raise ``1-13`` naming any table code no module version hosts.
+
+        ``OperationScopeService.extract_module_info`` only raises ``1-13`` when
+        *nothing* resolves, so an unhostable gate table is otherwise absorbed
+        by the main expression's own rows. It still inflates the operand count,
+        which usually empties the scope — but when the main expression resolves
+        to a single module-info row the resolver short-circuits before counting
+        operands at all, and the call would return a scope that cannot in fact
+        evaluate the pair. Checking the gate's codes on their own keeps that
+        case an error attributed to the gate rather than a silent wrong answer.
+        """
+        if not table_codes:
+            return
+        from dpmcore.dpm_xl.model_queries import ModuleVersionQuery
+
+        df = ModuleVersionQuery.get_from_table_codes(
+            session=self.session,
+            table_codes=table_codes,
+            release_id=release_id,
+        )
+        hosted = (
+            set(df["TableCode"].dropna().unique()) if not df.empty else set()
+        )
+        missing = [code for code in table_codes if code not in hosted]
+        if missing:
+            raise SemanticError("1-13", table_version_ids=missing)
+
+    def _run_scope(
+        self,
+        table_codes: List[str],
+        precondition_items: List[str],
+        release_id: Optional[int],
+    ) -> list[Any]:
+        """Resolve one scope set. A fresh service per call — it accumulates."""
+        scopes, _ = OperationScopeService(
+            session=self.session
+        ).calculate_operation_scope(
+            tables_vids=[],
+            precondition_items=precondition_items,
+            release_id=release_id,
+            table_codes=table_codes,
+        )
+        return scopes
+
+    @staticmethod
+    def _scope_change_warning(
+        baseline: list[Any],
+        combined: list[Any],
+        gate_tables: List[str],
+        gate_items: List[str],
+    ) -> str:
+        """Describe how the precondition moved the scope."""
+        before = sorted(ScopeCalculatorService._module_vids(baseline))
+        after = sorted(ScopeCalculatorService._module_vids(combined))
+        contributed = ", ".join(
+            part
+            for part in (
+                f"tables {', '.join(gate_tables)}" if gate_tables else "",
+                (
+                    f"filing indicators {', '.join(gate_items)}"
+                    if gate_items
+                    else ""
+                ),
+            )
+            if part
+        )
+        message = (
+            "Precondition expression changes the scope of the expression: "
+            f"module versions {before} -> {after} "
+            f"(scopes {len(baseline)} -> {len(combined)})."
+        )
+        if not combined:
+            message += (
+                " The pair is not evaluable in any module version:"
+                " no module reports every operand both halves need."
+            )
+        if contributed:
+            message += f" Precondition operands: {contributed}."
+        return message
+
     def calculate_from_expression(
         self,
         expression: str,
         release_id: Optional[int] = None,
         precondition_items: Optional[List[str]] = None,
         release_code: Optional[str] = None,
+        *,
+        precondition_expression: Optional[str] = None,
     ) -> ScopeResult:
-        """Calculate scopes for *expression*.
+        """Calculate scopes for *expression*, optionally gated.
 
         Parses the expression, runs OperandsChecking to extract table
         codes, then delegates to :class:`OperationScopeService`.
         ``precondition_items`` is the list of precondition variable
         codes that gate the validation; pass ``None`` or ``[]`` if
         the validation has no preconditions.
+
+        When ``precondition_expression`` is supplied, the gate's own operands
+        join the resolution by their matching channels — its table codes are
+        unioned into ``table_codes`` and its *mandatory* precondition variable
+        codes into ``precondition_items`` (unioned with any the caller passed).
+        The two are not interchangeable: only ``table_codes`` resolves through
+        ``get_from_table_codes``, and only ``precondition_items`` gets the
+        filing-indicator filter and the ``1-14`` check. Because a module hosts
+        an intra-module scope only when it supplies *every* operand, a gate
+        reaching outside the expression's own modules widens the scope to
+        cross-module, or empties it — which is the honest verdict, since the
+        pair is only evaluable where both halves resolve. That change is
+        reported in ``warning``, and a gate-attributable failure sets
+        ``error_source`` to ``"precondition"`` with a prefixed message.
+
+        The two channels treat a disjunctive gate differently, deliberately.
+        Variable codes are intersected across ``or`` branches, so an optional
+        filing indicator does not constrain scope. Table codes come from the
+        gate's ``OperandsChecking`` pass, which does not model boolean
+        structure, so every table the gate mentions is required even when only
+        one branch needs it. That errs toward reporting a wider scope rather
+        than missing a table the pair genuinely needs, and costs nothing on the
+        real dictionary, where no persisted precondition references a table.
+
+        Passing no ``precondition_expression`` costs nothing: no second scope
+        resolution, no warning, and byte-identical error messages.
+
+        Args:
+            expression: The DPM-XL expression to scope.
+            release_id: Optional release ID filter.
+            precondition_items: Filing-indicator codes gating the validation.
+            release_code: Optional release code (mutually exclusive
+                with ``release_id``).
+            precondition_expression: Optional DPM-XL gate expression.
+                Keyword-only, matching ``SemanticService.validate``, so the
+                pre-existing positional arguments keep their meaning.
         """
+        base_items = list(precondition_items or [])
         try:
             release_id = resolve_release_id(
                 self.session,
@@ -118,45 +303,98 @@ class ScopeCalculatorService:
                 release_code=release_code,
             )
             self._check_release_exists(release_id)
-            ast = self._syntax.parse(expression)
-            oc = OperandsChecking(
-                session=self.session,
-                expression=expression,
-                ast=ast,
-                release_id=release_id,
-            )
+            _, main_tables = self._operand_tables(expression, release_id)
+        except Exception as exc:
+            return self._failed(exc, None)
 
-            table_codes: list[str] = (
-                list(oc.tables.keys()) if oc.tables else []
-            )
+        if precondition_expression is None:
+            return self._scope_or_error(main_tables, base_items, release_id)
 
-            scope_svc = OperationScopeService(session=self.session)
-            scopes, _ = scope_svc.calculate_operation_scope(
-                tables_vids=[],
-                precondition_items=precondition_items or [],
-                release_id=release_id,
-                table_codes=table_codes,
+        try:
+            gate_ast, gate_tables = self._operand_tables(
+                precondition_expression, release_id
             )
+            self._check_tables_hosted(gate_tables, release_id)
+        except Exception as exc:
+            return self._failed(exc, "precondition")
+        gate_items = required_precondition_codes(gate_ast)
 
-            mvids: List[int] = []
-            for scope in scopes:
-                for comp in getattr(scope, "operation_scope_compositions", []):
-                    vid = comp.module_vid
-                    if vid not in mvids:
-                        mvids.append(vid)
+        table_codes = main_tables + [
+            t for t in gate_tables if t not in main_tables
+        ]
+        items = base_items + [i for i in gate_items if i not in base_items]
 
-            return ScopeResult(
-                scopes=scopes,
-                total_scopes=len(scopes),
-                is_cross_module=self._compute_cross_module(scopes),
-                module_versions=mvids,
+        # A gate that contributed no new operand cannot move the scope, so the
+        # baseline is provably identical and never computed.
+        if set(table_codes) == set(main_tables) and set(items) == set(
+            base_items
+        ):
+            return self._scope_or_error(main_tables, base_items, release_id)
+
+        try:
+            combined = self._run_scope(table_codes, items, release_id)
+        except Exception as exc:
+            # The gate is only to blame if the expression scopes cleanly
+            # without it — settled by retrying, not guessed at.
+            baseline_ok = self._resolves(main_tables, base_items, release_id)
+            return self._failed(exc, "precondition" if baseline_ok else None)
+
+        result = self._result_from_scopes(combined)
+        try:
+            baseline = self._run_scope(main_tables, base_items, release_id)
+        except Exception:
+            # The expression alone does not resolve but the pair does; treat
+            # the baseline as empty so the change is still reported.
+            baseline = []
+        if self._scope_signature(baseline) != self._scope_signature(combined):
+            result.warning = self._scope_change_warning(
+                baseline, combined, gate_tables, gate_items
             )
+        return result
 
-        except (SemanticError, Exception) as exc:
-            return ScopeResult(
-                has_error=True,
-                error_message=str(exc),
+    @staticmethod
+    def _failed(exc: Exception, source: Optional[str]) -> ScopeResult:
+        """Build a failing result, attributed to *source* when known.
+
+        ``source`` is ``None`` for a failure that is the expression's own (or
+        that no precondition was involved in), which keeps ``error_message``
+        byte-identical to what callers saw before this argument existed.
+        """
+        message = str(exc)
+        if source == "precondition":
+            message = f"Precondition: {message}"
+        return ScopeResult(
+            has_error=True,
+            error_message=message,
+            error_source="expression" if source is None else source,
+        )
+
+    def _scope_or_error(
+        self,
+        table_codes: List[str],
+        items: List[str],
+        release_id: Optional[int],
+    ) -> ScopeResult:
+        """Resolve one scope set into a result, or an unattributed failure."""
+        try:
+            return self._result_from_scopes(
+                self._run_scope(table_codes, items, release_id)
             )
+        except Exception as exc:
+            return self._failed(exc, None)
+
+    def _resolves(
+        self,
+        table_codes: List[str],
+        items: List[str],
+        release_id: Optional[int],
+    ) -> bool:
+        """True when these operands resolve without raising."""
+        try:
+            self._run_scope(table_codes, items, release_id)
+        except Exception:
+            return False
+        return True
 
     def calculate_from_tables(
         self,
