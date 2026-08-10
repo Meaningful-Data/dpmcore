@@ -14,7 +14,7 @@ from typing import (
     cast,
 )
 
-from sqlalchemy import case, func, or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload
 
 from dpmcore.orm.glossary import (
@@ -189,7 +189,8 @@ class StructureService:
         if self._releases_cache is None:
             releases = self.session.query(Release).all()
             self._sort_orders_cache = {
-                r.release_id: compute_sort_order(r.date) for r in releases
+                r.release_id: compute_sort_order(r.date, r.type)
+                for r in releases
             }
             sort_orders = self._sort_orders_cache
             releases.sort(
@@ -288,21 +289,18 @@ class StructureService:
         # Count before pagination/limiting
         total = q.count()
 
-        # Latest first: an undated (unpublished) working release ranks as
-        # the latest, then dated releases descending. The explicit
-        # NULL-first CASE keeps this uniform across backends (SQLite and
-        # SQL Server otherwise sort NULLs last in DESC).
-        q = q.order_by(
-            case((Release.date.is_(None), 1), else_=0).desc(),
-            Release.date.desc(),
+        # Latest first via compute_sort_order
+        rows = sorted(
+            q.all(),
+            key=lambda r: (compute_sort_order(r.date, r.type), r.release_id),
+            reverse=True,
         )
 
         if latest or latest_stable:
-            q = q.limit(1)
+            rows = rows[:1]
         else:
-            q = q.offset(offset).limit(limit)
+            rows = rows[offset : offset + limit]
 
-        rows = q.all()
         return [_release_to_dict(r, detail) for r in rows], total
 
     def get_release_by_code(

@@ -15,6 +15,11 @@ which represents the current in-progress state; it therefore sorts *after*
 every dated release — i.e. it is the latest. This is expressed by mapping a
 missing date to a sentinel ordinal greater than any real date's.
 
+Some schemas declare ``Release.Date`` ``NOT NULL`` and
+mark their perpetual release via ``Release.Type`` instead (e.g.
+``"playground"``), with an irrelevant placeholder date. That type sorts as
+latest like an undated release. See :data:`_NON_CHRONOLOGICAL_TYPES`.
+
 The order key is the date's proleptic-Gregorian ordinal, computed in
 Python at query time and held as a plain ``int`` — there is no persisted
 SQL column; only its ordering is ever used.
@@ -23,7 +28,7 @@ SQL column; only its ordering is ever used.
 from __future__ import annotations
 
 from datetime import date
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, FrozenSet, List, Optional
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -33,8 +38,14 @@ if TYPE_CHECKING:
 # unpublished working release ranks as the latest.
 _UNDATED_SORT_ORDER = date.max.toordinal() + 1
 
+# ``Release.type`` values marking a perpetual release (sorts as latest,
+# like an undated one) on schemas where ``Release.Date`` is ``NOT NULL``.
+_NON_CHRONOLOGICAL_TYPES: FrozenSet[str] = frozenset({"playground"})
 
-def compute_sort_order(release_date: Optional[date]) -> int:
+
+def compute_sort_order(
+    release_date: Optional[date], release_type: Optional[str] = None
+) -> int:
     """Return a sortable integer for a release's publication date.
 
     Ordering is purely chronological: an earlier ``Release.date`` sorts
@@ -44,13 +55,17 @@ def compute_sort_order(release_date: Optional[date]) -> int:
     Args:
         release_date: The release's ``Release.date``. ``None`` (an
             unpublished working release) sorts as the latest release.
+        release_type: The release's ``Release.type``, if available. A
+            value in :data:`_NON_CHRONOLOGICAL_TYPES` (e.g.
+            ``"playground"``) sorts as latest regardless of
+            ``release_date``, which may just be a ``NOT NULL`` placeholder.
 
     Returns:
         The date's ordinal (days since 0001-01-01), or the "latest"
         sentinel (:data:`_UNDATED_SORT_ORDER`) when ``release_date`` is
-        missing.
+        missing or ``release_type`` is non-chronological.
     """
-    if release_date is None:
+    if release_date is None or release_type in _NON_CHRONOLOGICAL_TYPES:
         return _UNDATED_SORT_ORDER
     return release_date.toordinal()
 
@@ -61,15 +76,15 @@ def load_release_sort_orders(
     """Return ``{release_id: sort_order}`` derived from ``Release.date``.
 
     Every release maps to an ``int``: dated releases to their date's
-    ordinal, and an undated (unpublished) release to the "latest"
-    sentinel. The mapping never holds ``None`` values; only a ``.get()``
-    miss on a release_id absent from the mapping (an orphan FK) yields
-    ``None`` for a caller.
+    ordinal, and an undated (unpublished) or non-chronological (e.g.
+    ``"playground"``-typed) release to the "latest" sentinel. The mapping
+    never holds ``None`` values; only a ``.get()`` miss on a release_id
+    absent from the mapping (an orphan FK) yields ``None`` for a caller.
     """
     from dpmcore.orm.infrastructure import Release
 
-    rows = session.query(Release.release_id, Release.date).all()
-    return {rid: compute_sort_order(d) for rid, d in rows}
+    rows = session.query(Release.release_id, Release.date, Release.type).all()
+    return {rid: compute_sort_order(d, t) for rid, d, t in rows}
 
 
 def resolve_sort_order(
@@ -86,8 +101,9 @@ def resolve_sort_order(
             don't have to wrap the call in their own try/except just to
             customise wording.
 
-    An undated (unpublished) release is *not* an error — it resolves to
-    the "latest" sentinel like any other release.
+    An undated (unpublished) or non-chronological (e.g.
+    ``"playground"``-typed) release is *not* an error — it resolves to the
+    "latest" sentinel like any other release.
 
     Raises:
         ValueError: If no Release row matches ``release_id``.
@@ -95,7 +111,7 @@ def resolve_sort_order(
     from dpmcore.orm.infrastructure import Release
 
     row = (
-        session.query(Release.date)
+        session.query(Release.date, Release.type)
         .filter(Release.release_id == release_id)
         .first()
     )
@@ -104,7 +120,7 @@ def resolve_sort_order(
             f"{role} {release_id} has no sort_order — "
             "no Release row matches that ID."
         )
-    return compute_sort_order(row[0])
+    return compute_sort_order(row[0], row[1])
 
 
 def release_ids_for_sort_order(

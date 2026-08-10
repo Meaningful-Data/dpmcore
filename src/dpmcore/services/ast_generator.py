@@ -669,7 +669,7 @@ class ASTGeneratorService:
         rows = self.session.query(Release).all()
         candidates: List[tuple[int, Any]] = []
         for r in rows:
-            so = compute_sort_order(r.date)
+            so = compute_sort_order(r.date, r.type)
             if start_sort is not None and so < start_sort:
                 continue
             if end_sort is not None and so >= end_sort:

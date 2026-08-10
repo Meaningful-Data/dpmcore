@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from sqlalchemy import Date, and_, cast, or_
 
 from dpmcore.orm.release_sort_order import (
+    compute_sort_order,
     load_release_sort_orders,
     release_ids_for_sort_order,
     resolve_sort_order,
@@ -188,10 +189,17 @@ def filter_by_release(
     sort_orders = load_release_sort_orders(session)
     start_ids = release_ids_for_sort_order(sort_orders, le=target_sort_order)
     end_ids = release_ids_for_sort_order(sort_orders, gt=target_sort_order)
+    perpetual_ids = release_ids_for_sort_order(
+        sort_orders, ge=compute_sort_order(None)
+    )
     return query.filter(
         and_(
             start_col.in_(start_ids),
-            or_(end_col.is_(None), end_col.in_(end_ids)),
+            or_(
+                end_col.is_(None),
+                end_col.in_(end_ids),
+                end_col.in_(perpetual_ids),
+            ),
         )
     )
 
@@ -240,7 +248,14 @@ def filter_item_version(
 
     start_ids = release_ids_for_sort_order(sort_orders, le=ref_sort_order)
     end_ids = release_ids_for_sort_order(sort_orders, gt=ref_sort_order)
+    perpetual_ids = release_ids_for_sort_order(
+        sort_orders, ge=compute_sort_order(None)
+    )
     return and_(
         item_start_col.in_(start_ids),
-        or_(item_end_col.is_(None), item_end_col.in_(end_ids)),
+        or_(
+            item_end_col.is_(None),
+            item_end_col.in_(end_ids),
+            item_end_col.in_(perpetual_ids),
+        ),
     )
