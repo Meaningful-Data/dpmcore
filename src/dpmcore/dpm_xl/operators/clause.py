@@ -25,6 +25,12 @@ class ClauseOperator(Operator):
     check_new_names: ClassVar[bool] = False
     precondition: ClassVar[bool] = False
     propagate_attributes: ClassVar[bool] = True
+    # Whether the operator accepts the Fact Component ("f") as a target.
+    # Only ``where`` does: it filters on the fact value, leaving the structure
+    # untouched. Projecting onto (``get``), renaming or substituting the Fact
+    # Component stays invalid. Standard Key Components ("r", "c", "s") are
+    # never accepted by any clause operator.
+    allow_fact: ClassVar[bool] = False
 
     @classmethod
     def validate(
@@ -40,18 +46,20 @@ class ClauseOperator(Operator):
         if condition:
             cls._validate_condition(operand, condition)
 
-        if (
-            any(x in operand.get_standard_components() for x in key_names)
-            or tokens.FACT in key_names
-        ):
-            raise errors.SemanticError("4-5-0-1", recordset=operand.name)
+        cls._check_targets_allowed(operand, key_names)
 
         dpm_components = {
             **operand.get_dpm_components(),
             **operand.get_attributes(),
         }
 
-        not_found = [name for name in key_names if name not in dpm_components]
+        # The Fact Component is not in ``dpm_components`` by design; when the
+        # operator accepts it, the guard above has already vetted it.
+        not_found = [
+            name
+            for name in key_names
+            if name != tokens.FACT and name not in dpm_components
+        ]
         if not_found:
             raise errors.SemanticError(
                 "2-8", op=cls.op, dpm_keys=not_found, recordset=operand.name
@@ -111,6 +119,29 @@ class ClauseOperator(Operator):
         return cls.generate_result_structure(
             operand, key_names, condition, origin
         )
+
+    @classmethod
+    def _check_targets_allowed(
+        cls, operand: RecordSet, key_names: list[str]
+    ) -> None:
+        """Reject component targets this clause operator cannot act on.
+
+        Standard *Key Components* ("r", "c", "s") are out of bounds for every
+        clause operator. The Fact Component ("f") is accepted only by the
+        operators that declare ``allow_fact``.
+
+        Args:
+            operand: The recordset the clause applies to.
+            key_names: Component names targeted by the clause.
+
+        Raises:
+            SemanticError: ``4-5-0-1`` for a standard key, or for the Fact
+                Component on an operator that does not accept it.
+        """
+        if any(x in operand.get_standard_components() for x in key_names):
+            raise errors.SemanticError("4-5-0-1", recordset=operand.name)
+        if tokens.FACT in key_names and not cls.allow_fact:
+            raise errors.SemanticError("4-5-0-1", recordset=operand.name)
 
     @classmethod
     def _validate_condition(
@@ -206,6 +237,9 @@ class ClauseOperator(Operator):
 
 class Where(ClauseOperator):
     op: ClassVar[str | None] = tokens.WHERE
+    # A where condition may reference the Fact Component of the operand; the
+    # filter leaves the structure, and therefore the Fact, untouched.
+    allow_fact: ClassVar[bool] = True
 
     @classmethod
     def validate_condition_type(cls, condition: Scalar) -> None:
@@ -272,6 +306,11 @@ class Sub(ClauseOperator):
     ) -> RecordSet:
         if not isinstance(operand, RecordSet):
             raise errors.SemanticError("4-5-0-2", operator=cls.op)
+
+        # A sub clause substitutes DPM *Key Components* only. State that
+        # explicitly rather than letting a standard key or the Fact Component
+        # fall through to the "not on recordset" error below.
+        cls._check_targets_allowed(operand, [property_code])
 
         # Validate that the property_code exists in the operand's components
         dpm_components = operand.get_dpm_components()

@@ -91,6 +91,7 @@ from dpmcore.dpm_xl.utils.tokens import (
     ANNUALISE,
     DATE,
     DPM,
+    FACT,
     FILTER,
     GET,
     IF,
@@ -234,6 +235,12 @@ class InputAnalyzer(ASTTemplate, ABC):
         self.release_id: int | None = None
 
         self.calculations_outputs: dict[str, Operand] = {}
+
+        # Operands of the clause operators currently being visited, innermost
+        # last. A ``Dimension`` naming the Fact Component ("f") has no
+        # dictionary entry and its data type is whatever the enclosing operand
+        # carries, so ``visit_Dimension`` reads the top of this stack.
+        self._clause_operands: list[RecordSet] = []
 
         # Implicit open keys that are always available without being declared
         # These are special dimensions that arise from the reporting context itself
@@ -678,6 +685,16 @@ class InputAnalyzer(ASTTemplate, ABC):
     def visit_Dimension(  # type: ignore[override]
         self, node: Dimension
     ) -> Scalar:
+        # The Fact Component is not an open key: it is a component of the
+        # clause operand itself, and takes that operand's data type.
+        if node.dimension_code == FACT:
+            if not self._clause_operands:
+                raise errors.SemanticError(
+                    "4-5-0-1", recordset=self._expression
+                )
+            fact_type = self._clause_operands[-1].get_fact_component().type
+            return Scalar(type_=fact_type, name=None, origin=FACT)
+
         # Check if this is an implicit open key (refPeriod, entityID)
         if node.dimension_code in self.global_variables:
             gtype = self.global_variables[node.dimension_code]
@@ -921,7 +938,18 @@ class InputAnalyzer(ASTTemplate, ABC):
         if len(node.key_components) == 0:
             raise errors.SemanticError("4-5-2-1", recordset=operand.name)
 
-        condition = self.visit(node.condition)
+        # ``ClauseOperator.validate`` rejects non-recordset operands anyway;
+        # raising the same error here keeps the Fact Component resolvable in
+        # ``visit_Dimension`` (which needs the operand's structure) without
+        # having to cope with an operand that has none.
+        if not isinstance(operand, RecordSet):
+            raise errors.SemanticError("4-5-0-2", operator=WHERE)
+
+        self._clause_operands.append(operand)
+        try:
+            condition = self.visit(node.condition)
+        finally:
+            self._clause_operands.pop()
         result = CLAUSE_OP_MAPPING[WHERE].validate(
             operand=operand,
             key_names=node.key_components,

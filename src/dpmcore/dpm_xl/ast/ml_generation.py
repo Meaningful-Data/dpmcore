@@ -50,6 +50,7 @@ from dpmcore.dpm_xl.model_queries import (
     OperatorQuery,
     VariableVersionQuery,
 )
+from dpmcore.dpm_xl.utils import tokens
 from dpmcore.dpm_xl.utils.data_handlers import filter_all_data, generate_xyz
 from dpmcore.dpm_xl.utils.scopes_calculator import OperationScopeService
 from dpmcore.errors import SemanticError
@@ -727,6 +728,14 @@ class MLGeneration(ASTTemplate):
         self.create_operation_node(node, is_leaf=True)
 
     def visit_Dimension(self, node: Dimension) -> None:
+        # The Fact Component is not a Property, so there is no property to
+        # reference: store the component name on the node itself, the way
+        # literal arguments are stored.
+        if node.dimension_code == tokens.FACT:
+            node.scalar = tokens.FACT
+            self.create_operation_node(node, is_leaf=True)
+            return
+
         node.source_reference = "property"
         op_node = self.create_operation_node(node, is_leaf=True)
         property_row = ItemCategoryQuery.get_property_from_code(

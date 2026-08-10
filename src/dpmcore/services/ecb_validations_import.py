@@ -1,4 +1,12 @@
-"""Import ECB validation rules from a CSV file into the DPM database."""
+"""Import ECB validation rules from a CSV file into the DPM database.
+
+ECB's IDs are pinned to a reserved block so they stay stable across
+releases, instead of drifting with the rest of the dataset. That only
+holds the first time this runs against a database -- ``update-db`` and
+``meili-build`` always start from a fresh one, but running this twice
+directly against an already-imported database can leave ECB IDs split
+across two ranges.
+"""
 
 from __future__ import annotations
 
@@ -10,17 +18,19 @@ from hashlib import md5
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
+from dpmcore.errors import DpmCoreError
 from dpmcore.orm.infrastructure import Concept, DpmClass, Organisation, Release
 from dpmcore.orm.operations import (
     OperandReference,
     OperandReferenceLocation,
     Operation,
     OperationNode,
+    OperationScope,
     OperationVersion,
 )
 from dpmcore.orm.rendering import Cell, TableVersion
@@ -52,7 +62,7 @@ def _format_warnings(warnings: List[str], limit: int = 20) -> str:
     return f" Warnings logged: {shown}{tail}"
 
 
-class EcbValidationsImportError(Exception):
+class EcbValidationsImportError(DpmCoreError):
     """Raised when ECB validations cannot be imported."""
 
 
@@ -71,6 +81,15 @@ class EcbValidationsImportResult:
 
 class EcbValidationsImportService:
     """Import ECB validation rules from a CSV export into a DPM database."""
+
+    # Pinned instead of computed via max+1, so they no longer drift as
+    # organisations/prefixes are added upstream.
+    _ECB_ID_PREFIX = 103
+    _ECB_ID_BASE = _ECB_ID_PREFIX * 10_000_000
+    _ECB_ORG_ID = 1_030_000
+
+    # Required headroom between the native max ID and `_ECB_ID_BASE`.
+    _ECB_ID_BASE_MIN_MARGIN = 1_000_000
 
     def __init__(self, engine: Engine) -> None:
         """Initialise the service with a SQLAlchemy engine."""
@@ -183,10 +202,117 @@ class EcbValidationsImportService:
         return match.group(1) if match else None
 
     @staticmethod
-    def _next_int_id(session: Session, model: Any, attr_name: str) -> int:
+    def _next_int_id(
+        session: Session,
+        model: Any,
+        attr_name: str,
+        *,
+        floor: Optional[int] = None,
+    ) -> int:
+        """Return the next available ID for ``attr_name`` on ``model``.
+
+        Without ``floor`` this is a plain "max + 1" over the whole table,
+        which drifts release to release as the surrounding EBA/DPM dataset
+        grows. Passing ``floor`` scopes the scan to IDs already inside that
+        reserved block, so the first ID handed out from it stays the same
+        regardless of how large the rest of the table has become.
+
+        This does not guarantee a stable ID per ECB code across a full
+        reimport: codes are enumerated via ``sorted(unique_codes)``, so
+        adding a new code that sorts before existing ones shifts every
+        code after it.
+        """
         column = getattr(model, attr_name)
-        current = session.query(func.max(column)).scalar()
-        return int(current or 0) + 1
+        query = session.query(func.max(column))
+        if floor is not None:
+            query = query.filter(column >= floor)
+        current = query.scalar()
+        if current is None:
+            return floor if floor is not None else 1
+        return int(current) + 1
+
+    @staticmethod
+    def _assert_id_floor_margin(
+        session: Session,
+        model: Any,
+        attr_name: str,
+        *,
+        floor: int,
+        min_margin: int,
+        ecb_org_id: int,
+    ) -> None:
+        """Fail loudly if the reserved block isn't exclusively ECB's.
+
+        Two independent ways that can happen: a native ID below ``floor``
+        has grown within ``min_margin`` of it, or a native row already
+        sits at/above ``floor`` (e.g. the pinned ``id_prefix``/``org_id``
+        got taken by another organisation upstream). Only ``Operation``
+        records ownership (``owner_id``); the other tables are joined back
+        to it through their FKs to answer the same question.
+        """
+        column = getattr(model, attr_name)
+
+        native_max = (
+            session.query(func.max(column)).filter(column < floor).scalar()
+        )
+        if native_max is not None and floor - int(native_max) < min_margin:
+            raise EcbValidationsImportError(
+                f"Native {model.__name__}.{attr_name} max ({native_max})"
+                f" is too close to the ECB block ({floor})."
+            )
+
+        query = session.query(func.count(column)).filter(column >= floor)
+        if model is OperationVersion:
+            query = query.join(
+                Operation,
+                Operation.operation_id == OperationVersion.operation_id,
+            )
+        elif model is OperationNode:
+            query = query.join(
+                OperationVersion,
+                OperationVersion.operation_vid == OperationNode.operation_vid,
+            ).join(
+                Operation,
+                Operation.operation_id == OperationVersion.operation_id,
+            )
+        elif model is OperationScope:
+            query = query.join(
+                OperationVersion,
+                OperationVersion.operation_vid == OperationScope.operation_vid,
+            ).join(
+                Operation,
+                Operation.operation_id == OperationVersion.operation_id,
+            )
+        elif model is OperandReference:
+            query = (
+                query.join(
+                    OperationNode,
+                    OperationNode.node_id == OperandReference.node_id,
+                )
+                .join(
+                    OperationVersion,
+                    OperationVersion.operation_vid
+                    == OperationNode.operation_vid,
+                )
+                .join(
+                    Operation,
+                    Operation.operation_id == OperationVersion.operation_id,
+                )
+            )
+        elif model is not Operation:
+            raise ValueError(f"No owner join defined for {model.__name__}")
+
+        native_in_block = query.filter(
+            or_(
+                Operation.owner_id != ecb_org_id,
+                Operation.owner_id.is_(None),
+            )
+        ).scalar()
+        if native_in_block:
+            raise EcbValidationsImportError(
+                f"{native_in_block} non-ECB {model.__name__}.{attr_name}"
+                f" row(s) already inside the ECB block ({floor})."
+            )
 
     def _create_operation_concept(
         self,
@@ -220,14 +346,27 @@ class EcbValidationsImportService:
         if org is not None:
             return org
 
-        next_org_id = self._next_int_id(session, Organisation, "org_id")
-        max_prefix = session.query(func.max(Organisation.id_prefix)).scalar()
+        conflicting = (
+            session.query(Organisation)
+            .filter(
+                or_(
+                    Organisation.org_id == self._ECB_ORG_ID,
+                    Organisation.id_prefix == self._ECB_ID_PREFIX,
+                )
+            )
+            .first()
+        )
+        if conflicting is not None:
+            raise EcbValidationsImportError(
+                f"Organisation {conflicting.acronym!r} already occupies"
+                " the reserved ECB org_id/id_prefix."
+            )
 
         org = Organisation(
-            org_id=next_org_id,
+            org_id=self._ECB_ORG_ID,
             name="European Central Bank",
             acronym="ECB",
-            id_prefix=int(max_prefix or 0) + 1,
+            id_prefix=self._ECB_ID_PREFIX,
         )
         session.add(org)
         session.flush()
@@ -383,9 +522,14 @@ class EcbValidationsImportService:
         if not table_codes:
             return 0
 
-        next_node_id = self._next_int_id(session, OperationNode, "node_id")
+        next_node_id = self._next_int_id(
+            session, OperationNode, "node_id", floor=self._ECB_ID_BASE
+        )
         next_ref_id = self._next_int_id(
-            session, OperandReference, "operand_reference_id"
+            session,
+            OperandReference,
+            "operand_reference_id",
+            floor=self._ECB_ID_BASE,
         )
 
         node = OperationNode(
@@ -537,14 +681,37 @@ class EcbValidationsImportService:
             default=None,
         )
 
+        for model, attr_name in (
+            (Operation, "operation_id"),
+            (OperationVersion, "operation_vid"),
+            (OperationNode, "node_id"),
+            (OperandReference, "operand_reference_id"),
+            (OperationScope, "operation_scope_id"),
+        ):
+            self._assert_id_floor_margin(
+                session,
+                model,
+                attr_name,
+                floor=self._ECB_ID_BASE,
+                min_margin=self._ECB_ID_BASE_MIN_MARGIN,
+                ecb_org_id=ecb_org.org_id,
+            )
+
         counters = {
             "operation_id": self._next_int_id(
-                session, Operation, "operation_id"
+                session, Operation, "operation_id", floor=self._ECB_ID_BASE
             ),
             "operation_vid": self._next_int_id(
                 session,
                 OperationVersion,
                 "operation_vid",
+                floor=self._ECB_ID_BASE,
+            ),
+            "operation_scope_id": self._next_int_id(
+                session,
+                OperationScope,
+                "operation_scope_id",
+                floor=self._ECB_ID_BASE,
             ),
         }
         operations_created = 0
@@ -756,6 +923,10 @@ class EcbValidationsImportService:
                             continue
                         seen_module_vid_sets.add(module_vids)
 
+                        scope.operation_scope_id = counters[
+                            "operation_scope_id"
+                        ]
+                        counters["operation_scope_id"] += 1
                         scope.operation_vid = operation_version.operation_vid
                         scope.is_active = active_value
                         scope.severity = severity_value
