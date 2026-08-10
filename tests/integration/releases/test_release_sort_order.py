@@ -763,3 +763,116 @@ def test_filter_item_version_self_reference_at_playground_type(
         "ItemCategory ends at the perpetual release itself — querying AT "
         "that same release must not treat it as closed"
     )
+
+
+# --------------------------------------------------------------------- #
+# Same self-reference gap in three more call sites: ECB validations
+# import, and the AST generator's release-window resolution.
+# --------------------------------------------------------------------- #
+
+
+def test_ecb_valid_release_ids_self_reference_at_playground_type(
+    memory_session,
+):
+    """A validation ending at Playground is valid AT Playground too."""
+    from dpmcore.services.ecb_validations_import import (
+        EcbValidationsImportService,
+    )
+
+    session = memory_session
+    session.add_all(
+        [
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(
+                release_id=9999,
+                code="Playground",
+                date=date(1970, 1, 1),
+                type="playground",
+            ),
+        ]
+    )
+    session.commit()
+
+    ids = EcbValidationsImportService._get_valid_release_ids(
+        session, start_release_id=1, end_release_id=9999
+    )
+    assert set(ids) == {1, 9999}, (
+        "a validation ending at the perpetual release itself must still "
+        "be valid at that same release"
+    )
+
+
+def test_latest_release_in_window_self_reference_at_playground_type(
+    memory_session,
+):
+    """The AST generator resolves Playground itself, not an older release."""
+    from dpmcore.services.ast_generator import ASTGeneratorService
+
+    session = memory_session
+    mv = ModuleVersion(
+        module_vid=10,
+        module_id=1,
+        code="MV1",
+        start_release_id=1,
+        end_release_id=9999,
+    )
+    session.add_all(
+        [
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(
+                release_id=9999,
+                code="Playground",
+                date=date(1970, 1, 1),
+                type="playground",
+            ),
+            Framework(framework_id=1, code="FW"),
+            Module(module_id=1, framework_id=1),
+            mv,
+        ]
+    )
+    session.commit()
+
+    svc = ASTGeneratorService(session)
+    latest = svc._latest_release_in_window(mv)
+    assert latest is not None
+    assert latest.release_id == 9999, (
+        "a module version open via the perpetual release must resolve "
+        "to that release, not fall back to an older one"
+    )
+
+
+def test_resolve_explicit_release_self_reference_at_playground_type(
+    memory_session,
+):
+    """Requesting Playground explicitly is not "past the end" at Playground."""
+    from dpmcore.services.ast_generator import ASTGeneratorService
+
+    session = memory_session
+    mv = ModuleVersion(
+        module_vid=10,
+        module_id=1,
+        code="MV1",
+        start_release_id=1,
+        end_release_id=9999,
+    )
+    session.add_all(
+        [
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(
+                release_id=9999,
+                code="Playground",
+                date=date(1970, 1, 1),
+                type="playground",
+            ),
+            Framework(framework_id=1, code="FW"),
+            Module(module_id=1, framework_id=1),
+            mv,
+        ]
+    )
+    session.commit()
+
+    svc = ASTGeneratorService(session)
+    release_row = svc._resolve_explicit_release(
+        "Playground", mv, "MOD", "1.0"
+    )
+    assert release_row.release_id == 9999

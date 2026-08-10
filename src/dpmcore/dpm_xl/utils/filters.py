@@ -188,6 +188,8 @@ def filter_by_release(
     sort_orders = load_release_sort_orders(session)
     start_ids = release_ids_for_sort_order(sort_orders, le=target_sort_order)
     end_ids = release_ids_for_sort_order(sort_orders, gt=target_sort_order)
+    # A row ending at an "always latest" release (undated or
+    # non-chronological) is still open even when queried at that release.
     perpetual_ids = release_ids_for_sort_order(
         sort_orders, ge=compute_sort_order(None)
     )
@@ -247,6 +249,8 @@ def filter_item_version(
 
     start_ids = release_ids_for_sort_order(sort_orders, le=ref_sort_order)
     end_ids = release_ids_for_sort_order(sort_orders, gt=ref_sort_order)
+    # A row ending at an "always latest" release (undated or
+    # non-chronological) is still open even when queried at that release.
     perpetual_ids = release_ids_for_sort_order(
         sort_orders, ge=compute_sort_order(None)
     )

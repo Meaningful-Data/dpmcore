@@ -396,6 +396,7 @@ class EcbValidationsImportService:
         ``code`` format.
         """
         from dpmcore.orm.release_sort_order import (
+            compute_sort_order,
             load_release_sort_orders,
             release_ids_for_sort_order,
         )
@@ -415,9 +416,16 @@ class EcbValidationsImportService:
                 f"Release {end_release_id} has no sort_order — "
                 "no Release row matches that ID."
             )
-        return release_ids_for_sort_order(
+        ids = release_ids_for_sort_order(
             sort_orders, ge=start_sort, lt=end_sort
         )
+        # A row ending at an "always latest" release (undated or
+        # non-chronological) is still open even when queried at that release.
+        if end_sort >= compute_sort_order(None):
+            ids += release_ids_for_sort_order(
+                sort_orders, ge=compute_sort_order(None)
+            )
+        return ids
 
     def _collect_table_codes_from_ast(self, node: Any) -> Set[str]:
         table_codes: Set[str] = set()
