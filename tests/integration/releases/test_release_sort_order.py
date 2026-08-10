@@ -872,7 +872,5 @@ def test_resolve_explicit_release_self_reference_at_playground_type(
     session.commit()
 
     svc = ASTGeneratorService(session)
-    release_row = svc._resolve_explicit_release(
-        "Playground", mv, "MOD", "1.0"
-    )
+    release_row = svc._resolve_explicit_release("Playground", mv, "MOD", "1.0")
     assert release_row.release_id == 9999
