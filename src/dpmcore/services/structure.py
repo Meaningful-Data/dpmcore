@@ -197,6 +197,7 @@ class StructureService:
                 key=lambda r: (
                     sort_orders[r.release_id] is not None,
                     sort_orders[r.release_id] or 0,
+                    r.release_id,
                 )
             )
             self._releases_cache = releases
