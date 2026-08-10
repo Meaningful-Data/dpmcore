@@ -181,10 +181,9 @@ def filter_by_release(
             "Select statements are not supported.",
         )
 
-    # Order releases by date. A "Playground"/working release orders by
-    # its date like any other (an undated one ranks as the latest), so no
-    # code parsing and no special-casing is needed; an unknown release_id
-    # raises.
+    # Order releases by date. resolve_sort_order already handles
+    # non-chronological types like "Playground". This block only compares
+    # the sort order it returns. An unknown release_id raises.
     target_sort_order = resolve_sort_order(session, release_id)
     sort_orders = load_release_sort_orders(session)
     start_ids = release_ids_for_sort_order(sort_orders, le=target_sort_order)
