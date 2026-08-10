@@ -27,7 +27,13 @@ def fixture_client(fixture_db_url):
     engine.dispose()
 
 
-def _scope_result(is_cross=False, has_error=False, module_versions=None):
+def _scope_result(
+    is_cross=False,
+    has_error=False,
+    module_versions=None,
+    warning=None,
+    error_source=None,
+):
     return SimpleNamespace(
         scopes=[],
         total_scopes=2,
@@ -37,6 +43,8 @@ def _scope_result(is_cross=False, has_error=False, module_versions=None):
         else [1, 2],
         has_error=has_error,
         error_message="boom" if has_error else None,
+        warning=warning,
+        error_source=error_source,
     )
 
 
@@ -82,6 +90,64 @@ class TestPostScope:
         assert kwargs["release_id"] == 5
         assert kwargs["precondition_items"] == ["item1", "item2"]
         assert kwargs["release_code"] is None
+        assert kwargs["precondition_expression"] is None
+
+    def test_passes_precondition_expression(self, client):
+        """The full DPM-XL gate is forwarded verbatim (issue #279)."""
+        with patch(
+            "dpmcore.services.scope_calculator.ScopeCalculatorService"
+        ) as Svc:
+            Svc.return_value.calculate_from_expression.return_value = (
+                _scope_result()
+            )
+            client.post(
+                "/api/v1/scope",
+                json={
+                    "expression": "{tC_01.00, r0010, c0010} = 0",
+                    "precondition_expression": "{v_C_01.00}",
+                },
+            )
+
+        kwargs = Svc.return_value.calculate_from_expression.call_args.kwargs
+        assert kwargs["precondition_expression"] == "{v_C_01.00}"
+
+    def test_returns_warning_and_error_source(self, client):
+        with patch(
+            "dpmcore.services.scope_calculator.ScopeCalculatorService"
+        ) as Svc:
+            Svc.return_value.calculate_from_expression.return_value = (
+                _scope_result(warning="scope changed", error_source=None)
+            )
+            response = client.post(
+                "/api/v1/scope",
+                json={
+                    "expression": "{tC_01.00, r0010, c0010} = 0",
+                    "precondition_expression": "{v_C_01.00}",
+                },
+            )
+
+        body = response.json()
+        assert body["warning"] == "scope changed"
+        assert body["error_source"] is None
+
+    def test_returns_error_source_on_a_gate_failure(self, client):
+        with patch(
+            "dpmcore.services.scope_calculator.ScopeCalculatorService"
+        ) as Svc:
+            Svc.return_value.calculate_from_expression.return_value = (
+                _scope_result(has_error=True, error_source="precondition")
+            )
+            response = client.post(
+                "/api/v1/scope",
+                json={
+                    "expression": "{tC_01.00, r0010, c0010} = 0",
+                    "precondition_expression": "{v_NOPE}",
+                },
+            )
+
+        body = response.json()
+        assert body["has_error"] is True
+        assert body["error_source"] == "precondition"
 
     def test_passes_release_code(self, client):
         """release_code is forwarded to the service like /validate/semantic."""
@@ -179,6 +245,7 @@ class TestPostScope:
             "release_id",
             "release_code",
             "precondition_items",
+            "precondition_expression",
         }
         response_schema = spec["components"]["schemas"]["ScopeResponse"][
             "properties"
@@ -189,6 +256,8 @@ class TestPostScope:
             "module_versions",
             "has_error",
             "error_message",
+            "warning",
+            "error_source",
         } == set(response_schema.keys())
 
 

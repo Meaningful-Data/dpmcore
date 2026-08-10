@@ -11,12 +11,18 @@ from sqlalchemy.orm import Session
 
 
 class ScopeRequest(BaseModel):
-    """Request body for ``POST /scope``."""
+    """Request body for ``POST /scope``.
+
+    ``precondition_items`` are filing-indicator variable codes;
+    ``precondition_expression`` is a full DPM-XL gate expression whose own
+    operands join the scope resolution. The two are independent.
+    """
 
     expression: str
     release_id: Optional[int] = None
     release_code: Optional[str] = None
     precondition_items: Optional[List[str]] = None
+    precondition_expression: Optional[str] = None
 
 
 class ScopeResponse(BaseModel):
@@ -26,6 +32,9 @@ class ScopeResponse(BaseModel):
     omitted: it contains ORM objects that are not JSON-serialisable and
     callers only need the summary fields below. ``total_scopes`` and
     ``module_versions`` carry the information consumers actually use.
+
+    ``warning`` is set when a supplied ``precondition_expression`` changed the
+    scope; ``error_source`` names the half a failure belongs to.
     """
 
     total_scopes: int
@@ -33,6 +42,8 @@ class ScopeResponse(BaseModel):
     module_versions: List[int]
     has_error: bool
     error_message: Optional[str] = None
+    warning: Optional[str] = None
+    error_source: Optional[str] = None
 
 
 def create_scope_router(
@@ -58,6 +69,7 @@ def create_scope_router(
             release_id=body.release_id,
             precondition_items=body.precondition_items,
             release_code=body.release_code,
+            precondition_expression=body.precondition_expression,
         )
         return ScopeResponse(
             total_scopes=result.total_scopes,
@@ -65,6 +77,8 @@ def create_scope_router(
             module_versions=result.module_versions,
             has_error=result.has_error,
             error_message=result.error_message,
+            warning=result.warning,
+            error_source=result.error_source,
         )
 
     return router

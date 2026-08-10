@@ -159,6 +159,275 @@ class TestCalculateFromExpression:
 
 
 # ------------------------------------------------------------------ #
+# precondition_expression (issue #279)
+# ------------------------------------------------------------------ #
+
+
+def _paired_svc(main_tables, gate_tables, gate_codes, scope_results):
+    """Build a service whose two OperandsChecking passes differ.
+
+    ``scope_results`` is consumed one entry per ``calculate_operation_scope``
+    call, so a test can make the combined and baseline runs disagree.
+    """
+    Svc, _ = _load_module()
+    mod = sys.modules["dpmcore.services.scope_calculator"]
+
+    def _oc(tables):
+        oc = MagicMock()
+        oc.tables = dict.fromkeys(tables, MagicMock())
+        oc.preconditions = False
+        return oc
+
+    mod.OperandsChecking.side_effect = [_oc(main_tables), _oc(gate_tables)]
+
+    scope_svc = MagicMock()
+    scope_svc.calculate_operation_scope.side_effect = [
+        (scopes, []) for scopes in scope_results
+    ]
+    mod.OperationScopeService.return_value = scope_svc
+    mod.OperationScopeService.reset_mock()
+
+    svc = Svc(MagicMock())
+    svc._syntax = MagicMock()
+    svc._syntax.parse.return_value = MagicMock()
+    svc._check_release_exists = MagicMock()
+    svc._check_tables_hosted = MagicMock()
+    mod.required_precondition_codes = MagicMock(return_value=gate_codes)
+    return svc, scope_svc, mod
+
+
+class TestPreconditionExpression:
+    """The gate's operands join the resolution by their matching channels."""
+
+    def test_gate_tables_union_into_table_codes(self):
+        svc, scope_svc, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=["T_B"],
+            gate_codes=[],
+            scope_results=[[_scope([2])], [_scope([1])]],
+        )
+        svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        combined = scope_svc.calculate_operation_scope.call_args_list[0]
+        assert combined.kwargs["table_codes"] == ["T_A", "T_B"]
+        # The baseline run sees the main expression's operands only.
+        baseline = scope_svc.calculate_operation_scope.call_args_list[1]
+        assert baseline.kwargs["table_codes"] == ["T_A"]
+
+    def test_gate_codes_union_into_precondition_items(self):
+        svc, scope_svc, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=[],
+            gate_codes=["FI_2"],
+            scope_results=[[_scope([2])], [_scope([1])]],
+        )
+        svc.calculate_from_expression(
+            expression="main",
+            precondition_items=["FI_1"],
+            precondition_expression="gate",
+        )
+        combined = scope_svc.calculate_operation_scope.call_args_list[0]
+        assert combined.kwargs["precondition_items"] == ["FI_1", "FI_2"]
+        assert combined.kwargs["table_codes"] == ["T_A"]
+
+    def test_gate_operands_are_deduped_against_the_main_expression(self):
+        svc, scope_svc, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=["T_A"],
+            gate_codes=["FI_1"],
+            scope_results=[[_scope([1])]],
+        )
+        result = svc.calculate_from_expression(
+            expression="main",
+            precondition_items=["FI_1"],
+            precondition_expression="gate",
+        )
+        # Nothing new: one call only, and no baseline to compare against.
+        assert scope_svc.calculate_operation_scope.call_count == 1
+        assert result.warning is None
+
+    def test_no_precondition_expression_runs_once_and_warns_nothing(self):
+        svc, scope_svc, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=[],
+            gate_codes=[],
+            scope_results=[[_scope([1])]],
+        )
+        result = svc.calculate_from_expression(expression="main")
+        assert scope_svc.calculate_operation_scope.call_count == 1
+        assert result.warning is None
+        assert result.error_source is None
+
+    def test_warns_when_the_scope_signature_changes(self):
+        svc, _, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=["T_B"],
+            gate_codes=[],
+            scope_results=[[_scope([1, 2])], [_scope([1])]],
+        )
+        result = svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        assert result.warning is not None
+        assert "[1] -> [1, 2]" in result.warning
+        assert "tables T_B" in result.warning
+
+    def test_no_warning_when_the_signature_is_unchanged(self):
+        # The gate adds an operand, so the baseline is computed — but the
+        # resolved scope is identical, so there is nothing to report.
+        svc, scope_svc, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=["T_B"],
+            gate_codes=[],
+            scope_results=[[_scope([1])], [_scope([1])]],
+        )
+        result = svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        assert scope_svc.calculate_operation_scope.call_count == 2
+        assert result.warning is None
+
+    def test_warns_on_re_partitioning_that_module_versions_alone_would_miss(
+        self,
+    ):
+        # Same module versions before and after, but regrouped: FINREP9 alone
+        # can no longer evaluate the pair. ``module_versions`` is identical, so
+        # only the per-scope signature catches this.
+        svc, _, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=["T_B"],
+            gate_codes=[],
+            scope_results=[
+                [_scope([1, 2]), _scope([2])],
+                [_scope([1]), _scope([2])],
+            ],
+        )
+        result = svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        assert result.warning is not None
+
+    def test_warns_when_the_gate_empties_the_scope(self):
+        svc, _, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=[],
+            gate_codes=["FI_1"],
+            scope_results=[[], [_scope([1])]],
+        )
+        result = svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        assert result.total_scopes == 0
+        assert not result.has_error
+        assert "not evaluable in any module version" in result.warning
+        assert "filing indicators FI_1" in result.warning
+
+    def test_gate_parse_failure_is_attributed_and_prefixed(self):
+        Svc, _ = _load_module()
+        mod = sys.modules["dpmcore.services.scope_calculator"]
+        oc = MagicMock()
+        oc.tables = {"T_A": MagicMock()}
+        oc.preconditions = False
+        mod.OperandsChecking.side_effect = [oc, RuntimeError("bad gate")]
+        svc = Svc(MagicMock())
+        svc._syntax = MagicMock()
+        svc._syntax.parse.return_value = MagicMock()
+        svc._check_release_exists = MagicMock()
+
+        result = svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        assert result.has_error
+        assert result.error_source == "precondition"
+        assert result.error_message == "Precondition: bad gate"
+
+    def test_main_expression_failure_is_not_prefixed(self):
+        Svc, _ = _load_module()
+        mod = sys.modules["dpmcore.services.scope_calculator"]
+        mod.OperandsChecking.side_effect = RuntimeError("bad main")
+        svc = Svc(MagicMock())
+        svc._syntax = MagicMock()
+        svc._syntax.parse.return_value = MagicMock()
+        svc._check_release_exists = MagicMock()
+
+        result = svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        assert result.has_error
+        assert result.error_source == "expression"
+        assert result.error_message == "bad main"
+
+    def test_combined_failure_blames_the_gate_only_if_the_main_resolves(self):
+        svc, scope_svc, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=["T_B"],
+            gate_codes=[],
+            scope_results=[],
+        )
+        # Combined run raises; the baseline retry succeeds.
+        scope_svc.calculate_operation_scope.side_effect = [
+            RuntimeError("no modules"),
+            ([_scope([1])], []),
+        ]
+        result = svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        assert result.error_source == "precondition"
+        assert result.error_message == "Precondition: no modules"
+
+    def test_combined_failure_blames_the_expression_if_it_also_fails_alone(
+        self,
+    ):
+        svc, scope_svc, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=["T_B"],
+            gate_codes=[],
+            scope_results=[],
+        )
+        scope_svc.calculate_operation_scope.side_effect = RuntimeError("boom")
+        result = svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        assert result.error_source == "expression"
+        assert result.error_message == "boom"
+
+    def test_a_fresh_scope_service_is_built_per_run(self):
+        # OperationScopeService accumulates into self.operation_scopes and
+        # never clears it, so sharing one instance would double-count.
+        svc, _, mod = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=["T_B"],
+            gate_codes=[],
+            scope_results=[[_scope([1, 2])], [_scope([1])]],
+        )
+        svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        assert mod.OperationScopeService.call_count == 2
+
+
+class TestScopeSignature:
+    """The invariant the warning is computed from."""
+
+    def test_empty_scopes(self):
+        Svc, _ = _load_module()
+        assert Svc._scope_signature([]) == frozenset()
+
+    def test_groups_module_vids_per_scope(self):
+        Svc, _ = _load_module()
+        assert Svc._scope_signature([_scope([1]), _scope([2])]) == frozenset(
+            {frozenset({1}), frozenset({2})}
+        )
+
+    def test_distinguishes_re_partitioning(self):
+        Svc, _ = _load_module()
+        split = Svc._scope_signature([_scope([1]), _scope([2])])
+        merged = Svc._scope_signature([_scope([1, 2])])
+        assert split != merged
+
+
+# ------------------------------------------------------------------ #
 # _compute_cross_module
 # ------------------------------------------------------------------ #
 

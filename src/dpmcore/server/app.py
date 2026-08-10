@@ -27,6 +27,17 @@ class ExpressionRequest(BaseModel):
     release_code: Optional[str] = None
 
 
+class SemanticRequest(ExpressionRequest):
+    """Body for ``POST /validate/semantic``.
+
+    Adds the optional gate. Kept separate from
+    :class:`ExpressionRequest` so ``/validate/syntax``, which has no notion of
+    a gate, does not advertise a field it ignores.
+    """
+
+    precondition_expression: Optional[str] = None
+
+
 class SyntaxResponse(BaseModel):
     """Syntax validation result."""
 
@@ -36,13 +47,19 @@ class SyntaxResponse(BaseModel):
 
 
 class SemanticResponse(BaseModel):
-    """Semantic validation result."""
+    """Semantic validation result.
+
+    ``is_valid`` is pair-wide when a ``precondition_expression`` was supplied:
+    ``false`` if either half failed, since a row whose gate does not resolve
+    is not evaluable. ``error_source`` then names the failing half.
+    """
 
     is_valid: bool
     error_message: Optional[str]
     error_code: Optional[str]
     expression: str
     warning: Optional[str] = None
+    error_source: Optional[str] = None
 
 
 # ------------------------------------------------------------------ #
@@ -154,7 +171,7 @@ def create_app(
         tags=["Validation"],
     )
     def validate_semantic(
-        body: ExpressionRequest,
+        body: SemanticRequest,
         session: Session = Depends(get_session),  # noqa: B008
     ) -> SemanticResponse:
         from dpmcore.services.dpm_xl import DpmXlService
@@ -163,6 +180,7 @@ def create_app(
             body.expression,
             release_id=body.release_id,
             release_code=body.release_code,
+            precondition_expression=body.precondition_expression,
         )
         return SemanticResponse(
             is_valid=result["is_valid"],
@@ -170,6 +188,7 @@ def create_app(
             error_code=result["error_code"],
             expression=result["expression"],
             warning=result.get("warning"),
+            error_source=result.get("error_source"),
         )
 
     # -- structure endpoints (SDMX-style) --------------------------------
