@@ -8,7 +8,9 @@ lineage order, and the date is present regardless of the ``code`` format,
 so date ordering handles every code — the classic ``MAJOR.MINOR[.PATCH]``
 form, EBA's four-segment codes (e.g. ``4.2.1.3``) and non-versioned
 working releases like ``"Playground"`` — uniformly, without parsing the
-code. Release dates are unique, so no tiebreak is needed.
+code. Release dates are unique, so no tiebreak is needed, except at the
+"latest" sentinel below, since more than one release can map to it there.
+Callers that need a deterministic order break such ties by ``release_id``.
 
 A release with **no publication date** is an unpublished working release,
 which represents the current in-progress state; it therefore sorts *after*
