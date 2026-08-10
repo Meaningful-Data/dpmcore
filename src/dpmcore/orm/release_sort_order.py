@@ -51,8 +51,9 @@ def compute_sort_order(
     """Return a sortable integer for a release's publication date.
 
     Ordering is purely chronological: an earlier ``Release.date`` sorts
-    before a later one. Dates are unique per release, so the ordinal is a
-    total order and needs no tiebreak.
+    before a later one. Dates are unique per release, so no tiebreak is
+    needed, except at the "latest" sentinel, which more than one release
+    can map to.
 
     Args:
         release_date: The release's ``Release.date``. ``None`` (an

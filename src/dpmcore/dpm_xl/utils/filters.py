@@ -134,12 +134,11 @@ def filter_by_release(
     Logic (date-ordered):
         If release_id provided:
             ``sort_order(start) <= sort_order(target)`` AND
-            ``(end IS NULL OR sort_order(end) > sort_order(target))``,
-            where ``sort_order`` is the release's ``Release.date``. This
-            works for every ``code`` format — a ``"Playground"``/working
-            release orders by its date like any other, and an undated
-            working release ranks as the latest, so a request for it
-            naturally resolves to the current rows.
+            ``(end IS NULL OR sort_order(end) > sort_order(target) OR
+            end is itself "always latest")``, where ``sort_order`` is the
+            release's ``Release.date``, except a ``"Playground"``/working
+            or undated release, which always ranks as the latest
+            regardless of its literal date.
         If release_id is None:
             * ``active_only_fallback=True`` → ``end_col IS NULL`` only
               (currently-active rows). Useful for callers that want a

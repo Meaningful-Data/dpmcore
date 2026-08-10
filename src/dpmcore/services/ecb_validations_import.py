@@ -393,7 +393,8 @@ class EcbValidationsImportService:
         Comparison runs against the date-based sort order of each release
         (``Release.date``), not the opaque ``ReleaseID`` FK, so releases
         place correctly within their version lineage regardless of the
-        ``code`` format.
+        ``code`` format. An "always latest" ``end_release_id`` (undated or
+        non-chronological) is included too, since it never closes the range.
         """
         from dpmcore.orm.release_sort_order import (
             compute_sort_order,
