@@ -299,8 +299,10 @@ class StructureService:
 
         if latest or latest_stable:
             rows = rows[:1]
+        elif limit is None:
+            rows = rows[offset:]
         else:
-            rows = rows[offset : offset + limit]
+            rows = rows[offset : offset + max(limit, 0)]
 
         return [_release_to_dict(r, detail) for r in rows], total
 
