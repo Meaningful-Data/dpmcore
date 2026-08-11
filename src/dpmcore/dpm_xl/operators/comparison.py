@@ -12,7 +12,7 @@ from dpmcore.dpm_xl.operators.base import (
 from dpmcore.dpm_xl.operators.base import (
     Unary as _BaseUnary,
 )
-from dpmcore.dpm_xl.symbols import RecordSet, ScalarSet
+from dpmcore.dpm_xl.symbols import RecordSet, Scalar, ScalarSet
 from dpmcore.dpm_xl.types.scalar import Boolean, ScalarType, String
 from dpmcore.dpm_xl.utils import tokens
 from dpmcore.errors import SemanticError
@@ -50,6 +50,22 @@ def _reject_scalarset_mixed_with_recordset(
         )
 
 
+def _element_type_of(op: BinaryOperand) -> ScalarType | None:
+    """Return the element type of ``op`` if it is genuinely typed.
+
+    The empty set literal ``{}`` carries the placeholder ``Item`` type
+    from :func:`visit_Set`; treat it as untyped so its type is inferred
+    from the *other* operand rather than propagated onto it.
+    """
+    if isinstance(op, ScalarSet):
+        return None if op.origin == "{}" else op.type
+    if isinstance(op, Scalar):
+        return op.type
+    if isinstance(op, RecordSet):
+        return op.get_fact_component().type
+    return None
+
+
 def _propagate_empty_set_type(
     left: BinaryOperand, right: BinaryOperand
 ) -> tuple[BinaryOperand, BinaryOperand]:
@@ -60,18 +76,20 @@ def _propagate_empty_set_type(
     placeholder is not a real element type; ``_visit_set_operands``
     already filters it out of the homogeneity check for
     ``union``/``intersect``/``setdiff``/``symdiff``. Apply the same
-    convention to ``=`` / ``!=`` set equality so patterns like
-    ``setdiff(A, B) = {}`` do not raise a spurious "Implicit promotion
+    convention to any binary op with a ``{}`` operand so patterns like
+    ``setdiff(A, B) = {}`` (ScalarSet = ScalarSet) and ``5 in {}``
+    (Scalar in ScalarSet) do not raise a spurious "Implicit promotion
     between <T> and Item" warning against the placeholder.
     """
-    if isinstance(left, ScalarSet) and isinstance(right, ScalarSet):
-        if left.origin == "{}" and right.origin != "{}":
-            left = ScalarSet(
-                type_=right.type, name=left.name, origin=left.origin
-            )
-        elif right.origin == "{}" and left.origin != "{}":
+    if isinstance(left, ScalarSet) and left.origin == "{}":
+        other = _element_type_of(right)
+        if other is not None:
+            left = ScalarSet(type_=other, name=left.name, origin=left.origin)
+    if isinstance(right, ScalarSet) and right.origin == "{}":
+        other = _element_type_of(left)
+        if other is not None:
             right = ScalarSet(
-                type_=left.type, name=right.name, origin=right.origin
+                type_=other, name=right.name, origin=right.origin
             )
     return left, right
 
@@ -85,7 +103,7 @@ class Equal(Binary):
     @classmethod
     def validate(
         cls, left: BinaryOperand, right: BinaryOperand
-    ) -> "Scalar | RecordSet":  # type: ignore[name-defined]  # noqa: F821
+    ) -> Scalar | RecordSet:
         _reject_scalarset_mixed_with_recordset(left, right, cls.op or "=")
         left, right = _propagate_empty_set_type(left, right)
         return super().validate(left, right)
@@ -100,7 +118,7 @@ class NotEqual(Binary):
     @classmethod
     def validate(
         cls, left: BinaryOperand, right: BinaryOperand
-    ) -> "Scalar | RecordSet":  # type: ignore[name-defined]  # noqa: F821
+    ) -> Scalar | RecordSet:
         _reject_scalarset_mixed_with_recordset(left, right, cls.op or "!=")
         left, right = _propagate_empty_set_type(left, right)
         return super().validate(left, right)
@@ -146,7 +164,7 @@ class In(Binary):
     @classmethod
     def validate(
         cls, left: BinaryOperand, right: BinaryOperand
-    ) -> "Scalar | RecordSet":  # type: ignore[name-defined]  # noqa: F821
+    ) -> Scalar | RecordSet:
         # The MR !74 grammar widens ``in``'s RHS from ``setExpression`` to a
         # generic ``expression``; the semantic layer must reject any RHS that
         # is not set-valued (e.g. ``5 in 3``), otherwise validation would fall
@@ -160,6 +178,7 @@ class In(Binary):
                 type_op="ScalarSet",
                 origin="in",
             )
+        left, right = _propagate_empty_set_type(left, right)
         return super().validate(left, right)
 
 

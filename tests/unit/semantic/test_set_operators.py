@@ -501,3 +501,52 @@ def test_set_equality_mismatched_real_types_still_warns():
     assert any("Integer" in w and "String" in w for w in warnings), (
         f"expected Integer/String promotion warning, got {warnings!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Follow-up on #293 (PR #294 review by @andres-sole): the placeholder
+# propagation was too narrow — it only covered ``ScalarSet = ScalarSet``.
+# Two additional cases still leaked the ``Implicit promotion between
+# <T> and Item`` warning:
+#   * ``5 in {}`` (Scalar ``in`` empty ScalarSet) — a legitimate shape.
+#   * ``5 = {}`` (Scalar ``=`` empty ScalarSet) — semantically invalid,
+#     but the warning was recorded *before* the delayed 3-3 rejection,
+#     so callers still observed a stale warning next to the error.
+# ---------------------------------------------------------------------------
+
+
+def test_in_scalar_empty_set_does_not_warn():
+    """``5 in {}`` is well-formed (§13 ``in`` accepts a ScalarSet RHS);
+    the empty set placeholder must not trigger a promotion warning.
+    """
+    assert _implicit_promotion_warnings("5 in {}") == []
+
+
+def test_in_scalar_empty_set_still_returns_boolean_scalar():
+    from dpmcore.services.syntax import SyntaxService
+
+    ast = SyntaxService().parse("5 in {}")
+    result = _analyzer().visit(ast)
+    assert isinstance(result, Scalar)
+    assert str(result.type) == "Boolean"
+
+
+def test_equal_scalar_empty_set_rejects_without_stale_warning():
+    """``5 = {}`` is semantically invalid — set equality requires a
+    ScalarSet on both sides. The 3-3 rejection must fire *without* first
+    recording an implicit-promotion warning against the placeholder.
+    """
+    from dpmcore.errors import SemanticError
+    from dpmcore.services.syntax import SyntaxService
+
+    ast = SyntaxService().parse("5 = {}")
+    from dpmcore.dpm_xl.warning_collector import collect_warnings
+
+    with collect_warnings() as collector:
+        with pytest.raises(SemanticError) as exc:
+            _analyzer().visit(ast)
+    assert exc.value.code == "3-3"
+    ghosts = [w for w in collector.get_warnings() if "Implicit promotion" in w]
+    assert ghosts == [], (
+        f"3-3 rejection must not leave a stale promotion warning; got {ghosts!r}"
+    )
