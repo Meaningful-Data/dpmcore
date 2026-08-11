@@ -1179,19 +1179,19 @@ files = [
 
 [[package]]
 name = "mssql-django"
-version = "1.7.3"
+version = "1.8.0"
 description = "Django backend for Microsoft SQL Server"
 optional = true
 python-versions = "*"
 groups = ["main"]
 markers = "extra == \"all\" or extra == \"django\""
 files = [
-    {file = "mssql_django-1.7.3-py3-none-any.whl", hash = "sha256:65391b87aaa68a2e16865094d71b5ff713403e9479174be1c2bba64031e149eb"},
-    {file = "mssql_django-1.7.3.tar.gz", hash = "sha256:00b22ea619bc146a15ffe33d5397a861cb7a9b9312c2e058dfd0781b8fe70007"},
+    {file = "mssql_django-1.8.0-py3-none-any.whl", hash = "sha256:1e97e303477ea228454e76514e544081d6041a5a4383f0c40a9313549d4724f2"},
+    {file = "mssql_django-1.8.0.tar.gz", hash = "sha256:023a3d55a85d1d0d9f38d731182c35c2fecbf6bdc7b2464ed7ebf29c9e7bbdb2"},
 ]
 
 [package.dependencies]
-django = ">=3.2,<6.1"
+django = ">=3.2,<6.2"
 pyodbc = ">=3.0"
 pytz = "*"
 
@@ -3199,4 +3199,4 @@ sqlserver = ["pyodbc"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<4.0"
-content-hash = "53b005bd4e566fc28ff27d4c74bea5d0ddbfa7632b91dbfe47509b03c12d43ee"
+content-hash = "0613d34d8e004e45832b0093cad75d49986e8ee0b6f6c02bd6ae7e3ceea25726"
