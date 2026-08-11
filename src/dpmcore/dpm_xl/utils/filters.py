@@ -140,16 +140,18 @@ def filter_by_release(
             or undated release, which always ranks as the latest
             regardless of its literal date.
         If release_id is None:
-            * ``active_only_fallback=True`` → ``end_col IS NULL`` only
-              (currently-active rows). Useful for callers that want a
-              deterministic default when no release is supplied.
-            * Otherwise → return query unmodified.
+            * ``active_only_fallback=True`` → apply
+              :func:`filter_active_only` (see its own docstring for the
+              perpetual-end exception).
+            * Otherwise → return query unmodified, no session required.
 
     Args:
         query: SQLAlchemy ``Query`` — must be a session-bound ``Query``
-            (i.e. produced by ``Session.query(...)``). Core ``Select``
-            statements are not supported because the helper needs the
-            session to load the release mapping.
+            (i.e. produced by ``Session.query(...)``) whenever a session
+            is actually needed (``release_id`` given, or
+            ``active_only_fallback=True``). Core ``Select`` statements
+            are not supported because the helper needs the session to
+            load the release mapping.
         start_col: Column for start release ID (FK to ``Release``).
         end_col: Column for end release ID (FK to ``Release``).
         release_id: Release ID to filter for.
@@ -161,14 +163,13 @@ def filter_by_release(
         Filtered query.
 
     Raises:
-        TypeError: If ``query`` is not a session-bound SQLAlchemy
-            ``Query`` (e.g. a Core ``Select`` was passed).
+        TypeError: If a session is needed (see ``query`` above) and
+            ``query`` is not a session-bound SQLAlchemy ``Query`` (e.g. a
+            Core ``Select`` was passed).
         ValueError: If ``release_id`` does not correspond to a known
             ``Release`` row.
     """
-    if release_id is None:
-        if active_only_fallback:
-            return filter_active_only(query, end_col)
+    if release_id is None and not active_only_fallback:
         return query
 
     session = getattr(query, "session", None)
@@ -179,6 +180,9 @@ def filter_by_release(
             f"{type(query).__name__!r} which has no .session — Core "
             "Select statements are not supported.",
         )
+
+    if release_id is None:
+        return filter_active_only(query, end_col)
 
     # Order releases by date. resolve_sort_order already handles
     # non-chronological types like "Playground". This block only compares
