@@ -59,6 +59,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     WindowClause,
     WithExpression,
 )
+from dpmcore.dpm_xl.ast.where_clause import graft_where_onto_selections
 from dpmcore.dpm_xl.grammar.generated.dpm_xlParser import dpm_xlParser
 from dpmcore.dpm_xl.grammar.generated.dpm_xlParserVisitor import (
     dpm_xlParserVisitor,
@@ -164,8 +165,22 @@ class ASTVisitor(dpm_xlParserVisitor):
         # so ctx_list[3] would land on the WHERE terminal rather than the
         # body.  ctx_list[-1] is correct in both cases.
         expression: AST = self._visit(ctx_list[-1])
+        # The optional [WHERE expression] block is inlined in the grammar
+        # rule rather than reached through a WhereExprContext, so it has no
+        # named accessor. It contributes the only other ``expression`` child,
+        # so two of them means the block is there and the first is its
+        # condition.
+        where_condition: AST | None = None
+        expressions = ctx.expression()
+        if len(expressions) == 2:
+            where_condition = self._visit(expressions[0])
+            expression = graft_where_onto_selections(
+                expression, where_condition
+            )
         return WithExpression(
-            partial_selection=partial_selection, expression=expression
+            partial_selection=partial_selection,
+            expression=expression,
+            where_condition=where_condition,
         )
 
     def visitPartialSelect(
