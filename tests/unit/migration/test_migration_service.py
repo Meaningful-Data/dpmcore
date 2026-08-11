@@ -365,6 +365,26 @@ class TestRenameWithMetadata:
         assert result.database_path is not None
         assert "Playground" in result.database_path.name
 
+    def test_dated_playground_current_release_is_latest(self, tmp_path):
+        db_path = tmp_path / "dpm.db"
+        engine = create_engine(f"sqlite:///{db_path}", future=True)
+        service = MigrationService(engine)
+
+        csv_dir = tmp_path / "csv"
+        csv_dir.mkdir()
+        # Same as above, but with a NOT NULL placeholder date instead of None.
+        (csv_dir / "Release.csv").write_text(
+            "ReleaseID,Code,Date,Type,IsCurrent\n"
+            "1,4.2,2026-01-01,,1\n"
+            "2,Playground,1970-01-01,playground,1\n",
+            encoding="utf-8",
+        )
+
+        result = service.migrate_from_csv_dir(str(csv_dir))
+
+        assert result.database_path is not None
+        assert "Playground" in result.database_path.name
+
     def test_sanitises_unsafe_characters_in_release_code(self, tmp_path):
         db_path = tmp_path / "dpm.db"
         engine = create_engine(f"sqlite:///{db_path}", future=True)

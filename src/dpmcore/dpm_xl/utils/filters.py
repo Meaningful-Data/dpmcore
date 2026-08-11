@@ -212,9 +212,18 @@ def filter_active_only(query: Any, end_col: Any) -> Any:
         end_col: Column for end release.
 
     Returns:
-        Filtered query with end_col IS NULL.
+        Filtered query: ``end_col IS NULL``, or ``end_col`` is itself an
+        "always latest" release (undated or non-chronological), which
+        never actually closes.
     """
-    return query.filter(end_col.is_(None))
+    session = getattr(query, "session", None)
+    if session is None:
+        return query.filter(end_col.is_(None))
+    sort_orders = load_release_sort_orders(session)
+    perpetual_ids = release_ids_for_sort_order(
+        sort_orders, ge=compute_sort_order(None)
+    )
+    return query.filter(or_(end_col.is_(None), end_col.in_(perpetual_ids)))
 
 
 def filter_item_version(

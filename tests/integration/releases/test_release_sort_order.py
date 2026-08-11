@@ -765,6 +765,42 @@ def test_filter_item_version_self_reference_at_playground_type(
     )
 
 
+def test_filter_active_only_dated_playground_end_is_active(memory_session):
+    """A row ending at Playground is still "active" with no release given."""
+    from dpmcore.dpm_xl.utils.filters import filter_active_only
+
+    session = memory_session
+    session.add_all(
+        [
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(
+                release_id=9999,
+                code="Playground",
+                date=date(1970, 1, 1),
+                type="playground",
+            ),
+            Table(table_id=1),
+            TableVersion(
+                table_vid=1,
+                table_id=1,
+                code="T1",
+                start_release_id=1,
+                end_release_id=9999,
+            ),
+        ]
+    )
+    session.commit()
+
+    q = filter_active_only(
+        session.query(TableVersion), TableVersion.end_release_id
+    )
+    vids = {tv.table_vid for tv in q.all()}
+    assert vids == {1}, (
+        "T1 ends at the dated Playground sentinel, which never closes, "
+        "so it must still count as active"
+    )
+
+
 # --------------------------------------------------------------------- #
 # Same self-reference gap in three more call sites: ECB validations
 # import, and the AST generator's release-window resolution.
