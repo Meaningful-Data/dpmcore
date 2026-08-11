@@ -43,13 +43,18 @@ from dpmcore.services.hierarchy import HierarchyService
 
 
 def test_compute_sort_order_from_date() -> None:
-    assert compute_sort_order(date(2025, 3, 4)) == date(2025, 3, 4).toordinal()
+    assert (
+        compute_sort_order(date(2025, 3, 4), None)
+        == date(2025, 3, 4).toordinal()
+    )
     # Earlier date sorts before a later one.
-    assert compute_sort_order(date(2024, 1, 1)) < compute_sort_order(
-        date(2024, 6, 1)
+    assert compute_sort_order(date(2024, 1, 1), None) < compute_sort_order(
+        date(2024, 6, 1), None
     )
     # An undated (unpublished) release sorts after every real date.
-    assert compute_sort_order(None) > compute_sort_order(date(9999, 12, 31))
+    assert compute_sort_order(None, None) > compute_sort_order(
+        date(9999, 12, 31), None
+    )
 
 
 def test_compute_sort_order_is_monotone_in_date() -> None:
@@ -63,7 +68,7 @@ def test_compute_sort_order_is_monotone_in_date() -> None:
         date(2025, 10, 31),
         date(2026, 2, 15),
     ]
-    orders = [compute_sort_order(d) for d in dates]
+    orders = [compute_sort_order(d, None) for d in dates]
     assert orders == sorted(orders)
     # Distinct dates → distinct keys, so no tiebreak is ever needed.
     assert len(set(orders)) == len(orders)
@@ -528,3 +533,385 @@ def test_undated_release_resolves_to_current_rows(memory_session):
     )
     vids = {tv.table_vid for tv in filtered.all()}
     assert vids == {1}, "undated Playground (latest) yields the current rows"
+
+
+# --------------------------------------------------------------------- #
+# Non-chronological release type
+# A NOT NULL Release.Date schema marks its perpetual release via Release.Type instead, with an irrelevant placeholder date.
+# --------------------------------------------------------------------- #
+
+
+def test_compute_sort_order_playground_type_ignores_its_date() -> None:
+    """A ``"playground"``-typed release sorts latest despite an early date."""
+    assert compute_sort_order(
+        date(1970, 1, 1), "playground"
+    ) == compute_sort_order(None, None)
+    assert compute_sort_order(date(1970, 1, 1), "playground") > (
+        compute_sort_order(date(2026, 12, 31), None)
+    )
+
+
+def test_resolve_sort_order_playground_type_with_real_date_is_latest(
+    memory_session,
+):
+    """A dated ``"playground"`` release still resolves as the latest."""
+    session = memory_session
+    session.add(Release(release_id=1, code="4.2", date=date(2025, 10, 31)))
+    session.add(
+        Release(
+            release_id=9999,
+            code="Playground",
+            date=date(1970, 1, 1),
+            type="playground",
+        )
+    )
+    session.commit()
+
+    assert resolve_sort_order(session, 9999) > resolve_sort_order(session, 1)
+
+
+def test_get_last_release_ignores_dated_playground_type(memory_session):
+    """``get_last_release`` is not fooled by a dated ``"playground"`` row."""
+    from dpmcore.dpm_xl.model_queries import ModuleVersionQuery
+
+    session = memory_session
+    session.add_all(
+        [
+            Release(
+                release_id=9999,
+                code="Playground",
+                date=date(1970, 1, 1),
+                type="playground",
+            ),
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(release_id=2, code="4.2.1", date=date(2026, 2, 15)),
+        ]
+    )
+    session.commit()
+
+    assert ModuleVersionQuery.get_last_release(session) == 9999
+
+
+def test_module_version_open_via_dated_playground_end_release(
+    memory_session,
+):
+    """A ``ModuleVersion`` kept open via a dated ``"playground"`` end."""
+    session = memory_session
+    session.add_all(
+        [
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(release_id=2, code="4.2.1", date=date(2026, 2, 15)),
+            Release(
+                release_id=9999,
+                code="Playground",
+                date=date(1970, 1, 1),
+                type="playground",
+            ),
+            Framework(framework_id=1, code="FW"),
+            Module(module_id=1, framework_id=1),
+            # Open-ended via the dated Playground sentinel, not None.
+            ModuleVersion(
+                module_vid=10,
+                module_id=1,
+                code="MV1",
+                start_release_id=1,
+                end_release_id=9999,
+            ),
+            Table(table_id=100),
+            TableVersion(
+                table_vid=1000,
+                table_id=100,
+                code="T1",
+                start_release_id=1,
+                end_release_id=9999,
+            ),
+            ModuleVersionComposition(
+                module_vid=10, table_vid=1000, table_id=100
+            ),
+        ]
+    )
+    session.commit()
+
+    svc = HierarchyService(session)
+    deep = svc.get_all_frameworks(deep=True, release_code="4.2.1")
+    fws = [fw for fw in deep if fw["code"] == "FW"]
+    assert len(fws) == 1
+    mv_codes = {mv["code"] for mv in fws[0]["module_versions"]}
+    assert mv_codes == {"MV1"}, (
+        "a ModuleVersion open via a dated 'playground' end_release_id "
+        "must still cover a real, later release — it must not appear "
+        "closed in 1970"
+    )
+
+
+def test_filter_by_release_self_reference_at_playground_type(memory_session):
+    """A row ending at Playground is still open when querying AT Playground."""
+    from dpmcore.dpm_xl.model_queries import ModuleVersionQuery
+    from dpmcore.dpm_xl.utils.filters import filter_by_release
+
+    session = memory_session
+    session.add_all(
+        [
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(
+                release_id=9999,
+                code="Playground",
+                date=date(1970, 1, 1),
+                type="playground",
+            ),
+            Table(table_id=1),
+            TableVersion(
+                table_vid=1,
+                table_id=1,
+                code="T1",
+                start_release_id=1,
+                end_release_id=9999,
+            ),
+        ]
+    )
+    session.commit()
+
+    last_release = ModuleVersionQuery.get_last_release(session)
+    assert last_release == 9999
+
+    q = session.query(TableVersion)
+    filtered = filter_by_release(
+        q,
+        start_col=TableVersion.start_release_id,
+        end_col=TableVersion.end_release_id,
+        release_id=last_release,
+    )
+    vids = {tv.table_vid for tv in filtered.all()}
+    assert vids == {1}, (
+        "T1 ends at the perpetual release itself — querying AT that same "
+        "release must not treat it as closed"
+    )
+
+
+def test_filter_by_release_self_reference_at_undated_release(memory_session):
+    """The same self-reference gap, with a genuinely undated release."""
+    from dpmcore.dpm_xl.utils.filters import filter_by_release
+
+    session = memory_session
+    session.add_all(
+        [
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(release_id=2, code="Playground", date=None),
+            TableVersion(
+                table_vid=1,
+                table_id=1,
+                start_release_id=1,
+                end_release_id=2,
+            ),
+        ]
+    )
+    session.commit()
+
+    q = session.query(TableVersion)
+    filtered = filter_by_release(
+        q,
+        start_col=TableVersion.start_release_id,
+        end_col=TableVersion.end_release_id,
+        release_id=2,
+    )
+    vids = {tv.table_vid for tv in filtered.all()}
+    assert vids == {1}, (
+        "a row ending at an undated release must still be open when "
+        "querying AT that same undated release"
+    )
+
+
+def test_filter_item_version_self_reference_at_playground_type(
+    memory_session,
+):
+    """``filter_item_version`` has the same self-reference gap as above."""
+    from dpmcore.dpm_xl.utils.filters import filter_item_version
+    from dpmcore.orm.release_sort_order import load_release_sort_orders
+
+    session = memory_session
+    session.add_all(
+        [
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(
+                release_id=9999,
+                code="Playground",
+                date=date(1970, 1, 1),
+                type="playground",
+            ),
+            Item(item_id=42, name="Property name"),
+            Category(category_id=1, code="C1"),
+            ItemCategory(
+                item_id=42,
+                start_release_id=1,
+                end_release_id=9999,
+                category_id=1,
+                signature="prop:42",
+            ),
+        ]
+    )
+    session.commit()
+
+    sort_orders = load_release_sort_orders(session)
+    ref_sort_order = resolve_sort_order(session, 9999)
+    assert ref_sort_order == sort_orders[9999]
+
+    q = session.query(ItemCategory).filter(
+        filter_item_version(
+            sort_orders,
+            ref_sort_order,
+            ItemCategory.start_release_id,
+            ItemCategory.end_release_id,
+        )
+    )
+    item_ids = {ic.item_id for ic in q.all()}
+    assert item_ids == {42}, (
+        "ItemCategory ends at the perpetual release itself — querying AT "
+        "that same release must not treat it as closed"
+    )
+
+
+def test_filter_active_only_dated_playground_end_is_active(memory_session):
+    """A row ending at Playground is still "active" with no release given."""
+    from dpmcore.dpm_xl.utils.filters import filter_active_only
+
+    session = memory_session
+    session.add_all(
+        [
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(
+                release_id=9999,
+                code="Playground",
+                date=date(1970, 1, 1),
+                type="playground",
+            ),
+            Table(table_id=1),
+            TableVersion(
+                table_vid=1,
+                table_id=1,
+                code="T1",
+                start_release_id=1,
+                end_release_id=9999,
+            ),
+        ]
+    )
+    session.commit()
+
+    q = filter_active_only(
+        session.query(TableVersion), TableVersion.end_release_id
+    )
+    vids = {tv.table_vid for tv in q.all()}
+    assert vids == {1}, (
+        "T1 ends at the dated Playground sentinel, which never closes, "
+        "so it must still count as active"
+    )
+
+
+# --------------------------------------------------------------------- #
+# Same self-reference gap in three more call sites: ECB validations
+# import, and the AST generator's release-window resolution.
+# --------------------------------------------------------------------- #
+
+
+def test_ecb_valid_release_ids_self_reference_at_playground_type(
+    memory_session,
+):
+    """A validation ending at Playground is valid AT Playground too."""
+    from dpmcore.services.ecb_validations_import import (
+        EcbValidationsImportService,
+    )
+
+    session = memory_session
+    session.add_all(
+        [
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(
+                release_id=9999,
+                code="Playground",
+                date=date(1970, 1, 1),
+                type="playground",
+            ),
+        ]
+    )
+    session.commit()
+
+    ids = EcbValidationsImportService._get_valid_release_ids(
+        session, start_release_id=1, end_release_id=9999
+    )
+    assert set(ids) == {1, 9999}, (
+        "a validation ending at the perpetual release itself must still "
+        "be valid at that same release"
+    )
+
+
+def test_latest_release_in_window_self_reference_at_playground_type(
+    memory_session,
+):
+    """The AST generator resolves Playground itself, not an older release."""
+    from dpmcore.services.ast_generator import ASTGeneratorService
+
+    session = memory_session
+    mv = ModuleVersion(
+        module_vid=10,
+        module_id=1,
+        code="MV1",
+        start_release_id=1,
+        end_release_id=9999,
+    )
+    session.add_all(
+        [
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(
+                release_id=9999,
+                code="Playground",
+                date=date(1970, 1, 1),
+                type="playground",
+            ),
+            Framework(framework_id=1, code="FW"),
+            Module(module_id=1, framework_id=1),
+            mv,
+        ]
+    )
+    session.commit()
+
+    svc = ASTGeneratorService(session)
+    latest = svc._latest_release_in_window(mv)
+    assert latest is not None
+    assert latest.release_id == 9999, (
+        "a module version open via the perpetual release must resolve "
+        "to that release, not fall back to an older one"
+    )
+
+
+def test_resolve_explicit_release_self_reference_at_playground_type(
+    memory_session,
+):
+    """Requesting Playground explicitly is not "past the end" at Playground."""
+    from dpmcore.services.ast_generator import ASTGeneratorService
+
+    session = memory_session
+    mv = ModuleVersion(
+        module_vid=10,
+        module_id=1,
+        code="MV1",
+        start_release_id=1,
+        end_release_id=9999,
+    )
+    session.add_all(
+        [
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(
+                release_id=9999,
+                code="Playground",
+                date=date(1970, 1, 1),
+                type="playground",
+            ),
+            Framework(framework_id=1, code="FW"),
+            Module(module_id=1, framework_id=1),
+            mv,
+        ]
+    )
+    session.commit()
+
+    svc = ASTGeneratorService(session)
+    release_row = svc._resolve_explicit_release("Playground", mv, "MOD", "1.0")
+    assert release_row.release_id == 9999

@@ -393,9 +393,11 @@ class EcbValidationsImportService:
         Comparison runs against the date-based sort order of each release
         (``Release.date``), not the opaque ``ReleaseID`` FK, so releases
         place correctly within their version lineage regardless of the
-        ``code`` format.
+        ``code`` format. An "always latest" ``end_release_id`` (undated or
+        non-chronological) is included too, since it never closes the range.
         """
         from dpmcore.orm.release_sort_order import (
+            compute_sort_order,
             load_release_sort_orders,
             release_ids_for_sort_order,
         )
@@ -415,9 +417,16 @@ class EcbValidationsImportService:
                 f"Release {end_release_id} has no sort_order — "
                 "no Release row matches that ID."
             )
-        return release_ids_for_sort_order(
+        ids = release_ids_for_sort_order(
             sort_orders, ge=start_sort, lt=end_sort
         )
+        # A row ending at an "always latest" release (undated or
+        # non-chronological) is still open even when queried at that release.
+        if end_sort >= compute_sort_order(None, None):
+            ids += release_ids_for_sort_order(
+                sort_orders, ge=compute_sort_order(None, None)
+            )
+        return ids
 
     def _collect_table_codes_from_ast(self, node: Any) -> Set[str]:
         table_codes: Set[str] = set()

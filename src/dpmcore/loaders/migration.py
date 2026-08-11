@@ -27,7 +27,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import case, inspect, select, text
+from sqlalchemy import inspect, select, text
 from sqlalchemy.engine import Engine
 
 from dpmcore.orm.base import Base
@@ -368,26 +368,40 @@ class MigrationService:
         """Return a filename-safe code for the current release."""
         from sqlalchemy.orm import Session
 
-        # Latest first: an undated (unpublished) working release ranks as
-        # the latest. The NULL-first CASE keeps this uniform across
-        # backends (SQLite/SQL Server otherwise sort NULLs last in DESC).
-        latest_first = (
-            case((Release.date.is_(None), 1), else_=0).desc(),
-            Release.date.desc(),
-        )
-        with Session(self._engine) as session:
-            stmt = (
-                select(Release.code)
-                .where(Release.is_current.is_(True))
-                .order_by(*latest_first)
+        from dpmcore.orm.release_sort_order import compute_sort_order
+
+        def _latest_code(rows: Any) -> Optional[str]:
+            # Latest first, including playground. release_id breaks ties.
+            ranked = sorted(
+                rows,
+                key=lambda r: (
+                    compute_sort_order(r.date, r.type),
+                    r.release_id,
+                ),
+                reverse=True,
             )
-            code = session.scalars(stmt).first()
+            return ranked[0].code if ranked else None
+
+        with Session(self._engine) as session:
+            rows = session.execute(
+                select(
+                    Release.code,
+                    Release.date,
+                    Release.type,
+                    Release.release_id,
+                ).where(Release.is_current.is_(True))
+            ).all()
+            code = _latest_code(rows)
             if code is None:
-                code = session.scalars(
-                    select(Release.code)
-                    .where(Release.code.is_not(None))
-                    .order_by(*latest_first)
-                ).first()
+                rows = session.execute(
+                    select(
+                        Release.code,
+                        Release.date,
+                        Release.type,
+                        Release.release_id,
+                    ).where(Release.code.is_not(None))
+                ).all()
+                code = _latest_code(rows)
 
         if not code:
             return None
