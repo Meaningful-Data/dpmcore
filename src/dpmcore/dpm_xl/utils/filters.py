@@ -190,7 +190,7 @@ def filter_by_release(
     # A row ending at an "always latest" release (undated or
     # non-chronological) is still open even when queried at that release.
     perpetual_ids = release_ids_for_sort_order(
-        sort_orders, ge=compute_sort_order(None)
+        sort_orders, ge=compute_sort_order(None, None)
     )
     return query.filter(
         and_(
@@ -230,7 +230,7 @@ def filter_active_only(query: Any, end_col: Any) -> Any:
         )
     sort_orders = load_release_sort_orders(session)
     perpetual_ids = release_ids_for_sort_order(
-        sort_orders, ge=compute_sort_order(None)
+        sort_orders, ge=compute_sort_order(None, None)
     )
     return query.filter(or_(end_col.is_(None), end_col.in_(perpetual_ids)))
 
@@ -269,7 +269,7 @@ def filter_item_version(
     # A row ending at an "always latest" release (undated or
     # non-chronological) is still open even when queried at that release.
     perpetual_ids = release_ids_for_sort_order(
-        sort_orders, ge=compute_sort_order(None)
+        sort_orders, ge=compute_sort_order(None, None)
     )
     return and_(
         item_start_col.in_(start_ids),

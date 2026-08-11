@@ -422,9 +422,9 @@ class EcbValidationsImportService:
         )
         # A row ending at an "always latest" release (undated or
         # non-chronological) is still open even when queried at that release.
-        if end_sort >= compute_sort_order(None):
+        if end_sort >= compute_sort_order(None, None):
             ids += release_ids_for_sort_order(
-                sort_orders, ge=compute_sort_order(None)
+                sort_orders, ge=compute_sort_order(None, None)
             )
         return ids
 

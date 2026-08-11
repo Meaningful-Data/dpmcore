@@ -496,7 +496,7 @@ class ASTGeneratorService:
                 # non-chronological) is still open even when queried at
                 # that release.
                 if (
-                    effective_end_sort != compute_sort_order(None)
+                    effective_end_sort != compute_sort_order(None, None)
                     and target >= effective_end_sort
                 ):
                     raise ValueError(
@@ -679,7 +679,7 @@ class ASTGeneratorService:
                 mv.end_release_id,
                 role="Module version window end release",
             )
-        perpetual_sort_order = compute_sort_order(None)
+        perpetual_sort_order = compute_sort_order(None, None)
 
         rows = self.session.query(Release).all()
         candidates: List[tuple[int, int, Any]] = []

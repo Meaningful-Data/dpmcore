@@ -58,7 +58,7 @@ def _ordered_releases(session):
     """All releases, sorted by date sort order (not the opaque ID)."""
     return sorted(
         session.query(Release).all(),
-        key=lambda r: compute_sort_order(r.date) or 0,
+        key=lambda r: compute_sort_order(r.date, None) or 0,
     )
 
 
@@ -70,7 +70,7 @@ def _release_sort_by_id(session):
     crash with a ``TypeError`` (``int <= None``) instead of failing clearly.
     """
     sort_by_id = {
-        r.release_id: compute_sort_order(r.date)
+        r.release_id: compute_sort_order(r.date, None)
         for r in session.query(Release).all()
     }
     assert all(v is not None for v in sort_by_id.values()), (
@@ -236,7 +236,7 @@ def test_scope_matches_eba_persisted_scope_per_release(fixture_session):
 
     saw_fallback = False
     for rel in _ordered_releases(session):
-        target_sort = compute_sort_order(rel.date)
+        target_sort = compute_sort_order(rel.date, None)
         base = {
             vid
             for vid, mv in versions.items()
@@ -309,7 +309,7 @@ def test_scoped_versions_are_backward_only_and_not_single_day(fixture_session):
     for code in codes:
         expression = _latest_expression(session, code)
         for rel in releases:
-            target_sort = compute_sort_order(rel.date)
+            target_sort = compute_sort_order(rel.date, None)
             result = svc.calculate_from_expression(
                 expression=expression, release_code=rel.code
             )

@@ -43,13 +43,18 @@ from dpmcore.services.hierarchy import HierarchyService
 
 
 def test_compute_sort_order_from_date() -> None:
-    assert compute_sort_order(date(2025, 3, 4)) == date(2025, 3, 4).toordinal()
+    assert (
+        compute_sort_order(date(2025, 3, 4), None)
+        == date(2025, 3, 4).toordinal()
+    )
     # Earlier date sorts before a later one.
-    assert compute_sort_order(date(2024, 1, 1)) < compute_sort_order(
-        date(2024, 6, 1)
+    assert compute_sort_order(date(2024, 1, 1), None) < compute_sort_order(
+        date(2024, 6, 1), None
     )
     # An undated (unpublished) release sorts after every real date.
-    assert compute_sort_order(None) > compute_sort_order(date(9999, 12, 31))
+    assert compute_sort_order(None, None) > compute_sort_order(
+        date(9999, 12, 31), None
+    )
 
 
 def test_compute_sort_order_is_monotone_in_date() -> None:
@@ -63,7 +68,7 @@ def test_compute_sort_order_is_monotone_in_date() -> None:
         date(2025, 10, 31),
         date(2026, 2, 15),
     ]
-    orders = [compute_sort_order(d) for d in dates]
+    orders = [compute_sort_order(d, None) for d in dates]
     assert orders == sorted(orders)
     # Distinct dates → distinct keys, so no tiebreak is ever needed.
     assert len(set(orders)) == len(orders)
@@ -540,9 +545,9 @@ def test_compute_sort_order_playground_type_ignores_its_date() -> None:
     """A ``"playground"``-typed release sorts latest despite an early date."""
     assert compute_sort_order(
         date(1970, 1, 1), "playground"
-    ) == compute_sort_order(None)
+    ) == compute_sort_order(None, None)
     assert compute_sort_order(date(1970, 1, 1), "playground") > (
-        compute_sort_order(date(2026, 12, 31))
+        compute_sort_order(date(2026, 12, 31), None)
     )
 
 

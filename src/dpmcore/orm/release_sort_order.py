@@ -46,7 +46,7 @@ _NON_CHRONOLOGICAL_TYPES: FrozenSet[str] = frozenset({"playground"})
 
 
 def compute_sort_order(
-    release_date: Optional[date], release_type: Optional[str] = None
+    release_date: Optional[date], release_type: Optional[str]
 ) -> int:
     """Return a sortable integer for a release's publication date.
 
@@ -55,10 +55,13 @@ def compute_sort_order(
     needed, except at the "latest" sentinel, which more than one release
     can map to.
 
+    ``release_type`` has no default: a caller must pass ``None``
+    explicitly rather than silently reverting to date-only ordering.
+
     Args:
         release_date: The release's ``Release.date``. ``None`` (an
             unpublished working release) sorts as the latest release.
-        release_type: The release's ``Release.type``, if available. A
+        release_type: The release's ``Release.type``, or ``None``. A
             value in :data:`_NON_CHRONOLOGICAL_TYPES` (e.g.
             ``"playground"``) sorts as latest regardless of
             ``release_date``, which may just be a ``NOT NULL`` placeholder.
