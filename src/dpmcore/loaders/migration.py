@@ -371,28 +371,35 @@ class MigrationService:
         from dpmcore.orm.release_sort_order import compute_sort_order
 
         def _latest_code(rows: Any) -> Optional[str]:
-            # Latest first: an undated or non-chronological (e.g.
-            # "playground") release ranks as the latest, regardless of
-            # its literal date.
+            # Latest first, including playground. release_id breaks ties.
             ranked = sorted(
                 rows,
-                key=lambda r: compute_sort_order(r.date, r.type),
+                key=lambda r: (
+                    compute_sort_order(r.date, r.type),
+                    r.release_id,
+                ),
                 reverse=True,
             )
             return ranked[0].code if ranked else None
 
         with Session(self._engine) as session:
             rows = session.execute(
-                select(Release.code, Release.date, Release.type).where(
-                    Release.is_current.is_(True)
-                )
+                select(
+                    Release.code,
+                    Release.date,
+                    Release.type,
+                    Release.release_id,
+                ).where(Release.is_current.is_(True))
             ).all()
             code = _latest_code(rows)
             if code is None:
                 rows = session.execute(
-                    select(Release.code, Release.date, Release.type).where(
-                        Release.code.is_not(None)
-                    )
+                    select(
+                        Release.code,
+                        Release.date,
+                        Release.type,
+                        Release.release_id,
+                    ).where(Release.code.is_not(None))
                 ).all()
                 code = _latest_code(rows)
 

@@ -208,17 +208,26 @@ def filter_active_only(query: Any, end_col: Any) -> Any:
     """Filter for currently active records.
 
     Args:
-        query: SQLAlchemy Query or Select object.
+        query: SQLAlchemy ``Query`` — must be a session-bound ``Query``
+            (i.e. produced by ``Session.query(...)``); see
+            :func:`filter_by_release`.
         end_col: Column for end release.
 
     Returns:
         Filtered query: ``end_col IS NULL``, or ``end_col`` is itself an
         "always latest" release (undated or non-chronological), which
         never actually closes.
+
+    Raises:
+        TypeError: If ``query`` is not a session-bound SQLAlchemy
+            ``Query``.
     """
     session = getattr(query, "session", None)
     if session is None:
-        return query.filter(end_col.is_(None))
+        raise TypeError(
+            "filter_active_only(query=...) expects a session-bound "
+            "SQLAlchemy Query (Session.query(...))."
+        )
     sort_orders = load_release_sort_orders(session)
     perpetual_ids = release_ids_for_sort_order(
         sort_orders, ge=compute_sort_order(None)
