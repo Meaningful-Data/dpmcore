@@ -531,6 +531,26 @@ def test_in_scalar_empty_set_still_returns_boolean_scalar():
     assert str(result.type) == "Boolean"
 
 
+def test_singleton_empty_string_set_is_not_the_empty_placeholder():
+    """``{""}`` (a set with one empty-string element) renders with the
+    same ``origin`` string as the empty set literal ``{}``, but is
+    genuinely typed as ``String``. The placeholder-detection must use
+    both ``origin == "{}"`` *and* the ``Item`` type marker so that
+    ``{""} = {1, 2}`` still surfaces the real ``String``/``Integer``
+    mismatch, and ``{""} = {}`` does *not* fabricate a spurious
+    ``String``/``Item`` warning against the placeholder.
+    """
+    # Real mismatch — must warn.
+    real = _implicit_promotion_warnings('{""} = {1, 2}')
+    assert any("String" in w and "Integer" in w for w in real), (
+        f"expected String/Integer promotion warning on real mismatch, "
+        f"got {real!r}"
+    )
+    # Typed String vs the placeholder — must not warn (either order).
+    assert _implicit_promotion_warnings('{""} = {}') == []
+    assert _implicit_promotion_warnings('{} = {""}') == []
+
+
 def test_equal_scalar_empty_set_rejects_without_stale_warning():
     """``5 = {}`` is semantically invalid — set equality requires a
     ScalarSet on both sides. The 3-3 rejection must fire *without* first

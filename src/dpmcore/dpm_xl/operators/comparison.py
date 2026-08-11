@@ -13,7 +13,7 @@ from dpmcore.dpm_xl.operators.base import (
     Unary as _BaseUnary,
 )
 from dpmcore.dpm_xl.symbols import RecordSet, Scalar, ScalarSet
-from dpmcore.dpm_xl.types.scalar import Boolean, ScalarType, String
+from dpmcore.dpm_xl.types.scalar import Boolean, Item, ScalarType, String
 from dpmcore.dpm_xl.utils import tokens
 from dpmcore.errors import SemanticError
 
@@ -50,6 +50,25 @@ def _reject_scalarset_mixed_with_recordset(
         )
 
 
+def _is_empty_set_placeholder(op: BinaryOperand) -> bool:
+    """True only for the empty set literal ``{}``.
+
+    ``visit_Set`` builds the origin string by joining stringified
+    children with ``", "``, so the singleton ``{""}`` (a set with one
+    empty string element) *also* renders as ``"{}"`` — the origin string
+    alone cannot distinguish it from the truly empty literal. The
+    unambiguous marker is the pair ``(origin == "{}", type is Item)``:
+    ``visit_Set`` assigns the ``Item`` placeholder only when the set has
+    no children, and no genuinely-typed literal reaches that origin
+    string.
+    """
+    return (
+        isinstance(op, ScalarSet)
+        and op.origin == "{}"
+        and isinstance(op.type, Item)
+    )
+
+
 def _element_type_of(op: BinaryOperand) -> ScalarType | None:
     """Return the element type of ``op`` if it is genuinely typed.
 
@@ -58,7 +77,7 @@ def _element_type_of(op: BinaryOperand) -> ScalarType | None:
     from the *other* operand rather than propagated onto it.
     """
     if isinstance(op, ScalarSet):
-        return None if op.origin == "{}" else op.type
+        return None if _is_empty_set_placeholder(op) else op.type
     if isinstance(op, Scalar):
         return op.type
     if isinstance(op, RecordSet):
@@ -81,11 +100,11 @@ def _propagate_empty_set_type(
     (Scalar in ScalarSet) do not raise a spurious "Implicit promotion
     between <T> and Item" warning against the placeholder.
     """
-    if isinstance(left, ScalarSet) and left.origin == "{}":
+    if _is_empty_set_placeholder(left):
         other = _element_type_of(right)
         if other is not None:
             left = ScalarSet(type_=other, name=left.name, origin=left.origin)
-    if isinstance(right, ScalarSet) and right.origin == "{}":
+    if _is_empty_set_placeholder(right):
         other = _element_type_of(left)
         if other is not None:
             right = ScalarSet(
