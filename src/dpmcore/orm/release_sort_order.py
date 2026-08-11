@@ -68,7 +68,10 @@ def compute_sort_order(
         sentinel (:data:`_UNDATED_SORT_ORDER`) when ``release_date`` is
         missing or ``release_type`` is non-chronological.
     """
-    if release_date is None or release_type in _NON_CHRONOLOGICAL_TYPES:
+    normalized_type = (
+        release_type.strip().lower() if release_type is not None else None
+    )
+    if release_date is None or normalized_type in _NON_CHRONOLOGICAL_TYPES:
         return _UNDATED_SORT_ORDER
     return release_date.toordinal()
 
