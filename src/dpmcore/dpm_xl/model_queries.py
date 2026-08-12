@@ -620,6 +620,61 @@ class TableVersionQuery:
             )
         return query.first() is not None
 
+    @staticmethod
+    def get_abstract_table_codes(
+        session: "Session",
+        table_codes: Sequence[str],
+        release_id: int | None,
+    ) -> dict[str, str]:
+        """Map each table code to its abstract-table code.
+
+        ``abstract_table_id`` is a FK to the abstract ``Table``, not a
+        specific version. Falls back to the table's own code if it has
+        none, or none open at ``release_id``.
+
+        Args:
+            session: SQLAlchemy session.
+            table_codes: Table version codes to resolve.
+            release_id: Release filter, applied to both the requested
+                tables and their abstract tables independently.
+
+        Returns:
+            ``{table_code: abstract_table_code}``, one entry per code in
+            ``table_codes`` that actually resolves to a table version.
+        """
+        if not table_codes:
+            return {}
+        rows = filter_by_release(
+            session.query(
+                TableVersion.code,
+                TableVersion.abstract_table_id,
+            ).filter(TableVersion.code.in_(list(table_codes))),
+            TableVersion.start_release_id,
+            TableVersion.end_release_id,
+            release_id,
+        ).all()
+        abstract_table_ids = {
+            abstract_table_id
+            for _code, abstract_table_id in rows
+            if abstract_table_id is not None
+        }
+        abstract_code_by_table_id: dict[int, str] = {}
+        if abstract_table_ids:
+            abstract_code_by_table_id = dict(
+                filter_by_release(
+                    session.query(
+                        TableVersion.table_id, TableVersion.code
+                    ).filter(TableVersion.table_id.in_(abstract_table_ids)),
+                    TableVersion.start_release_id,
+                    TableVersion.end_release_id,
+                    release_id,
+                ).all()
+            )
+        return {
+            code: abstract_code_by_table_id.get(abstract_table_id, code)
+            for code, abstract_table_id in rows
+        }
+
 
 # ------------------------------------------------------------------ #
 # Operator / OperatorArgument queries

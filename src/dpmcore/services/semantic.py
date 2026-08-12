@@ -14,19 +14,23 @@ from dpmcore.dpm_xl.ast.nodes import (
     parameter_default_value,
 )
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
-from dpmcore.dpm_xl.model_queries import ModuleVersionQuery
+from dpmcore.dpm_xl.model_queries import ModuleVersionQuery, TableVersionQuery
 from dpmcore.dpm_xl.semantic_analyzer import InputAnalyzer
-from dpmcore.dpm_xl.utils.filters import resolve_release_id
+from dpmcore.dpm_xl.utils.filters import filter_by_release, resolve_release_id
 from dpmcore.dpm_xl.warning_collector import collect_warnings
 from dpmcore.errors import SemanticError
 from dpmcore.orm.infrastructure import Release
 from dpmcore.orm.operations import (
+    OperandReference,
+    OperationNode,
     OperationScope,
     OperationScopeComposition,
     OperationVersion,
 )
 from dpmcore.orm.query_utils import chunked_in
+from dpmcore.orm.variables import VariableVersion
 from dpmcore.services._parameters import merge_parameters
+from dpmcore.services._precondition_codes import extract_precondition_codes
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -230,6 +234,7 @@ class SemanticService:
         release_code: Optional[str] = None,
         *,
         precondition_expression: Optional[str] = None,
+        precondition_operation_vid: Optional[int] = None,
     ) -> SemanticResult:
         """Full semantic validation of *expression* and its optional gate.
 
@@ -274,6 +279,13 @@ class SemanticService:
                 ``None``, the result is exactly as before this argument
                 existed: ``precondition`` is ``None`` and ``is_valid``
                 describes ``expression`` alone.
+            precondition_operation_vid: Optional VID of a separately
+                persisted ``OperationVersion`` gating this one (its
+                ``precondition_operation_vid`` self-FK), distinct from
+                ``precondition_expression``. Cross-checked against the
+                current module scope when ``expression`` is valid
+                (``7-3``/``7-4``/``7-5``); a VID with nothing to check
+                against is accepted.
         """
         try:
             resolved = self._resolve_release(release_id, release_code)
@@ -288,17 +300,30 @@ class SemanticService:
             )
 
         if precondition_expression is None:
-            return self._validate_resolved(expression, resolved)
-
-        # Gate first, main expression last: the trailing ``self.ast`` /
-        # ``self.oc_*`` must describe the main expression (see docstring).
-        precondition = _as_gate_verdict(
-            self._validate_resolved(
-                precondition_expression, resolved, as_precondition=True
+            result = self._validate_resolved(expression, resolved)
+        else:
+            # Gate first, main expression last: the trailing ``self.ast`` /
+            # ``self.oc_*`` must describe the main expression (see
+            # docstring).
+            precondition = _as_gate_verdict(
+                self._validate_resolved(
+                    precondition_expression, resolved, as_precondition=True
+                )
             )
-        )
-        main = self._validate_resolved(expression, resolved)
-        return self._combine(main, self._cross_check(main, precondition))
+            main = self._validate_resolved(expression, resolved)
+            result = self._combine(main, self._cross_check(main, precondition))
+
+        if result.is_valid and precondition_operation_vid is not None:
+            try:
+                self._check_precondition_link(
+                    precondition_operation_vid, resolved
+                )
+            except SemanticError as exc:
+                code = getattr(exc, "code", None)
+                return self._failure(expression, exc, code)
+            except Exception as exc:
+                return self._failure(expression, exc, "UNKNOWN")
+        return result
 
     # ------------------------------------------------------------------ #
     # Internals
@@ -536,6 +561,138 @@ class SemanticService:
             release_id=release_id,
             release_code=release_code,
         ).is_valid
+
+    # ------------------------------------------------------------------ #
+    # Precondition-operation link (``precondition_operation_vid``)
+    # ------------------------------------------------------------------ #
+
+    def _check_precondition_link(
+        self, precondition_operation_vid: int, release_id: Optional[int]
+    ) -> None:
+        """Cross-check an externally-linked precondition operation.
+
+        Its persisted filing-indicator variables must still be live
+        (``7-3``), and its own expression's tables/modules must fit the
+        current expression's (``7-4``/``7-5``).
+        """
+        self._check_precondition_filing_indicators(
+            precondition_operation_vid, release_id
+        )
+        expression_row = (
+            self.session.query(OperationVersion.expression)
+            .filter(
+                OperationVersion.operation_vid == precondition_operation_vid
+            )
+            .first()
+        )
+        if expression_row is not None and expression_row[0]:
+            self._check_precondition_tables(expression_row[0], release_id)
+
+    def _check_precondition_filing_indicators(
+        self, precondition_operation_vid: int, release_id: Optional[int]
+    ) -> None:
+        """Raise ``7-3`` if a referenced filing indicator has gone stale.
+
+        Not a parameter of any module open at ``release_id``.
+        Non-filing-indicator variables are ignored (not scope-relevant).
+        """
+        variable_ids = sorted(
+            {
+                vid
+                for (vid,) in self.session.query(OperandReference.variable_id)
+                .join(
+                    OperationNode,
+                    OperandReference.node_id == OperationNode.node_id,
+                )
+                .filter(
+                    OperationNode.operation_vid == precondition_operation_vid,
+                    OperandReference.variable_id.isnot(None),
+                )
+                .distinct()
+                .all()
+            }
+        )
+        if not variable_ids:
+            return
+        codes = {
+            code
+            for (code,) in filter_by_release(
+                self.session.query(VariableVersion.code).filter(
+                    VariableVersion.variable_id.in_(variable_ids)
+                ),
+                VariableVersion.start_release_id,
+                VariableVersion.end_release_id,
+                release_id,
+            ).all()
+        }
+        filing_indicator_codes = ModuleVersionQuery.get_filing_indicator_codes(
+            self.session, codes
+        )
+        if not filing_indicator_codes:
+            return
+        modules_df = ModuleVersionQuery.get_precondition_module_versions(
+            self.session, list(filing_indicator_codes), release_id
+        )
+        live_codes = set(modules_df["Code"]) if not modules_df.empty else set()
+        if not filing_indicator_codes.issubset(live_codes):
+            raise SemanticError(
+                "7-3",
+                precondition_variable_ids=", ".join(
+                    str(vid) for vid in variable_ids
+                ),
+            )
+
+    def _check_precondition_tables(
+        self, precondition_expression: str, release_id: Optional[int]
+    ) -> None:
+        """Raise ``7-4``/``7-5`` when the link's own items don't fit.
+
+        A malformed expression is skipped, not raised. Uses
+        ``extract_precondition_codes`` since dpmcore's parser produces
+        ``VarRef``, not ``PreconditionItem``, for these references.
+        """
+        try:
+            precondition_ast = self._syntax.parse(precondition_expression)
+        except Exception:
+            return
+        precondition_items = extract_precondition_codes(precondition_ast)
+        if not precondition_items:
+            return
+
+        operand_tables = list(self.oc_tables.keys()) if self.oc_tables else []
+        abstract_by_table = TableVersionQuery.get_abstract_table_codes(
+            self.session, operand_tables, release_id
+        )
+        operand_abstract_tables = set(abstract_by_table.values())
+        if not set(precondition_items).issubset(operand_abstract_tables):
+            raise SemanticError(
+                "7-4",
+                precondition_tables=", ".join(precondition_items),
+                operation_tables=", ".join(sorted(operand_abstract_tables)),
+            )
+
+        precondition_modules_df = ModuleVersionQuery.get_from_table_codes(
+            self.session, precondition_items, release_id
+        )
+        operand_modules_df = ModuleVersionQuery.get_from_table_codes(
+            self.session, operand_tables, release_id
+        )
+        precondition_modules = (
+            set(precondition_modules_df["ModuleCode"])
+            if not precondition_modules_df.empty
+            else set()
+        )
+        operand_modules = (
+            set(operand_modules_df["ModuleCode"])
+            if not operand_modules_df.empty
+            else set()
+        )
+        if not precondition_modules.issubset(operand_modules):
+            raise SemanticError(
+                "7-5",
+                precondition_modules=", ".join(sorted(precondition_modules)),
+                operation_modules=", ".join(sorted(operand_modules)),
+            )
 
     # ------------------------------------------------------------------ #
     # Scope-wide parameter consistency (against persisted operations)
