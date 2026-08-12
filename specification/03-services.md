@@ -820,7 +820,7 @@ It is not part of the public API but is documented here for completeness.
 
 ### 10.1 Grammar & Parser
 
-- **ANTLR4 grammar**: `dpm_xl.g4` defines the DPM-XL language syntax
+- **ANTLR4 grammar**: `dpm_xlLexer.g4` and `dpm_xlParser.g4` define the DPM-XL language syntax
 - **Generated parser**: Auto-generated lexer, parser, and listener from the grammar
 - **ANTLR version**: 4.9.2 (specific version required)
 
@@ -893,10 +893,38 @@ substituting it stays invalid (`4-5-0-1`). `GET` re-types the result Fact
 Component to the data type of the selected component. Attribute Components
 are accepted structurally but no selection currently produces any.
 
-Every Structure has exactly one Fact Component, so a `WHERE` condition
-naming only the Fact Component is applicable to any table selection —
-including selections on tables with no open keys, which contribute no DPM Key
-Components of their own.
+Every Structure has exactly one Fact Component, so a `WHERE` condition naming
+only the Fact Component needs no open key: it applies to a selection on a
+table that declares none, and so contributes no DPM Key Components of its
+own. The selection must still be a recordset: on a single datapoint — one
+whose only key components are the implicit globals `refPeriod`, `entityID`
+and `baseCurrency` — the condition is rejected with `4-5-2-3`.
+
+#### The `where` block of a `with` clause
+
+`dpm_xlParser.g4`, rule `expressionWithoutAssignment`:
+
+```antlr
+    | WITH partialSelection
+    (SQUARE_BRACKET_LEFT WHERE expression SQUARE_BRACKET_RIGHT)?
+    COLON expression                                                            #exprWithSelection
+```
+
+The optional block applies to every selection in the body, except a selection
+carrying its own `WHERE` or `SUB`, which overrides it in full — including when
+the inner clause names other components. Filtering precedes `GET` and `RENAME`
+on the same selection, so the condition names components as the selection
+declares them. These two are equivalent:
+
+```
+with {tX}[where qEEA = [eba_qAE:qx2023]]: {c0250} + {c0260} >= 0
+with {tX}: {c0250}[where qEEA = [eba_qAE:qx2023]]
+         + {c0260}[where qEEA = [eba_qAE:qx2023]] >= 0
+```
+
+Each selection is checked against the condition on its own: one whose table
+does not carry a referenced component raises `2-8`, and a component with no
+dictionary row raises `1-5`.
 
 ### 10.6 Semantic Analyzer
 

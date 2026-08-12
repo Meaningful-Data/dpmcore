@@ -945,6 +945,17 @@ class InputAnalyzer(ASTTemplate, ABC):
         if not isinstance(operand, RecordSet):
             raise errors.SemanticError("4-5-0-2", operator=WHERE)
 
+        # A condition on the Fact Component alone needs no open key, so it can
+        # filter a selection on a table that has none. It still needs several
+        # records to choose between: on a single datapoint -- a selection whose
+        # only key components are the implicit globals -- there is nothing to
+        # filter, and the clause would silently do nothing.
+        if (
+            set(node.key_components) == {FACT}
+            and operand.has_only_global_components
+        ):
+            raise errors.SemanticError("4-5-2-3", recordset=operand.name)
+
         self._clause_operands.append(operand)
         try:
             condition = self.visit(node.condition)

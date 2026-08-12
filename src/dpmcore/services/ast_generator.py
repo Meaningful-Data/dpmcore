@@ -459,7 +459,10 @@ class ASTGeneratorService:
         whose start ``predates`` the requested release.
         """
         from dpmcore.orm.infrastructure import Release
-        from dpmcore.orm.release_sort_order import resolve_sort_order
+        from dpmcore.orm.release_sort_order import (
+            compute_sort_order,
+            resolve_sort_order,
+        )
 
         if self.session is None:
             raise RuntimeError("session required")
@@ -483,16 +486,24 @@ class ASTGeneratorService:
             )
         if end is not None:
             effective_end_id = self._effective_end_release_id(mv)
-            if effective_end_id is not None and target >= resolve_sort_order(
-                self.session,
-                effective_end_id,
-                role="module version effective end release",
-            ):
-                raise ValueError(
-                    f"Release {release} is past the end of module "
-                    f"version {module_code} {module_version} "
-                    f"(ends at release_id={end})."
+            if effective_end_id is not None:
+                effective_end_sort = resolve_sort_order(
+                    self.session,
+                    effective_end_id,
+                    role="module version effective end release",
                 )
+                # A row ending at an "always latest" release (undated or
+                # non-chronological) is still open even when queried at
+                # that release.
+                if (
+                    effective_end_sort != compute_sort_order(None, None)
+                    and target >= effective_end_sort
+                ):
+                    raise ValueError(
+                        f"Release {release} is past the end of module "
+                        f"version {module_code} {module_version} "
+                        f"(ends at release_id={end})."
+                    )
         return release_row
 
     def _effective_end_release_id(self, mv: Any) -> Optional[int]:
@@ -668,24 +679,33 @@ class ASTGeneratorService:
                 mv.end_release_id,
                 role="Module version window end release",
             )
+        perpetual_sort_order = compute_sort_order(None, None)
 
         rows = self.session.query(Release).all()
-        candidates: List[tuple[int, Any]] = []
+        candidates: List[tuple[int, int, Any]] = []
         for r in rows:
-            so = compute_sort_order(r.date)
+            so = compute_sort_order(r.date, r.type)
             if start_sort is not None and so < start_sort:
                 continue
-            if end_sort is not None and so >= end_sort:
+            # A row ending at an "always latest" release (undated or
+            # non-chronological) is still open even when queried at
+            # that release.
+            if (
+                end_sort is not None
+                and end_sort != perpetual_sort_order
+                and so >= end_sort
+            ):
                 continue
-            candidates.append((so, r))
+            candidates.append((so, r.release_id, r))
         if not candidates:
             return None
-        current = [(so, r) for so, r in candidates if r.is_current]
+        # release_id breaks ties among releases sharing a sort order.
+        current = [c for c in candidates if c[2].is_current]
         if current:
-            return max(current, key=lambda pair: pair[0])[1]
-        released = [(so, r) for so, r in candidates if r.status == "released"]
+            return max(current, key=lambda c: (c[0], c[1]))[2]
+        released = [c for c in candidates if c[2].status == "released"]
         pool = released or candidates
-        return max(pool, key=lambda pair: pair[0])[1]
+        return max(pool, key=lambda c: (c[0], c[1]))[2]
 
     def _resolve_severities(
         self,

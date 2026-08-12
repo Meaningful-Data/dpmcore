@@ -241,6 +241,11 @@ centralised_messages: Dict[str, str] = {
         " structure or condition must be a subset"
         " of selection."
     ),
+    "4-5-2-3": (
+        "For where operator, a condition on the fact"
+        " component requires recordset {recordset} to"
+        " have at least one key component."
+    ),
     # -- Sub
     "4-5-3-1": (
         "For sub operator, property code"
