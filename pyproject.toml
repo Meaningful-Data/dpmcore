@@ -88,7 +88,7 @@ pytest-asyncio = ">=0.24"
 pytest-cov = ">=6.0"
 pyroma = ">=4.2"
 httpx = ">=0.28,<1.0"
-pytest-django = ">=4.9"
+pytest-django = ">=4.13.0"
 django-stubs = ">=6.0.7"
 pandas-stubs = ">=2.2.2,<3.0"
 
