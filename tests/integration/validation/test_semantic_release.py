@@ -482,3 +482,200 @@ def test_single_reference_omitting_closed_sheets_axis_rejected(
         f"Expected invalid, got: {result.error_message}"
     )
     assert result.error_code == "1-20"
+
+
+def test_duplicate_persistent_assignment_rejected(fixture_session):
+    """Two independent formulas assigning the same cell must be rejected.
+
+    Regression test for GitHub issue #289: a DPM-XL variable can only have
+    one value per reference period, so two unrelated formulas for the same
+    cell can't both be right.
+    """
+    script = "{tF_01.01, r0010, c0010} <- 1; {tF_01.01, r0010, c0010} <- 2;"
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert not result.is_valid, "Expected invalid, but validation passed"
+    assert result.error_code == "6-1"
+
+
+def test_equality_alias_of_a_different_cell_remains_valid(fixture_session):
+    """A plain equality alias of another cell is not a duplicate output.
+
+    Companion case for GitHub issue #289: aliasing one cell's value into
+    another (``{B} <- {A}``) is a normal dependency, not a conflicting
+    formula for the same output, and must remain valid.
+    """
+    script = (
+        "{tF_01.01, r0010, c0010} <- 1; "
+        "{tF_01.01, r0020, c0010} <- {tF_01.01, r0010, c0010};"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert result.is_valid, (
+        f"Expected valid, but got error: {result.error_message}"
+    )
+
+
+def test_duplicate_persistent_assignment_inside_temporary_assignment_rejected(
+    fixture_session,
+):
+    """Also catches ``v := {cell} <- expr``, not just bare cells.
+
+    ``v0172_m``/``v0173_m`` must be real operation codes, else an
+    unrelated check rejects the script first.
+    """
+    script = (
+        "v0172_m := {tF_01.01, r0010, c0010} <- 1; "
+        "v0173_m := {tF_01.01, r0010, c0010} <- 2;"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert not result.is_valid, "Expected invalid, but validation passed"
+    assert result.error_code == "6-1"
+
+
+def test_duplicate_target_with_rows_in_different_order_rejected(
+    fixture_session,
+):
+    """Same rows, listed in a different order, are still the same target."""
+    script = (
+        "{tF_01.01, (r0010, r0020), c0010} <- 1; "
+        "{tF_01.01, (r0020, r0010), c0010} <- 2;"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert not result.is_valid, "Expected invalid, but validation passed"
+    assert result.error_code == "6-1"
+
+
+def test_duplicate_target_with_repeated_row_rejected(fixture_session):
+    """A repeated row in a list is still just that one row."""
+    script = (
+        "{tF_01.01, (r0010, r0010), c0010} <- 1; "
+        "{tF_01.01, r0010, c0010} <- 2;"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert not result.is_valid, "Expected invalid, but validation passed"
+    assert result.error_code == "6-1"
+
+
+def test_different_operation_ref_targets_are_not_duplicates(fixture_session):
+    """Two operation-ref targets with the same row/col are different cells."""
+    script = "{oOp1, r0010, c0010} <- 1; {oOp2, r0010, c0010} <- 2;"
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert result.is_valid, (
+        f"Expected valid, but got error: {result.error_message}"
+    )
+
+
+def test_same_operation_ref_target_rejected(fixture_session):
+    """The same operation-ref target assigned twice is a genuine duplicate."""
+    script = "{oOp1, r0010, c0010} <- 1; {oOp1, r0010, c0010} <- 2;"
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert not result.is_valid, "Expected invalid, but validation passed"
+    assert result.error_code == "6-1"
+
+
+def test_wildcard_target_overlapping_specific_row_rejected(fixture_session):
+    """A row wildcard target covers every row, including one assigned elsewhere."""
+    script = "{tF_01.01, r*, c0010} <- 1; {tF_01.01, r0010, c0010} <- 2;"
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert not result.is_valid, "Expected invalid, but validation passed"
+    assert result.error_code == "6-1"
+
+
+def test_row_range_overlapping_enumerated_rows_rejected(fixture_session):
+    """A row range and the same rows spelled out individually are one target."""
+    script = (
+        "{tF_01.01, r0010-0030, c0010} <- 1; "
+        "{tF_01.01, (r0010, r0020, r0030), c0010} <- 2;"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert not result.is_valid, "Expected invalid, but validation passed"
+    assert result.error_code == "6-1"
+
+
+def test_non_overlapping_row_ranges_remain_valid(fixture_session):
+    """Two targets stay distinct when their row ranges don't actually overlap."""
+    script = (
+        "{tF_01.01, r0010-0020, c0010} <- 1; {tF_01.01, r0030, c0010} <- 2;"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert result.is_valid, (
+        f"Expected valid, but got error: {result.error_message}"
+    )
+
+
+def test_bare_target_paired_with_different_with_tables_remains_valid(
+    fixture_session,
+):
+    """A table-less target can't be proven to collide across statements."""
+    script = (
+        "{r0010, c0010} <- with {tF_01.01}: {r0020, c0010}; "
+        "{r0010, c0010} <- with {tF_01.02}: {r0020, c0010};"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert result.is_valid, (
+        f"Expected valid, but got error: {result.error_message}"
+    )
+
+
+def test_group_target_overlapping_member_table_rejected(fixture_session):
+    """A table-group target and one of its real member tables collide."""
+    script = (
+        "{gAdditional_Liquidity_Monitoring, r0010, c0010} <- 1; "
+        "{tC_67.00.a, r0010, c0010} <- 2;"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert not result.is_valid, "Expected invalid, but validation passed"
+    assert result.error_code == "6-1"
+
+
+def test_group_target_and_unrelated_table_remain_valid(fixture_session):
+    """A table-group target doesn't collide with a table outside the group."""
+    script = (
+        "{gAdditional_Liquidity_Monitoring, r0010, c0010} <- 1; "
+        "{tF_01.01, r0010, c0010} <- 2;"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert result.is_valid, (
+        f"Expected valid, but got error: {result.error_message}"
+    )
+
+
+def test_group_target_overlapping_member_table_different_cell_remains_valid(
+    fixture_session,
+):
+    """A table-group target and a member table stay distinct cells apart."""
+    script = (
+        "{gAdditional_Liquidity_Monitoring, r0010, c0010} <- 1; "
+        "{tC_67.00.a, r0020, c0010} <- 2;"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(script, release_code="4.2.1")
+
+    assert result.is_valid, (
+        f"Expected valid, but got error: {result.error_message}"
+    )

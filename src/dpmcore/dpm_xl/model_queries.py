@@ -58,6 +58,8 @@ from dpmcore.orm.release_sort_order import (
 from dpmcore.orm.rendering import (
     Cell,
     HeaderVersion,
+    TableGroup,
+    TableGroupComposition,
     TableVersion,
     TableVersionCell,
     TableVersionHeader,
@@ -674,6 +676,64 @@ class TableVersionQuery:
             code: abstract_code_by_table_id.get(abstract_table_id, code)
             for code, abstract_table_id in rows
         }
+
+
+class TableGroupQuery:
+    """Query helpers around the TableGroup/TableGroupComposition models."""
+
+    @staticmethod
+    def get_member_table_codes(
+        session: "Session",
+        group_code: str,
+        release_id: int | None,
+    ) -> set[str]:
+        """Return the table-version codes belonging to a table group.
+
+        Args:
+            session: SQLAlchemy session.
+            group_code: The table group's code.
+            release_id: Release filter.
+
+        Returns:
+            The set of member table-version codes at that release.
+        """
+        group_ids = [
+            gid
+            for (gid,) in filter_by_release(
+                session.query(TableGroup.table_group_id).filter(
+                    TableGroup.code == group_code
+                ),
+                start_col=TableGroup.start_release_id,
+                end_col=TableGroup.end_release_id,
+                release_id=release_id,
+            ).all()
+        ]
+        if not group_ids:
+            return set()
+
+        table_ids = [
+            tid
+            for (tid,) in filter_by_release(
+                session.query(TableGroupComposition.table_id).filter(
+                    TableGroupComposition.table_group_id.in_(group_ids)
+                ),
+                start_col=TableGroupComposition.start_release_id,
+                end_col=TableGroupComposition.end_release_id,
+                release_id=release_id,
+            ).all()
+        ]
+        if not table_ids:
+            return set()
+
+        codes = filter_by_release(
+            session.query(TableVersion.code).filter(
+                TableVersion.table_id.in_(table_ids)
+            ),
+            start_col=TableVersion.start_release_id,
+            end_col=TableVersion.end_release_id,
+            release_id=release_id,
+        ).all()
+        return {code for (code,) in codes if code is not None}
 
 
 # ------------------------------------------------------------------ #
