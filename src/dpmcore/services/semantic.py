@@ -217,6 +217,7 @@ class SemanticService:
         self.oc_data: Any = None
         self.oc_tables: Any = None
         self.oc_parameters: tuple[ParameterInfo, ...] | None = None
+        self.oc_operations_data: Any = None
 
     # ------------------------------------------------------------------ #
     # Public API
@@ -256,7 +257,8 @@ class SemanticService:
           bound across them must declare one type.
 
         The halves are evaluated gate-first, so the per-call state this service
-        publishes (``ast``, ``oc_data``, ``oc_tables``, ``oc_parameters``)
+        publishes (``ast``, ``oc_data``, ``oc_tables``, ``oc_parameters``,
+        ``oc_operations_data``)
         describes the *main* expression when the call returns — what existing
         consumers of this method already rely on.
 
@@ -364,6 +366,7 @@ class SemanticService:
                 self.oc_data = oc.data
                 self.oc_tables = oc.tables
                 self.oc_parameters = _parameters_from_oc(oc)
+                self.oc_operations_data = oc.operations_data
 
                 analyzer = InputAnalyzer(expression)
                 analyzer.data = oc.data
@@ -410,6 +413,7 @@ class SemanticService:
         self.oc_data = None
         self.oc_tables = None
         self.oc_parameters = None
+        self.oc_operations_data = None
         return SemanticResult(
             is_valid=False,
             error_message=str(exc),
