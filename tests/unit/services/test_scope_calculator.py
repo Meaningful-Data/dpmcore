@@ -670,12 +670,18 @@ class TestDetectCrossModuleDependencies:
     def test_dependency_modules_in_output(self):
         """dependency_modules dict is populated."""
         svc, SR = self._make_svc()
-        svc._get_module_tables = lambda vid, release_id=None: {
-            "T_01": {
-                "variables": {"v1": "x"},
-                "open_keys": {},
+        # Distinct home/dep tables — the PR #276 shared-table exclusion
+        # would strip a fully overlapping ``T_01`` from the dep side.
+        svc._get_module_tables = lambda vid, release_id=None: (
+            {"HOME_T": {"variables": {"vh": "x"}, "open_keys": {}}}
+            if vid == 10
+            else {
+                "T_01": {
+                    "variables": {"v1": "x"},
+                    "open_keys": {},
+                }
             }
-        }
+        )
 
         mv = MagicMock()
         mv.module_vid = 20
@@ -705,12 +711,18 @@ class TestDetectCrossModuleDependencies:
         map, or the engine cannot build the home operand.
         """
         svc, SR = self._make_svc()
-        svc._get_module_tables = lambda vid, release_id=None: {
-            "F_01.03": {
-                "variables": {"56987": "m"},
-                "open_keys": {},
+        # Distinct home/dep tables — with the shared-table exclusion
+        # (PR #276) a full-overlap mock would drop the dep's F_01.03.
+        svc._get_module_tables = lambda vid, release_id=None: (
+            {"C_01.00": {"variables": {"32673": "m"}, "open_keys": {}}}
+            if vid == 10
+            else {
+                "F_01.03": {
+                    "variables": {"56987": "m"},
+                    "open_keys": {},
+                }
             }
-        }
+        )
 
         mv = MagicMock()
         mv.module_vid = 20
@@ -741,14 +753,19 @@ class TestDetectCrossModuleDependencies:
         subset the cross-rules reference, not whole.
         """
         svc, SR = self._make_svc()
-        svc._get_module_tables = lambda vid, release_id=None: {
-            "F_22.02": {
-                "variables": {"1": "m", "2": "m", "3": "m"},
-                "open_keys": {"qAS": "e"},
-            },
-            # Referenced by no cross-rule: must not be declared.
-            "F_99.00": {"variables": {"9": "m"}, "open_keys": {}},
-        }
+        # Distinct home/dep tables (see PR #276 shared-table exclusion).
+        svc._get_module_tables = lambda vid, release_id=None: (
+            {"G_01.00": {"variables": {"500": "m"}, "open_keys": {}}}
+            if vid == 10
+            else {
+                "F_22.02": {
+                    "variables": {"1": "m", "2": "m", "3": "m"},
+                    "open_keys": {"qAS": "e"},
+                },
+                # Referenced by no cross-rule: must not be declared.
+                "F_99.00": {"variables": {"9": "m"}, "open_keys": {}},
+            }
+        )
 
         mv = MagicMock()
         mv.module_vid = 20
@@ -776,10 +793,15 @@ class TestDetectCrossModuleDependencies:
     def test_whole_module_declared_when_no_refs_supplied(self):
         """Callers passing no reference info keep the unnarrowed module."""
         svc, SR = self._make_svc()
-        svc._get_module_tables = lambda vid, release_id=None: {
-            "F_22.02": {"variables": {"1": "m"}, "open_keys": {}},
-            "F_99.00": {"variables": {"9": "m"}, "open_keys": {}},
-        }
+        # Distinct home/dep tables (see PR #276 shared-table exclusion).
+        svc._get_module_tables = lambda vid, release_id=None: (
+            {"HOME_T": {"variables": {"vh": "m"}, "open_keys": {}}}
+            if vid == 10
+            else {
+                "F_22.02": {"variables": {"1": "m"}, "open_keys": {}},
+                "F_99.00": {"variables": {"9": "m"}, "open_keys": {}},
+            }
+        )
 
         mv = MagicMock()
         mv.module_vid = 20
@@ -802,9 +824,14 @@ class TestDetectCrossModuleDependencies:
         if nothing matches, the module is declared unnarrowed.
         """
         svc, SR = self._make_svc()
-        svc._get_module_tables = lambda vid, release_id=None: {
-            "F_22.02": {"variables": {"1": "m"}, "open_keys": {}},
-        }
+        # Distinct home/dep tables (see PR #276 shared-table exclusion).
+        svc._get_module_tables = lambda vid, release_id=None: (
+            {"G_01.00": {"variables": {"777": "m"}, "open_keys": {}}}
+            if vid == 10
+            else {
+                "F_22.02": {"variables": {"1": "m"}, "open_keys": {}},
+            }
+        )
 
         mv = MagicMock()
         mv.module_vid = 20
@@ -828,9 +855,12 @@ class TestDetectCrossModuleDependencies:
     def test_module_definition_wins_over_referenced_type(self):
         """A datapoint the dependency module defines keeps that type."""
         svc, SR = self._make_svc()
-        svc._get_module_tables = lambda vid, release_id=None: {
-            "F_01.03": {"variables": {"56987": "m"}, "open_keys": {}}
-        }
+        # Distinct home/dep tables (see PR #276 shared-table exclusion).
+        svc._get_module_tables = lambda vid, release_id=None: (
+            {}
+            if vid == 10
+            else {"F_01.03": {"variables": {"56987": "m"}, "open_keys": {}}}
+        )
 
         mv = MagicMock()
         mv.module_vid = 20
@@ -854,12 +884,17 @@ class TestDetectCrossModuleDependencies:
         keep their ``open_keys`` so the engine can join on them.
         """
         svc, SR = self._make_svc()
-        svc._get_module_tables = lambda vid, release_id=None: {
-            "C_06.02": {
-                "variables": {"5486578": "s"},
-                "open_keys": {"qEGS": "e", "qLGS": "s"},
+        # Distinct home/dep tables (see PR #276 shared-table exclusion).
+        svc._get_module_tables = lambda vid, release_id=None: (
+            {"HOME_T": {"variables": {"vh": "s"}, "open_keys": {}}}
+            if vid == 10
+            else {
+                "C_06.02": {
+                    "variables": {"5486578": "s"},
+                    "open_keys": {"qEGS": "e", "qLGS": "s"},
+                }
             }
-        }
+        )
 
         mv = MagicMock()
         mv.module_vid = 20
