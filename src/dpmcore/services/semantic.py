@@ -370,6 +370,8 @@ class SemanticService:
                 analyzer.key_components = oc.key_components
                 analyzer.open_keys = oc.open_keys
                 analyzer.preconditions = as_precondition or oc.preconditions
+                analyzer.session = self.session
+                analyzer.release_id = release_id
 
                 results = analyzer.visit(ast)
 
