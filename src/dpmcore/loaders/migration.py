@@ -389,7 +389,7 @@ class MigrationService:
                     Release.date,
                     Release.type,
                     Release.release_id,
-                ).where(Release.is_current.is_(True))
+                ).where(Release.is_current == True)  # noqa: E712
             ).all()
             code = _latest_code(rows)
             if code is None:

@@ -1455,7 +1455,7 @@ class ViewDatapointsQuery:
                 TableVersionCell,
                 and_(
                     TableVersionCell.table_vid == TableVersion.table_vid,
-                    TableVersionCell.is_void.is_(False),
+                    TableVersionCell.is_void == False,  # noqa: E712
                 ),
             )
             .outerjoin(
