@@ -982,6 +982,25 @@ def _vids_filter(vids: Sequence[int]) -> Callable[[Any], Any]:
     return apply
 
 
+def _resolve_covering(
+    build_query: Callable[[Callable[[Any], Any]], Any],
+    materialize: Callable[[Any], list[Any]],
+    cols: list[str],
+    release_id: int | None,
+) -> pd.DataFrame:
+    """Release-filtered module versions, ghosts included as-is.
+
+    A ghost is still a real module version covering the release window;
+    it only lacks a distinct reporting period, which matters for scope
+    resolution (see :func:`_resolve_with_ghost_fallback`) but not for a
+    plain "does this belong to a live module version" check.
+    """
+    return pd.DataFrame(
+        materialize(build_query(_release_filter(release_id))),
+        columns=cols,
+    )
+
+
 def _resolve_with_ghost_fallback(
     session: "Session",
     build_query: Callable[[Callable[[Any], Any]], Any],
@@ -1015,10 +1034,7 @@ def _resolve_with_ghost_fallback(
         DataFrame of resolved module versions, ghosts replaced by their
         prior non-collapsed fallback where one exists.
     """
-    covering = pd.DataFrame(
-        materialize(build_query(_release_filter(release_id))),
-        columns=cols,
-    )
+    covering = _resolve_covering(build_query, materialize, cols, release_id)
     # Without a target release there is no "prior" to fall back to;
     # keep the historical behaviour of simply dropping ghosts.
     if release_id is None or covering.empty:
@@ -1145,6 +1161,7 @@ class ModuleVersionQuery:
         session: "Session",
         table_codes: Sequence[str],
         release_id: int | None = None,
+        include_ghosts: bool = False,
     ) -> pd.DataFrame:
         """Query modules by table codes.
 
@@ -1152,6 +1169,10 @@ class ModuleVersionQuery:
             session: SQLAlchemy session.
             table_codes: List of table codes.
             release_id: Optional release filter.
+            include_ghosts: When True, skip the ghost-fallback
+                substitution and return the raw release-covering rows,
+                ghosts included. Leave False for scope computation, 
+                where a ghost has no reporting period of its own.
 
         Returns:
             DataFrame with module version info.
@@ -1201,6 +1222,10 @@ class ModuleVersionQuery:
         def materialize(query: Any) -> list[Any]:
             return chunked_in(query, TableVersion.code, table_codes)
 
+        if include_ghosts:
+            return _resolve_covering(
+                build_query, materialize, cols, release_id
+            )
         return _resolve_with_ghost_fallback(
             session, build_query, materialize, cols, release_id
         )
@@ -1210,6 +1235,7 @@ class ModuleVersionQuery:
         session: "Session",
         precondition_items: Sequence[str],
         release_id: int | None = None,
+        include_ghosts: bool = False,
     ) -> pd.DataFrame:
         """Query modules for precondition items.
 
@@ -1217,6 +1243,10 @@ class ModuleVersionQuery:
             session: SQLAlchemy session.
             precondition_items: Filing indicator codes.
             release_id: Optional release filter.
+            include_ghosts: When True, skip the ghost-fallback
+                substitution and return the raw release-covering rows,
+                ghosts included. Leave False for scope computation,
+                where a ghost has no reporting period of its own.
 
         Returns:
             DataFrame with module version info.
@@ -1271,6 +1301,10 @@ class ModuleVersionQuery:
         def materialize(query: Any) -> list[Any]:
             return query.all()
 
+        if include_ghosts:
+            return _resolve_covering(
+                build_query, materialize, cols, release_id
+            )
         return _resolve_with_ghost_fallback(
             session, build_query, materialize, cols, release_id
         )

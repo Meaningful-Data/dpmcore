@@ -633,7 +633,10 @@ class SemanticService:
         if not filing_indicator_codes:
             return
         modules_df = ModuleVersionQuery.get_precondition_module_versions(
-            self.session, list(filing_indicator_codes), release_id
+            self.session,
+            list(filing_indicator_codes),
+            release_id,
+            include_ghosts=True,
         )
         live_codes = set(modules_df["Code"]) if not modules_df.empty else set()
         if not filing_indicator_codes.issubset(live_codes):
@@ -674,10 +677,16 @@ class SemanticService:
             )
 
         precondition_modules_df = ModuleVersionQuery.get_from_table_codes(
-            self.session, precondition_items, release_id
+            self.session,
+            precondition_items,
+            release_id,
+            include_ghosts=True,
         )
         operand_modules_df = ModuleVersionQuery.get_from_table_codes(
-            self.session, operand_tables, release_id
+            self.session,
+            operand_tables,
+            release_id,
+            include_ghosts=True,
         )
         precondition_modules = (
             set(precondition_modules_df["ModuleCode"])
