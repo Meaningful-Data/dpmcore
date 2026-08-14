@@ -1171,7 +1171,7 @@ class ModuleVersionQuery:
             release_id: Optional release filter.
             include_ghosts: When True, skip the ghost-fallback
                 substitution and return the raw release-covering rows,
-                ghosts included. Leave False for scope computation, 
+                ghosts included. Leave False for scope computation,
                 where a ghost has no reporting period of its own.
 
         Returns:
