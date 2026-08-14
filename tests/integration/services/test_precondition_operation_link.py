@@ -42,7 +42,12 @@ def _seed_filing_indicator(session, *, indicator_in_open_module: bool):
                 start_release_id=1,
                 end_release_id=None,
             ),
-            OperationVersion(operation_vid=500, expression="{v_C_02.00}"),
+            OperationVersion(
+                operation_vid=500,
+                expression="{v_C_02.00}",
+                start_release_id=1,
+                end_release_id=None,
+            ),
             OperationNode(node_id=1, operation_vid=500),
             OperandReference(operand_reference_id=1, node_id=1, variable_id=1),
         ]
@@ -70,7 +75,7 @@ def test_filing_indicator_in_open_module_passes(memory_session):
     _seed_filing_indicator(memory_session, indicator_in_open_module=True)
     svc = _svc(memory_session)
 
-    svc._check_precondition_filing_indicators(500, release_id=1)  # no raise
+    svc._check_precondition_link(500, release_id=1)  # no raise
 
 
 def test_filing_indicator_not_in_any_module_raises_7_3(memory_session):
@@ -78,7 +83,7 @@ def test_filing_indicator_not_in_any_module_raises_7_3(memory_session):
     svc = _svc(memory_session)
 
     with pytest.raises(SemanticError) as exc_info:
-        svc._check_precondition_filing_indicators(500, release_id=1)
+        svc._check_precondition_link(500, release_id=1)
     assert exc_info.value.code == "7-3"
 
 
@@ -95,7 +100,12 @@ def test_non_filing_indicator_variable_is_ignored(memory_session):
                 start_release_id=1,
                 end_release_id=None,
             ),
-            OperationVersion(operation_vid=501, expression="{v_V_FACT}"),
+            OperationVersion(
+                operation_vid=501,
+                expression="{v_V_FACT}",
+                start_release_id=1,
+                end_release_id=None,
+            ),
             OperationNode(node_id=2, operation_vid=501),
             OperandReference(operand_reference_id=2, node_id=2, variable_id=2),
         ]
@@ -103,20 +113,25 @@ def test_non_filing_indicator_variable_is_ignored(memory_session):
     memory_session.flush()
     svc = _svc(memory_session)
 
-    svc._check_precondition_filing_indicators(501, release_id=1)  # no raise
+    svc._check_precondition_link(501, release_id=1)  # no raise
 
 
 def test_operation_with_no_operand_references_is_a_noop(memory_session):
     memory_session.add_all(
         [
             Release(release_id=1, code="3.4", date=datetime.date(2022, 12, 1)),
-            OperationVersion(operation_vid=502, expression="1 + 1"),
+            OperationVersion(
+                operation_vid=502,
+                expression="1 + 1",
+                start_release_id=1,
+                end_release_id=None,
+            ),
         ]
     )
     memory_session.flush()
     svc = _svc(memory_session)
 
-    svc._check_precondition_filing_indicators(502, release_id=1)  # no raise
+    svc._check_precondition_link(502, release_id=1)  # no raise
 
 
 def test_unknown_precondition_operation_vid_is_a_noop(memory_session):
@@ -134,17 +149,34 @@ def test_unknown_precondition_operation_vid_is_a_noop(memory_session):
 # --------------------------------------------------------------------- #
 
 
+def _seed_precondition_operation(session, operation_vid, expression):
+    session.add_all(
+        [
+            OperationVersion(
+                operation_vid=operation_vid,
+                expression=expression,
+                start_release_id=1,
+                end_release_id=None,
+            ),
+        ]
+    )
+
+
 def _seed_tables(session, *, fi_shares_operand_module: bool):
-    """Table T1 (module M1), abstract table FI_X.
+    """Table T1 (module M1), abstract table FI_X, distractor table UNRELATED.
 
     ``fi_shares_operand_module=True`` puts FI_X in M1 too (both checks
-    pass); otherwise FI_X is only in module M2 (7-5 must fail).
+    pass); otherwise FI_X is only in module M2 (7-5 must fail). UNRELATED
+    is a real table that is not part of any module composition, used to
+    prove a precondition table that doesn't match T1's abstract table
+    still raises 7-4 once it is a genuine table code.
     """
     session.add_all(
         [
             Release(release_id=1, code="3.4", date=datetime.date(2022, 12, 1)),
             Table(table_id=1),
             Table(table_id=2),
+            Table(table_id=3),
             TableVersion(
                 table_vid=10,
                 code="T1",
@@ -157,6 +189,14 @@ def _seed_tables(session, *, fi_shares_operand_module: bool):
                 table_vid=20,
                 code="FI_X",
                 table_id=2,
+                abstract_table_id=None,
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            TableVersion(
+                table_vid=30,
+                code="UNRELATED",
+                table_id=3,
                 abstract_table_id=None,
                 start_release_id=1,
                 end_release_id=None,
@@ -197,44 +237,57 @@ def _seed_tables(session, *, fi_shares_operand_module: bool):
 
 def test_matching_table_and_module_passes(memory_session):
     _seed_tables(memory_session, fi_shares_operand_module=True)
+    _seed_precondition_operation(memory_session, 600, "{v_FI_X}")
+    memory_session.flush()
     svc = _svc(memory_session)
     svc.oc_tables = {"T1": {}}
 
-    svc._check_precondition_tables("{v_FI_X}", release_id=1)  # no raise
+    svc._check_precondition_link(600, release_id=1)  # no raise
 
 
 def test_precondition_code_not_among_operand_abstract_tables_raises_7_4(
     memory_session,
 ):
     _seed_tables(memory_session, fi_shares_operand_module=True)
+    _seed_precondition_operation(memory_session, 601, "{v_UNRELATED}")
+    memory_session.flush()
     svc = _svc(memory_session)
     svc.oc_tables = {"T1": {}}
 
     with pytest.raises(SemanticError) as exc_info:
-        svc._check_precondition_tables("{v_UNRELATED}", release_id=1)
+        svc._check_precondition_link(601, release_id=1)
     assert exc_info.value.code == "7-4"
 
 
 def test_matching_table_but_different_module_raises_7_5(memory_session):
     _seed_tables(memory_session, fi_shares_operand_module=False)
+    _seed_precondition_operation(memory_session, 602, "{v_FI_X}")
+    memory_session.flush()
     svc = _svc(memory_session)
     svc.oc_tables = {"T1": {}}
 
     with pytest.raises(SemanticError) as exc_info:
-        svc._check_precondition_tables("{v_FI_X}", release_id=1)
+        svc._check_precondition_link(602, release_id=1)
     assert exc_info.value.code == "7-5"
 
 
 def test_expression_with_no_precondition_codes_is_a_noop(memory_session):
     _seed_tables(memory_session, fi_shares_operand_module=True)
+    _seed_precondition_operation(memory_session, 603, "1 + 1")
+    memory_session.flush()
     svc = _svc(memory_session)
     svc.oc_tables = {"T1": {}}
 
-    svc._check_precondition_tables("1 + 1", release_id=1)  # no raise
+    svc._check_precondition_link(603, release_id=1)  # no raise
 
 
 def test_malformed_precondition_expression_is_a_noop(memory_session):
+    memory_session.add(
+        Release(release_id=1, code="3.4", date=datetime.date(2022, 12, 1))
+    )
+    _seed_precondition_operation(memory_session, 604, "{{{not valid dpm-xl")
+    memory_session.flush()
     svc = _svc(memory_session)
     svc.oc_tables = {"T1": {}}
 
-    svc._check_precondition_tables("{{{not valid dpm-xl", release_id=1)
+    svc._check_precondition_link(604, release_id=1)  # no raise

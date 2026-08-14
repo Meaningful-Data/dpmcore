@@ -30,7 +30,7 @@ from dpmcore.orm.operations import (
 from dpmcore.orm.query_utils import chunked_in
 from dpmcore.orm.variables import VariableVersion
 from dpmcore.services._parameters import merge_parameters
-from dpmcore.services._precondition_codes import extract_precondition_codes
+from dpmcore.services._precondition_codes import required_precondition_codes
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -573,62 +573,49 @@ class SemanticService:
     ) -> None:
         """Cross-check an externally-linked precondition operation.
 
-        Its persisted filing-indicator variables must still be live
-        (``7-3``), and its own expression's tables/modules must fit the
-        current expression's (``7-4``/``7-5``).
+        Checks its filing-indicator variables are still live (``7-3``)
+        and its tables/modules fit the current expression's (``7-4``/
+        ``7-5``). Nothing to check against (malformed, closed, or an
+        unresolved ``precondition_operation_vid``) is skipped, not
+        raised. Only codes ``required_precondition_codes`` deems
+        mandatory count, so ``{v_A} or {v_B}`` needs just one side.
         """
-        self._check_precondition_filing_indicators(
-            precondition_operation_vid, release_id
-        )
-        expression_row = (
-            self.session.query(OperationVersion.expression)
-            .filter(
+        row = filter_by_release(
+            self.session.query(OperationVersion.expression).filter(
                 OperationVersion.operation_vid == precondition_operation_vid
-            )
-            .first()
+            ),
+            OperationVersion.start_release_id,
+            OperationVersion.end_release_id,
+            release_id,
+        ).first()
+        if row is None or not row[0]:
+            return
+        try:
+            precondition_ast = self._syntax.parse(row[0])
+        except Exception:
+            return
+        required_codes = set(required_precondition_codes(precondition_ast))
+        if not required_codes:
+            return
+        self._check_precondition_filing_indicators(
+            precondition_operation_vid, required_codes, release_id
         )
-        if expression_row is not None and expression_row[0]:
-            self._check_precondition_tables(expression_row[0], release_id)
+        self._check_precondition_tables(required_codes, release_id)
 
     def _check_precondition_filing_indicators(
-        self, precondition_operation_vid: int, release_id: Optional[int]
+        self,
+        precondition_operation_vid: int,
+        required_codes: set[str],
+        release_id: Optional[int],
     ) -> None:
-        """Raise ``7-3`` if a referenced filing indicator has gone stale.
+        """Raise ``7-3`` if a required filing indicator has gone stale.
 
-        Not a parameter of any module open at ``release_id``.
-        Non-filing-indicator variables are ignored (not scope-relevant).
+        Not a parameter of any module open at ``release_id``. Codes that
+        are not filing indicators (value conditions, plain variables) are
+        ignored. Not scope-relevant.
         """
-        variable_ids = sorted(
-            {
-                vid
-                for (vid,) in self.session.query(OperandReference.variable_id)
-                .join(
-                    OperationNode,
-                    OperandReference.node_id == OperationNode.node_id,
-                )
-                .filter(
-                    OperationNode.operation_vid == precondition_operation_vid,
-                    OperandReference.variable_id.isnot(None),
-                )
-                .distinct()
-                .all()
-            }
-        )
-        if not variable_ids:
-            return
-        codes = {
-            code
-            for (code,) in filter_by_release(
-                self.session.query(VariableVersion.code).filter(
-                    VariableVersion.variable_id.in_(variable_ids)
-                ),
-                VariableVersion.start_release_id,
-                VariableVersion.end_release_id,
-                release_id,
-            ).all()
-        }
         filing_indicator_codes = ModuleVersionQuery.get_filing_indicator_codes(
-            self.session, codes
+            self.session, required_codes
         )
         if not filing_indicator_codes:
             return
@@ -640,6 +627,30 @@ class SemanticService:
         )
         live_codes = set(modules_df["Code"]) if not modules_df.empty else set()
         if not filing_indicator_codes.issubset(live_codes):
+            variable_ids = sorted(
+                {
+                    vid
+                    for (vid,) in self.session.query(
+                        OperandReference.variable_id
+                    )
+                    .join(
+                        OperationNode,
+                        OperandReference.node_id == OperationNode.node_id,
+                    )
+                    .join(
+                        VariableVersion,
+                        OperandReference.variable_id
+                        == VariableVersion.variable_id,
+                    )
+                    .filter(
+                        OperationNode.operation_vid
+                        == precondition_operation_vid,
+                        VariableVersion.code.in_(filing_indicator_codes),
+                    )
+                    .distinct()
+                    .all()
+                }
+            )
             raise SemanticError(
                 "7-3",
                 precondition_variable_ids=", ".join(
@@ -648,37 +659,46 @@ class SemanticService:
             )
 
     def _check_precondition_tables(
-        self, precondition_expression: str, release_id: Optional[int]
+        self, required_codes: set[str], release_id: Optional[int]
     ) -> None:
-        """Raise ``7-4``/``7-5`` when the link's own items don't fit.
+        """Raise ``7-4``/``7-5`` when the link's own tables don't fit.
 
-        A malformed expression is skipped, not raised. Uses
-        ``extract_precondition_codes`` since dpmcore's parser produces
-        ``VarRef``, not ``PreconditionItem``, for these references.
+        ``required_codes`` may include non-table codes (a value condition
+        like ``{v_BM} = 'G-SIB'`` yields ``BM``); ``get_abstract_table_codes``
+        filters those out and canonicalizes the rest to their abstract
+        parent, so both sides of the ``7-4`` comparison match. Skipped
+        when either side has no table to compare.
         """
-        try:
-            precondition_ast = self._syntax.parse(precondition_expression)
-        except Exception:
-            return
-        precondition_items = extract_precondition_codes(precondition_ast)
-        if not precondition_items:
-            return
-
         operand_tables = list(self.oc_tables.keys()) if self.oc_tables else []
+        if not operand_tables:
+            return
         abstract_by_table = TableVersionQuery.get_abstract_table_codes(
             self.session, operand_tables, release_id
         )
         operand_abstract_tables = set(abstract_by_table.values())
-        if not set(precondition_items).issubset(operand_abstract_tables):
+
+        precondition_abstract_by_table = (
+            TableVersionQuery.get_abstract_table_codes(
+                self.session, list(required_codes), release_id
+            )
+        )
+        if not precondition_abstract_by_table:
+            return
+        precondition_tables = set(precondition_abstract_by_table.keys())
+        precondition_abstract_tables = set(
+            precondition_abstract_by_table.values()
+        )
+
+        if not precondition_abstract_tables.issubset(operand_abstract_tables):
             raise SemanticError(
                 "7-4",
-                precondition_tables=", ".join(precondition_items),
+                precondition_tables=", ".join(sorted(precondition_tables)),
                 operation_tables=", ".join(sorted(operand_abstract_tables)),
             )
 
         precondition_modules_df = ModuleVersionQuery.get_from_table_codes(
             self.session,
-            precondition_items,
+            list(precondition_tables),
             release_id,
             include_ghosts=True,
         )
