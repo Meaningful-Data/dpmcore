@@ -88,7 +88,7 @@ def test_filing_indicator_not_in_any_module_raises_7_3(memory_session):
 
 
 def test_non_filing_indicator_variable_is_ignored(memory_session):
-    # "fact"-typed variable: not scope-relevant, ignored despite no module.
+    # "fact" variable, not scope-relevant: ignored despite no module.
     memory_session.add_all(
         [
             Release(release_id=1, code="3.4", date=datetime.date(2022, 12, 1)),
@@ -134,6 +134,280 @@ def test_operation_with_no_operand_references_is_a_noop(memory_session):
     svc._check_precondition_link(502, release_id=1)  # no raise
 
 
+def _seed_two_filing_indicators(session, *, first_live, second_live):
+    session.add_all(
+        [
+            Release(release_id=1, code="3.4", date=datetime.date(2022, 12, 1)),
+            Variable(variable_id=10, type="filingindicator"),
+            VariableVersion(
+                variable_vid=10,
+                variable_id=10,
+                code="OR_A",
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            Variable(variable_id=11, type="filingindicator"),
+            VariableVersion(
+                variable_vid=11,
+                variable_id=11,
+                code="OR_B",
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            OperationVersion(
+                operation_vid=700,
+                expression="{v_OR_A} or {v_OR_B}",
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            OperationNode(node_id=10, operation_vid=700),
+            OperandReference(
+                operand_reference_id=10, node_id=10, variable_id=10
+            ),
+            OperationNode(node_id=11, operation_vid=700),
+            OperandReference(
+                operand_reference_id=11, node_id=11, variable_id=11
+            ),
+        ]
+    )
+    if first_live:
+        session.add_all(
+            [
+                ModuleVersion(
+                    module_vid=400,
+                    module_id=10,
+                    code="M_OR_A",
+                    version_number="1.0",
+                    start_release_id=1,
+                    end_release_id=None,
+                    from_reference_date=datetime.date(2023, 6, 30),
+                    to_reference_date=None,
+                ),
+                ModuleParameters(module_vid=400, variable_vid=10),
+            ]
+        )
+    if second_live:
+        session.add_all(
+            [
+                ModuleVersion(
+                    module_vid=401,
+                    module_id=11,
+                    code="M_OR_B",
+                    version_number="1.0",
+                    start_release_id=1,
+                    end_release_id=None,
+                    from_reference_date=datetime.date(2023, 6, 30),
+                    to_reference_date=None,
+                ),
+                ModuleParameters(module_vid=401, variable_vid=11),
+            ]
+        )
+    session.flush()
+
+
+def test_or_gate_passes_when_only_one_side_is_live(memory_session):
+    _seed_two_filing_indicators(
+        memory_session, first_live=False, second_live=True
+    )
+    svc = _svc(memory_session)
+
+    svc._check_precondition_link(700, release_id=1)  # no raise
+
+
+def test_or_gate_raises_7_3_when_both_sides_are_stale(memory_session):
+    _seed_two_filing_indicators(
+        memory_session, first_live=False, second_live=False
+    )
+    svc = _svc(memory_session)
+
+    with pytest.raises(SemanticError) as exc_info:
+        svc._check_precondition_link(700, release_id=1)
+    assert exc_info.value.code == "7-3"
+    assert "10" in str(exc_info.value)
+    assert "11" in str(exc_info.value)
+
+
+def test_and_gate_7_3_message_lists_only_the_stale_side(memory_session):
+    # AND needs both sides. The message must name only the stale one.
+    memory_session.add_all(
+        [
+            Release(release_id=1, code="3.4", date=datetime.date(2022, 12, 1)),
+            Variable(variable_id=20, type="filingindicator"),
+            VariableVersion(
+                variable_vid=20,
+                variable_id=20,
+                code="AND_A",
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            Variable(variable_id=21, type="filingindicator"),
+            VariableVersion(
+                variable_vid=21,
+                variable_id=21,
+                code="AND_B",
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            OperationVersion(
+                operation_vid=701,
+                expression="{v_AND_A} and {v_AND_B}",
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            OperationNode(node_id=20, operation_vid=701),
+            OperandReference(
+                operand_reference_id=20, node_id=20, variable_id=20
+            ),
+            OperationNode(node_id=21, operation_vid=701),
+            OperandReference(
+                operand_reference_id=21, node_id=21, variable_id=21
+            ),
+            # Only AND_B is live in an open module. AND_A stays stale.
+            ModuleVersion(
+                module_vid=402,
+                module_id=20,
+                code="M_AND_B",
+                version_number="1.0",
+                start_release_id=1,
+                end_release_id=None,
+                from_reference_date=datetime.date(2023, 6, 30),
+                to_reference_date=None,
+            ),
+            ModuleParameters(module_vid=402, variable_vid=21),
+        ]
+    )
+    memory_session.flush()
+    svc = _svc(memory_session)
+
+    with pytest.raises(SemanticError) as exc_info:
+        svc._check_precondition_link(701, release_id=1)
+    assert exc_info.value.code == "7-3"
+    assert "20" in str(exc_info.value)
+    assert "21" not in str(exc_info.value)
+
+
+def _seed_two_filing_indicators_xor(session, *, first_live, second_live):
+    session.add_all(
+        [
+            Release(release_id=1, code="3.4", date=datetime.date(2022, 12, 1)),
+            Variable(variable_id=12, type="filingindicator"),
+            VariableVersion(
+                variable_vid=12,
+                variable_id=12,
+                code="XOR_A",
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            Variable(variable_id=13, type="filingindicator"),
+            VariableVersion(
+                variable_vid=13,
+                variable_id=13,
+                code="XOR_B",
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            OperationVersion(
+                operation_vid=703,
+                expression="{v_XOR_A} xor {v_XOR_B}",
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            OperationNode(node_id=12, operation_vid=703),
+            OperandReference(
+                operand_reference_id=12, node_id=12, variable_id=12
+            ),
+            OperationNode(node_id=13, operation_vid=703),
+            OperandReference(
+                operand_reference_id=13, node_id=13, variable_id=13
+            ),
+        ]
+    )
+    if first_live:
+        session.add_all(
+            [
+                ModuleVersion(
+                    module_vid=403,
+                    module_id=12,
+                    code="M_XOR_A",
+                    version_number="1.0",
+                    start_release_id=1,
+                    end_release_id=None,
+                    from_reference_date=datetime.date(2023, 6, 30),
+                    to_reference_date=None,
+                ),
+                ModuleParameters(module_vid=403, variable_vid=12),
+            ]
+        )
+    if second_live:
+        session.add_all(
+            [
+                ModuleVersion(
+                    module_vid=404,
+                    module_id=13,
+                    code="M_XOR_B",
+                    version_number="1.0",
+                    start_release_id=1,
+                    end_release_id=None,
+                    from_reference_date=datetime.date(2023, 6, 30),
+                    to_reference_date=None,
+                ),
+                ModuleParameters(module_vid=404, variable_vid=13),
+            ]
+        )
+    session.flush()
+
+
+def test_xor_gate_passes_when_only_one_side_is_live(memory_session):
+    # xor takes the same branch as or in gate_satisfiable.
+    _seed_two_filing_indicators_xor(
+        memory_session, first_live=False, second_live=True
+    )
+    svc = _svc(memory_session)
+
+    svc._check_precondition_link(703, release_id=1)  # no raise
+
+
+def test_xor_gate_raises_7_3_when_both_sides_are_stale(memory_session):
+    _seed_two_filing_indicators_xor(
+        memory_session, first_live=False, second_live=False
+    )
+    svc = _svc(memory_session)
+
+    with pytest.raises(SemanticError) as exc_info:
+        svc._check_precondition_link(703, release_id=1)
+    assert exc_info.value.code == "7-3"
+
+
+def test_7_3_falls_back_to_the_stale_code_without_node_rows(memory_session):
+    # No OperationNode rows, so the message falls back to the stale code.
+    memory_session.add_all(
+        [
+            Release(release_id=1, code="3.4", date=datetime.date(2022, 12, 1)),
+            Variable(variable_id=30, type="filingindicator"),
+            VariableVersion(
+                variable_vid=30,
+                variable_id=30,
+                code="NO_NODES",
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            OperationVersion(
+                operation_vid=702,
+                expression="{v_NO_NODES}",
+                start_release_id=1,
+                end_release_id=None,
+            ),
+        ]
+    )
+    memory_session.flush()
+    svc = _svc(memory_session)
+
+    with pytest.raises(SemanticError) as exc_info:
+        svc._check_precondition_link(702, release_id=1)
+    assert exc_info.value.code == "7-3"
+    assert "NO_NODES" in str(exc_info.value)
+
+
 def test_unknown_precondition_operation_vid_is_a_noop(memory_session):
     memory_session.add(
         Release(release_id=1, code="3.4", date=datetime.date(2022, 12, 1))
@@ -163,13 +437,10 @@ def _seed_precondition_operation(session, operation_vid, expression):
 
 
 def _seed_tables(session, *, fi_shares_operand_module: bool):
-    """Table T1 (module M1), abstract table FI_X, distractor table UNRELATED.
+    """T1 (module M1) with abstract table FI_X. UNRELATED matches neither.
 
-    ``fi_shares_operand_module=True`` puts FI_X in M1 too (both checks
-    pass); otherwise FI_X is only in module M2 (7-5 must fail). UNRELATED
-    is a real table that is not part of any module composition, used to
-    prove a precondition table that doesn't match T1's abstract table
-    still raises 7-4 once it is a genuine table code.
+    ``fi_shares_operand_module=True`` puts FI_X in M1 too, so 7-5 passes.
+    Otherwise FI_X sits only in M2, so 7-5 fails.
     """
     session.add_all(
         [
@@ -268,6 +539,64 @@ def test_matching_table_but_different_module_raises_7_5(memory_session):
 
     with pytest.raises(SemanticError) as exc_info:
         svc._check_precondition_link(602, release_id=1)
+    assert exc_info.value.code == "7-5"
+
+
+def test_or_gate_passes_7_4_when_one_table_matches(memory_session):
+    _seed_tables(memory_session, fi_shares_operand_module=True)
+    _seed_precondition_operation(
+        memory_session, 605, "{v_UNRELATED} or {v_FI_X}"
+    )
+    memory_session.flush()
+    svc = _svc(memory_session)
+    svc.oc_tables = {"T1": {}}
+
+    svc._check_precondition_link(605, release_id=1)  # no raise
+
+
+def test_or_gate_raises_7_4_when_both_tables_mismatch(memory_session):
+    _seed_tables(memory_session, fi_shares_operand_module=True)
+    memory_session.add_all(
+        [
+            Table(table_id=4),
+            TableVersion(
+                table_vid=40,
+                code="UNRELATED2",
+                table_id=4,
+                abstract_table_id=None,
+                start_release_id=1,
+                end_release_id=None,
+            ),
+        ]
+    )
+    memory_session.flush()
+    _seed_precondition_operation(
+        memory_session, 606, "{v_UNRELATED} or {v_UNRELATED2}"
+    )
+    memory_session.flush()
+    svc = _svc(memory_session)
+    svc.oc_tables = {"T1": {}}
+
+    with pytest.raises(SemanticError) as exc_info:
+        svc._check_precondition_link(606, release_id=1)
+    assert exc_info.value.code == "7-4"
+
+
+def test_or_gate_raises_7_5_when_the_matching_tables_module_differs(
+    memory_session,
+):
+    # FI_X passes 7-4 but sits only in M2, and UNRELATED never matches on
+    # table, so no branch fits both table and module and 7-5 must fire.
+    _seed_tables(memory_session, fi_shares_operand_module=False)
+    _seed_precondition_operation(
+        memory_session, 607, "{v_UNRELATED} or {v_FI_X}"
+    )
+    memory_session.flush()
+    svc = _svc(memory_session)
+    svc.oc_tables = {"T1": {}}
+
+    with pytest.raises(SemanticError) as exc_info:
+        svc._check_precondition_link(607, release_id=1)
     assert exc_info.value.code == "7-5"
 
 
