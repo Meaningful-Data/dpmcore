@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Optional, cast
+from typing import TYPE_CHECKING, Any, Callable, Optional, cast
 
 from sqlalchemy import func
 
@@ -30,7 +30,10 @@ from dpmcore.orm.operations import (
 from dpmcore.orm.query_utils import chunked_in
 from dpmcore.orm.variables import VariableVersion
 from dpmcore.services._parameters import merge_parameters
-from dpmcore.services._precondition_codes import required_precondition_codes
+from dpmcore.services._precondition_codes import (
+    extract_precondition_codes,
+    gate_satisfiable,
+)
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -320,9 +323,9 @@ class SemanticService:
                 )
             except SemanticError as exc:
                 code = getattr(exc, "code", None)
-                return self._failure(expression, exc, code)
+                return self._precondition_link_failure(result, exc, code)
             except Exception as exc:
-                return self._failure(expression, exc, "UNKNOWN")
+                return self._precondition_link_failure(result, exc, "UNKNOWN")
         return result
 
     # ------------------------------------------------------------------ #
@@ -425,28 +428,53 @@ class SemanticService:
         except Exception as exc:
             return self._failure(expression, exc, "UNKNOWN")
 
-    def _failure(
-        self,
-        expression: str,
-        exc: Exception,
-        error_code: Optional[str],
-    ) -> SemanticResult:
-        """Clear the published per-call state and build a failing result.
+    def _clear_published_state(self) -> None:
+        """Clear per-call state exposed on ``self`` after a failure.
 
-        ``ast`` is cleared alongside ``oc_*``; leaving the previous call's AST
-        readable after a failure invited consumers to act on stale state.
+        Leaving the previous call's AST/``oc_*`` readable after a failure
+        invited consumers to act on stale state.
         """
         self.ast = None
         self.oc_data = None
         self.oc_tables = None
         self.oc_parameters = None
         self.oc_operations_data = None
+
+    def _failure(
+        self,
+        expression: str,
+        exc: Exception,
+        error_code: Optional[str],
+    ) -> SemanticResult:
+        """Clear the published per-call state and build a failing result."""
+        self._clear_published_state()
         return SemanticResult(
             is_valid=False,
             error_message=str(exc),
             error_code=error_code,
             expression=expression,
             error_source="expression",
+        )
+
+    def _precondition_link_failure(
+        self,
+        result: SemanticResult,
+        exc: Exception,
+        error_code: Optional[str],
+    ) -> SemanticResult:
+        """Fail result over a precondition-link mismatch.
+
+        Unlike :meth:`_failure`, ``expression``/gate already validated, so
+        the existing halves survive and ``error_source`` is
+        ``"precondition"`` rather than ``"expression"``.
+        """
+        self._clear_published_state()
+        return replace(
+            result,
+            is_valid=False,
+            error_message=str(exc),
+            error_code=error_code,
+            error_source="precondition",
         )
 
     def _resolution_failure(
@@ -577,8 +605,8 @@ class SemanticService:
         and its tables/modules fit the current expression's (``7-4``/
         ``7-5``). Nothing to check against (malformed, closed, or an
         unresolved ``precondition_operation_vid``) is skipped, not
-        raised. Only codes ``required_precondition_codes`` deems
-        mandatory count, so ``{v_A} or {v_B}`` needs just one side.
+        raised. An ``or``/``xor`` only fails a check when every side
+        does, so ``{v_A} or {v_B}`` needs just one side to pass.
         """
         row = filter_by_release(
             self.session.query(OperationVersion.expression).filter(
@@ -594,28 +622,28 @@ class SemanticService:
             precondition_ast = self._syntax.parse(row[0])
         except Exception:
             return
-        required_codes = set(required_precondition_codes(precondition_ast))
-        if not required_codes:
+        if not extract_precondition_codes(precondition_ast):
             return
         self._check_precondition_filing_indicators(
-            precondition_operation_vid, required_codes, release_id
+            precondition_operation_vid, precondition_ast, release_id
         )
-        self._check_precondition_tables(required_codes, release_id)
+        self._check_precondition_tables(precondition_ast, release_id)
 
     def _check_precondition_filing_indicators(
         self,
         precondition_operation_vid: int,
-        required_codes: set[str],
+        precondition_ast: Any,
         release_id: Optional[int],
     ) -> None:
-        """Raise ``7-3`` if a required filing indicator has gone stale.
+        """Raise ``7-3`` when the gate can no longer be satisfied.
 
-        Not a parameter of any module open at ``release_id``. Codes that
-        are not filing indicators (value conditions, plain variables) are
-        ignored. Not scope-relevant.
+        A code that is not a filing indicator (value condition, plain
+        variable) always counts as live. An ``or``/``xor`` of filing
+        indicators only fails once every side has gone stale.
         """
+        all_codes = set(extract_precondition_codes(precondition_ast))
         filing_indicator_codes = ModuleVersionQuery.get_filing_indicator_codes(
-            self.session, required_codes
+            self.session, all_codes
         )
         if not filing_indicator_codes:
             return
@@ -626,48 +654,54 @@ class SemanticService:
             include_ghosts=True,
         )
         live_codes = set(modules_df["Code"]) if not modules_df.empty else set()
-        if not filing_indicator_codes.issubset(live_codes):
-            variable_ids = sorted(
-                {
-                    vid
-                    for (vid,) in self.session.query(
-                        OperandReference.variable_id
-                    )
-                    .join(
-                        OperationNode,
-                        OperandReference.node_id == OperationNode.node_id,
-                    )
-                    .join(
-                        VariableVersion,
-                        OperandReference.variable_id
-                        == VariableVersion.variable_id,
-                    )
-                    .filter(
-                        OperationNode.operation_vid
-                        == precondition_operation_vid,
-                        VariableVersion.code.in_(filing_indicator_codes),
-                    )
-                    .distinct()
-                    .all()
-                }
-            )
-            raise SemanticError(
-                "7-3",
-                precondition_variable_ids=", ".join(
-                    str(vid) for vid in variable_ids
-                ),
-            )
+        stale_codes = filing_indicator_codes - live_codes
+        if not stale_codes:
+            return
+
+        def is_live(code: str) -> bool:
+            return code not in stale_codes
+
+        if gate_satisfiable(precondition_ast, is_live):
+            return
+
+        variable_ids = sorted(
+            {
+                vid
+                for (vid,) in self.session.query(OperandReference.variable_id)
+                .join(
+                    OperationNode,
+                    OperandReference.node_id == OperationNode.node_id,
+                )
+                .join(
+                    VariableVersion,
+                    OperandReference.variable_id
+                    == VariableVersion.variable_id,
+                )
+                .filter(
+                    OperationNode.operation_vid == precondition_operation_vid,
+                    VariableVersion.code.in_(stale_codes),
+                )
+                .distinct()
+                .all()
+            }
+        )
+        raise SemanticError(
+            "7-3",
+            precondition_variable_ids=(
+                ", ".join(str(vid) for vid in variable_ids)
+                if variable_ids
+                else ", ".join(sorted(stale_codes))
+            ),
+        )
 
     def _check_precondition_tables(
-        self, required_codes: set[str], release_id: Optional[int]
+        self, precondition_ast: Any, release_id: Optional[int]
     ) -> None:
-        """Raise ``7-4``/``7-5`` when the link's own tables don't fit.
+        """Raise ``7-4``/``7-5`` when the gate's tables/modules don't fit.
 
-        ``required_codes`` may include non-table codes (a value condition
-        like ``{v_BM} = 'G-SIB'`` yields ``BM``); ``get_abstract_table_codes``
-        filters those out and canonicalizes the rest to their abstract
-        parent, so both sides of the ``7-4`` comparison match. Skipped
-        when either side has no table to compare.
+        A code with no table (a value condition like ``{v_BM} = 'G-SIB'``)
+        never blocks the gate. An ``or``/``xor`` of table codes only
+        fails once every side mismatches, mirroring the ``7-3`` check.
         """
         operand_tables = list(self.oc_tables.keys()) if self.oc_tables else []
         if not operand_tables:
@@ -677,25 +711,46 @@ class SemanticService:
         )
         operand_abstract_tables = set(abstract_by_table.values())
 
+        all_codes = extract_precondition_codes(precondition_ast)
         precondition_abstract_by_table = (
             TableVersionQuery.get_abstract_table_codes(
-                self.session, list(required_codes), release_id
+                self.session, all_codes, release_id
             )
         )
         if not precondition_abstract_by_table:
             return
         precondition_tables = set(precondition_abstract_by_table.keys())
-        precondition_abstract_tables = set(
-            precondition_abstract_by_table.values()
-        )
 
-        if not precondition_abstract_tables.issubset(operand_abstract_tables):
+        def table_ok(code: str) -> bool:
+            abstract = precondition_abstract_by_table.get(code)
+            return abstract is None or abstract in operand_abstract_tables
+
+        if not gate_satisfiable(precondition_ast, table_ok):
             raise SemanticError(
                 "7-4",
                 precondition_tables=", ".join(sorted(precondition_tables)),
                 operation_tables=", ".join(sorted(operand_abstract_tables)),
             )
 
+        self._check_precondition_modules(
+            precondition_ast,
+            precondition_tables,
+            precondition_abstract_by_table,
+            operand_tables,
+            table_ok,
+            release_id,
+        )
+
+    def _check_precondition_modules(
+        self,
+        precondition_ast: Any,
+        precondition_tables: set[str],
+        precondition_abstract_by_table: dict[str, str],
+        operand_tables: list[str],
+        table_ok: Callable[[str], bool],
+        release_id: Optional[int],
+    ) -> None:
+        """Raise ``7-5`` when the gate's modules don't fit (``7-4`` passed)."""
         precondition_modules_df = ModuleVersionQuery.get_from_table_codes(
             self.session,
             list(precondition_tables),
@@ -708,17 +763,33 @@ class SemanticService:
             release_id,
             include_ghosts=True,
         )
-        precondition_modules = (
-            set(precondition_modules_df["ModuleCode"])
-            if not precondition_modules_df.empty
-            else set()
-        )
         operand_modules = (
             set(operand_modules_df["ModuleCode"])
             if not operand_modules_df.empty
             else set()
         )
-        if not precondition_modules.issubset(operand_modules):
+        precondition_modules_by_table: dict[str, set[str]] = {}
+        if not precondition_modules_df.empty:
+            for table_code, group in precondition_modules_df.groupby(
+                "TableCode"
+            ):
+                precondition_modules_by_table[str(table_code)] = set(
+                    group["ModuleCode"]
+                )
+
+        def module_ok(code: str) -> bool:
+            if code not in precondition_abstract_by_table:
+                return True
+            modules = precondition_modules_by_table.get(code, set())
+            return bool(modules & operand_modules)
+
+        def fits(code: str) -> bool:
+            return table_ok(code) and module_ok(code)
+
+        if not gate_satisfiable(precondition_ast, fits):
+            precondition_modules: set[str] = set()
+            for modules in precondition_modules_by_table.values():
+                precondition_modules |= modules
             raise SemanticError(
                 "7-5",
                 precondition_modules=", ".join(sorted(precondition_modules)),
