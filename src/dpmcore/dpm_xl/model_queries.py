@@ -450,14 +450,11 @@ class VariableVersionQuery:
             VariableVersion.variable_vid,
         ).filter(VariableVersion.code.in_(codes))
         if release_id is not None:
-            query = query.filter(
-                and_(
-                    VariableVersion.start_release_id <= release_id,
-                    or_(
-                        VariableVersion.end_release_id > release_id,
-                        VariableVersion.end_release_id.is_(None),
-                    ),
-                )
+            query = filter_by_release(
+                query,
+                start_col=VariableVersion.start_release_id,
+                end_col=VariableVersion.end_release_id,
+                release_id=release_id,
             )
         rows = query.all()
         resolved: dict[str, dict[str, int]] = {}
