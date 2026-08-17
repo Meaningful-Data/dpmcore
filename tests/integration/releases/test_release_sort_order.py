@@ -23,6 +23,7 @@ from dpmcore.orm.glossary import (
     ItemCategory,
 )
 from dpmcore.orm.infrastructure import Release
+from dpmcore.orm.operations import Operation, OperationVersion
 from dpmcore.orm.packaging import (
     Framework,
     Module,
@@ -965,6 +966,14 @@ def non_monotonic_id_session(memory_session):
                 start_release_id=1010000050,
                 end_release_id=None,
             ),
+            Operation(operation_id=1, code="OP_1"),
+            OperationVersion(
+                operation_vid=1,
+                operation_id=1,
+                expression="1 + 1",
+                start_release_id=1010000050,
+                end_release_id=None,
+            ),
         ]
     )
     session.commit()
@@ -1019,3 +1028,37 @@ def test_check_table_exists_finds_row_introduced_after_playground_id(
     assert (
         TableVersionQuery.check_table_exists(session, "F_20.04", 9999) is True
     )
+
+
+def test_check_table_exists_unknown_release_id_returns_false(
+    non_monotonic_id_session,
+):
+    from dpmcore.dpm_xl.model_queries import TableVersionQuery
+
+    session = non_monotonic_id_session
+    assert (
+        TableVersionQuery.check_table_exists(session, "F_20.04", 424242)
+        is False
+    )
+
+
+def test_get_variable_vids_by_codes_finds_row_introduced_after_playground_id(
+    non_monotonic_id_session,
+):
+    from dpmcore.dpm_xl.model_queries import VariableVersionQuery
+
+    session = non_monotonic_id_session
+    resolved = VariableVersionQuery.get_variable_vids_by_codes(
+        session, ["W_04.10"], 9999
+    )
+    assert resolved == {"W_04.10": {"variable_id": 1, "variable_vid": 1}}
+
+
+def test_get_operations_from_codes_finds_row_introduced_after_playground_id(
+    non_monotonic_id_session,
+):
+    from dpmcore.dpm_xl.model_queries import OperationQuery
+
+    session = non_monotonic_id_session
+    df = OperationQuery.get_operations_from_codes(session, ["OP_1"], 9999)
+    assert list(df["Code"]) == ["OP_1"]
