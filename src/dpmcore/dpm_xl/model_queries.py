@@ -542,14 +542,11 @@ class OperationQuery:
             .filter(Operation.code.in_(operation_codes))
         )
         if release_id is not None:
-            query = query.filter(
-                and_(
-                    OperationVersion.start_release_id <= release_id,
-                    or_(
-                        OperationVersion.end_release_id > release_id,
-                        OperationVersion.end_release_id.is_(None),
-                    ),
-                )
+            query = filter_by_release(
+                query,
+                start_col=OperationVersion.start_release_id,
+                end_col=OperationVersion.end_release_id,
+                release_id=release_id,
             )
         results = query.all()
         cols = [
