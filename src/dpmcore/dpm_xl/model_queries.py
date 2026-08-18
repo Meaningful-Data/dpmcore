@@ -701,9 +701,9 @@ class TableVersionQuery:
             return {}
         table_id_by_code = dict(
             filter_by_release(
-                session.query(
-                    TableVersion.code, TableVersion.table_id
-                ).filter(TableVersion.code.in_(list(codes))),
+                session.query(TableVersion.code, TableVersion.table_id).filter(
+                    TableVersion.code.in_(list(codes))
+                ),
                 TableVersion.start_release_id,
                 TableVersion.end_release_id,
                 release_id,
@@ -722,9 +722,9 @@ class TableVersionQuery:
                 TableVersion.end_release_id,
                 release_id,
             ).all():
-                children_by_table_id.setdefault(
-                    abstract_table_id, set()
-                ).add(child_code)
+                children_by_table_id.setdefault(abstract_table_id, set()).add(
+                    child_code
+                )
         return {
             code: {code}
             | children_by_table_id.get(table_id_by_code.get(code), set())

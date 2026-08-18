@@ -783,9 +783,7 @@ class SemanticService:
             else set()
         )
         modules_by_concrete_table: dict[str, set[str]] = {}
-        for table_code, group in precondition_modules_df.groupby(
-            "TableCode"
-        ):
+        for table_code, group in precondition_modules_df.groupby("TableCode"):
             modules_by_concrete_table[str(table_code)] = set(
                 group["ModuleCode"]
             )
