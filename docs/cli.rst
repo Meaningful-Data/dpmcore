@@ -469,3 +469,150 @@ Each generated workbook contains:
     categorisations (``Dimension = Member``)
   - Outline groups for expanding/collapsing hierarchical rows and columns
   - Frozen panes at the data-area origin
+
+
+``dpmcore generate-graph``
+--------------------------
+
+Build a portable, self-contained HTML **dependency graph** from a DPM-XL
+calculations script. The graph shows the execution order of the operations:
+one node per operation, one arrow per dependency. The output is a single
+``.html`` file with its rendering libraries (Cytoscape.js + the dagre layout)
+embedded inline, so it opens offline and can be attached to a ticket or sent
+to another person as a single file.
+
+**``--database URL`` is always required.** The engine resolves every
+selection's cells against the DPM dictionary, so dependencies are exact in
+every mode — row/column ranges and wildcards are expanded to the concrete
+cells they cover, never approximated. Choose the operations to graph with one
+input source:
+
+#. a ``Code,Expression`` **CSV file** (the ``CSV`` argument);
+#. one or more inline **``-e CODE=EXPRESSION``** operations (handy for a
+   quick, ad-hoc graph without authoring a file); or
+#. **neither** — read the DPM dictionary directly (filter with ``--module``
+   / ``--table``).
+
+``--release`` selects the release to resolve against (default: the latest).
+
+.. code-block:: text
+
+   dpmcore generate-graph CSV --database URL [--release R] [-o OUT] [-t TITLE]
+   dpmcore generate-graph -e CODE=EXPRESSION [-e ...] --database URL
+                          [--release R] [-o OUT] [-t TITLE]
+   dpmcore generate-graph --database URL [--module C] [--table T]
+                          [--release R] [-o OUT] [-t TITLE]
+
+**Arguments / Options:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 32 68
+
+   * - Argument / Option
+     - Description
+   * - ``CSV``
+     - Path to the calculations-script CSV.
+   * - ``-e, --expression CODE=EXPRESSION``
+     - An inline operation, given as a ``Code`` and its DPM-XL expression
+       separated by ``=`` (split on the first ``=``). Repeatable.
+   * - ``--database TEXT`` (required)
+     - SQLAlchemy database URL. The engine resolves every selection's cells
+       against this dictionary, so dependencies are exact in all modes.
+   * - ``--module TEXT``
+     - Dictionary mode only (no CSV / ``-e``): restrict to operations in this
+       module version code.
+   * - ``--table TEXT``
+     - Dictionary mode only (no CSV / ``-e``): restrict to operations
+       referencing this table code.
+   * - ``--release TEXT``
+     - Release code to resolve against (e.g. ``4.2``). Defaults to the latest
+       release.
+   * - ``-o, --output PATH``
+     - Output HTML path. Defaults to ``calculations_graph.html``.
+   * - ``-t, --title TEXT``
+     - Graph title. Defaults to a title derived from the input.
+
+**How dependencies are resolved:**
+
+The engine expands every selection to the concrete ``VariableID`` set it
+covers — ranges, wildcards and the sheet dimension included — and draws an
+implicit edge only on an *exact* variable match, so overlapping ranges never
+produce a false dependency.
+
+In the **CSV and inline modes** each ``<lhs> <- ...: (<rhs>)`` assignment is
+resolved against ``--database`` at ``--release``: the left-hand selection is
+the operation's output and the right-hand side its inputs.
+
+In the **dictionary mode** the graph is built from the operations already in
+the DPM dictionary. Those are stored as validations/equalities
+(``with {scope}: {LHS} = {RHS}``); for an ``=`` operation the ``left`` side is
+the output and the ``right`` the inputs. The full dictionary has thousands of
+operations, so a ``--module`` / ``--table`` / ``--release`` filter is
+recommended to keep the graph readable.
+
+**Input format:**
+
+A CSV with a ``Code,Expression`` header. Each row is one operation:
+
+- ``Code`` is the bare operation code. It must **not** start with ``o`` —
+  explicit references use that prefix (see below).
+- ``Expression`` is a DPM-XL assignment of the form
+  ``<lhs selection> <- with {default:..., interval:...}: (<rhs expression>)``.
+  The left-hand side selection is the operation's output; the right-hand side
+  reads its inputs through selection operators ``{...}``. Because expressions
+  contain commas, quote the ``Expression`` field.
+
+**Dependencies:**
+
+An arrow ``A -> B`` is drawn when operation ``B`` depends on ``A``:
+
+- **Implicit** — ``B`` reads a cell that ``A`` writes (matched on the
+  engine-resolved ``VariableID``).
+- **Explicit** — ``B`` references ``A`` directly via ``{o<A-code>}``.
+
+Operations with no incoming arrow are **roots** and are shown in a distinct
+colour. Click a node to see its output cell and full expression; the panel
+also offers search/filter and ``Fit`` / ``Re-layout`` controls.
+
+.. note::
+
+   An operation whose selection cannot be resolved (an unknown table, or a
+   grey cell that carries no variable) is not fatal: its node still renders,
+   its unresolved dependencies are skipped, and a warning is printed.
+   Explicit ``{o<code>}`` references need no cell resolution and are always
+   drawn.
+
+**Examples:**
+
+.. code-block:: bash
+
+   # CSV script, resolved against the dictionary (default output)
+   dpmcore generate-graph calculations_script.csv \
+       --database sqlite:///dpm.db
+
+   # Custom output path, title and release
+   dpmcore generate-graph calculations_script.csv \
+       --database sqlite:///dpm.db \
+       --release 4.2 \
+       -o output/graph.html \
+       -t "COREP calculations"
+
+   # Inline expressions, no CSV file needed
+   dpmcore generate-graph \
+       -e "calc1={tK_1.00, r0010, c0010} <- {tK_2.00, r0010, c0010}" \
+       -e "calc2={tK_3.00, r0010, c0010} <- {tK_1.00, r0010, c0010} + 1" \
+       --database sqlite:///dpm.db \
+       -o graph.html
+
+   # Dictionary mode: graph the operations already in the DPM (one table)
+   dpmcore generate-graph \
+       --database sqlite:///dpm.db \
+       --table C_01.00 \
+       -o graph.html
+
+**Vendored libraries:**
+
+The embedded JavaScript (Cytoscape.js, dagre, cytoscape-dagre — all MIT) is
+vendored under ``dpmcore/services/calculations_graph/assets/``. Their pinned
+versions, source URLs and update steps are recorded in ``assets/VENDOR.md``.
