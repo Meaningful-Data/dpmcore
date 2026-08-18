@@ -727,6 +727,59 @@ def test_abstract_precondition_code_still_raises_7_5_on_real_mismatch(
     assert exc_info.value.code == "7-5"
 
 
+def test_precondition_table_with_no_module_anywhere_is_a_noop(memory_session):
+    # FI_ORPHAN has no children and is never a module member.
+    memory_session.add_all(
+        [
+            Release(release_id=1, code="3.4", date=datetime.date(2022, 12, 1)),
+            Table(table_id=200),
+            Table(table_id=201),
+            Table(table_id=210),
+            TableVersion(
+                table_vid=2100,
+                code="ROOT2",
+                table_id=210,
+                abstract_table_id=None,
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            TableVersion(
+                table_vid=2000,
+                code="T1",
+                table_id=200,
+                abstract_table_id=210,
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            TableVersion(
+                table_vid=2010,
+                code="FI_ORPHAN",
+                table_id=201,
+                abstract_table_id=210,
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            ModuleVersion(
+                module_vid=2000,
+                module_id=200,
+                code="M1",
+                version_number="1.0",
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            ModuleVersionComposition(
+                module_vid=2000, table_id=200, table_vid=2000
+            ),
+        ]
+    )
+    _seed_precondition_operation(memory_session, 802, "{v_FI_ORPHAN}")
+    memory_session.flush()
+    svc = _svc(memory_session)
+    svc.oc_tables = {"T1": {}}
+
+    svc._check_precondition_link(802, release_id=1)  # no raise
+
+
 def test_expression_with_no_precondition_codes_is_a_noop(memory_session):
     _seed_tables(memory_session, fi_shares_operand_module=True)
     _seed_precondition_operation(memory_session, 603, "1 + 1")

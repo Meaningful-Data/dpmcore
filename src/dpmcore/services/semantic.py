@@ -768,6 +768,9 @@ class SemanticService:
             release_id,
             include_ghosts=True,
         )
+        if precondition_modules_df.empty:
+            # Nothing to check against
+            return
         operand_modules_df = ModuleVersionQuery.get_from_table_codes(
             self.session,
             operand_tables,
@@ -780,13 +783,12 @@ class SemanticService:
             else set()
         )
         modules_by_concrete_table: dict[str, set[str]] = {}
-        if not precondition_modules_df.empty:
-            for table_code, group in precondition_modules_df.groupby(
-                "TableCode"
-            ):
-                modules_by_concrete_table[str(table_code)] = set(
-                    group["ModuleCode"]
-                )
+        for table_code, group in precondition_modules_df.groupby(
+            "TableCode"
+        ):
+            modules_by_concrete_table[str(table_code)] = set(
+                group["ModuleCode"]
+            )
         precondition_modules_by_table: dict[str, set[str]] = {
             code: set().union(
                 *(
