@@ -228,14 +228,11 @@ class ItemCategoryQuery:
         if items:
             query = query.filter(ItemCategory.signature.in_(items))
         if release_id is not None:
-            query = query.filter(
-                and_(
-                    ItemCategory.start_release_id <= release_id,
-                    or_(
-                        ItemCategory.end_release_id > release_id,
-                        ItemCategory.end_release_id.is_(None),
-                    ),
-                )
+            query = filter_by_release(
+                query,
+                start_col=ItemCategory.start_release_id,
+                end_col=ItemCategory.end_release_id,
+                release_id=release_id,
             )
         else:
             query = query.filter(ItemCategory.end_release_id.is_(None))
@@ -344,14 +341,11 @@ class VariableVersionQuery:
             VariableVersion.code == variable_code
         )
         if release_id is not None:
-            query = query.filter(
-                and_(
-                    VariableVersion.start_release_id <= release_id,
-                    or_(
-                        VariableVersion.end_release_id > release_id,
-                        VariableVersion.end_release_id.is_(None),
-                    ),
-                )
+            query = filter_by_release(
+                query,
+                start_col=VariableVersion.start_release_id,
+                end_col=VariableVersion.end_release_id,
+                release_id=release_id,
             )
         else:
             query = query.filter(VariableVersion.end_release_id.is_(None))
@@ -392,16 +386,12 @@ class VariableVersionQuery:
                 _is_filing_indicator(),
             )
         )
-        if release_id is not None:
-            query = query.filter(
-                and_(
-                    VariableVersion.start_release_id <= release_id,
-                    or_(
-                        VariableVersion.end_release_id > release_id,
-                        VariableVersion.end_release_id.is_(None),
-                    ),
-                )
-            )
+        query = filter_by_release(
+            query,
+            start_col=VariableVersion.start_release_id,
+            end_col=VariableVersion.end_release_id,
+            release_id=release_id,
+        )
         return query.first()
 
     @staticmethod
@@ -423,16 +413,12 @@ class VariableVersionQuery:
         query = session.query(VariableVersion.variable_id).filter(
             VariableVersion.code == value
         )
-        if release_id is not None:
-            query = query.filter(
-                and_(
-                    VariableVersion.start_release_id <= release_id,
-                    or_(
-                        VariableVersion.end_release_id > release_id,
-                        VariableVersion.end_release_id.is_(None),
-                    ),
-                )
-            )
+        query = filter_by_release(
+            query,
+            start_col=VariableVersion.start_release_id,
+            end_col=VariableVersion.end_release_id,
+            release_id=release_id,
+        )
         rows = query.all()
         if not rows:
             return None
@@ -464,14 +450,11 @@ class VariableVersionQuery:
             VariableVersion.variable_vid,
         ).filter(VariableVersion.code.in_(codes))
         if release_id is not None:
-            query = query.filter(
-                and_(
-                    VariableVersion.start_release_id <= release_id,
-                    or_(
-                        VariableVersion.end_release_id > release_id,
-                        VariableVersion.end_release_id.is_(None),
-                    ),
-                )
+            query = filter_by_release(
+                query,
+                start_col=VariableVersion.start_release_id,
+                end_col=VariableVersion.end_release_id,
+                release_id=release_id,
             )
         rows = query.all()
         resolved: dict[str, dict[str, int]] = {}
@@ -510,16 +493,12 @@ class VariableVersionQuery:
             )
             .filter(_is_filing_indicator())
         )
-        if release_id is not None:
-            query = query.filter(
-                and_(
-                    VariableVersion.start_release_id <= release_id,
-                    or_(
-                        VariableVersion.end_release_id > release_id,
-                        VariableVersion.end_release_id.is_(None),
-                    ),
-                )
-            )
+        query = filter_by_release(
+            query,
+            start_col=VariableVersion.start_release_id,
+            end_col=VariableVersion.end_release_id,
+            release_id=release_id,
+        )
         return query.all()
 
 
@@ -563,14 +542,11 @@ class OperationQuery:
             .filter(Operation.code.in_(operation_codes))
         )
         if release_id is not None:
-            query = query.filter(
-                and_(
-                    OperationVersion.start_release_id <= release_id,
-                    or_(
-                        OperationVersion.end_release_id > release_id,
-                        OperationVersion.end_release_id.is_(None),
-                    ),
-                )
+            query = filter_by_release(
+                query,
+                start_col=OperationVersion.start_release_id,
+                end_col=OperationVersion.end_release_id,
+                release_id=release_id,
             )
         results = query.all()
         cols = [
@@ -610,16 +586,12 @@ class TableVersionQuery:
         query = session.query(TableVersion).filter(
             TableVersion.code == table_code
         )
-        if release_id is not None:
-            query = query.filter(
-                and_(
-                    TableVersion.start_release_id <= release_id,
-                    or_(
-                        TableVersion.end_release_id > release_id,
-                        TableVersion.end_release_id.is_(None),
-                    ),
-                )
-            )
+        query = filter_by_release(
+            query,
+            start_col=TableVersion.start_release_id,
+            end_col=TableVersion.end_release_id,
+            release_id=release_id,
+        )
         return query.first() is not None
 
     @staticmethod

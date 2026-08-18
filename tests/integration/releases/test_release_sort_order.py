@@ -23,6 +23,7 @@ from dpmcore.orm.glossary import (
     ItemCategory,
 )
 from dpmcore.orm.infrastructure import Release
+from dpmcore.orm.operations import Operation, OperationVersion
 from dpmcore.orm.packaging import (
     Framework,
     Module,
@@ -34,6 +35,7 @@ from dpmcore.orm.release_sort_order import (
     resolve_sort_order,
 )
 from dpmcore.orm.rendering import Table, TableVersion
+from dpmcore.orm.variables import Variable, VariableVersion
 from dpmcore.services.data_dictionary import DataDictionaryService
 from dpmcore.services.hierarchy import HierarchyService
 
@@ -915,3 +917,207 @@ def test_resolve_explicit_release_self_reference_at_playground_type(
     svc = ASTGeneratorService(session)
     release_row = svc._resolve_explicit_release("Playground", mv, "MOD", "1.0")
     assert release_row.release_id == 9999
+
+
+# --------------------------------------------------------------------- #
+# VariableVersionQuery / ItemCategoryQuery / TableVersionQuery
+# release filters must date-order, not numerically compare, release_id
+# --------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def non_monotonic_id_session(memory_session):
+    """A row started by release ``4.3`` (id ``1010000050``), which is
+    chronologically before but numerically larger than the ``9999``
+    ``Playground`` sentinel. Eexposes a raw numeric ``<=`` comparison.
+
+    ``4.3.1`` (id ``1010000099``) is numerically larger than ``4.3`` but
+    dated earlier: a raw id comparison would wrongly include the row at
+    ``4.3.1``, where date-ordering must exclude it.
+    """
+    session = memory_session
+    session.add_all(
+        [
+            Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+            Release(release_id=1010000050, code="4.3", date=date(2026, 6, 28)),
+            Release(
+                release_id=1010000099,
+                code="4.3.1",
+                date=date(2026, 1, 15),
+            ),
+            Release(
+                release_id=9999,
+                code="Playground",
+                date=date(1970, 1, 1),
+                type="playground",
+            ),
+            Variable(variable_id=1),
+            VariableVersion(
+                variable_id=1,
+                variable_vid=1,
+                code="W_04.10",
+                start_release_id=1010000050,
+                end_release_id=None,
+            ),
+            ItemCategory(
+                item_id=1,
+                signature="eba_qEH:qx2005",
+                code="qx2005",
+                category_id=1,
+                start_release_id=1010000050,
+                end_release_id=None,
+            ),
+            Table(table_id=1),
+            TableVersion(
+                table_vid=1,
+                table_id=1,
+                code="F_20.04",
+                start_release_id=1010000050,
+                end_release_id=None,
+            ),
+            Operation(operation_id=1, code="OP_1"),
+            OperationVersion(
+                operation_vid=1,
+                operation_id=1,
+                expression="1 + 1",
+                start_release_id=1010000050,
+                end_release_id=None,
+            ),
+        ]
+    )
+    session.commit()
+    return session
+
+
+def test_check_variable_exists_finds_row_introduced_after_playground_id(
+    non_monotonic_id_session,
+):
+    from dpmcore.dpm_xl.model_queries import VariableVersionQuery
+
+    session = non_monotonic_id_session
+    assert (
+        VariableVersionQuery.check_variable_exists(session, "W_04.10", 9999)
+        is True
+    )
+    assert (
+        VariableVersionQuery.check_variable_exists(
+            session, "W_04.10", 1010000050
+        )
+        is True
+    )
+    # Release "4.2" predates the row's 4.3 start: must not match.
+    assert (
+        VariableVersionQuery.check_variable_exists(session, "W_04.10", 1)
+        is False
+    )
+    # "4.3.1": numerically later than "4.3" but dated earlier, must not match
+    assert (
+        VariableVersionQuery.check_variable_exists(
+            session, "W_04.10", 1010000099
+        )
+        is False
+    )
+
+
+def test_get_variable_id_finds_row_introduced_after_playground_id(
+    non_monotonic_id_session,
+):
+    from dpmcore.dpm_xl.model_queries import VariableVersionQuery
+
+    session = non_monotonic_id_session
+    assert VariableVersionQuery.get_variable_id(session, "W_04.10", 9999) == [
+        1
+    ]
+    # Release "4.2" predates the row's 4.3 start: must not match.
+    assert VariableVersionQuery.get_variable_id(session, "W_04.10", 1) is None
+    # "4.3.1": numerically later than "4.3" but dated earlier, must not match
+    assert (
+        VariableVersionQuery.get_variable_id(session, "W_04.10", 1010000099)
+        is None
+    )
+
+
+def test_get_items_finds_row_introduced_after_playground_id(
+    non_monotonic_id_session,
+):
+    from dpmcore.dpm_xl.model_queries import ItemCategoryQuery
+
+    session = non_monotonic_id_session
+    df = ItemCategoryQuery.get_items(session, ["eba_qEH:qx2005"], 9999)
+    assert list(df["Signature"]) == ["eba_qEH:qx2005"]
+    # Release "4.2" predates the row's 4.3 start: must not match.
+    before = ItemCategoryQuery.get_items(session, ["eba_qEH:qx2005"], 1)
+    assert before.empty
+    # "4.3.1": numerically later than "4.3" but dated earlier, must not match
+    earlier_by_date = ItemCategoryQuery.get_items(
+        session, ["eba_qEH:qx2005"], 1010000099
+    )
+    assert earlier_by_date.empty
+
+
+def test_check_table_exists_finds_row_introduced_after_playground_id(
+    non_monotonic_id_session,
+):
+    from dpmcore.dpm_xl.model_queries import TableVersionQuery
+
+    session = non_monotonic_id_session
+    assert (
+        TableVersionQuery.check_table_exists(session, "F_20.04", 9999) is True
+    )
+    # Release "4.2" predates the row's 4.3 start: must not match.
+    assert TableVersionQuery.check_table_exists(session, "F_20.04", 1) is False
+    # "4.3.1": numerically later than "4.3" but dated earlier, must not match
+    assert (
+        TableVersionQuery.check_table_exists(session, "F_20.04", 1010000099)
+        is False
+    )
+
+
+def test_check_table_exists_unknown_release_id_raises(
+    non_monotonic_id_session,
+):
+    from dpmcore.dpm_xl.model_queries import TableVersionQuery
+
+    session = non_monotonic_id_session
+    with pytest.raises(ValueError):
+        TableVersionQuery.check_table_exists(session, "F_20.04", 424242)
+
+
+def test_get_variable_vids_by_codes_finds_row_introduced_after_playground_id(
+    non_monotonic_id_session,
+):
+    from dpmcore.dpm_xl.model_queries import VariableVersionQuery
+
+    session = non_monotonic_id_session
+    resolved = VariableVersionQuery.get_variable_vids_by_codes(
+        session, ["W_04.10"], 9999
+    )
+    assert resolved == {"W_04.10": {"variable_id": 1, "variable_vid": 1}}
+    # Release "4.2" predates the row's 4.3 start: must not match.
+    before = VariableVersionQuery.get_variable_vids_by_codes(
+        session, ["W_04.10"], 1
+    )
+    assert before == {}
+    # "4.3.1": numerically later than "4.3" but dated earlier, must not match
+    earlier_by_date = VariableVersionQuery.get_variable_vids_by_codes(
+        session, ["W_04.10"], 1010000099
+    )
+    assert earlier_by_date == {}
+
+
+def test_get_operations_from_codes_finds_row_introduced_after_playground_id(
+    non_monotonic_id_session,
+):
+    from dpmcore.dpm_xl.model_queries import OperationQuery
+
+    session = non_monotonic_id_session
+    df = OperationQuery.get_operations_from_codes(session, ["OP_1"], 9999)
+    assert list(df["Code"]) == ["OP_1"]
+    # Release "4.2" predates the row's 4.3 start: must not match.
+    before = OperationQuery.get_operations_from_codes(session, ["OP_1"], 1)
+    assert before.empty
+    # "4.3.1": numerically later than "4.3" but dated earlier, must not match
+    earlier_by_date = OperationQuery.get_operations_from_codes(
+        session, ["OP_1"], 1010000099
+    )
+    assert earlier_by_date.empty
