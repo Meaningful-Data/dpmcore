@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Optional, cast
+from typing import TYPE_CHECKING, Any, Callable, Optional, cast
 
 from sqlalchemy import func
 
@@ -14,19 +14,26 @@ from dpmcore.dpm_xl.ast.nodes import (
     parameter_default_value,
 )
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
-from dpmcore.dpm_xl.model_queries import ModuleVersionQuery
+from dpmcore.dpm_xl.model_queries import ModuleVersionQuery, TableVersionQuery
 from dpmcore.dpm_xl.semantic_analyzer import InputAnalyzer
-from dpmcore.dpm_xl.utils.filters import resolve_release_id
+from dpmcore.dpm_xl.utils.filters import filter_by_release, resolve_release_id
 from dpmcore.dpm_xl.warning_collector import collect_warnings
 from dpmcore.errors import SemanticError
 from dpmcore.orm.infrastructure import Release
 from dpmcore.orm.operations import (
+    OperandReference,
+    OperationNode,
     OperationScope,
     OperationScopeComposition,
     OperationVersion,
 )
 from dpmcore.orm.query_utils import chunked_in
+from dpmcore.orm.variables import VariableVersion
 from dpmcore.services._parameters import merge_parameters
+from dpmcore.services._precondition_codes import (
+    extract_precondition_codes,
+    gate_satisfiable,
+)
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -217,6 +224,7 @@ class SemanticService:
         self.oc_data: Any = None
         self.oc_tables: Any = None
         self.oc_parameters: tuple[ParameterInfo, ...] | None = None
+        self.oc_operations_data: Any = None
 
     # ------------------------------------------------------------------ #
     # Public API
@@ -229,6 +237,7 @@ class SemanticService:
         release_code: Optional[str] = None,
         *,
         precondition_expression: Optional[str] = None,
+        precondition_operation_vid: Optional[int] = None,
     ) -> SemanticResult:
         """Full semantic validation of *expression* and its optional gate.
 
@@ -256,7 +265,8 @@ class SemanticService:
           bound across them must declare one type.
 
         The halves are evaluated gate-first, so the per-call state this service
-        publishes (``ast``, ``oc_data``, ``oc_tables``, ``oc_parameters``)
+        publishes (``ast``, ``oc_data``, ``oc_tables``, ``oc_parameters``,
+        ``oc_operations_data``)
         describes the *main* expression when the call returns — what existing
         consumers of this method already rely on.
 
@@ -272,6 +282,13 @@ class SemanticService:
                 ``None``, the result is exactly as before this argument
                 existed: ``precondition`` is ``None`` and ``is_valid``
                 describes ``expression`` alone.
+            precondition_operation_vid: Optional VID of a separately
+                persisted ``OperationVersion`` gating this one (its
+                ``precondition_operation_vid`` self-FK), distinct from
+                ``precondition_expression``. Cross-checked against the
+                current module scope when ``expression`` is valid
+                (``7-3``/``7-4``/``7-5``); a VID with nothing to check
+                against is accepted.
         """
         try:
             resolved = self._resolve_release(release_id, release_code)
@@ -286,17 +303,30 @@ class SemanticService:
             )
 
         if precondition_expression is None:
-            return self._validate_resolved(expression, resolved)
-
-        # Gate first, main expression last: the trailing ``self.ast`` /
-        # ``self.oc_*`` must describe the main expression (see docstring).
-        precondition = _as_gate_verdict(
-            self._validate_resolved(
-                precondition_expression, resolved, as_precondition=True
+            result = self._validate_resolved(expression, resolved)
+        else:
+            # Gate first, main expression last: the trailing ``self.ast`` /
+            # ``self.oc_*`` must describe the main expression (see
+            # docstring).
+            precondition = _as_gate_verdict(
+                self._validate_resolved(
+                    precondition_expression, resolved, as_precondition=True
+                )
             )
-        )
-        main = self._validate_resolved(expression, resolved)
-        return self._combine(main, self._cross_check(main, precondition))
+            main = self._validate_resolved(expression, resolved)
+            result = self._combine(main, self._cross_check(main, precondition))
+
+        if result.is_valid and precondition_operation_vid is not None:
+            try:
+                self._check_precondition_link(
+                    precondition_operation_vid, resolved
+                )
+            except SemanticError as exc:
+                code = getattr(exc, "code", None)
+                return self._precondition_link_failure(result, exc, code)
+            except Exception as exc:
+                return self._precondition_link_failure(result, exc, "UNKNOWN")
+        return result
 
     # ------------------------------------------------------------------ #
     # Internals
@@ -364,6 +394,7 @@ class SemanticService:
                 self.oc_data = oc.data
                 self.oc_tables = oc.tables
                 self.oc_parameters = _parameters_from_oc(oc)
+                self.oc_operations_data = oc.operations_data
 
                 analyzer = InputAnalyzer(expression)
                 analyzer.data = oc.data
@@ -397,27 +428,53 @@ class SemanticService:
         except Exception as exc:
             return self._failure(expression, exc, "UNKNOWN")
 
+    def _clear_published_state(self) -> None:
+        """Clear per-call state exposed on ``self`` after a failure.
+
+        Leaving the previous call's AST/``oc_*`` readable after a failure
+        invited consumers to act on stale state.
+        """
+        self.ast = None
+        self.oc_data = None
+        self.oc_tables = None
+        self.oc_parameters = None
+        self.oc_operations_data = None
+
     def _failure(
         self,
         expression: str,
         exc: Exception,
         error_code: Optional[str],
     ) -> SemanticResult:
-        """Clear the published per-call state and build a failing result.
-
-        ``ast`` is cleared alongside ``oc_*``; leaving the previous call's AST
-        readable after a failure invited consumers to act on stale state.
-        """
-        self.ast = None
-        self.oc_data = None
-        self.oc_tables = None
-        self.oc_parameters = None
+        """Clear the published per-call state and build a failing result."""
+        self._clear_published_state()
         return SemanticResult(
             is_valid=False,
             error_message=str(exc),
             error_code=error_code,
             expression=expression,
             error_source="expression",
+        )
+
+    def _precondition_link_failure(
+        self,
+        result: SemanticResult,
+        exc: Exception,
+        error_code: Optional[str],
+    ) -> SemanticResult:
+        """Fail result over a precondition-link mismatch.
+
+        Unlike :meth:`_failure`, ``expression``/gate already validated, so
+        the existing halves survive and ``error_source`` is
+        ``"precondition"`` rather than ``"expression"``.
+        """
+        self._clear_published_state()
+        return replace(
+            result,
+            is_valid=False,
+            error_message=str(exc),
+            error_code=error_code,
+            error_source="precondition",
         )
 
     def _resolution_failure(
@@ -534,6 +591,230 @@ class SemanticService:
             release_id=release_id,
             release_code=release_code,
         ).is_valid
+
+    # ------------------------------------------------------------------ #
+    # Precondition-operation link (``precondition_operation_vid``)
+    # ------------------------------------------------------------------ #
+
+    def _check_precondition_link(
+        self, precondition_operation_vid: int, release_id: Optional[int]
+    ) -> None:
+        """Cross-check an externally-linked precondition operation.
+
+        Checks its filing-indicator variables are still live (``7-3``)
+        and its tables/modules fit the current expression's (``7-4``/
+        ``7-5``). Nothing to check against (malformed, closed, or an
+        unresolved ``precondition_operation_vid``) is skipped, not
+        raised. An ``or``/``xor`` only fails a check when every side
+        does, so ``{v_A} or {v_B}`` needs just one side to pass.
+        """
+        row = filter_by_release(
+            self.session.query(OperationVersion.expression).filter(
+                OperationVersion.operation_vid == precondition_operation_vid
+            ),
+            OperationVersion.start_release_id,
+            OperationVersion.end_release_id,
+            release_id,
+        ).first()
+        if row is None or not row[0]:
+            return
+        try:
+            precondition_ast = self._syntax.parse(row[0])
+        except Exception:
+            return
+        if not extract_precondition_codes(precondition_ast):
+            return
+        self._check_precondition_filing_indicators(
+            precondition_operation_vid, precondition_ast, release_id
+        )
+        self._check_precondition_tables(precondition_ast, release_id)
+
+    def _check_precondition_filing_indicators(
+        self,
+        precondition_operation_vid: int,
+        precondition_ast: Any,
+        release_id: Optional[int],
+    ) -> None:
+        """Raise ``7-3`` when the gate can no longer be satisfied.
+
+        A code that is not a filing indicator (value condition, plain
+        variable) always counts as live. An ``or``/``xor`` of filing
+        indicators only fails once every side has gone stale.
+        """
+        all_codes = set(extract_precondition_codes(precondition_ast))
+        filing_indicator_codes = ModuleVersionQuery.get_filing_indicator_codes(
+            self.session, all_codes
+        )
+        if not filing_indicator_codes:
+            return
+        modules_df = ModuleVersionQuery.get_precondition_module_versions(
+            self.session,
+            list(filing_indicator_codes),
+            release_id,
+            include_ghosts=True,
+        )
+        live_codes = set(modules_df["Code"]) if not modules_df.empty else set()
+        stale_codes = filing_indicator_codes - live_codes
+        if not stale_codes:
+            return
+
+        def is_live(code: str) -> bool:
+            return code not in stale_codes
+
+        if gate_satisfiable(precondition_ast, is_live):
+            return
+
+        variable_ids = sorted(
+            {
+                vid
+                for (vid,) in self.session.query(OperandReference.variable_id)
+                .join(
+                    OperationNode,
+                    OperandReference.node_id == OperationNode.node_id,
+                )
+                .join(
+                    VariableVersion,
+                    OperandReference.variable_id
+                    == VariableVersion.variable_id,
+                )
+                .filter(
+                    OperationNode.operation_vid == precondition_operation_vid,
+                    VariableVersion.code.in_(stale_codes),
+                )
+                .distinct()
+                .all()
+            }
+        )
+        raise SemanticError(
+            "7-3",
+            precondition_variable_ids=(
+                ", ".join(str(vid) for vid in variable_ids)
+                if variable_ids
+                else ", ".join(sorted(stale_codes))
+            ),
+        )
+
+    def _check_precondition_tables(
+        self, precondition_ast: Any, release_id: Optional[int]
+    ) -> None:
+        """Raise ``7-4``/``7-5`` when the gate's tables/modules don't fit.
+
+        A code with no table (a value condition like ``{v_BM} = 'G-SIB'``)
+        never blocks the gate. An ``or``/``xor`` of table codes only
+        fails once every side mismatches, mirroring the ``7-3`` check.
+        """
+        operand_tables = list(self.oc_tables.keys()) if self.oc_tables else []
+        if not operand_tables:
+            return
+        abstract_by_table = TableVersionQuery.get_abstract_table_codes(
+            self.session, operand_tables, release_id
+        )
+        operand_abstract_tables = set(abstract_by_table.values())
+
+        all_codes = extract_precondition_codes(precondition_ast)
+        precondition_abstract_by_table = (
+            TableVersionQuery.get_abstract_table_codes(
+                self.session, all_codes, release_id
+            )
+        )
+        if not precondition_abstract_by_table:
+            return
+        precondition_tables = set(precondition_abstract_by_table.keys())
+
+        def table_ok(code: str) -> bool:
+            abstract = precondition_abstract_by_table.get(code)
+            return abstract is None or abstract in operand_abstract_tables
+
+        if not gate_satisfiable(precondition_ast, table_ok):
+            raise SemanticError(
+                "7-4",
+                precondition_tables=", ".join(sorted(precondition_tables)),
+                operation_tables=", ".join(sorted(operand_abstract_tables)),
+            )
+
+        self._check_precondition_modules(
+            precondition_ast,
+            precondition_tables,
+            precondition_abstract_by_table,
+            operand_tables,
+            table_ok,
+            release_id,
+        )
+
+    def _check_precondition_modules(
+        self,
+        precondition_ast: Any,
+        precondition_tables: set[str],
+        precondition_abstract_by_table: dict[str, str],
+        operand_tables: list[str],
+        table_ok: Callable[[str], bool],
+        release_id: Optional[int],
+    ) -> None:
+        """Raise ``7-5`` when the gate's modules don't fit (``7-4`` passed).
+
+        A gate code matched at the abstract level is expanded to its
+        concrete children first, since module composition never links
+        an abstract table directly.
+        """
+        concrete_by_code = TableVersionQuery.get_concrete_table_codes(
+            self.session, list(precondition_tables), release_id
+        )
+        concrete_precondition_tables: set[str] = set().union(
+            *concrete_by_code.values()
+        )
+        precondition_modules_df = ModuleVersionQuery.get_from_table_codes(
+            self.session,
+            list(concrete_precondition_tables),
+            release_id,
+            include_ghosts=True,
+        )
+        if precondition_modules_df.empty:
+            # Nothing to check against
+            return
+        operand_modules_df = ModuleVersionQuery.get_from_table_codes(
+            self.session,
+            operand_tables,
+            release_id,
+            include_ghosts=True,
+        )
+        operand_modules = (
+            set(operand_modules_df["ModuleCode"])
+            if not operand_modules_df.empty
+            else set()
+        )
+        modules_by_concrete_table: dict[str, set[str]] = {}
+        for table_code, group in precondition_modules_df.groupby("TableCode"):
+            modules_by_concrete_table[str(table_code)] = set(
+                group["ModuleCode"]
+            )
+        precondition_modules_by_table: dict[str, set[str]] = {
+            code: set().union(
+                *(
+                    modules_by_concrete_table.get(concrete, set())
+                    for concrete in concretes
+                )
+            )
+            for code, concretes in concrete_by_code.items()
+        }
+
+        def module_ok(code: str) -> bool:
+            if code not in precondition_abstract_by_table:
+                return True
+            modules = precondition_modules_by_table.get(code, set())
+            return bool(modules & operand_modules)
+
+        def fits(code: str) -> bool:
+            return table_ok(code) and module_ok(code)
+
+        if not gate_satisfiable(precondition_ast, fits):
+            precondition_modules: set[str] = set()
+            for modules in precondition_modules_by_table.values():
+                precondition_modules |= modules
+            raise SemanticError(
+                "7-5",
+                precondition_modules=", ".join(sorted(precondition_modules)),
+                operation_modules=", ".join(sorted(operand_modules)),
+            )
 
     # ------------------------------------------------------------------ #
     # Scope-wide parameter consistency (against persisted operations)
