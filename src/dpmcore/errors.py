@@ -346,6 +346,23 @@ centralised_messages: Dict[str, str] = {
         " to use Property Constraint."
     ),
     "7-2": ("Found a Variable Reference, please check expression"),
+    # Precondition-operation
+    "7-3": (
+        "Precondition related to this operation does not belong to"
+        " any draft module. Precondition variable ID:"
+        " {precondition_variable_ids}."
+    ),
+    "7-4": (
+        "Precondition related to this operation has different"
+        " tables. Precondition tables: {precondition_tables},"
+        " operation abstract tables: {operation_tables}."
+    ),
+    "7-5": (
+        "Precondition related to this operation has variables on"
+        " other modules. Precondition modules:"
+        " {precondition_modules}, operation modules:"
+        " {operation_modules}."
+    ),
 }
 
 

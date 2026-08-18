@@ -23,7 +23,7 @@ answers:
 from __future__ import annotations
 
 import logging
-from typing import Any, List, Optional, Set
+from typing import Any, Callable, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -163,3 +163,47 @@ def required_precondition_codes(ast: Any) -> List[str]:
         )
         return []
     return [c for c in extract_precondition_codes(ast) if c in required]
+
+
+def _satisfiable(node: Any, is_ok: Callable[[str], bool]) -> bool:
+    """Predicate version of :func:`_mandatory`'s operator handling.
+
+    ``or``/``xor`` holds if either side does, ``not`` contributes nothing,
+    everything else needs every child to hold.
+    """
+    from dpmcore.dpm_xl.utils.tokens import NOT, OR, XOR
+
+    code = _code_of(node)
+    if code is not None:
+        return is_ok(code)
+
+    op = getattr(node, "op", None)
+    left = getattr(node, "left", None)
+    right = getattr(node, "right", None)
+
+    if op == NOT:
+        return True
+    if op in (OR, XOR) and left is not None and right is not None:
+        return _satisfiable(left, is_ok) or _satisfiable(right, is_ok)
+
+    children = _children(node)
+    if not children:
+        return True
+    return all(_satisfiable(child, is_ok) for child in children)
+
+
+def gate_satisfiable(ast: Any, is_ok: Callable[[str], bool]) -> bool:
+    """Whether a precondition gate can still be satisfied.
+
+    ``is_ok`` judges a leaf code; codes it has no opinion on should return
+    ``True``. ``{v_A} or {v_B}`` needs just one side to pass. Any walk
+    failure returns ``True``, matching :func:`required_precondition_codes`.
+    """
+    try:
+        return _satisfiable(ast, is_ok)
+    except Exception:
+        logger.exception(
+            "Failed to evaluate precondition gate satisfiability; "
+            "continuing without raising.",
+        )
+        return True

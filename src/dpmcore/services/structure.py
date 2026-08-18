@@ -2284,7 +2284,7 @@ class StructureService:
                 ItemCategory.code,
             )
             .join(Item, Item.item_id == ItemCategory.item_id)
-            .filter(Item.is_property.is_(True))
+            .filter(Item.is_property == True)  # noqa: E712
         )
         rows = chunked_in(base, ItemCategory.item_id, property_ids)
         out: Dict[int, List[Tuple[int, Optional[int], str]]] = defaultdict(
@@ -2460,7 +2460,7 @@ class StructureService:
             .outerjoin(
                 DataType, DataType.data_type_id == Property.data_type_id
             )
-            .filter(Item.is_property.is_(True))
+            .filter(Item.is_property == True)  # noqa: E712
         )
 
         owners = None if params.is_owner_wildcard else params.owners
@@ -2594,7 +2594,7 @@ class StructureService:
                 Category,
                 Category.category_id == PropertyCategory.category_id,
             )
-            .filter(Category.is_enumerated.is_(True))
+            .filter(Category.is_enumerated == True)  # noqa: E712
         )
         pc_q = filter_by_release(
             pc_q,
