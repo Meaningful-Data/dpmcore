@@ -697,11 +697,16 @@ class TableVersionQuery:
                 children_by_table_id.setdefault(abstract_table_id, set()).add(
                     child_code
                 )
-        return {
-            code: {code}
-            | children_by_table_id.get(table_id_by_code.get(code), set())
-            for code in codes
-        }
+        result: dict[str, set[str]] = {}
+        for code in codes:
+            table_id = table_id_by_code.get(code)
+            children = (
+                children_by_table_id.get(table_id, set())
+                if table_id is not None
+                else set()
+            )
+            result[code] = {code} | children
+        return result
 
 
 class TableGroupQuery:
