@@ -551,11 +551,17 @@ class ScopeCalculatorService:
                     release_id=release_id,
                     valid_module_uris=set(),
                 )
+            # The intra claim needs the primary to actually own a
+            # single-module scope. Keying it off ``not is_cross`` instead
+            # declared intra for a module that participates in no scope at
+            # all — it hosts none of the referenced tables (#141). That was
+            # masked while a redundant superset scope kept ``is_cross``
+            # true; dropping those scopes (#304) exposes it.
             return {
                 **empty_result,
                 "intra_instance_validations": (
                     [operation_code]
-                    if operation_code and (not is_cross or primary_has_intra)
+                    if operation_code and primary_has_intra
                     else []
                 ),
                 "alternative_dependencies": alternative_deps,
