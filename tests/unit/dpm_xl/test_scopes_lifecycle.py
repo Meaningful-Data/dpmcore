@@ -585,3 +585,99 @@ class TestCrossModuleCoverage:
         )
         assert len(svc.operation_scopes) == 1
         assert [frozenset(m) for m in members.values()] == [frozenset({20})]
+
+    def test_superset_of_intra_scope_is_dropped(self):
+        """A combination containing an intra module is not emitted.
+
+        Issue #304. ``C_00.01`` is shared by every COREP module while
+        ``C_16.00.b`` lives only in ``COREP_OF`` (344), so ``COREP_OF``
+        covers the expression alone and is routed to the intra scopes.
+        The siblings hold only ``C_00.01``, and supplementing their pool
+        with the sole provider of ``C_16.00.b`` pairs each of them back
+        with ``COREP_OF`` — one redundant superset scope per sibling.
+        Only the intra scope must survive.
+        """
+        rows = [
+            (
+                344,
+                100,
+                "C_00.01",
+                "COREP_OF",
+                "3.1.0",
+                1,
+                None,
+                "2023-06-30",
+                None,
+            ),
+            (
+                344,
+                200,
+                "C_16.00.b",
+                "COREP_OF",
+                "3.1.0",
+                1,
+                None,
+                "2023-06-30",
+                None,
+            ),
+            (
+                338,
+                100,
+                "C_00.01",
+                "COREP_ALM",
+                "3.1.0",
+                1,
+                None,
+                "2023-06-30",
+                None,
+            ),
+            (
+                342,
+                100,
+                "C_00.01",
+                "COREP_LR",
+                "3.1.0",
+                1,
+                None,
+                "2023-06-30",
+                None,
+            ),
+        ]
+        SvcClass = _get_svc_class()
+        svc = SvcClass(session=MagicMock())
+        members = self._capture_scope_sets(svc)
+        svc.extract_module_info = MagicMock(return_value=_make_module_df(rows))
+
+        svc.calculate_operation_scope(
+            tables_vids=[],
+            precondition_items=[],
+            release_id=1,
+            table_codes=["C_00.01", "C_16.00.b"],
+        )
+
+        scope_sets = {frozenset(m) for m in members.values()}
+        assert scope_sets == {frozenset({344})}
+
+    def test_intra_scope_does_not_drop_a_disjoint_combination(self):
+        """An intra scope only dominates combinations it is part of.
+
+        The discriminator between the rule #304 asks for -- drop a
+        combination that strictly *contains* an intra scope -- and the
+        broader "any intra scope suppresses every cross scope" reading.
+        Module 300 covers both keys alone, but 100 and 200 hold one each
+        and genuinely need one another, so ``{100, 200}`` is a real
+        alternative cover and must survive (the #128 invariant).
+        """
+        SvcClass = _get_svc_class()
+        svc = SvcClass(session=MagicMock())
+        members = self._capture_scope_sets(svc)
+        svc.process_cross_module(
+            cross_modules={"A": [100], "B": [200]},
+            modules_dataframe=self._two_provider_df(),
+            required_keys={"A", "B"},
+            dominating_sets=[frozenset({300})],
+        )
+        assert len(svc.operation_scopes) == 1
+        assert [frozenset(m) for m in members.values()] == [
+            frozenset({100, 200})
+        ]
