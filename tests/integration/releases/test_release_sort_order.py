@@ -1030,16 +1030,14 @@ def test_check_table_exists_finds_row_introduced_after_playground_id(
     )
 
 
-def test_check_table_exists_unknown_release_id_returns_false(
+def test_check_table_exists_unknown_release_id_raises(
     non_monotonic_id_session,
 ):
     from dpmcore.dpm_xl.model_queries import TableVersionQuery
 
     session = non_monotonic_id_session
-    assert (
+    with pytest.raises(ValueError):
         TableVersionQuery.check_table_exists(session, "F_20.04", 424242)
-        is False
-    )
 
 
 def test_get_variable_vids_by_codes_finds_row_introduced_after_playground_id(

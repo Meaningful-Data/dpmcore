@@ -581,20 +581,17 @@ class TableVersionQuery:
             release_id: Release filter.
 
         Returns:
-            True if the table exists, an unknown release_id resolves to False.
+            True if the table exists.
         """
         query = session.query(TableVersion).filter(
             TableVersion.code == table_code
         )
-        try:
-            query = filter_by_release(
-                query,
-                start_col=TableVersion.start_release_id,
-                end_col=TableVersion.end_release_id,
-                release_id=release_id,
-            )
-        except ValueError:
-            return False
+        query = filter_by_release(
+            query,
+            start_col=TableVersion.start_release_id,
+            end_col=TableVersion.end_release_id,
+            release_id=release_id,
+        )
         return query.first() is not None
 
 
