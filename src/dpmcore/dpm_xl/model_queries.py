@@ -677,6 +677,60 @@ class TableVersionQuery:
             for code, abstract_table_id in rows
         }
 
+    @staticmethod
+    def get_concrete_table_codes(
+        session: "Session",
+        codes: Sequence[str],
+        release_id: int | None,
+    ) -> dict[str, set[str]]:
+        """Expand each code to itself plus any concrete tables under it.
+
+        Module composition only links concrete tables, so an abstract
+        code needs its concrete children to find any module.
+
+        Args:
+            session: SQLAlchemy session.
+            codes: Table codes to expand.
+            release_id: Release filter, applied independently to the
+                requested codes and their concrete children.
+
+        Returns:
+            ``{code: {code, *concrete_children}}``, one entry per code.
+        """
+        if not codes:
+            return {}
+        table_id_by_code = dict(
+            filter_by_release(
+                session.query(
+                    TableVersion.code, TableVersion.table_id
+                ).filter(TableVersion.code.in_(list(codes))),
+                TableVersion.start_release_id,
+                TableVersion.end_release_id,
+                release_id,
+            ).all()
+        )
+        table_ids = {
+            tid for tid in table_id_by_code.values() if tid is not None
+        }
+        children_by_table_id: dict[int, set[str]] = {}
+        if table_ids:
+            for abstract_table_id, child_code in filter_by_release(
+                session.query(
+                    TableVersion.abstract_table_id, TableVersion.code
+                ).filter(TableVersion.abstract_table_id.in_(table_ids)),
+                TableVersion.start_release_id,
+                TableVersion.end_release_id,
+                release_id,
+            ).all():
+                children_by_table_id.setdefault(
+                    abstract_table_id, set()
+                ).add(child_code)
+        return {
+            code: {code}
+            | children_by_table_id.get(table_id_by_code.get(code), set())
+            for code in codes
+        }
+
 
 class TableGroupQuery:
     """Query helpers around the TableGroup/TableGroupComposition models."""

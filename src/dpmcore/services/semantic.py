@@ -750,10 +750,21 @@ class SemanticService:
         table_ok: Callable[[str], bool],
         release_id: Optional[int],
     ) -> None:
-        """Raise ``7-5`` when the gate's modules don't fit (``7-4`` passed)."""
+        """Raise ``7-5`` when the gate's modules don't fit (``7-4`` passed).
+
+        A gate code matched at the abstract level is expanded to its
+        concrete children first, since module composition never links
+        an abstract table directly.
+        """
+        concrete_by_code = TableVersionQuery.get_concrete_table_codes(
+            self.session, list(precondition_tables), release_id
+        )
+        concrete_precondition_tables: set[str] = set().union(
+            *concrete_by_code.values()
+        )
         precondition_modules_df = ModuleVersionQuery.get_from_table_codes(
             self.session,
-            list(precondition_tables),
+            list(concrete_precondition_tables),
             release_id,
             include_ghosts=True,
         )
@@ -768,14 +779,23 @@ class SemanticService:
             if not operand_modules_df.empty
             else set()
         )
-        precondition_modules_by_table: dict[str, set[str]] = {}
+        modules_by_concrete_table: dict[str, set[str]] = {}
         if not precondition_modules_df.empty:
             for table_code, group in precondition_modules_df.groupby(
                 "TableCode"
             ):
-                precondition_modules_by_table[str(table_code)] = set(
+                modules_by_concrete_table[str(table_code)] = set(
                     group["ModuleCode"]
                 )
+        precondition_modules_by_table: dict[str, set[str]] = {
+            code: set().union(
+                *(
+                    modules_by_concrete_table.get(concrete, set())
+                    for concrete in concretes
+                )
+            )
+            for code, concretes in concrete_by_code.items()
+        }
 
         def module_ok(code: str) -> bool:
             if code not in precondition_abstract_by_table:

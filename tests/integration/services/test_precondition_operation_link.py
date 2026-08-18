@@ -437,10 +437,13 @@ def _seed_precondition_operation(session, operation_vid, expression):
 
 
 def _seed_tables(session, *, fi_shares_operand_module: bool):
-    """T1 (module M1) with abstract table FI_X. UNRELATED matches neither.
+    """T1 (module M1) and FI_X are siblings under abstract ROOT, not
+    parent and child, so T1 can't leak into FI_X's children and
+    trivially pass the module check against itself.
 
-    ``fi_shares_operand_module=True`` puts FI_X in M1 too, so 7-5 passes.
-    Otherwise FI_X sits only in M2, so 7-5 fails.
+    UNRELATED matches neither. ``fi_shares_operand_module=True`` puts
+    FI_X in M1 too, so 7-5 passes; otherwise FI_X sits only in M2, so
+    7-5 fails.
     """
     session.add_all(
         [
@@ -448,11 +451,20 @@ def _seed_tables(session, *, fi_shares_operand_module: bool):
             Table(table_id=1),
             Table(table_id=2),
             Table(table_id=3),
+            Table(table_id=5),
+            TableVersion(
+                table_vid=50,
+                code="ROOT",
+                table_id=5,
+                abstract_table_id=None,
+                start_release_id=1,
+                end_release_id=None,
+            ),
             TableVersion(
                 table_vid=10,
                 code="T1",
                 table_id=1,
-                abstract_table_id=2,
+                abstract_table_id=5,
                 start_release_id=1,
                 end_release_id=None,
             ),
@@ -460,7 +472,7 @@ def _seed_tables(session, *, fi_shares_operand_module: bool):
                 table_vid=20,
                 code="FI_X",
                 table_id=2,
-                abstract_table_id=None,
+                abstract_table_id=5,
                 start_release_id=1,
                 end_release_id=None,
             ),
@@ -597,6 +609,121 @@ def test_or_gate_raises_7_5_when_the_matching_tables_module_differs(
 
     with pytest.raises(SemanticError) as exc_info:
         svc._check_precondition_link(607, release_id=1)
+    assert exc_info.value.code == "7-5"
+
+
+def _seed_abstract_precondition_table(session, *, child_shares_operand_module):
+    """T1 and FI_ABS are siblings under ROOT; only FI_ABS's concrete
+    child FI_V1 carries a module. ``child_shares_operand_module=True``
+    puts FI_V1 in M1 too, so 7-5 passes; otherwise FI_V1 sits only in
+    M2, so 7-5 fails.
+    """
+    session.add_all(
+        [
+            Release(release_id=1, code="3.4", date=datetime.date(2022, 12, 1)),
+            Table(table_id=100),
+            Table(table_id=101),
+            Table(table_id=102),
+            Table(table_id=110),
+            TableVersion(
+                table_vid=1100,
+                code="ROOT",
+                table_id=110,
+                abstract_table_id=None,
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            TableVersion(
+                table_vid=1000,
+                code="T1",
+                table_id=100,
+                abstract_table_id=110,
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            TableVersion(
+                table_vid=1010,
+                code="FI_ABS",
+                table_id=101,
+                abstract_table_id=110,
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            TableVersion(
+                table_vid=1020,
+                code="FI_V1",
+                table_id=102,
+                abstract_table_id=101,
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            ModuleVersion(
+                module_vid=1000,
+                module_id=100,
+                code="M1",
+                version_number="1.0",
+                start_release_id=1,
+                end_release_id=None,
+            ),
+            ModuleVersionComposition(
+                module_vid=1000, table_id=100, table_vid=1000
+            ),
+        ]
+    )
+    if child_shares_operand_module:
+        session.add(
+            ModuleVersionComposition(
+                module_vid=1000, table_id=102, table_vid=1020
+            )
+        )
+    else:
+        session.add_all(
+            [
+                ModuleVersion(
+                    module_vid=1001,
+                    module_id=101,
+                    code="M2",
+                    version_number="1.0",
+                    start_release_id=1,
+                    end_release_id=None,
+                ),
+                ModuleVersionComposition(
+                    module_vid=1001, table_id=102, table_vid=1020
+                ),
+            ]
+        )
+    session.flush()
+
+
+def test_abstract_precondition_code_resolves_modules_via_concrete_child(
+    memory_session,
+):
+    # FI_ABS carries no module itself, but FI_V1 shares the operand's.
+    _seed_abstract_precondition_table(
+        memory_session, child_shares_operand_module=True
+    )
+    _seed_precondition_operation(memory_session, 800, "{v_FI_ABS}")
+    memory_session.flush()
+    svc = _svc(memory_session)
+    svc.oc_tables = {"T1": {}}
+
+    svc._check_precondition_link(800, release_id=1)  # no raise
+
+
+def test_abstract_precondition_code_still_raises_7_5_on_real_mismatch(
+    memory_session,
+):
+    # FI_ABS's only concrete child, FI_V1, sits only in M2.
+    _seed_abstract_precondition_table(
+        memory_session, child_shares_operand_module=False
+    )
+    _seed_precondition_operation(memory_session, 801, "{v_FI_ABS}")
+    memory_session.flush()
+    svc = _svc(memory_session)
+    svc.oc_tables = {"T1": {}}
+
+    with pytest.raises(SemanticError) as exc_info:
+        svc._check_precondition_link(801, release_id=1)
     assert exc_info.value.code == "7-5"
 
 
