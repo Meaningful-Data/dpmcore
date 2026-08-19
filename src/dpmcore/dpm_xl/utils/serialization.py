@@ -615,17 +615,40 @@ class ASTToJSONVisitor(NodeVisitor):
         """Visit UnionSetOp nodes (variadic ``union(...)``)."""
         return self._visit_set_op(node, node.operands)
 
-    def visit_IntersectSetOp(self, node: Any) -> NodeDict:
-        """Visit IntersectSetOp nodes (variadic ``intersect(...)``)."""
-        return self._visit_set_op(node, node.operands)
-
     def visit_SetdiffOp(self, node: Any) -> NodeDict:
         """Visit SetdiffOp nodes (``setdiff(left, right)``)."""
         return self._visit_set_op(node, [node.left, node.right])
 
-    def visit_SymdiffOp(self, node: Any) -> NodeDict:
-        """Visit SymdiffOp nodes (``symdiff(left, right)``)."""
-        return self._visit_set_op(node, [node.left, node.right])
+    # ``intersect`` carries the same operand attribute and arity as
+    # ``union``, and ``symdiff`` the same as ``setdiff``. Dispatch is by
+    # method name, so an alias is the whole handler.
+    visit_IntersectSetOp = visit_UnionSetOp
+    visit_SymdiffOp = visit_SetdiffOp
+
+    def visit_CountSetOp(self, node: Any) -> NodeDict:
+        """Visit legacy ``CountSetOp`` nodes as a ``count`` aggregation.
+
+        ``count`` is not a set operator — it returns the set's
+        cardinality as a Scalar — and its dedicated grammar rule was
+        dropped in MR !74, so ``count(...)`` now parses to an
+        ``AggregationOp``. The class survives only for externally built
+        ASTs, so emit the ``AggregationOp`` shape the parser would have
+        produced rather than let ``generic_visit`` invent a
+        ``CountSetOp`` class name the consumer schema rejects.
+
+        Args:
+            node: The legacy ``CountSetOp`` AST node.
+
+        Returns:
+            dict: The serialized ``AggregationOp`` node.
+        """
+        return {
+            "class_name": "AggregationOp",
+            "op": node.op,
+            "operand": self.visit(node.operand),
+            "grouping_clause": None,
+            "analytic_clause": None,
+        }
 
     def visit_ParExpr(self, node: Any) -> NodeDict:
         """Visit ParExpr nodes."""
