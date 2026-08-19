@@ -515,15 +515,24 @@ class ASTToJSONVisitor(NodeVisitor):
         return result
 
     def visit_RankOp(self, node: Any) -> NodeDict:
-        """Visit RankOp nodes."""
-        return {
-            "class_name": "RankOp",
-            "op": "rank",
-            "operand": self.visit(node.operand),
-            "analytic_clause": self._serialize_analytic_clause(
-                node.analytic_clause
-            ),
-        }
+        """Visit RankOp nodes as an ``AggregationOp`` with ``op: "rank"``.
+
+        ``rank`` is an alternative of the ``aggregateOperators`` grammar
+        rule, so it is an aggregation discriminated by ``op`` like the
+        rest of the family rather than a class of its own. Its analytic
+        clause is mandatory and the grammar offers it no grouping
+        clause, so the ``AggregationOp`` handler emits
+        ``grouping_clause: null`` for it without a special case, keeping
+        one key set for the class -- which the consumer's
+        ``additionalProperties: false`` nodes require.
+
+        Args:
+            node: The ``RankOp`` AST node.
+
+        Returns:
+            dict: The serialized ``AggregationOp`` node.
+        """
+        return self.visit_AggregationOp(node)
 
     def _serialize_analytic_clause(self, clause: Any) -> NodeDict:
         result: NodeDict = {

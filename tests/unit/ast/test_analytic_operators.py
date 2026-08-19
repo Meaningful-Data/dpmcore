@@ -9,6 +9,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     RankOp,
     WindowClause,
 )
+from dpmcore.dpm_xl.utils.serialization import ASTToJSONVisitor, serialize_ast
 from dpmcore.services.syntax import SyntaxService
 
 # ---- Syntax validity --------------------------------------------------
@@ -157,8 +158,127 @@ def test_analytic_clause_tojson_is_serialisable():
     assert ac["window"]["end"]["bound_type"] == "n_following"
 
 
-def test_rank_tojson_is_serialisable():
-    ast = SyntaxService().parse("rank({vRS} over (order by f desc))")
-    result = ast.children[0].toJSON()
-    assert result["op"] == "rank"
-    assert result["analytic_clause"]["order_by"][0]["direction"] == "desc"
+# ---- Wire serialisation ------------------------------------------------
+# ``ASTToJSONVisitor`` is what script generation emits, and ``rank`` goes
+# out as an ``AggregationOp`` discriminated by ``op`` like every other
+# alternative of the ``aggregateOperators`` rule. ``RankOp.toJSON`` is
+# gone, so these cases replace the assertions that read off it.
+
+# The consumer schema is ``additionalProperties: false``, so the exact
+# key set is part of the contract: ``grouping_clause`` is present and
+# ``null`` rather than omitted, matching the rest of the family.
+AGGREGATION_KEYS = {
+    "class_name",
+    "op",
+    "operand",
+    "grouping_clause",
+    "analytic_clause",
+}
+
+
+def _serialize_expr(expression: str) -> dict:
+    result = ASTToJSONVisitor().visit(SyntaxService().parse(expression))
+    assert isinstance(result, dict)
+    return result["children"][0]
+
+
+def _class_names(node) -> set:
+    """Every ``class_name`` in a serialized payload, at any depth."""
+    if isinstance(node, dict):
+        names = {node["class_name"]} if "class_name" in node else set()
+        for value in node.values():
+            names |= _class_names(value)
+        return names
+    if isinstance(node, list):
+        names = set()
+        for item in node:
+            names |= _class_names(item)
+        return names
+    return set()
+
+
+def test_rank_serializes_as_aggregation_op():
+    node = _serialize_expr("rank({tT1, r001} over (order by f desc))")
+    assert set(node) == AGGREGATION_KEYS
+    assert node["class_name"] == "AggregationOp"
+    assert node["op"] == "rank"
+    assert node["grouping_clause"] is None
+    ac = node["analytic_clause"]
+    assert ac["class_name"] == "AnalyticClause"
+    assert ac["partition_by"] == []
+    assert ac["order_by"] == [{"key_name": "f", "direction": "desc"}]
+    assert ac["window"] is None
+
+
+def test_rank_serializes_partition_by():
+    node = _serialize_expr(
+        "rank({tT1, r001} over (partition by CNT order by f asc))"
+    )
+    assert set(node) == AGGREGATION_KEYS
+    assert node["op"] == "rank"
+    ac = node["analytic_clause"]
+    assert ac["partition_by"] == ["CNT"]
+    assert ac["order_by"] == [{"key_name": "f", "direction": "asc"}]
+
+
+def test_rank_serializes_window_frame():
+    node = _serialize_expr(
+        "rank({tT1, r001} over (order by r "
+        "data points between 1 preceding and 2 following))"
+    )
+    assert set(node) == AGGREGATION_KEYS
+    window = node["analytic_clause"]["window"]
+    assert window["frame_type"] == "data_points"
+    assert window["start"] == {"bound_type": "n_preceding", "n": 1}
+    assert window["end"] == {"bound_type": "n_following", "n": 2}
+
+
+def test_rank_payload_matches_sum_over_the_same_clause():
+    """Only ``op`` may distinguish ``rank`` from the other aggregates."""
+    clause = (
+        "over (partition by CNT order by f desc "
+        "data points between 1 preceding and 1 following)"
+    )
+    rank = _serialize_expr(f"rank({{tT1, r001}} {clause})")
+    aggregation = _serialize_expr(f"sum({{tT1, r001}} {clause})")
+    assert aggregation["op"] == "sum"
+    assert rank == {**aggregation, "op": "rank"}
+
+
+def test_no_rank_op_class_name_at_any_depth():
+    node = _serialize_expr(
+        "{tT1, r002} = rank({tT1, r001} over (order by f desc))"
+    )
+    names = _class_names(node)
+    assert "RankOp" not in names
+    assert "AggregationOp" in names
+
+
+def test_serialize_ast_emits_aggregation_op_at_the_public_entry_point():
+    """``serialize_ast`` expands ``with`` scopes before serializing.
+
+    It is the entry point ``ASTGeneratorService`` builds scripts with, so
+    the shape has to hold there and not only under a bare visit.
+    """
+    payload = serialize_ast(
+        SyntaxService().parse(
+            "with {tT1} : {r002} = rank({r001} over (order by f desc))"
+        )
+    )
+    node = payload["right"]
+    assert set(node) == AGGREGATION_KEYS
+    assert node["class_name"] == "AggregationOp"
+    assert node["op"] == "rank"
+    assert node["grouping_clause"] is None
+
+
+def test_group_by_aggregation_serialization_is_unchanged():
+    node = _serialize_expr("sum({tT1, r001} group by CNT)")
+    assert set(node) == AGGREGATION_KEYS
+    assert node["class_name"] == "AggregationOp"
+    assert node["op"] == "sum"
+    assert node["grouping_clause"] == {
+        "class_name": "GroupingClause",
+        "components": ["CNT"],
+    }
+    assert node["analytic_clause"] is None

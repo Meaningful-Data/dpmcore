@@ -602,6 +602,10 @@ class AnalyticClause(AST):
         }
 
 
+# ``RankOp`` defines no ``toJSON``: it is serialized by
+# ``ASTToJSONVisitor`` as an ``AggregationOp`` with ``op: "rank"``, the
+# shape every other alternative of the ``aggregateOperators`` grammar
+# rule already emits, so the wire shape lives there and nowhere else.
 class RankOp(AST):
     """rank(expression over(...)) operator node."""
 
@@ -620,14 +624,6 @@ class RankOp(AST):
         )
 
     __repr__ = __str__
-
-    def toJSON(self) -> dict[str, Any]:
-        return {
-            "class_name": self.__class__.__name__,
-            "op": self.op,
-            "operand": self.operand,
-            "analytic_clause": self.analytic_clause.toJSON(),
-        }
 
 
 class Dimension(AST):
