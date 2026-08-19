@@ -230,6 +230,28 @@ def _serialize_expr(expression: str) -> dict:
     return result["children"][0]
 
 
+def _set_values(node: dict) -> list:
+    """Constant values of a serialized ``Set`` literal, in order."""
+    return [child["value"] for child in node["children"]]
+
+
+def _class_names(node) -> set:
+    """Every ``class_name`` in a serialized payload, at any depth."""
+    if isinstance(node, dict):
+        names = set()
+        if "class_name" in node:
+            names.add(node["class_name"])
+        for value in node.values():
+            names |= _class_names(value)
+        return names
+    if isinstance(node, list):
+        names = set()
+        for item in node:
+            names |= _class_names(item)
+        return names
+    return set()
+
+
 def test_ast_to_json_serializes_empty_set_literal():
     node = _serialize_expr("{tT1, r001} in {}")
     assert node["class_name"] == "BinOp"
@@ -252,15 +274,16 @@ def test_ast_to_json_serializes_non_empty_set_literal():
 def test_ast_to_json_serializes_set_of_op():
     node = _serialize_expr("{tT1, r001} in set_of({tT2, r001-010})")
     right = node["right"]
-    assert right["class_name"] == "SetOfOp"
+    assert right["class_name"] == "SetOp"
     assert right["op"] == "set_of"
-    assert isinstance(right["operand"], dict)
+    assert len(right["operands"]) == 1
+    assert isinstance(right["operands"][0], dict)
 
 
 def test_ast_to_json_serializes_union_variadic():
     node = _serialize_expr("{tT1, r001} in union({1, 2}, {3, 4}, {5, 6})")
     right = node["right"]
-    assert right["class_name"] == "UnionSetOp"
+    assert right["class_name"] == "SetOp"
     assert right["op"] == "union"
     assert len(right["operands"]) == 3
     for operand in right["operands"]:
@@ -270,38 +293,73 @@ def test_ast_to_json_serializes_union_variadic():
 def test_ast_to_json_serializes_intersect():
     node = _serialize_expr("{tT1, r001} in intersect({1, 2, 3}, {2, 3, 4})")
     right = node["right"]
-    assert right["class_name"] == "IntersectSetOp"
+    assert right["class_name"] == "SetOp"
     assert right["op"] == "intersect"
     assert len(right["operands"]) == 2
 
 
 def test_ast_to_json_serializes_setdiff():
-    node = _serialize_expr("{tT1, r001} in setdiff({1, 2, 3}, {3})")
+    """``setdiff`` is not commutative: operands stay left-then-right."""
+    node = _serialize_expr("{tT1, r001} in setdiff({1, 2, 3}, {9})")
     right = node["right"]
-    assert right["class_name"] == "SetdiffOp"
+    assert right["class_name"] == "SetOp"
     assert right["op"] == "setdiff"
-    assert right["left"]["class_name"] == "Set"
-    assert right["right"]["class_name"] == "Set"
+    assert len(right["operands"]) == 2
+    left_operand, right_operand = right["operands"]
+    assert left_operand["class_name"] == "Set"
+    assert _set_values(left_operand) == [1, 2, 3]
+    assert right_operand["class_name"] == "Set"
+    assert _set_values(right_operand) == [9]
 
 
 def test_ast_to_json_serializes_symdiff():
-    node = _serialize_expr("{tT1, r001} in symdiff({1, 2}, {2, 3})")
+    node = _serialize_expr("{tT1, r001} in symdiff({1, 2}, {8, 9})")
     right = node["right"]
-    assert right["class_name"] == "SymdiffOp"
+    assert right["class_name"] == "SetOp"
     assert right["op"] == "symdiff"
-    assert right["left"]["class_name"] == "Set"
-    assert right["right"]["class_name"] == "Set"
+    assert len(right["operands"]) == 2
+    left_operand, right_operand = right["operands"]
+    assert _set_values(left_operand) == [1, 2]
+    assert _set_values(right_operand) == [8, 9]
 
 
 def test_ast_to_json_preserves_nested_set_operators():
-    """A nested ``setdiff(union(...), ...)`` expression must round-trip with
-    every intermediate ``class_name`` intact — not just the outermost node.
+    """A nested ``setdiff(union(...), ...)`` expression must serialize as
+    ``SetOp`` at every level, with the inner operator in first position.
     """
     node = _serialize_expr(
         "{tT1, r001} in setdiff(union({1, 2}, {3, 4}), {5})"
     )
     outer = node["right"]
-    assert outer["class_name"] == "SetdiffOp"
-    inner = outer["left"]
-    assert inner["class_name"] == "UnionSetOp"
+    assert outer["class_name"] == "SetOp"
+    assert outer["op"] == "setdiff"
+    inner = outer["operands"][0]
+    assert inner["class_name"] == "SetOp"
+    assert inner["op"] == "union"
     assert len(inner["operands"]) == 2
+    assert _set_values(outer["operands"][1]) == [5]
+
+
+def test_ast_to_json_emits_no_per_operator_set_class_names():
+    """None of the old per-operator names survives, at any depth."""
+    node = _serialize_expr(
+        "{tT1, r001} in union("
+        "set_of({tT2, r001-010}), "
+        "intersect({1, 2}, {2, 3}), "
+        "setdiff({4, 5}, {5}), "
+        "symdiff({6}, {7})"
+        ")"
+    )
+    names = _class_names(node)
+    assert names.isdisjoint(
+        {
+            "SetOfOp",
+            "UnionSetOp",
+            "IntersectSetOp",
+            "SetdiffOp",
+            "SymdiffOp",
+        }
+    )
+    assert "SetOp" in names
+    # ``Set`` literals are untouched by the collapse.
+    assert "Set" in names
