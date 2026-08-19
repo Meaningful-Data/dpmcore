@@ -477,6 +477,7 @@ class ScopeCalculatorService:
         release_code: Optional[str] = None,
         referenced_variables: Optional[Dict[str, str]] = None,
         referenced_tables: Optional[Set[str]] = None,
+        home_module_tables: Optional[Set[str]] = None,
     ) -> Dict[str, Any]:
         """Build dependency information for a scope result.
 
@@ -505,6 +506,14 @@ class ScopeCalculatorService:
                 narrows each dependency module's declaration to the
                 subset the operation uses (#250); omit both to declare
                 the dependency modules whole.
+            home_module_tables: Optional pre-computed set of table codes
+                owned by the primary (home) module — the same set this
+                method would derive from :meth:`_get_module_tables`.
+                Callers that iterate this method with a fixed
+                ``primary_module_vid`` (per-op dependency detection
+                over a script's operations) should pass a single
+                pre-computed set to avoid re-running the per-table
+                variable/open-key fetch on every iteration.
 
         Returns a dict with:
         - ``intra_instance_validations``
@@ -588,6 +597,25 @@ class ScopeCalculatorService:
         )
         mv_by_vid = {mv.module_vid: mv for mv in mv_rows}
 
+        # Tables owned by the primary (home) module — a dep module that
+        # also lists any of these is sharing a table with the home; the
+        # sharing belongs to the home declaration, not to the dep, so
+        # exclude them from dependency_modules[<dep>].tables. Without
+        # this, cross-module ops that touch a shared table declare it
+        # twice (once in home, once in every dep that also owns it).
+        # Caller-supplied ``home_module_tables`` avoids the per-op
+        # recompute when this method runs inside a loop with a fixed
+        # ``primary_module_vid`` (the query is a per-table variable/
+        # open-key fetch, not a code-only lookup).
+        if home_module_tables is None:
+            primary_tables = set(
+                self._get_module_tables(
+                    primary_module_vid, release_id=release_id
+                ).keys()
+            )
+        else:
+            primary_tables = home_module_tables
+
         for vid in sorted_vids:
             mv = mv_by_vid.get(vid)
             if not mv:
@@ -600,6 +628,7 @@ class ScopeCalculatorService:
                 operation_code=operation_code,
                 referenced_variables=referenced_variables,
                 referenced_tables=referenced_tables,
+                home_module_tables=primary_tables,
             )
             if entry is None:
                 continue
@@ -634,6 +663,7 @@ class ScopeCalculatorService:
         operation_code: Optional[str],
         referenced_variables: Optional[Dict[str, str]] = None,
         referenced_tables: Optional[Set[str]] = None,
+        home_module_tables: Optional[Set[str]] = None,
     ) -> Optional[Tuple[Dict[str, Any], str, Dict[str, Any]]]:
         """Build a single (cross_dep, uri, dependency_module) triple.
 
@@ -641,6 +671,14 @@ class ScopeCalculatorService:
         when every one of its tables is variable-less (and therefore
         dropped, since the engine schema requires
         ``minProperties: 1`` on each table's variables map).
+
+        ``home_module_tables`` is the set of table codes owned by the
+        primary (home) module. Tables that appear in both the home and
+        the dependency (a shared table like ``I_05.00`` present in both
+        IF_CLASS2 and IF_CLASS3) belong to the home declaration and
+        must be excluded from ``dependency_modules[<dep>].tables`` —
+        otherwise the engine sees the same table declared on both sides
+        and downstream lookups can pick the wrong copy.
         """
         uri = self._get_module_uri(module_vid=vid, mv=mv)
         if not uri:
@@ -674,6 +712,26 @@ class ScopeCalculatorService:
         )
         if narrowed:
             tables_dict = narrowed
+
+        # Drop tables the primary (home) module also declares — the shared
+        # ones belong to the home declaration; leaving them on the dep
+        # side is the duplicate-declaration bug this method exists to
+        # fix. Runs AFTER narrowing so a validation whose operand set is
+        # entirely inside a shared table still narrows correctly:
+        # excluding *before* narrowing would drop the operand's table
+        # first, narrowing would find no referenced table, and the
+        # narrowing fallback would reintroduce the shared table via the
+        # module-wide unnarrowed set. The exclusion is unconditional
+        # — even when it empties ``tables_dict``: the dep still surfaces
+        # in ``cross_instance_dependencies`` via its ``URI`` and the
+        # engine (#251) resolves cross-instance operands off
+        # ``referenced_variables`` when the caller supplies them.
+        if home_module_tables:
+            tables_dict = {
+                tcode: tdata
+                for tcode, tdata in tables_dict.items()
+                if tcode not in home_module_tables
+            }
 
         module_entry: Dict[str, Any] = {
             "URI": uri,

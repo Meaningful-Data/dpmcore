@@ -14,6 +14,7 @@ from typing import (
     Iterable,
     List,
     Optional,
+    Set,
     Tuple,
     Union,
 )
@@ -1281,6 +1282,17 @@ extract_precondition_codes`, shared with
         all_dep_modules: Dict[str, Any] = {}
         all_scope_results: List["ScopeResult"] = []
 
+        # The home-module table set is a per-script constant (the
+        # primary module never changes across this loop), and computing
+        # it inside ``detect_cross_module_dependencies`` would repeat a
+        # per-table variable/open-key fetch on every iteration. Compute
+        # it once here and thread it through.
+        home_module_tables: Set[str] = set(
+            self._scope_calc._get_module_tables(
+                primary_module_vid, release_id=release_id
+            ).keys()
+        )
+
         for item, sr, ts, refs in scope_pairs:
             all_scope_results.append(sr)
             op_code = item[1]
@@ -1293,6 +1305,7 @@ extract_precondition_codes`, shared with
                 compute_alternative_deps=False,
                 referenced_variables=refs.variables,
                 referenced_tables=refs.tables,
+                home_module_tables=home_module_tables,
             )
             all_intra.extend(current.get("intra_instance_validations", []))
             self._merge_cross_deps(

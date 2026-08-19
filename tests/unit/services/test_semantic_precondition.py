@@ -402,12 +402,14 @@ class TestPublishedState:
         svc = _svc()
         svc.ast = "stale"
         svc.oc_tables = {"T": {}}
+        svc.oc_operations_data = "stale"
         result = svc._failure("expr", ValueError("boom"), "UNKNOWN")
         assert not result.is_valid
         # ``ast`` used to survive a failure, leaving stale state readable.
         assert svc.ast is None
         assert svc.oc_tables is None
         assert svc.oc_parameters is None
+        assert svc.oc_operations_data is None
 
 
 class TestIsValidShortcut:
