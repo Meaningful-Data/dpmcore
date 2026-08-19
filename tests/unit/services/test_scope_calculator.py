@@ -818,6 +818,26 @@ class TestDetectCrossModuleDependencies:
         assert info["intra_instance_validations"] == []
         assert info["cross_instance_dependencies"] == []
 
+    def test_primary_in_no_single_module_scope_is_not_intra(self):
+        # Same as above but the result is not cross-module at all: the
+        # only scope is module 20 on its own. Module 10 hosts none of the
+        # referenced tables, so it is neither intra nor cross (#141).
+        # Keying the intra claim off ``not is_cross`` used to declare it
+        # intra here; #304 removes the redundant superset scopes that
+        # previously kept ``is_cross`` true and hid the hole.
+        svc, SR = self._make_svc()
+        sr = SR(
+            scopes=[_scope([20])],
+            is_cross_module=False,
+        )
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+            operation_code="v1234",
+        )
+        assert info["intra_instance_validations"] == []
+        assert info["cross_instance_dependencies"] == []
+
     @staticmethod
     def _mv(vid):
         mv = MagicMock()

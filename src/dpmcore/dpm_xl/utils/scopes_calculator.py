@@ -272,6 +272,13 @@ class OperationScopeService:
             if len(intra_modules):
                 self.process_repeated(intra_modules, modules_info_dataframe)
 
+            # An intra module evaluates the operation on its own, so any
+            # combination that merely wraps partners around it is redundant.
+            # These scopes are emitted by ``process_repeated`` and are
+            # therefore absent from the cross-module candidate set, so they
+            # must be handed to the dominance filter explicitly (Issue #304).
+            intra_sets = [frozenset({vid}) for vid in intra_modules]
+
             required_preconditions = set(precondition_items)
             if cross_modules:
                 if table_codes:
@@ -296,6 +303,7 @@ class OperationScopeService:
                                 required_precondition_codes=(
                                     required_preconditions
                                 ),
+                                dominating_sets=intra_sets,
                             )
                     else:
                         # Complete each partial module into a cross-instance
@@ -312,6 +320,7 @@ class OperationScopeService:
                             modules_dataframe=modules_info_dataframe,
                             required_keys=required_codes,
                             required_precondition_codes=required_preconditions,
+                            dominating_sets=intra_sets,
                         )
                 else:
                     # Table-VID path: supplement any referenced table VID
@@ -327,6 +336,7 @@ class OperationScopeService:
                         modules_dataframe=modules_info_dataframe,
                         required_keys=set(tables_vids),
                         required_precondition_codes=required_preconditions,
+                        dominating_sets=intra_sets,
                     )
 
         return self.get_scopes_with_status()
@@ -506,6 +516,7 @@ class OperationScopeService:
         modules_dataframe: pd.DataFrame,
         required_keys: Iterable[Any] | None = None,
         required_precondition_codes: Iterable[Any] | None = None,
+        dominating_sets: Iterable[frozenset[int]] | None = None,
     ) -> None:
         """Method to calculate OperationScope and OperationScopeComposition tables for a cross module operation
         :param cross_modules: dictionary with table version ids as key and its module version ids as values
@@ -519,6 +530,10 @@ class OperationScopeService:
             indicator) codes; a combination is emitted only if its modules
             collectively report all of them (Issue #120). ``None``/empty
             disables the check.
+        :param dominating_sets: module sets already emitted as scopes by
+            another path -- the intra single-module scopes built by
+            :meth:`process_repeated`. A combination that strictly contains
+            one of them is redundant and is not emitted (Issue #304).
         """
         # Table coverage: each generated combination provides exactly the
         # pool's key set (one module per key), and supplementation in
@@ -640,8 +655,16 @@ class OperationScopeService:
         # two alternative modules that each host the whole referenced table
         # set. Drop such non-minimal supersets so the alternatives surface as
         # separate scopes instead of one bloated multi-module scope.
+        #
+        # ``dominating_sets`` extends the same argument to the intra
+        # single-module scopes: they cover every key on their own but are
+        # emitted elsewhere, so they never appear in ``valid_sets`` and would
+        # otherwise fail to suppress the combinations wrapped around them —
+        # a table shared across modules then yields one redundant cross scope
+        # per sibling hosting it (Issue #304).
+        dominators = valid_sets + list(dominating_sets or [])
         for module_set in valid_sets:
-            if any(other < module_set for other in valid_sets):
+            if any(other < module_set for other in dominators):
                 continue
             operation_scope = self.create_operation_scope(
                 ref_from_by_set[module_set]
