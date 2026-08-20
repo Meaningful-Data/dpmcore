@@ -9,10 +9,13 @@ import pytest
 
 from dpmcore.dpm_xl.ast.ml_generation import MLGeneration
 from dpmcore.dpm_xl.ast.nodes import (
+    AggregationOp,
+    AnalyticClause,
     Constant,
     CountSetOp,
     Dimension,
     IntersectSetOp,
+    OrderItem,
     Set,
     SetdiffOp,
     SetOfOp,
@@ -110,6 +113,30 @@ def test_visit_set_of_op_no_longer_raises_and_walks_operand(ml_generation):
     assert ml_generation.create_operation_node.call_count == 1
     assert len(visited) == 1
     assert visited[0].argument == "operand"
+
+
+def test_visit_rank_creates_an_operation_node_and_links_its_operand(
+    ml_generation,
+):
+    """``rank`` is walked as an ``AggregationOp``, so it lands in the tree.
+
+    Its own visitor created no ``OperationNode`` and never set the
+    operand's ``parent``/``argument``, which stored the operand as a
+    root-level orphan and left nothing representing the operator itself.
+    """
+    node = AggregationOp(
+        op="rank",
+        operand=_int_constant(1),
+        grouping_clause=None,
+        analytic_clause=AnalyticClause(
+            partition_by=[], order_by=[OrderItem("r")], window=None
+        ),
+    )
+    visited = _visit_and_capture(ml_generation, "visit_AggregationOp", node)
+    assert ml_generation.create_operation_node.call_count == 1
+    assert len(visited) == 1
+    assert visited[0].argument == "operand"
+    assert visited[0].parent is node
 
 
 def test_visit_union_set_op_walks_every_operand(ml_generation):

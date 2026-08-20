@@ -425,6 +425,11 @@ class WithExpression(AST):
 class AggregationOp(AST):
     """All aggregate operators are analysed using this AST Object. Check AGGR_OP_MAPPING on Utils/operator_mapping.py
     for the complete list.
+
+    ``rank`` included: it is an alternative of the ``aggregateOperators``
+    grammar rule, so it is discriminated by ``op`` like every sibling
+    rather than carrying a node class of its own. It never has a
+    ``grouping_clause`` and always has an ``analytic_clause``.
     """
 
     def __init__(
@@ -599,34 +604,6 @@ class AnalyticClause(AST):
             "partition_by": self.partition_by,
             "order_by": [item.toJSON() for item in self.order_by],
             "window": self.window.toJSON() if self.window else None,
-        }
-
-
-class RankOp(AST):
-    """rank(expression over(...)) operator node."""
-
-    def __init__(
-        self, operand: AST, analytic_clause: "AnalyticClause"
-    ) -> None:
-        super().__init__()
-        self.op = "rank"
-        self.operand: AST = operand
-        self.analytic_clause: AnalyticClause = analytic_clause
-
-    def __str__(self) -> str:
-        return (
-            f"<RankOp(operand={self.operand}, "
-            f"analytic_clause={self.analytic_clause})>"
-        )
-
-    __repr__ = __str__
-
-    def toJSON(self) -> dict[str, Any]:
-        return {
-            "class_name": self.__class__.__name__,
-            "op": self.op,
-            "operand": self.operand,
-            "analytic_clause": self.analytic_clause.toJSON(),
         }
 
 

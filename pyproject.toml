@@ -91,11 +91,34 @@ httpx = ">=0.28,<1.0"
 pytest-django = ">=4.13.0"
 django-stubs = ">=6.0.7"
 pandas-stubs = ">=2.2.2,<3.0"
+# django and numpy are not imported by the dev tooling directly; they are
+# pinned here only to keep the resolver from picking a second version.
+# django-stubs requires `django = *` and pandas-stubs `numpy >= 1.23.5`, so
+# without a cap the dev group resolves the newest release while the `django`
+# and `data`/`migration` extras resolve an older one -- Poetry then locks
+# both with overlapping python markers and installs them over each other
+# (issue #321). The caps mirror what those extras already resolve to:
+# `<6.0` matches the `django>=5.2.17` extra floor, and `<2.3` matches the
+# numpy range the extras pin for vtlengine co-installation.
+django = ">=5.2.17,<6.0"
+numpy = ">=2.2.0,<2.3"
 
 [tool.poetry.group.docs.dependencies]
-sphinx = ">=8.1,<9"
+# Sphinx 8.2 and sphinx-autodoc-typehints 3.1 both require Python >= 3.11,
+# so on 3.10 the resolver has to fall back to the previous minor. The split
+# is spelled out per interpreter instead of left to Poetry: given a single
+# open range it locks both minors with overlapping markers (`< "3.15"` for
+# the older one rather than `< "3.11"`) and installs them into the same
+# site-packages, which corrupts the tree at random (issue #321).
+sphinx = [
+    { version = ">=8.1,<8.2", python = "<3.11" },
+    { version = ">=8.2,<9", python = ">=3.11" },
+]
 sphinx-rtd-theme = ">=3.0"
-sphinx-autodoc-typehints = ">=3.0"
+sphinx-autodoc-typehints = [
+    { version = ">=3.0,<3.1", python = "<3.11" },
+    { version = ">=3.1", python = ">=3.11" },
+]
 sphinx-polyversion = ">=2.0"
 
 [build-system]

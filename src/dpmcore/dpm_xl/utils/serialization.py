@@ -514,17 +514,6 @@ class ASTToJSONVisitor(NodeVisitor):
         result["analytic_clause"] = analytic_clause
         return result
 
-    def visit_RankOp(self, node: Any) -> NodeDict:
-        """Visit RankOp nodes."""
-        return {
-            "class_name": "RankOp",
-            "op": "rank",
-            "operand": self.visit(node.operand),
-            "analytic_clause": self._serialize_analytic_clause(
-                node.analytic_clause
-            ),
-        }
-
     def _serialize_analytic_clause(self, clause: Any) -> NodeDict:
         result: NodeDict = {
             "class_name": "AnalyticClause",
