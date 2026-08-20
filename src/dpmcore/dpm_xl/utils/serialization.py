@@ -584,47 +584,58 @@ class ASTToJSONVisitor(NodeVisitor):
             "children": [self.visit(child) for child in node.children],
         }
 
+    def _visit_set_op(self, node: Any, operands: list[Any]) -> NodeDict:
+        """Emit a set operator under the shared ``SetOp`` class name.
+
+        The whole family shares one class name discriminated by ``op``,
+        with the operands in a single positional array: ``set_of``
+        carries one, ``union``/``intersect`` two or more, and
+        ``setdiff``/``symdiff`` exactly two in left-then-right order
+        (significant for ``setdiff``). The arity is fixed by the
+        grammar, so it needs no validating downstream.
+
+        Args:
+            node: The set operator AST node.
+            operands: Its operands, in emission order.
+
+        Returns:
+            dict: The serialized ``SetOp`` node.
+        """
+        return {
+            "class_name": "SetOp",
+            "op": node.op,
+            "operands": [self.visit(operand) for operand in operands],
+        }
+
     def visit_SetOfOp(self, node: Any) -> NodeDict:
         """Visit SetOfOp nodes (``set_of(recordset)``)."""
-        return {
-            "class_name": "SetOfOp",
-            "op": node.op,
-            "operand": self.visit(node.operand),
-        }
+        return self._visit_set_op(node, [node.operand])
 
     def visit_UnionSetOp(self, node: Any) -> NodeDict:
         """Visit UnionSetOp nodes (variadic ``union(...)``)."""
-        return {
-            "class_name": "UnionSetOp",
-            "op": node.op,
-            "operands": [self.visit(operand) for operand in node.operands],
-        }
-
-    def visit_IntersectSetOp(self, node: Any) -> NodeDict:
-        """Visit IntersectSetOp nodes (variadic ``intersect(...)``)."""
-        return {
-            "class_name": "IntersectSetOp",
-            "op": node.op,
-            "operands": [self.visit(operand) for operand in node.operands],
-        }
+        return self._visit_set_op(node, node.operands)
 
     def visit_SetdiffOp(self, node: Any) -> NodeDict:
         """Visit SetdiffOp nodes (``setdiff(left, right)``)."""
-        return {
-            "class_name": "SetdiffOp",
-            "op": node.op,
-            "left": self.visit(node.left),
-            "right": self.visit(node.right),
-        }
+        return self._visit_set_op(node, [node.left, node.right])
 
-    def visit_SymdiffOp(self, node: Any) -> NodeDict:
-        """Visit SymdiffOp nodes (``symdiff(left, right)``)."""
-        return {
-            "class_name": "SymdiffOp",
-            "op": node.op,
-            "left": self.visit(node.left),
-            "right": self.visit(node.right),
-        }
+    # ``intersect`` carries the same operand attribute and arity as
+    # ``union``, and ``symdiff`` the same as ``setdiff``. Dispatch is by
+    # method name, so an alias is the whole handler.
+    visit_IntersectSetOp = visit_UnionSetOp
+    visit_SymdiffOp = visit_SetdiffOp
+
+    # ``count`` is not a set operator — it returns the set's cardinality
+    # as a Scalar — and its dedicated grammar rule was dropped in MR !74,
+    # so ``count(...)`` now parses to an ``AggregationOp``. The legacy
+    # class survives only for externally built ASTs, so alias it to the
+    # ``AggregationOp`` handler: it carries ``op``/``operand`` and no
+    # grouping or analytic clause, which is exactly what that handler's
+    # ``hasattr`` checks already emit (both clauses null). Aliasing keeps
+    # the parser shape and the legacy shape from drifting apart, and
+    # stops ``generic_visit`` inventing a ``CountSetOp`` class name the
+    # consumer schema rejects.
+    visit_CountSetOp = visit_AggregationOp
 
     def visit_ParExpr(self, node: Any) -> NodeDict:
         """Visit ParExpr nodes."""
