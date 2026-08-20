@@ -25,7 +25,6 @@ from dpmcore.dpm_xl.ast.nodes import (
     PersistentAssignment,
     PreconditionItem,
     PropertyReference,
-    RankOp,
     RenameOp,
     Set,
     SetdiffOp,
@@ -82,7 +81,6 @@ from dpmcore.dpm_xl.utils.operator_mapping import (
     CLAUSE_OP_MAPPING,
     COMPLEX_OP_MAPPING,
     CONDITIONAL_OP_MAPPING,
-    RANK_OP_MAPPING,
     STRING_OPERATORS,
     TIME_OPERATORS,
     UNARY_OP_MAPPING,
@@ -644,8 +642,11 @@ class InputAnalyzer(ASTTemplate, ABC):
         op = cast(str, node.op)
 
         if node.analytic_clause is not None:
-            if isinstance(operand.get_fact_component().type, Mixed):
-                raise errors.SemanticError("4-4-0-3", origin=f"{op}(...)")
+            # The Mixed guard for this path lives in
+            # ``AggregateOperator.validate_analytic``, next to the type
+            # promotion it protects: ``rank`` overrides that method and
+            # does no promotion, so it stays exempt without a special
+            # case here.
             result = AGGR_OP_MAPPING[op].validate_analytic(
                 operand, node.analytic_clause
             )
@@ -665,22 +666,6 @@ class InputAnalyzer(ASTTemplate, ABC):
             operand, grouping_clause
         )
         return cast(Operand, reducing_result)
-
-    def visit_RankOp(  # type: ignore[override]
-        self, node: RankOp
-    ) -> Operand:
-        operand = self.visit(node.operand)
-        if not isinstance(operand, RecordSet):
-            raise errors.SemanticError("4-4-0-1", op="rank")
-        if operand.has_only_global_components:
-            add_semantic_warning(
-                f"Performing an aggregation on recordset: {operand.name} which has only global key components"
-            )
-        op = cast(str, node.op)
-        result = RANK_OP_MAPPING[op].validate_analytic(
-            operand, node.analytic_clause
-        )
-        return cast(Operand, result)
 
     def visit_Dimension(  # type: ignore[override]
         self, node: Dimension

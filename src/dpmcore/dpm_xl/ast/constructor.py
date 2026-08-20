@@ -35,7 +35,6 @@ from dpmcore.dpm_xl.ast.nodes import (
     ParExpr,
     PersistentAssignment,
     PropertyReference,
-    RankOp,
     RenameNode,
     RenameOp,
     Scalar,
@@ -295,8 +294,19 @@ class ASTVisitor(dpm_xlParserVisitor):
             analytic_clause=analytic_clause,
         )
 
-    def visitRankOp(self, ctx: dpm_xlParser.RankOpContext) -> RankOp:
+    def visitRankOp(self, ctx: dpm_xlParser.RankOpContext) -> AggregationOp:
+        """Build ``rank`` as an ``AggregationOp`` discriminated by ``op``.
+
+        ``rank`` is an alternative of the ``aggregateOperators`` grammar
+        rule, so it is an aggregation like the rest of the family rather
+        than a node class of its own. The grammar offers it no grouping
+        clause and makes the analytic clause mandatory; every later pass
+        -- semantic analysis, ML generation, serialization -- therefore
+        handles it through the ``AggregationOp`` path with no special
+        case.
+        """
         ctx_list = list(ctx.getChildren())
+        op = self._symbol_text(ctx_list[0])
         operand: AST | None = None
         analytic_clause: AnalyticClause | None = None
         for child in ctx_list:
@@ -306,13 +316,18 @@ class ASTVisitor(dpm_xlParserVisitor):
                 operand = self._visit(child)
         if operand is None:
             raise RuntimeError(
-                "RankOp requires an operand; parser produced none"
+                "rank requires an operand; parser produced none"
             )
         if analytic_clause is None:
             raise RuntimeError(
-                "RankOp requires an analytic clause; parser produced none"
+                "rank requires an analytic clause; parser produced none"
             )
-        return RankOp(operand=operand, analytic_clause=analytic_clause)
+        return AggregationOp(
+            op=op,
+            operand=operand,
+            grouping_clause=None,
+            analytic_clause=analytic_clause,
+        )
 
     def visitAnalyticClause(
         self, ctx: dpm_xlParser.AnalyticClauseContext
