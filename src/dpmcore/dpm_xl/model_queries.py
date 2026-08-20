@@ -25,6 +25,7 @@ from sqlalchemy.orm import aliased
 from dpmcore.dpm_xl.utils.filters import filter_by_release
 from dpmcore.dpm_xl.utils.range_resolution import (
     build_axis_order_map,
+    build_axis_value_map,
     resolve_range_codes,
 )
 from dpmcore.orm.glossary import (
@@ -1903,13 +1904,16 @@ def _build_axis_order_map(
 ) -> dict[str, int] | None:
     """Build ``{code: order}`` for one axis from a code/order frame.
 
-    Thin ``DataFrame`` adapter over
-    :func:`~dpmcore.dpm_xl.utils.range_resolution.build_axis_order_map`:
-    returns ``None`` when the axis is not fully ordered — the order column is
-    absent, some present code lacks an order, or a code carries two different
-    orders — so the caller falls back to string comparison for that whole axis.
+    Prefers each code's own numeric value over its stored display order,
+    since some tables show a code out of numeric sequence. Returns ``None`` when neither is
+    usable, so the caller falls back to string comparison for that whole axis.
     """
-    if code_col not in data.columns or order_col not in data.columns:
+    if code_col not in data.columns:
+        return None
+    value_map = build_axis_value_map(data[code_col])
+    if value_map:
+        return value_map
+    if order_col not in data.columns:
         return None
     return build_axis_order_map(data[code_col], data[order_col])
 
