@@ -1230,6 +1230,10 @@ class TemporaryIdentifier(AST):
         return {"class_name": self.__class__.__name__, "value": self.value}
 
 
+# The set-operator family below defines no ``toJSON``: the whole family is
+# serialized by ``ASTToJSONVisitor`` under a single ``SetOp`` class name with
+# the operands in one positional array, so the wire shape lives there and
+# nowhere else.
 class SetOfOp(AST):
     """AST node for set_of(expression), projects a Recordset's fact values to a ScalarSet."""
 
@@ -1244,13 +1248,6 @@ class SetOfOp(AST):
         )
 
     __repr__ = __str__
-
-    def toJSON(self) -> dict[str, Any]:
-        return {
-            "class_name": self.__class__.__name__,
-            "op": self.op,
-            "operand": self.operand,
-        }
 
 
 class UnionSetOp(AST):
@@ -1268,13 +1265,6 @@ class UnionSetOp(AST):
 
     __repr__ = __str__
 
-    def toJSON(self) -> dict[str, Any]:
-        return {
-            "class_name": self.__class__.__name__,
-            "op": self.op,
-            "operands": self.operands,
-        }
-
 
 class IntersectSetOp(AST):
     """AST node for intersect(s1, s2, …), variadic set intersection."""
@@ -1290,13 +1280,6 @@ class IntersectSetOp(AST):
         )
 
     __repr__ = __str__
-
-    def toJSON(self) -> dict[str, Any]:
-        return {
-            "class_name": self.__class__.__name__,
-            "op": self.op,
-            "operands": self.operands,
-        }
 
 
 class SetdiffOp(AST):
@@ -1318,14 +1301,6 @@ class SetdiffOp(AST):
 
     __repr__ = __str__
 
-    def toJSON(self) -> dict[str, Any]:
-        return {
-            "class_name": self.__class__.__name__,
-            "op": self.op,
-            "left": self.left,
-            "right": self.right,
-        }
-
 
 class SymdiffOp(AST):
     """AST node for symdiff(left, right), elements in exactly one of left or right."""
@@ -1346,14 +1321,6 @@ class SymdiffOp(AST):
 
     __repr__ = __str__
 
-    def toJSON(self) -> dict[str, Any]:
-        return {
-            "class_name": self.__class__.__name__,
-            "op": self.op,
-            "left": self.left,
-            "right": self.right,
-        }
-
 
 class CountSetOp(AST):
     """AST node for count(setExpression), cardinality of a ScalarSet."""
@@ -1369,13 +1336,6 @@ class CountSetOp(AST):
         )
 
     __repr__ = __str__
-
-    def toJSON(self) -> dict[str, Any]:
-        return {
-            "class_name": self.__class__.__name__,
-            "op": self.op,
-            "operand": self.operand,
-        }
 
 
 class ParameterRef(AST):
