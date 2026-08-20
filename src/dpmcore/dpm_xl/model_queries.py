@@ -1715,6 +1715,13 @@ class ViewDatapointsQuery:
                 cls._resolve_current_table_vids(session, table, release_id)
             )
         )
+        if release_id is not None:
+            query = filter_by_release(
+                query,
+                start_col=ModuleVersion.start_release_id,
+                end_col=ModuleVersion.end_release_id,
+                release_id=release_id,
+            )
 
         data = read_sql_with_connection(query.statement, session)
 
@@ -1846,6 +1853,14 @@ class ViewDatapointsQuery:
                 query, aliases["hvs"].code, sheets, axis_orders["sheets"]
             )
 
+        if release_id is not None:
+            query = filter_by_release(
+                query,
+                start_col=ModuleVersion.start_release_id,
+                end_col=ModuleVersion.end_release_id,
+                release_id=release_id,
+            )
+
         data = read_sql_with_connection(query.statement, session)
 
         if len(data) > 0:
@@ -1922,6 +1937,12 @@ class ViewDatapointsQuery:
                     query = query.filter(clause)
 
         if release_id:
+            query = filter_by_release(
+                query,
+                start_col=ModuleVersion.start_release_id,
+                end_col=ModuleVersion.end_release_id,
+                release_id=release_id,
+            )
             query = query.filter(
                 TableVersion.table_vid.in_(
                     cls._resolve_current_table_vids(session, table, release_id)
