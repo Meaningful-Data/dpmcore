@@ -625,30 +625,17 @@ class ASTToJSONVisitor(NodeVisitor):
     visit_IntersectSetOp = visit_UnionSetOp
     visit_SymdiffOp = visit_SetdiffOp
 
-    def visit_CountSetOp(self, node: Any) -> NodeDict:
-        """Visit legacy ``CountSetOp`` nodes as a ``count`` aggregation.
-
-        ``count`` is not a set operator — it returns the set's
-        cardinality as a Scalar — and its dedicated grammar rule was
-        dropped in MR !74, so ``count(...)`` now parses to an
-        ``AggregationOp``. The class survives only for externally built
-        ASTs, so emit the ``AggregationOp`` shape the parser would have
-        produced rather than let ``generic_visit`` invent a
-        ``CountSetOp`` class name the consumer schema rejects.
-
-        Args:
-            node: The legacy ``CountSetOp`` AST node.
-
-        Returns:
-            dict: The serialized ``AggregationOp`` node.
-        """
-        return {
-            "class_name": "AggregationOp",
-            "op": node.op,
-            "operand": self.visit(node.operand),
-            "grouping_clause": None,
-            "analytic_clause": None,
-        }
+    # ``count`` is not a set operator — it returns the set's cardinality
+    # as a Scalar — and its dedicated grammar rule was dropped in MR !74,
+    # so ``count(...)`` now parses to an ``AggregationOp``. The legacy
+    # class survives only for externally built ASTs, so alias it to the
+    # ``AggregationOp`` handler: it carries ``op``/``operand`` and no
+    # grouping or analytic clause, which is exactly what that handler's
+    # ``hasattr`` checks already emit (both clauses null). Aliasing keeps
+    # the parser shape and the legacy shape from drifting apart, and
+    # stops ``generic_visit`` inventing a ``CountSetOp`` class name the
+    # consumer schema rejects.
+    visit_CountSetOp = visit_AggregationOp
 
     def visit_ParExpr(self, node: Any) -> NodeDict:
         """Visit ParExpr nodes."""
