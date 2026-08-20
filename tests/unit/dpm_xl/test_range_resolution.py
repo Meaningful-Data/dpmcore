@@ -9,6 +9,7 @@ import math
 
 from dpmcore.dpm_xl.utils.range_resolution import (
     build_axis_order_map,
+    build_axis_value_map,
     resolve_range_codes,
     sort_by_order,
 )
@@ -108,3 +109,31 @@ class TestBuildAxisOrderMap:
             "r1": 1,
             "r2": 2,
         }
+
+
+class TestBuildAxisValueMap:
+    """A code's own numeric value, preferred over stored display order.
+
+    Some tables show a code out of numeric sequence for layout reasons
+    (e.g. the highest column code displayed first), which breaks range
+    resolution by ``TableVersionHeader.Order``. When every code on the
+    axis is a plain integer string, its own value is a more reliable
+    ordering key.
+    """
+
+    def test_zero_padded_and_non_padded_codes_parse_to_their_value(self):
+        assert build_axis_value_map(["0010", "0002", "11"]) == {
+            "0010": 10,
+            "0002": 2,
+            "11": 11,
+        }
+
+    def test_non_numeric_code_returns_none(self):
+        # One non-numeric code (e.g. an alphabetic memo code) makes the
+        # whole axis unusable -- falls back to order/text comparison.
+        assert build_axis_value_map(["0010", "TOTAL"]) is None
+
+    def test_missing_codes_are_skipped(self):
+        # A cell that lacks this axis (e.g. no sheets) carries a null code.
+        result = build_axis_value_map(["0010", None, math.nan])
+        assert result == {"0010": 10}

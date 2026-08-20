@@ -5,17 +5,11 @@ import pandas as pd
 
 from dpmcore.dpm_xl.utils.range_resolution import (
     build_axis_order_map,
+    build_axis_value_map,
     sort_by_order,
 )
 from dpmcore.dpm_xl.utils.tokens import *
 from dpmcore.errors import SemanticError
-
-# Stored-order column that carries the display order for each *_code column.
-_ORDER_COLUMN = {
-    ROW_CODE: ROW_ORDER,
-    COLUMN_CODE: COLUMN_ORDER,
-    SHEET_CODE: SHEET_ORDER,
-}
 
 
 def _raise_cells_not_found(
@@ -97,21 +91,18 @@ def filter_data_by_cell_element(
     """
     if valid_codes is None:
         valid_codes = set(series[element_name])
-    order_col = _ORDER_COLUMN.get(element_name)
-    use_order = (
-        bool(order_map)
-        and order_col is not None
-        and (order_col in series.columns)
-    )
+    use_order = bool(order_map)
 
     def _in_range(lo: str, hi: str) -> "pd.Series[bool]":
         """Boolean mask of ``series`` rows inside the range ``lo``-``hi``."""
-        if use_order and order_map is not None and order_col is not None:
+        if use_order and order_map is not None:
             lo_order = order_map.get(lo)
             hi_order = order_map.get(hi)
             if lo_order is None or hi_order is None or lo_order > hi_order:
                 return pd.Series(False, index=series.index)
-            return series[order_col].between(lo_order, hi_order)
+            return (
+                series[element_name].map(order_map).between(lo_order, hi_order)
+            )
         return series[element_name].between(lo, hi)
 
     if len(cell_elements) == 1 and "-" not in cell_elements[0]:
@@ -200,9 +191,13 @@ def _axis_order_map(
 ) -> dict[str, int] | None:
     """Build ``{code: order}`` for one axis of ``df`` (``None`` if unordered).
 
-    Returns ``None`` when the order column is absent or the axis is not fully
-    ordered, so the caller falls back to string comparison.
+    Prefers each code's numeric value over display order (some tables show a
+    code out of numeric sequence). Falls back to string comparison when
+    neither map is usable.
     """
+    value_map = build_axis_value_map(df[code_col])
+    if value_map:
+        return value_map
     if order_col not in df.columns:
         return None
     return build_axis_order_map(df[code_col], df[order_col])

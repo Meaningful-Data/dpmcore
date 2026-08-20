@@ -34,9 +34,6 @@ def test_set_of_op_node():
     node = SetOfOp(operand=operand)
     assert node.op == "set_of"
     assert node.operand is operand
-    j = node.toJSON()
-    assert j["class_name"] == "SetOfOp"
-    assert "operand" in j
 
 
 def test_union_set_op_node():
@@ -44,10 +41,7 @@ def test_union_set_op_node():
     s2 = Set(children=[])
     node = UnionSetOp(operands=[s1, s2])
     assert node.op == "union"
-    assert len(node.operands) == 2
-    j = node.toJSON()
-    assert j["class_name"] == "UnionSetOp"
-    assert "operands" in j
+    assert node.operands == [s1, s2]
 
 
 def test_intersect_set_op_node():
@@ -55,8 +49,7 @@ def test_intersect_set_op_node():
     s2 = Set(children=[])
     node = IntersectSetOp(operands=[s1, s2])
     assert node.op == "intersect"
-    j = node.toJSON()
-    assert j["class_name"] == "IntersectSetOp"
+    assert node.operands == [s1, s2]
 
 
 def test_setdiff_op_node():
@@ -66,10 +59,6 @@ def test_setdiff_op_node():
     assert node.op == "setdiff"
     assert node.left is s1
     assert node.right is s2
-    j = node.toJSON()
-    assert j["class_name"] == "SetdiffOp"
-    assert "left" in j
-    assert "right" in j
 
 
 def test_symdiff_op_node():
@@ -77,8 +66,8 @@ def test_symdiff_op_node():
     s2 = Set(children=[])
     node = SymdiffOp(left=s1, right=s2)
     assert node.op == "symdiff"
-    j = node.toJSON()
-    assert j["class_name"] == "SymdiffOp"
+    assert node.left is s1
+    assert node.right is s2
 
 
 def test_count_set_op_node():
@@ -86,9 +75,25 @@ def test_count_set_op_node():
     node = CountSetOp(operand=s)
     assert node.op == "count"
     assert node.operand is s
-    j = node.toJSON()
-    assert j["class_name"] == "CountSetOp"
-    assert "operand" in j
+
+
+def test_set_operator_nodes_define_no_own_to_json():
+    """The wire shape lives in ``ASTToJSONVisitor``, nowhere else.
+
+    A ``toJSON`` on any of these classes would be a second, divergent
+    serialization of the same node that no code path reaches (they are
+    ``AST`` subclasses, so ``serialize_ast`` always routes them through
+    the visitor), so re-adding one is a bug, not a feature.
+    """
+    for cls in (
+        SetOfOp,
+        UnionSetOp,
+        IntersectSetOp,
+        SetdiffOp,
+        SymdiffOp,
+        CountSetOp,
+    ):
+        assert "toJSON" not in vars(cls), f"{cls.__name__} redefines toJSON"
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +225,29 @@ def test_existing_literal_set_still_works():
 # and these nodes were silently dropped from the enriched AST payload.
 # ---------------------------------------------------------------------------
 
+from dpmcore.dpm_xl.utils.serialization import serialize_ast  # noqa: E402
+
+
+def _assert_set_op(node: dict, op: str, arity: int) -> list:
+    """Assert a node's ``SetOp`` wire shape and return its operands.
+
+    The consumer schema is ``additionalProperties: false``, so the exact
+    key set is part of the contract: a stray ``left``/``right``/
+    ``operand`` left alongside ``operands`` is a hard rejection
+    downstream, not a tolerated extra.
+    """
+    assert set(node) == {"class_name", "op", "operands"}
+    assert node["class_name"] == "SetOp"
+    assert node["op"] == op
+    assert len(node["operands"]) == arity
+    return node["operands"]
+
+
+def _assert_set_literal(node: dict, values: list) -> None:
+    """Assert a serialized ``Set`` literal holds exactly ``values``."""
+    assert node["class_name"] == "Set"
+    assert [child["value"] for child in node["children"]] == values
+
 
 def test_ast_to_json_serializes_empty_set_literal(serialize_expr):
     node = serialize_expr("{tT1, r001} in {}")
@@ -242,55 +270,117 @@ def test_ast_to_json_serializes_non_empty_set_literal(serialize_expr):
 
 def test_ast_to_json_serializes_set_of_op(serialize_expr):
     node = serialize_expr("{tT1, r001} in set_of({tT2, r001-010})")
-    right = node["right"]
-    assert right["class_name"] == "SetOfOp"
-    assert right["op"] == "set_of"
-    assert isinstance(right["operand"], dict)
+    ops = _assert_set_op(node["right"], "set_of", 1)
+    assert ops[0]["class_name"] == "VarID"
 
 
 def test_ast_to_json_serializes_union_variadic(serialize_expr):
     node = serialize_expr("{tT1, r001} in union({1, 2}, {3, 4}, {5, 6})")
-    right = node["right"]
-    assert right["class_name"] == "UnionSetOp"
-    assert right["op"] == "union"
-    assert len(right["operands"]) == 3
-    for operand in right["operands"]:
-        assert operand["class_name"] == "Set"
+    ops = _assert_set_op(node["right"], "union", 3)
+    expected = [[1, 2], [3, 4], [5, 6]]
+    for operand, values in zip(ops, expected, strict=True):
+        _assert_set_literal(operand, values)
 
 
 def test_ast_to_json_serializes_intersect(serialize_expr):
     node = serialize_expr("{tT1, r001} in intersect({1, 2, 3}, {2, 3, 4})")
-    right = node["right"]
-    assert right["class_name"] == "IntersectSetOp"
-    assert right["op"] == "intersect"
-    assert len(right["operands"]) == 2
+    ops = _assert_set_op(node["right"], "intersect", 2)
+    _assert_set_literal(ops[0], [1, 2, 3])
+    _assert_set_literal(ops[1], [2, 3, 4])
 
 
 def test_ast_to_json_serializes_setdiff(serialize_expr):
-    node = serialize_expr("{tT1, r001} in setdiff({1, 2, 3}, {3})")
-    right = node["right"]
-    assert right["class_name"] == "SetdiffOp"
-    assert right["op"] == "setdiff"
-    assert right["left"]["class_name"] == "Set"
-    assert right["right"]["class_name"] == "Set"
+    """``setdiff`` is not commutative: operands stay left-then-right."""
+    node = serialize_expr("{tT1, r001} in setdiff({1, 2, 3}, {9})")
+    ops = _assert_set_op(node["right"], "setdiff", 2)
+    _assert_set_literal(ops[0], [1, 2, 3])
+    _assert_set_literal(ops[1], [9])
 
 
 def test_ast_to_json_serializes_symdiff(serialize_expr):
-    node = serialize_expr("{tT1, r001} in symdiff({1, 2}, {2, 3})")
-    right = node["right"]
-    assert right["class_name"] == "SymdiffOp"
-    assert right["op"] == "symdiff"
-    assert right["left"]["class_name"] == "Set"
-    assert right["right"]["class_name"] == "Set"
+    """Operand order and identity are pinned exactly as for ``setdiff``."""
+    node = serialize_expr("{tT1, r001} in symdiff({1, 2}, {8, 9})")
+    ops = _assert_set_op(node["right"], "symdiff", 2)
+    _assert_set_literal(ops[0], [1, 2])
+    _assert_set_literal(ops[1], [8, 9])
 
 
 def test_ast_to_json_preserves_nested_set_operators(serialize_expr):
-    """A nested ``setdiff(union(...), ...)`` expression must round-trip with
-    every intermediate ``class_name`` intact — not just the outermost node.
+    """A nested ``setdiff(union(...), ...)`` expression must serialize as
+    ``SetOp`` at every level, with the inner operator in first position.
     """
     node = serialize_expr("{tT1, r001} in setdiff(union({1, 2}, {3, 4}), {5})")
-    outer = node["right"]
-    assert outer["class_name"] == "SetdiffOp"
-    inner = outer["left"]
-    assert inner["class_name"] == "UnionSetOp"
-    assert len(inner["operands"]) == 2
+    outer = _assert_set_op(node["right"], "setdiff", 2)
+    _assert_set_op(outer[0], "union", 2)
+    _assert_set_literal(outer[1], [5])
+
+
+def test_ast_to_json_emits_no_per_operator_set_class_names(
+    serialize_expr, class_names
+):
+    """None of the old per-operator names survives, at any depth."""
+    node = serialize_expr(
+        "{tT1, r001} in union("
+        "set_of({tT2, r001-010}), "
+        "intersect({1, 2}, {2, 3}), "
+        "setdiff({4, 5}, {5}), "
+        "symdiff({6}, {7})"
+        ")"
+    )
+    names = class_names(node)
+    assert names.isdisjoint(
+        {
+            "SetOfOp",
+            "UnionSetOp",
+            "IntersectSetOp",
+            "SetdiffOp",
+            "SymdiffOp",
+        }
+    )
+    assert "SetOp" in names
+    # ``Set`` literals are untouched by the collapse.
+    assert "Set" in names
+
+
+# ---------------------------------------------------------------------------
+# ``serialize_ast`` is the entry point ``ASTGeneratorService`` builds scripts
+# with, and it does more than the visitor: it expands ``with`` scopes first
+# and returns the root expression node directly. The shape has to hold there,
+# not just under a bare ``ASTToJSONVisitor().visit()``.
+# ---------------------------------------------------------------------------
+
+
+def test_serialize_ast_emits_set_op_at_the_public_entry_point():
+    payload = serialize_ast(
+        SyntaxService().parse("{tT1, r001} in setdiff({1, 2}, {3})")
+    )
+    assert payload["class_name"] == "BinOp"
+    ops = _assert_set_op(payload["right"], "setdiff", 2)
+    _assert_set_literal(ops[0], [1, 2])
+    _assert_set_literal(ops[1], [3])
+
+
+def test_serialize_ast_emits_set_op_for_with_scoped_expression():
+    """``with`` scopes are expanded by reconstructing the nodes."""
+    payload = serialize_ast(
+        SyntaxService().parse("with {tT1} : {r001} in union({1, 2}, {3})")
+    )
+    ops = _assert_set_op(payload["right"], "union", 2)
+    _assert_set_literal(ops[0], [1, 2])
+    _assert_set_literal(ops[1], [3])
+
+
+def test_serialize_ast_maps_legacy_count_set_op_to_aggregation():
+    """``count`` is an aggregation, not a set operator.
+
+    ``CountSetOp`` lost its grammar rule in MR !74 and survives only for
+    externally built ASTs, so it must serialize exactly as the parser's
+    ``count(...)`` does instead of falling through to ``generic_visit``
+    and emitting a class name the consumer schema rejects.
+    """
+    operand = Set(children=[Constant(type_="Integer", value=1)])
+    legacy = serialize_ast(CountSetOp(operand=operand))
+    parsed = serialize_ast(SyntaxService().parse("count({1}) = 1"))
+    assert legacy == parsed["left"]
+    assert legacy["class_name"] == "AggregationOp"
+    assert legacy["op"] == "count"
