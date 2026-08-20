@@ -220,18 +220,9 @@ def test_existing_literal_set_still_works():
 # and these nodes were silently dropped from the enriched AST payload.
 # ---------------------------------------------------------------------------
 
-from dpmcore.dpm_xl.utils.serialization import ASTToJSONVisitor  # noqa: E402
 
-
-def _serialize_expr(expression: str) -> dict:
-    ast = SyntaxService().parse(expression)
-    result = ASTToJSONVisitor().visit(ast)
-    assert isinstance(result, dict)
-    return result["children"][0]
-
-
-def test_ast_to_json_serializes_empty_set_literal():
-    node = _serialize_expr("{tT1, r001} in {}")
+def test_ast_to_json_serializes_empty_set_literal(serialize_expr):
+    node = serialize_expr("{tT1, r001} in {}")
     assert node["class_name"] == "BinOp"
     assert node["op"] == "in"
     right = node["right"]
@@ -239,8 +230,8 @@ def test_ast_to_json_serializes_empty_set_literal():
     assert right["children"] == []
 
 
-def test_ast_to_json_serializes_non_empty_set_literal():
-    node = _serialize_expr("{tT1, r001} in {1, 2, 3}")
+def test_ast_to_json_serializes_non_empty_set_literal(serialize_expr):
+    node = serialize_expr("{tT1, r001} in {1, 2, 3}")
     right = node["right"]
     assert right["class_name"] == "Set"
     assert len(right["children"]) == 3
@@ -249,16 +240,16 @@ def test_ast_to_json_serializes_non_empty_set_literal():
         assert child["value"] == expected
 
 
-def test_ast_to_json_serializes_set_of_op():
-    node = _serialize_expr("{tT1, r001} in set_of({tT2, r001-010})")
+def test_ast_to_json_serializes_set_of_op(serialize_expr):
+    node = serialize_expr("{tT1, r001} in set_of({tT2, r001-010})")
     right = node["right"]
     assert right["class_name"] == "SetOfOp"
     assert right["op"] == "set_of"
     assert isinstance(right["operand"], dict)
 
 
-def test_ast_to_json_serializes_union_variadic():
-    node = _serialize_expr("{tT1, r001} in union({1, 2}, {3, 4}, {5, 6})")
+def test_ast_to_json_serializes_union_variadic(serialize_expr):
+    node = serialize_expr("{tT1, r001} in union({1, 2}, {3, 4}, {5, 6})")
     right = node["right"]
     assert right["class_name"] == "UnionSetOp"
     assert right["op"] == "union"
@@ -267,16 +258,16 @@ def test_ast_to_json_serializes_union_variadic():
         assert operand["class_name"] == "Set"
 
 
-def test_ast_to_json_serializes_intersect():
-    node = _serialize_expr("{tT1, r001} in intersect({1, 2, 3}, {2, 3, 4})")
+def test_ast_to_json_serializes_intersect(serialize_expr):
+    node = serialize_expr("{tT1, r001} in intersect({1, 2, 3}, {2, 3, 4})")
     right = node["right"]
     assert right["class_name"] == "IntersectSetOp"
     assert right["op"] == "intersect"
     assert len(right["operands"]) == 2
 
 
-def test_ast_to_json_serializes_setdiff():
-    node = _serialize_expr("{tT1, r001} in setdiff({1, 2, 3}, {3})")
+def test_ast_to_json_serializes_setdiff(serialize_expr):
+    node = serialize_expr("{tT1, r001} in setdiff({1, 2, 3}, {3})")
     right = node["right"]
     assert right["class_name"] == "SetdiffOp"
     assert right["op"] == "setdiff"
@@ -284,8 +275,8 @@ def test_ast_to_json_serializes_setdiff():
     assert right["right"]["class_name"] == "Set"
 
 
-def test_ast_to_json_serializes_symdiff():
-    node = _serialize_expr("{tT1, r001} in symdiff({1, 2}, {2, 3})")
+def test_ast_to_json_serializes_symdiff(serialize_expr):
+    node = serialize_expr("{tT1, r001} in symdiff({1, 2}, {2, 3})")
     right = node["right"]
     assert right["class_name"] == "SymdiffOp"
     assert right["op"] == "symdiff"
@@ -293,13 +284,11 @@ def test_ast_to_json_serializes_symdiff():
     assert right["right"]["class_name"] == "Set"
 
 
-def test_ast_to_json_preserves_nested_set_operators():
+def test_ast_to_json_preserves_nested_set_operators(serialize_expr):
     """A nested ``setdiff(union(...), ...)`` expression must round-trip with
     every intermediate ``class_name`` intact — not just the outermost node.
     """
-    node = _serialize_expr(
-        "{tT1, r001} in setdiff(union({1, 2}, {3, 4}), {5})"
-    )
+    node = serialize_expr("{tT1, r001} in setdiff(union({1, 2}, {3, 4}), {5})")
     outer = node["right"]
     assert outer["class_name"] == "SetdiffOp"
     inner = outer["left"]
