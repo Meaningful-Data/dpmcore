@@ -11,6 +11,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from dpmcore import errors
+
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -25,7 +27,6 @@ def _patch_orm(monkeypatch):
         "dpmcore.orm.rendering": MagicMock(),
         "dpmcore.orm.variables": MagicMock(),
         "dpmcore.orm.glossary": MagicMock(),
-        "dpmcore.errors": MagicMock(),
         "dpmcore.loaders": MagicMock(),
         "dpmcore.loaders.migration": MagicMock(),
         "dpmcore.dpm_xl.model_queries": MagicMock(),
@@ -909,6 +910,18 @@ class _FakeVarID:
 _FakeVarID.__name__ = "VarID"
 
 
+class _FakeBinOp:
+    """Two-operand node the AST template walks into generically."""
+
+    def __init__(self, left, right):
+        self.op = "and"
+        self.left = left
+        self.right = right
+
+
+_FakeBinOp.__name__ = "BinOp"
+
+
 class TestExtractTimeShifts:
     def test_empty_returns_empty(self):
         _, Cls, _ = _bare_svc()
@@ -920,7 +933,7 @@ class TestExtractTimeShifts:
 
         sn = Constant(type_="Integer", value=1)
         node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_01"))
-        assert Cls._extract_time_shifts(node) == {"T_01": "T-1Q"}
+        assert Cls._extract_time_shifts(node) == {"T_01": ["T-1Q"]}
 
     def test_negative_unary_shift_produces_T_plus(self):
         """The declared period inverts the shift: ``-2`` needs ``T+2Y``."""
@@ -929,10 +942,10 @@ class TestExtractTimeShifts:
 
         sn = UnaryOp(op="-", operand=Constant(type_="Integer", value=2))
         node = _FakeTimeShiftOp("Y", sn, _FakeVarID(table="T_02"))
-        assert Cls._extract_time_shifts(node) == {"T_02": "T+2Y"}
+        assert Cls._extract_time_shifts(node) == {"T_02": ["T+2Y"]}
 
-    def test_negative_unary_shift_of_an_expression_keeps_direction(self):
-        """A non-literal shift keeps its direction, not its size."""
+    def test_negated_non_literal_shift_is_rejected(self):
+        """A negated non-literal shift names no resolvable period."""
         _, Cls, _ = _bare_svc()
         from dpmcore.dpm_xl.ast.nodes import BinOp, Constant, UnaryOp
 
@@ -945,7 +958,9 @@ class TestExtractTimeShifts:
             ),
         )
         node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_04"))
-        assert Cls._extract_time_shifts(node) == {"T_04": "T+nQ"}
+        with pytest.raises(errors.SemanticError) as exc:
+            Cls._extract_time_shifts(node)
+        assert exc.value.code == "4-7-5"
 
     def test_var_without_table_ignored(self):
         _, Cls, _ = _bare_svc()
@@ -955,14 +970,88 @@ class TestExtractTimeShifts:
         node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table=None))
         assert Cls._extract_time_shifts(node) == {}
 
+    def test_non_literal_shift_is_rejected(self):
+        """``2 * 2`` used to render as ``T-nQ``, which resolves to no
+        instance; the operation is now skipped instead (#326).
+        """
+        _, Cls, _ = _bare_svc()
+        from dpmcore.dpm_xl.ast.nodes import BinOp, Constant
+
+        sn = BinOp(
+            op="*",
+            left=Constant(type_="Integer", value=5),
+            right=Constant(type_="Integer", value=12),
+        )
+        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_03"))
+        with pytest.raises(errors.SemanticError) as exc:
+            Cls._extract_time_shifts(node)
+        assert exc.value.code == "4-7-5"
+
+    def test_plain_reference_is_recorded_as_t(self):
+        """An unshifted table is recorded at ``T`` so a module read at
+        both the current and a shifted instance stays visible.
+        """
+        _, Cls, _ = _bare_svc()
+
+        assert Cls._extract_time_shifts(_FakeVarID(table="T_05")) == {
+            "T_05": ["T"]
+        }
+
+    def test_a_table_read_plain_and_shifted_keeps_both_periods(self):
+        _, Cls, _ = _bare_svc()
+        from dpmcore.dpm_xl.ast.nodes import Constant
+
+        sn = Constant(type_="Integer", value=1)
+        shifted = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_06"))
+        node = _FakeBinOp(_FakeVarID(table="T_06"), shifted)
+        assert Cls._extract_time_shifts(node) == {"T_06": ["T", "T-1Q"]}
+
+    def test_a_table_shifted_twice_keeps_both_periods(self):
+        _, Cls, _ = _bare_svc()
+        from dpmcore.dpm_xl.ast.nodes import Constant
+
+        node = _FakeBinOp(
+            _FakeTimeShiftOp(
+                "Q", Constant(type_="Integer", value=1), _FakeVarID("T_07")
+            ),
+            _FakeTimeShiftOp(
+                "Q", Constant(type_="Integer", value=4), _FakeVarID("T_07")
+            ),
+        )
+        assert Cls._extract_time_shifts(node) == {"T_07": ["T-1Q", "T-4Q"]}
+
+    def test_the_shift_does_not_leak_past_the_operand(self):
+        """A plain table read after a shifted one stays at ``T``."""
+        _, Cls, _ = _bare_svc()
+        from dpmcore.dpm_xl.ast.nodes import Constant
+
+        node = _FakeBinOp(
+            _FakeTimeShiftOp(
+                "Q", Constant(type_="Integer", value=1), _FakeVarID("T_08")
+            ),
+            _FakeVarID(table="T_09"),
+        )
+        assert Cls._extract_time_shifts(node) == {
+            "T_08": ["T-1Q"],
+            "T_09": ["T"],
+        }
+
+    def test_a_zero_shift_is_no_shift(self):
+        _, Cls, _ = _bare_svc()
+        from dpmcore.dpm_xl.ast.nodes import Constant
+
+        sn = Constant(type_="Integer", value=0)
+        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_10"))
+        assert Cls._extract_time_shifts(node) == {"T_10": ["T"]}
+
     def test_unary_plus_shift_keeps_its_size(self):
         """``+1`` is a UnaryOp, not a bare Constant: it still means 1."""
         _, Cls, _ = _bare_svc()
         from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
 
         sn = UnaryOp(op="+", operand=Constant(type_="Integer", value=1))
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_05"))
-        assert Cls._extract_time_shifts(node) == {"T_05": "T-1Q"}
+        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_11"))
+        assert Cls._extract_time_shifts(node) == {"T_11": ["T-1Q"]}
 
     def test_parenthesised_shift_is_unwrapped(self):
         """``( -1 )`` parses as a ParExpr around the unary minus."""
@@ -974,8 +1063,8 @@ class TestExtractTimeShifts:
                 op="-", operand=Constant(type_="Integer", value=1)
             )
         )
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_06"))
-        assert Cls._extract_time_shifts(node) == {"T_06": "T+1Q"}
+        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_12"))
+        assert Cls._extract_time_shifts(node) == {"T_12": ["T+1Q"]}
 
     def test_negative_constant_renders_a_single_sign(self):
         """``(-1)`` is lexed as a negative Constant, not a unary minus."""
@@ -983,8 +1072,8 @@ class TestExtractTimeShifts:
         from dpmcore.dpm_xl.ast.nodes import Constant
 
         sn = Constant(type_="Integer", value=-1)
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_07"))
-        assert Cls._extract_time_shifts(node) == {"T_07": "T+1Q"}
+        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_13"))
+        assert Cls._extract_time_shifts(node) == {"T_13": ["T+1Q"]}
 
     def test_double_negation_shift_is_positive(self):
         _, Cls, _ = _bare_svc()
@@ -996,40 +1085,8 @@ class TestExtractTimeShifts:
                 op="-", operand=Constant(type_="Integer", value=1)
             ),
         )
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_08"))
-        assert Cls._extract_time_shifts(node) == {"T_08": "T-1Q"}
-
-    def test_zero_shift_declares_no_period(self):
-        """A shift of 0 reads the current instance: nothing to declare."""
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        sn = Constant(type_="Integer", value=0)
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_09"))
-        assert Cls._extract_time_shifts(node) == {}
-
-    def test_non_numeric_constant_shift_keeps_direction(self):
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
-
-        sn = UnaryOp(
-            op="-", operand=Constant(type_="String", value="not-a-number")
-        )
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_10"))
-        assert Cls._extract_time_shifts(node) == {"T_10": "T+nQ"}
-
-    def test_complex_expression_ast_node_shift(self):
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import BinOp, Constant
-
-        sn = BinOp(
-            op="*",
-            left=Constant(type_="Integer", value=5),
-            right=Constant(type_="Integer", value=12),
-        )
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_03"))
-        result = Cls._extract_time_shifts(node)
-        assert result == {"T_03": "T-nQ"}
+        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_14"))
+        assert Cls._extract_time_shifts(node) == {"T_14": ["T-1Q"]}
 
     def test_exception_returns_empty(self):
         _, Cls, _ = _bare_svc()
@@ -1228,6 +1285,44 @@ class TestScript:
         assert out["failed_operations"] == {
             "v1": "Grey cells {F_32.03.a, r0040, c0010} were found."
         }
+
+    def test_non_literal_shift_skips_op_preserves_others(self, monkeypatch):
+        """#326: a shift whose period cannot be declared skips that op.
+
+        Emitting the old ``T-nQ`` sent the operation to an instance no
+        engine can resolve, and failing the whole module would drop the
+        operations that are fine.
+        """
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+        svc._semantic.ast = "AST"
+
+        calls = iter(["bad", "ok", "ok"])
+
+        def _extract(ast):
+            if next(calls) == "bad":
+                raise errors.SemanticError("4-7-5")
+            return {"C_01.00": ["T"]}
+
+        monkeypatch.setattr(
+            type(svc), "_extract_time_shifts", staticmethod(_extract)
+        )
+
+        out = svc.script(
+            expressions=[("e_bad", "v1"), ("e2", "v2"), ("e3", "v3")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+        assert out["success"] is True
+        ns = next(iter(out["enriched_ast"].values()))
+        # Skipped before any accumulation: no operation entry either.
+        assert "v1" not in ns["operations"]
+        assert {"v2", "v3"} <= set(ns["operations"])
+        assert list(out["failed_operations"]) == ["v1"]
+        assert "integer literal" in out["failed_operations"]["v1"]
 
     def test_scope_error_fails_generation(self, monkeypatch):
         """Regression for #122: a scope-calculation error must fail the

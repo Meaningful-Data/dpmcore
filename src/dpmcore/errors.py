@@ -293,6 +293,10 @@ centralised_messages: Dict[str, str] = {
         "For time_shift operator,"
         " shift_number must evaluate to an integer scalar"
     ),
+    "4-7-5": (
+        "For time_shift operator, shift_number must be an integer"
+        " literal to declare the shifted operand's reference period"
+    ),
     # - String Operators
     "4-8-1": (
         "Invalid {op} parameter: {parameter_name} must be {constraint}."

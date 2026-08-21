@@ -924,7 +924,7 @@ class TestDetectCrossModuleDependencies:
         info = svc.detect_cross_module_dependencies(
             scope_result=sr,
             primary_module_vid=10,
-            time_shifts={"C_01.00": "T-1Q"},
+            time_shifts={"C_01.00": ["T-1Q"]},
         )
         dep = info["cross_instance_dependencies"][0]
         assert dep["modules"][0]["ref_period"] == "T-1Q"

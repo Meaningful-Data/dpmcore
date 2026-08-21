@@ -81,7 +81,7 @@ class TestHomeShiftIsCrossInstance:
             scope_result=ScopeResult(scopes=[_scope([HOME])]),
             primary_module_vid=HOME,
             operation_code="EGDQ_0896",
-            time_shifts={"C_48.02": "T-1Q"},
+            time_shifts={"C_48.02": ["T-1Q"]},
         )
         assert info["intra_instance_validations"] == []
 
@@ -90,7 +90,7 @@ class TestHomeShiftIsCrossInstance:
             scope_result=ScopeResult(scopes=[_scope([HOME])]),
             primary_module_vid=HOME,
             operation_code="EGDQ_0896",
-            time_shifts={"C_48.02": "T-1Q"},
+            time_shifts={"C_48.02": ["T-1Q"]},
         )
         assert info["cross_instance_dependencies"] == [
             {
@@ -113,7 +113,7 @@ class TestHomeShiftIsCrossInstance:
             scope_result=ScopeResult(scopes=[_scope([HOME])]),
             primary_module_vid=HOME,
             operation_code="EGDQ_0896",
-            time_shifts={"C_48.02": "T-1Q"},
+            time_shifts={"C_48.02": ["T-1Q"]},
         )
         assert info["dependency_modules"] == {}
 
@@ -132,7 +132,7 @@ class TestHomeShiftIsCrossInstance:
             scope_result=ScopeResult(scopes=[_scope([HOME])]),
             primary_module_vid=HOME,
             operation_code="EGDQ_0896",
-            time_shifts={"C_48.02": "T"},
+            time_shifts={"C_48.02": ["T"]},
         )
         assert info["intra_instance_validations"] == ["EGDQ_0896"]
         assert info["cross_instance_dependencies"] == []
@@ -143,7 +143,7 @@ class TestHomeShiftIsCrossInstance:
             scope_result=ScopeResult(scopes=[_scope([HOME])]),
             primary_module_vid=HOME,
             operation_code="EGDQ_0896",
-            time_shifts={"T_20": "T-1Q"},
+            time_shifts={"T_20": ["T-1Q"]},
         )
         assert info["intra_instance_validations"] == ["EGDQ_0896"]
         assert info["cross_instance_dependencies"] == []
@@ -157,7 +157,7 @@ class TestHomeShiftIsCrossInstance:
             scope_result=ScopeResult(scopes=[_scope([HOME])]),
             primary_module_vid=HOME,
             operation_code="EGDQ_0896",
-            time_shifts={"C_48.02": "T-1Q"},
+            time_shifts={"C_48.02": ["T-1Q"]},
             home_module_tables={"C_48.02"},
         )
         assert (
@@ -175,7 +175,7 @@ class TestHomeShiftIsCrossInstance:
             scope_result=ScopeResult(scopes=[_scope([HOME])]),
             primary_module_vid=HOME,
             operation_code="OP_BOTH",
-            time_shifts={"C_48.02": "T-1Q", "C_47.00": "T-4Q"},
+            time_shifts={"C_48.02": ["T-1Q"], "C_47.00": ["T-4Q"]},
         )
         periods = [
             m["ref_period"]
@@ -193,7 +193,7 @@ class TestHomeShiftIsCrossInstance:
             scope_result=ScopeResult(scopes=[_scope([HOME])]),
             primary_module_vid=HOME,
             operation_code="EGDQ_0896",
-            time_shifts={"C_48.02": "T-1Q"},
+            time_shifts={"C_48.02": ["T-1Q"]},
         )
         assert info["cross_instance_dependencies"][0]["modules"] == [
             {"URI": "uri/10", "ref_period": "T-1Q"}
@@ -206,7 +206,7 @@ class TestHomeShiftIsCrossInstance:
             scope_result=ScopeResult(scopes=[_scope([HOME])]),
             primary_module_vid=HOME,
             operation_code="EGDQ_0896",
-            time_shifts={"C_48.02": "T-1Q"},
+            time_shifts={"C_48.02": ["T-1Q"]},
         )
         assert info["intra_instance_validations"] == ["EGDQ_0896"]
         assert info["cross_instance_dependencies"] == []
@@ -216,7 +216,7 @@ class TestHomeShiftIsCrossInstance:
             scope_result=ScopeResult(has_error=True, error_message="boom"),
             primary_module_vid=HOME,
             operation_code="EGDQ_0896",
-            time_shifts={"C_48.02": "T-1Q"},
+            time_shifts={"C_48.02": ["T-1Q"]},
         )
         assert info["intra_instance_validations"] == []
         assert info["cross_instance_dependencies"] == []
@@ -227,7 +227,7 @@ class TestHomeShiftIsCrossInstance:
             scope_result=ScopeResult(scopes=[_scope([EXTERNAL])]),
             primary_module_vid=HOME,
             operation_code="EGDQ_0896",
-            time_shifts={"C_48.02": "T-1Q"},
+            time_shifts={"C_48.02": ["T-1Q"]},
         )
         assert info["intra_instance_validations"] == []
         assert info["cross_instance_dependencies"] == []
@@ -244,7 +244,7 @@ class TestHomeShiftAlongsideExternalDependency:
             ),
             primary_module_vid=HOME,
             operation_code="X_BOTH",
-            time_shifts={"C_48.02": "T-1Q"},
+            time_shifts={"C_48.02": ["T-1Q"]},
         )
         assert info["intra_instance_validations"] == []
         declared = [
