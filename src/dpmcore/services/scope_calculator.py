@@ -9,9 +9,11 @@ from typing import (
     Any,
     Dict,
     List,
+    Mapping,
     Optional,
     Set,
     Tuple,
+    Union,
 )
 
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
@@ -479,7 +481,7 @@ class ScopeCalculatorService:
         primary_module_vid: int,
         operation_code: Optional[str] = None,
         release_id: Optional[int] = None,
-        time_shifts: Optional[Dict[str, str]] = None,
+        time_shifts: Optional[Mapping[str, Union[str, List[str]]]] = None,
         compute_alternative_deps: bool = True,
         release_code: Optional[str] = None,
         referenced_variables: Optional[Dict[str, str]] = None,
@@ -493,9 +495,13 @@ class ScopeCalculatorService:
             primary_module_vid: VID of the primary module.
             operation_code: Current operation code (if any).
             release_id: Optional release filter.
-            time_shifts: Optional mapping of table codes to
-                ref-period strings (e.g. ``{"C_01.00": "T-1Q"}``).
-                Tables not present default to ``"T"``.
+            time_shifts: Optional mapping of table codes to the
+                ref-period strings that table is read at (e.g.
+                ``{"C_01.00": ["T", "T-1Q"]}``). A table read at more
+                than one period needs one declared instance per period
+                (#326). A bare string is accepted as a single period, so
+                the pre-#326 ``{"C_01.00": "T-1Q"}`` shape still works.
+                Tables not present default to ``["T"]``.
             compute_alternative_deps: When True (default) the returned
                 ``alternative_dependencies`` is populated from this
                 single ``scope_result``. Aggregating callers that
@@ -538,7 +544,13 @@ class ScopeCalculatorService:
             "dependency_modules": {},
         }
         is_cross = scope_result.is_cross_module
-        ts = time_shifts or {}
+        # Normalised up front: a bare string left as-is would be
+        # iterated character by character downstream and manufacture
+        # periods like ``"-"`` and ``"1"`` out of ``"T-1Q"``.
+        ts = {
+            table: [periods] if isinstance(periods, str) else list(periods)
+            for table, periods in (time_shifts or {}).items()
+        }
 
         # #325: a ``time_shift`` over a table of the reporting module
         # needs another *instance of that same module*, so the operation
@@ -676,8 +688,8 @@ class ScopeCalculatorService:
             )
             if entry is None:
                 continue
-            cross_dep, uri, dep_module = entry
-            cross_deps.append(cross_dep)
+            entry_deps, uri, dep_module = entry
+            cross_deps.extend(entry_deps)
             dep_modules[uri] = dep_module
 
         # A cross-module operation can shift a home table too, and that
@@ -712,26 +724,31 @@ class ScopeCalculatorService:
 
     def _home_shift_ref_periods(
         self,
-        ts: Dict[str, str],
+        ts: Dict[str, List[str]],
         primary_module_vid: int,
         release_id: Optional[int],
         home_module_tables: Optional[Set[str]] = None,
     ) -> List[str]:
         """Return the reference periods shifted *within* the home module.
 
-        ``ts`` maps table codes to reference periods. A table owned by
-        the primary (home) module and shifted away from ``"T"`` means the
-        operation reads another instance of the reporting module itself
-        (#325), which is a cross-instance dependency the script has to
-        declare — the reference period never reached the output before,
-        because it was only ever read off a *dependency* module's tables.
+        ``ts`` maps table codes to the reference periods they are read
+        at. A table owned by the primary (home) module and read at a
+        period other than ``"T"`` means the operation reads another
+        instance of the reporting module itself (#325), which is a
+        cross-instance dependency the script has to declare — the
+        reference period never reached the output before, because it was
+        only ever read off a *dependency* module's tables.
 
         One entry per distinct period, sorted for determinism: a single
         operation shifting two home tables by different amounts needs
         both instances, and the schema carries a period per declared
         module rather than per table.
         """
-        shifted = {tcode: rp for tcode, rp in ts.items() if rp and rp != "T"}
+        shifted = {
+            tcode: [rp for rp in periods if rp and rp != "T"]
+            for tcode, periods in ts.items()
+        }
+        shifted = {tcode: rps for tcode, rps in shifted.items() if rps}
         if not shifted:
             return []
         # Only pay for the table lookup once a shift is actually present.
@@ -742,7 +759,14 @@ class ScopeCalculatorService:
                     primary_module_vid, release_id=release_id
                 ).keys()
             )
-        return sorted({rp for tcode, rp in shifted.items() if tcode in tables})
+        return sorted(
+            {
+                rp
+                for tcode, rps in shifted.items()
+                if tcode in tables
+                for rp in rps
+            }
+        )
 
     def _build_home_instance_deps(
         self,
@@ -826,13 +850,20 @@ class ScopeCalculatorService:
         vid: int,
         mv: Any,
         release_id: Optional[int],
-        ts: Dict[str, str],
+        ts: Dict[str, List[str]],
         operation_code: Optional[str],
         referenced_variables: Optional[Dict[str, str]] = None,
         referenced_tables: Optional[Set[str]] = None,
         home_module_tables: Optional[Set[str]] = None,
-    ) -> Optional[Tuple[Dict[str, Any], str, Dict[str, Any]]]:
-        """Build a single (cross_dep, uri, dependency_module) triple.
+    ) -> Optional[Tuple[List[Dict[str, Any]], str, Dict[str, Any]]]:
+        """Build the (cross_deps, uri, dependency_module) triple for *vid*.
+
+        One ``cross_instance_dependencies`` entry per distinct reference
+        period the module is read at — the schema carries a period per
+        declared module, so a module needed at two instances has to be
+        declared twice (#326). ``dependency_modules`` stays keyed by URI
+        and carries the union of the tables, exactly as before: the
+        table and datapoint definitions do not vary by instance.
 
         Returns ``None`` when the module has no resolvable URI or
         when every one of its tables is variable-less (and therefore
@@ -865,11 +896,20 @@ class ScopeCalculatorService:
         # table not referenced by the cross-rules, and a dropped table takes
         # its timeshift with it — a module whose only timeshifted table is
         # not referenced would otherwise fall back to ref_period T.
-        ref_period = "T"
-        for tbl_code in tables_dict:
-            rp = ts.get(tbl_code)
-            if rp and rp != "T":
-                ref_period = rp
+        # Every period any of the module's tables is read at is kept:
+        # taking one dropped the others, so an operation reading two
+        # tables of the same module at different instances — or one
+        # table both plain and shifted — was declared against a single
+        # instance and evaluated against the wrong one (#326). Sorted so
+        # the output does not depend on visit order; ``"T"`` sorts first.
+        periods = sorted(
+            {
+                rp
+                for tbl_code in tables_dict
+                for rp in ts.get(tbl_code, ())
+                if rp
+            }
+        ) or ["T"]
 
         # #250: declare only the tables and datapoints the cross-rules
         # actually reference — a whole dependency module is 100+ tables and
@@ -900,12 +940,15 @@ class ScopeCalculatorService:
                 if tcode not in home_module_tables
             }
 
-        cross_dep = self._cross_dep_entry(
-            uri=uri,
-            ref_period=ref_period,
-            mv=mv,
-            operation_code=operation_code,
-        )
+        cross_deps = [
+            self._cross_dep_entry(
+                uri=uri,
+                ref_period=period,
+                mv=mv,
+                operation_code=operation_code,
+            )
+            for period in periods
+        ]
         variables: Dict[str, str] = {
             k: v
             for tbl in tables_dict.values()
@@ -924,7 +967,7 @@ class ScopeCalculatorService:
             "tables": tables_dict,
             "variables": variables,
         }
-        return cross_dep, uri, dep_module
+        return cross_deps, uri, dep_module
 
     @staticmethod
     def _narrow_dependency_tables(
