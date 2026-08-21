@@ -1345,15 +1345,25 @@ extract_precondition_codes`, shared with
     ) -> None:
         """Merge *new* cross-instance deps into *existing*.
 
-        Deduplicates by the set of module URIs.  When a duplicate is
-        found, its ``affected_operations`` are merged instead.
+        Deduplicates by the set of ``(module URI, reference period)``
+        pairs. When a duplicate is found, its ``affected_operations``
+        are merged instead.
+
+        The reference period is part of the key because two operations
+        can need the *same* module at *different* instances — one at
+        ``T``, another at ``T-1Q`` (#325 makes a non-default period
+        reachable for the home module). Keying on the URI alone merged
+        them into a single entry whose period was whichever operation
+        came first, silently sending the other to the wrong instance.
         """
 
-        def _uri_key(dep: Dict[str, Any]) -> Tuple[str, ...]:
+        def _uri_key(dep: Dict[str, Any]) -> Tuple[Tuple[str, str], ...]:
             modules = dep.get("modules", [])
             return tuple(
                 sorted(
-                    m.get("URI", "") if isinstance(m, dict) else str(m)
+                    (m.get("URI", ""), m.get("ref_period", ""))
+                    if isinstance(m, dict)
+                    else (str(m), "")
                     for m in modules
                 )
             )
@@ -1404,17 +1414,59 @@ extract_precondition_codes`, shared with
 
     @staticmethod
     def _to_ref_period(internal: str) -> str:
-        if internal.startswith("t+"):
+        """Render a ``t(+|-)<indicator><n>`` marker as a reference period.
+
+        The declared period is the *opposite* of the shift the expression
+        asks for. ``time_shift`` moves the operand's reference period by
+        ``shift_number``, so the instance whose shifted operand lines up
+        with the one being reported is the one at ``T - shift_number``:
+        ``time_shift(x, A, 1, refPeriod)`` needs ``T-1A`` and
+        ``time_shift(x, Q, -1, refPeriod)`` needs ``T+1Q``. The marker is
+        built with that inversion already applied (see
+        :meth:`_extract_time_shifts`), so this only reorders it.
+        """
+        if internal.startswith(("t+", "t-")):
+            sign = internal[1]
             ind = internal[2]
             num = internal[3:]
-            if num.startswith("-"):
-                return f"T{num}{ind}"
-            return f"T+{num}{ind}"
-        if internal.startswith("t-"):
-            ind = internal[2]
-            num = internal[3:]
-            return f"T-{num}{ind}"
+            return f"T{sign}{num}{ind}"
         return "T"
+
+    @staticmethod
+    def _literal_shift(node: Any) -> Tuple[int, Optional[int]]:
+        """Resolve a ``shift_number`` expression to ``(sign, magnitude)``.
+
+        ``sign`` is the direction the expression asks for (``1`` or
+        ``-1``) and ``magnitude`` its size, or ``None`` when the shift
+        number is not an integer literal — a reference or a computed
+        expression, whose size no reference period can name.
+
+        The same written literal reaches this in several shapes, and
+        reading only the two obvious ones mis-declared the rest: ``+1``
+        is a ``UnaryOp``, so it lost its size and rendered ``T-nQ``;
+        ``( -1 )`` is a ``ParExpr`` around one, so it lost its direction
+        too; and ``(-1)`` without the spaces is lexed as a *negative*
+        ``Constant``, which rendered the sign twice (``T--1Q``).
+        """
+        from dpmcore.dpm_xl.ast.nodes import Constant, ParExpr, UnaryOp
+
+        sign = 1
+        while True:
+            if isinstance(node, ParExpr):
+                node = node.expression
+            elif isinstance(node, UnaryOp) and node.op in ("+", "-"):
+                if node.op == "-":
+                    sign = -sign
+                node = node.operand
+            else:
+                break
+        if not isinstance(node, Constant):
+            return sign, None
+        try:
+            shift = sign * int(node.value)
+        except (TypeError, ValueError):
+            return sign, None
+        return (-1 if shift < 0 else 1), abs(shift)
 
     @staticmethod
     def _extract_time_shifts(ast: Any) -> Dict[str, str]:
@@ -1433,23 +1485,24 @@ extract_precondition_codes`, shared with
                 self.visit(node.operand)
 
             def visit_TimeShiftOp(self, node: Any) -> None:
-                from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
-
                 prev = current_period[0]
                 pi = node.period_indicator
-                sn = node.shift_number
-                if isinstance(sn, Constant):
-                    current_period[0] = f"t-{pi}{sn.value}"
-                elif isinstance(sn, UnaryOp) and sn.op == "-":
-                    inner = sn.operand
-                    sn_str = (
-                        f"-{inner.value}"
-                        if isinstance(inner, Constant)
-                        else "n"
-                    )
-                    current_period[0] = f"t+{pi}{sn_str}"
+                # The declared period inverts the shift number: a shift
+                # of ``+n`` needs the instance ``n`` periods back, a
+                # shift of ``-n`` the one ``n`` periods ahead. A shift
+                # number that is not a literal keeps its direction but
+                # not its size (``n``), which no instance resolves to,
+                # and a shift of ``0`` is no shift at all.
+                sign, magnitude = ASTGeneratorService._literal_shift(
+                    node.shift_number
+                )
+                marker = "-" if sign > 0 else "+"
+                if magnitude is None:
+                    current_period[0] = f"t{marker}{pi}n"
+                elif magnitude == 0:
+                    current_period[0] = "t"
                 else:
-                    current_period[0] = f"t-{pi}n"
+                    current_period[0] = f"t{marker}{pi}{magnitude}"
                 self.visit(node.operand)
                 current_period[0] = prev
 

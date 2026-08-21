@@ -80,6 +80,13 @@ class ScopeCalculatorService:
         """Build the service bound to ``session``."""
         self.session = session
         self._syntax = SyntaxService()
+        # ``(ModuleVersion, URI)`` per module VID, for the home module of
+        # a script. ``detect_cross_module_dependencies`` runs once per
+        # operation with a fixed ``primary_module_vid``, so resolving it
+        # inside repeats the same row fetch and URI resolution for every
+        # operation that shifts a home table. Both are keyed by VID
+        # alone and neither varies with the release being generated.
+        self._home_module_refs: Dict[int, Tuple[Any, Optional[str]]] = {}
 
     def _check_release_exists(self, release_id: Optional[int]) -> None:
         """Raise SemanticError if *release_id* does not exist."""
@@ -533,6 +540,24 @@ class ScopeCalculatorService:
         is_cross = scope_result.is_cross_module
         ts = time_shifts or {}
 
+        # #325: a ``time_shift`` over a table of the reporting module
+        # needs another *instance of that same module*, so the operation
+        # is not intra-instance and the shifted instance has to be
+        # declared like any other cross-instance dependency — under the
+        # home module's own URI and the shift's reference period.
+        # Without this the shift is silently dropped: the engine resolves
+        # both operands against the current instance and the script fails.
+        home_periods = (
+            self._home_shift_ref_periods(
+                ts=ts,
+                primary_module_vid=primary_module_vid,
+                release_id=release_id,
+                home_module_tables=home_module_tables,
+            )
+            if not scope_result.has_error
+            else []
+        )
+
         # Issue #120: when the primary module can evaluate the operation
         # on its own (it appears as a single-module scope), prefer the
         # intra-instance reading even if cross-instance scopes also exist
@@ -560,19 +585,38 @@ class ScopeCalculatorService:
                     release_id=release_id,
                     valid_module_uris=set(),
                 )
+            # A shifted home table turns the intra claim into a
+            # cross-instance dependency on the home module itself (#325).
+            # The primary still has to own a single-module scope: a module
+            # hosting none of the referenced tables is neither the
+            # intra-instance owner nor the shifted instance's reporter.
+            self_deps = (
+                self._build_home_instance_deps(
+                    periods=home_periods,
+                    primary_module_vid=primary_module_vid,
+                    operation_code=operation_code,
+                )
+                if primary_has_intra
+                else []
+            )
             # The intra claim needs the primary to actually own a
             # single-module scope. Keying it off ``not is_cross`` instead
             # declared intra for a module that participates in no scope at
             # all — it hosts none of the referenced tables (#141). That was
             # masked while a redundant superset scope kept ``is_cross``
             # true; dropping those scopes (#304) exposes it.
+            # ``not self_deps`` rather than ``not home_periods``: when the
+            # shifted instance cannot be declared (no resolvable URI) the
+            # operation keeps its intra classification instead of being
+            # dropped from the script's dependency block entirely.
             return {
                 **empty_result,
                 "intra_instance_validations": (
                     [operation_code]
-                    if operation_code and primary_has_intra
+                    if operation_code and primary_has_intra and not self_deps
                     else []
                 ),
+                "cross_instance_dependencies": self_deps,
                 "alternative_dependencies": alternative_deps,
             }
 
@@ -636,6 +680,18 @@ class ScopeCalculatorService:
             cross_deps.append(cross_dep)
             dep_modules[uri] = dep_module
 
+        # A cross-module operation can shift a home table too, and that
+        # shifted home instance is a dependency of its own (#325). It is
+        # appended after the external ones so their order — and the entry
+        # every existing caller reads first — stays unchanged.
+        cross_deps.extend(
+            self._build_home_instance_deps(
+                periods=home_periods,
+                primary_module_vid=primary_module_vid,
+                operation_code=operation_code,
+            )
+        )
+
         alternative_deps = (
             self.detect_alternative_dependencies(
                 scope_results=[scope_result],
@@ -652,6 +708,117 @@ class ScopeCalculatorService:
             "cross_instance_dependencies": cross_deps,
             "alternative_dependencies": alternative_deps,
             "dependency_modules": dep_modules,
+        }
+
+    def _home_shift_ref_periods(
+        self,
+        ts: Dict[str, str],
+        primary_module_vid: int,
+        release_id: Optional[int],
+        home_module_tables: Optional[Set[str]] = None,
+    ) -> List[str]:
+        """Return the reference periods shifted *within* the home module.
+
+        ``ts`` maps table codes to reference periods. A table owned by
+        the primary (home) module and shifted away from ``"T"`` means the
+        operation reads another instance of the reporting module itself
+        (#325), which is a cross-instance dependency the script has to
+        declare — the reference period never reached the output before,
+        because it was only ever read off a *dependency* module's tables.
+
+        One entry per distinct period, sorted for determinism: a single
+        operation shifting two home tables by different amounts needs
+        both instances, and the schema carries a period per declared
+        module rather than per table.
+        """
+        shifted = {tcode: rp for tcode, rp in ts.items() if rp and rp != "T"}
+        if not shifted:
+            return []
+        # Only pay for the table lookup once a shift is actually present.
+        tables = home_module_tables
+        if tables is None:
+            tables = set(
+                self._get_module_tables(
+                    primary_module_vid, release_id=release_id
+                ).keys()
+            )
+        return sorted({rp for tcode, rp in shifted.items() if tcode in tables})
+
+    def _build_home_instance_deps(
+        self,
+        periods: List[str],
+        primary_module_vid: int,
+        operation_code: Optional[str],
+    ) -> List[Dict[str, Any]]:
+        """Build the cross-instance entries for shifted home instances.
+
+        Each period yields one entry naming the home module's own URI —
+        the same URI the script is published under — so the engine knows
+        which instance to load for the shifted operand (#325). No
+        ``dependency_modules`` entry accompanies it: the home module's
+        tables and variables are already declared at the top level of
+        the script, and the shifted instance is the same module version.
+
+        The module version and its URI are memoised in
+        ``_home_module_refs``: the caller iterates this once per
+        operation with the same ``primary_module_vid``.
+        """
+        if not periods:
+            return []
+        cached = self._home_module_refs.get(primary_module_vid)
+        if cached is None:
+            mv = (
+                self.session.query(ModuleVersion)
+                .filter(ModuleVersion.module_vid == primary_module_vid)
+                .first()
+            )
+            cached = (
+                mv,
+                self._get_module_uri(module_vid=primary_module_vid, mv=mv),
+            )
+            self._home_module_refs[primary_module_vid] = cached
+        mv, uri = cached
+        if not uri:
+            return []
+        return [
+            self._cross_dep_entry(
+                uri=uri,
+                ref_period=period,
+                mv=mv,
+                operation_code=operation_code,
+            )
+            for period in periods
+        ]
+
+    @staticmethod
+    def _cross_dep_entry(
+        uri: str,
+        ref_period: str,
+        mv: Any,
+        operation_code: Optional[str],
+    ) -> Dict[str, Any]:
+        """Build one ``cross_instance_dependencies`` entry for *uri*.
+
+        The reference dates are the declared module version's own
+        window, and ``module_version`` is omitted when the row carries
+        no version number.
+        """
+        module_entry: Dict[str, Any] = {
+            "URI": uri,
+            "ref_period": ref_period,
+        }
+        version_number = getattr(mv, "version_number", None)
+        if version_number:
+            module_entry["module_version"] = version_number
+        from_date = getattr(mv, "from_reference_date", None)
+        to_date = getattr(mv, "to_reference_date", None)
+        return {
+            "modules": [module_entry],
+            "affected_operations": (
+                [operation_code] if operation_code else []
+            ),
+            "from_reference_date": (str(from_date) if from_date else ""),
+            "to_reference_date": (str(to_date) if to_date else ""),
         }
 
     def _build_dependency_entry(
@@ -733,23 +900,12 @@ class ScopeCalculatorService:
                 if tcode not in home_module_tables
             }
 
-        module_entry: Dict[str, Any] = {
-            "URI": uri,
-            "ref_period": ref_period,
-        }
-        if mv.version_number:
-            module_entry["module_version"] = mv.version_number
-
-        from_date = mv.from_reference_date
-        to_date = mv.to_reference_date
-        cross_dep = {
-            "modules": [module_entry],
-            "affected_operations": (
-                [operation_code] if operation_code else []
-            ),
-            "from_reference_date": (str(from_date) if from_date else ""),
-            "to_reference_date": (str(to_date) if to_date else ""),
-        }
+        cross_dep = self._cross_dep_entry(
+            uri=uri,
+            ref_period=ref_period,
+            mv=mv,
+            operation_code=operation_code,
+        )
         variables: Dict[str, str] = {
             k: v
             for tbl in tables_dict.values()
