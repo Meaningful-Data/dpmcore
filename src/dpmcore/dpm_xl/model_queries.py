@@ -52,6 +52,7 @@ from dpmcore.orm.packaging import (
 )
 from dpmcore.orm.query_utils import chunked_in
 from dpmcore.orm.release_sort_order import (
+    compute_sort_order,
     load_release_sort_orders,
     release_ids_for_sort_order,
     resolve_sort_order,
@@ -1619,6 +1620,48 @@ class ViewDatapointsQuery:
         }
         return query, aliases
 
+    @staticmethod
+    def _resolve_current_table_vids(
+        session: "Session", table: str, release_id: int | None
+    ) -> list[int]:
+        """Resolve the ``TableVersion.table_vid`` value(s) of ``table`` open at ``release_id``.
+
+        At the perpetual release, an adopted version and one just started
+        there can both compare as "open now". When both are present, only
+        the adopted one(s) are kept.
+
+        Args:
+            session: SQLAlchemy session.
+            table: Table version code.
+            release_id: Release filter; ``None`` resolves to whichever
+                version(s) are currently open.
+
+        Returns:
+            The matching ``table_vid`` values (empty when ``table`` has none
+            open at ``release_id``).
+        """
+        query = session.query(
+            TableVersion.table_vid, TableVersion.start_release_id
+        ).filter(TableVersion.code == table)
+        query = filter_by_release(
+            query,
+            start_col=TableVersion.start_release_id,
+            end_col=TableVersion.end_release_id,
+            release_id=release_id,
+            active_only_fallback=True,
+        )
+        rows = query.all()
+        if len(rows) <= 1:
+            return [row.table_vid for row in rows]
+        sort_orders = load_release_sort_orders(session)
+        perpetual = compute_sort_order(None, None)
+        adopted = [
+            row.table_vid
+            for row in rows
+            if sort_orders.get(row.start_release_id, perpetual) < perpetual
+        ]
+        return adopted or [row.table_vid for row in rows]
+
     @classmethod
     def get_axis_orders(
         cls,
@@ -1667,9 +1710,12 @@ class ViewDatapointsQuery:
         ).distinct()
 
         query = query.filter(TableVersion.code == table)
-        if release_id is None:
-            query = query.filter(TableVersion.end_release_id.is_(None))
-        else:
+        query = query.filter(
+            TableVersion.table_vid.in_(
+                cls._resolve_current_table_vids(session, table, release_id)
+            )
+        )
+        if release_id is not None:
             query = filter_by_release(
                 query,
                 start_col=ModuleVersion.start_release_id,
@@ -1775,9 +1821,11 @@ class ViewDatapointsQuery:
         )
 
         query = query.filter(TableVersion.code == table)
-
-        if release_id is None:
-            query = query.filter(TableVersion.end_release_id.is_(None))
+        query = query.filter(
+            TableVersion.table_vid.in_(
+                cls._resolve_current_table_vids(session, table, release_id)
+            )
+        )
 
         # Range endpoints are resolved against the stored display order, not
         # the code text; ``get_axis_orders`` supplies the per-axis map (or
@@ -1894,6 +1942,11 @@ class ViewDatapointsQuery:
                 start_col=ModuleVersion.start_release_id,
                 end_col=ModuleVersion.end_release_id,
                 release_id=release_id,
+            )
+            query = query.filter(
+                TableVersion.table_vid.in_(
+                    cls._resolve_current_table_vids(session, table, release_id)
+                )
             )
 
         return read_sql_with_connection(query.statement, session)
