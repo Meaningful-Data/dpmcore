@@ -272,3 +272,63 @@ class TestHomeShiftAlongsideExternalDependency:
             for m in dep["modules"]
         ]
         assert declared == [("uri/20", "T")]
+
+
+class TestHomeModuleResolutionIsMemoised:
+    """The home module is resolved once, not once per operation.
+
+    ``detect_cross_module_dependencies`` runs per operation with a fixed
+    ``primary_module_vid``, so the row fetch and URI resolution behind
+    the shifted home instance repeated for every shifting operation in
+    a script.
+    """
+
+    def test_repeated_operations_resolve_the_home_module_once(self, svc):
+        resolver = MagicMock(
+            side_effect=lambda module_vid, mv=None: f"uri/{module_vid}"
+        )
+        svc._get_module_uri = resolver
+        declared = []
+        for code in ("OP_1", "OP_2", "OP_3"):
+            info = svc.detect_cross_module_dependencies(
+                scope_result=ScopeResult(scopes=[_scope([HOME])]),
+                primary_module_vid=HOME,
+                operation_code=code,
+                time_shifts={"C_48.02": "T-1Q"},
+            )
+            declared.append(info["cross_instance_dependencies"])
+        assert resolver.call_count == 1
+        # Memoising must not change what is declared: same entry every
+        # time, only the operation it affects differs.
+        assert [d[0]["modules"] for d in declared] == [
+            [
+                {
+                    "URI": "uri/10",
+                    "ref_period": "T-1Q",
+                    "module_version": "3.1.0",
+                }
+            ]
+        ] * 3
+        assert [d[0]["affected_operations"] for d in declared] == [
+            ["OP_1"],
+            ["OP_2"],
+            ["OP_3"],
+        ]
+
+    def test_a_different_home_module_is_resolved_on_its_own(self, svc):
+        resolver = MagicMock(
+            side_effect=lambda module_vid, mv=None: f"uri/{module_vid}"
+        )
+        svc._get_module_uri = resolver
+        for vid, table in ((HOME, "C_48.02"), (EXTERNAL, "T_20")):
+            info = svc.detect_cross_module_dependencies(
+                scope_result=ScopeResult(scopes=[_scope([vid])]),
+                primary_module_vid=vid,
+                operation_code="OP",
+                time_shifts={table: "T-1Q"},
+            )
+            assert (
+                info["cross_instance_dependencies"][0]["modules"][0]["URI"]
+                == f"uri/{vid}"
+            )
+        assert resolver.call_count == 2

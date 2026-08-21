@@ -80,6 +80,13 @@ class ScopeCalculatorService:
         """Build the service bound to ``session``."""
         self.session = session
         self._syntax = SyntaxService()
+        # ``(ModuleVersion, URI)`` per module VID, for the home module of
+        # a script. ``detect_cross_module_dependencies`` runs once per
+        # operation with a fixed ``primary_module_vid``, so resolving it
+        # inside repeats the same row fetch and URI resolution for every
+        # operation that shifts a home table. Both are keyed by VID
+        # alone and neither varies with the release being generated.
+        self._home_module_refs: Dict[int, Tuple[Any, Optional[str]]] = {}
 
     def _check_release_exists(self, release_id: Optional[int]) -> None:
         """Raise SemanticError if *release_id* does not exist."""
@@ -751,15 +758,26 @@ class ScopeCalculatorService:
         ``dependency_modules`` entry accompanies it: the home module's
         tables and variables are already declared at the top level of
         the script, and the shifted instance is the same module version.
+
+        The module version and its URI are memoised in
+        ``_home_module_refs``: the caller iterates this once per
+        operation with the same ``primary_module_vid``.
         """
         if not periods:
             return []
-        mv = (
-            self.session.query(ModuleVersion)
-            .filter(ModuleVersion.module_vid == primary_module_vid)
-            .first()
-        )
-        uri = self._get_module_uri(module_vid=primary_module_vid, mv=mv)
+        cached = self._home_module_refs.get(primary_module_vid)
+        if cached is None:
+            mv = (
+                self.session.query(ModuleVersion)
+                .filter(ModuleVersion.module_vid == primary_module_vid)
+                .first()
+            )
+            cached = (
+                mv,
+                self._get_module_uri(module_vid=primary_module_vid, mv=mv),
+            )
+            self._home_module_refs[primary_module_vid] = cached
+        mv, uri = cached
         if not uri:
             return []
         return [
