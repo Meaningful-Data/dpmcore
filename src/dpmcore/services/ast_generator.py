@@ -1345,15 +1345,25 @@ extract_precondition_codes`, shared with
     ) -> None:
         """Merge *new* cross-instance deps into *existing*.
 
-        Deduplicates by the set of module URIs.  When a duplicate is
-        found, its ``affected_operations`` are merged instead.
+        Deduplicates by the set of ``(module URI, reference period)``
+        pairs. When a duplicate is found, its ``affected_operations``
+        are merged instead.
+
+        The reference period is part of the key because two operations
+        can need the *same* module at *different* instances — one at
+        ``T``, another at ``T-1Q`` (#325 makes a non-default period
+        reachable for the home module). Keying on the URI alone merged
+        them into a single entry whose period was whichever operation
+        came first, silently sending the other to the wrong instance.
         """
 
-        def _uri_key(dep: Dict[str, Any]) -> Tuple[str, ...]:
+        def _uri_key(dep: Dict[str, Any]) -> Tuple[Tuple[str, str], ...]:
             modules = dep.get("modules", [])
             return tuple(
                 sorted(
-                    m.get("URI", "") if isinstance(m, dict) else str(m)
+                    (m.get("URI", ""), m.get("ref_period", ""))
+                    if isinstance(m, dict)
+                    else (str(m), "")
                     for m in modules
                 )
             )
@@ -1404,16 +1414,22 @@ extract_precondition_codes`, shared with
 
     @staticmethod
     def _to_ref_period(internal: str) -> str:
-        if internal.startswith("t+"):
+        """Render a ``t(+|-)<indicator><n>`` marker as a reference period.
+
+        The declared period is the *opposite* of the shift the expression
+        asks for. ``time_shift`` moves the operand's reference period by
+        ``shift_number``, so the instance whose shifted operand lines up
+        with the one being reported is the one at ``T - shift_number``:
+        ``time_shift(x, A, 1, refPeriod)`` needs ``T-1A`` and
+        ``time_shift(x, Q, -1, refPeriod)`` needs ``T+1Q``. The marker is
+        built with that inversion already applied (see
+        :meth:`_extract_time_shifts`), so this only reorders it.
+        """
+        if internal.startswith(("t+", "t-")):
+            sign = internal[1]
             ind = internal[2]
             num = internal[3:]
-            if num.startswith("-"):
-                return f"T{num}{ind}"
-            return f"T+{num}{ind}"
-        if internal.startswith("t-"):
-            ind = internal[2]
-            num = internal[3:]
-            return f"T-{num}{ind}"
+            return f"T{sign}{num}{ind}"
         return "T"
 
     @staticmethod
@@ -1438,16 +1454,17 @@ extract_precondition_codes`, shared with
                 prev = current_period[0]
                 pi = node.period_indicator
                 sn = node.shift_number
+                # The declared period inverts the shift number: a shift
+                # of ``+n`` needs the instance ``n`` periods back, a
+                # shift of ``-n`` the one ``n`` periods ahead. A shift
+                # number that is not a literal keeps its direction but
+                # not its size (``n``), which no instance resolves to.
                 if isinstance(sn, Constant):
                     current_period[0] = f"t-{pi}{sn.value}"
                 elif isinstance(sn, UnaryOp) and sn.op == "-":
                     inner = sn.operand
-                    sn_str = (
-                        f"-{inner.value}"
-                        if isinstance(inner, Constant)
-                        else "n"
-                    )
-                    current_period[0] = f"t+{pi}{sn_str}"
+                    num = inner.value if isinstance(inner, Constant) else "n"
+                    current_period[0] = f"t+{pi}{num}"
                 else:
                     current_period[0] = f"t-{pi}n"
                 self.visit(node.operand)

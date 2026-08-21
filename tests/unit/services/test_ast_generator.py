@@ -922,13 +922,30 @@ class TestExtractTimeShifts:
         node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_01"))
         assert Cls._extract_time_shifts(node) == {"T_01": "T-1Q"}
 
-    def test_negative_unary_shift_produces_T_minus(self):
+    def test_negative_unary_shift_produces_T_plus(self):
+        """The declared period inverts the shift: ``-2`` needs ``T+2Y``."""
         _, Cls, _ = _bare_svc()
         from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
 
         sn = UnaryOp(op="-", operand=Constant(type_="Integer", value=2))
         node = _FakeTimeShiftOp("Y", sn, _FakeVarID(table="T_02"))
-        assert Cls._extract_time_shifts(node) == {"T_02": "T-2Y"}
+        assert Cls._extract_time_shifts(node) == {"T_02": "T+2Y"}
+
+    def test_negative_unary_shift_of_an_expression_keeps_direction(self):
+        """A non-literal shift keeps its direction, not its size."""
+        _, Cls, _ = _bare_svc()
+        from dpmcore.dpm_xl.ast.nodes import BinOp, Constant, UnaryOp
+
+        sn = UnaryOp(
+            op="-",
+            operand=BinOp(
+                op="*",
+                left=Constant(type_="Integer", value=2),
+                right=Constant(type_="Integer", value=2),
+            ),
+        )
+        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_04"))
+        assert Cls._extract_time_shifts(node) == {"T_04": "T+nQ"}
 
     def test_var_without_table_ignored(self):
         _, Cls, _ = _bare_svc()
