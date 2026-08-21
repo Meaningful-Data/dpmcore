@@ -1433,6 +1433,42 @@ extract_precondition_codes`, shared with
         return "T"
 
     @staticmethod
+    def _literal_shift(node: Any) -> Tuple[int, Optional[int]]:
+        """Resolve a ``shift_number`` expression to ``(sign, magnitude)``.
+
+        ``sign`` is the direction the expression asks for (``1`` or
+        ``-1``) and ``magnitude`` its size, or ``None`` when the shift
+        number is not an integer literal — a reference or a computed
+        expression, whose size no reference period can name.
+
+        The same written literal reaches this in several shapes, and
+        reading only the two obvious ones mis-declared the rest: ``+1``
+        is a ``UnaryOp``, so it lost its size and rendered ``T-nQ``;
+        ``( -1 )`` is a ``ParExpr`` around one, so it lost its direction
+        too; and ``(-1)`` without the spaces is lexed as a *negative*
+        ``Constant``, which rendered the sign twice (``T--1Q``).
+        """
+        from dpmcore.dpm_xl.ast.nodes import Constant, ParExpr, UnaryOp
+
+        sign = 1
+        while True:
+            if isinstance(node, ParExpr):
+                node = node.expression
+            elif isinstance(node, UnaryOp) and node.op in ("+", "-"):
+                if node.op == "-":
+                    sign = -sign
+                node = node.operand
+            else:
+                break
+        if not isinstance(node, Constant):
+            return sign, None
+        try:
+            shift = sign * int(node.value)
+        except (TypeError, ValueError):
+            return sign, None
+        return (-1 if shift < 0 else 1), abs(shift)
+
+    @staticmethod
     def _extract_time_shifts(ast: Any) -> Dict[str, str]:
         """Extract per-table time shifts from an AST.
 
@@ -1449,24 +1485,24 @@ extract_precondition_codes`, shared with
                 self.visit(node.operand)
 
             def visit_TimeShiftOp(self, node: Any) -> None:
-                from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
-
                 prev = current_period[0]
                 pi = node.period_indicator
-                sn = node.shift_number
                 # The declared period inverts the shift number: a shift
                 # of ``+n`` needs the instance ``n`` periods back, a
                 # shift of ``-n`` the one ``n`` periods ahead. A shift
                 # number that is not a literal keeps its direction but
-                # not its size (``n``), which no instance resolves to.
-                if isinstance(sn, Constant):
-                    current_period[0] = f"t-{pi}{sn.value}"
-                elif isinstance(sn, UnaryOp) and sn.op == "-":
-                    inner = sn.operand
-                    num = inner.value if isinstance(inner, Constant) else "n"
-                    current_period[0] = f"t+{pi}{num}"
+                # not its size (``n``), which no instance resolves to,
+                # and a shift of ``0`` is no shift at all.
+                sign, magnitude = ASTGeneratorService._literal_shift(
+                    node.shift_number
+                )
+                marker = "-" if sign > 0 else "+"
+                if magnitude is None:
+                    current_period[0] = f"t{marker}{pi}n"
+                elif magnitude == 0:
+                    current_period[0] = "t"
                 else:
-                    current_period[0] = f"t-{pi}n"
+                    current_period[0] = f"t{marker}{pi}{magnitude}"
                 self.visit(node.operand)
                 current_period[0] = prev
 
