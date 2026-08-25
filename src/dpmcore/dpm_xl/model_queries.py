@@ -29,9 +29,11 @@ from dpmcore.dpm_xl.utils.range_resolution import (
     resolve_range_codes,
 )
 from dpmcore.orm.glossary import (
+    Category,
     Item,
     ItemCategory,
     Property,
+    PropertyCategory,
 )
 from dpmcore.orm.infrastructure import (
     DataType,
@@ -313,6 +315,114 @@ class ItemCategoryQuery:
             .all()
         )
         return [r.item_id for r in rows]
+
+    @staticmethod
+    def get_item_domains(
+        session: "Session",
+        items: Sequence[str],
+        release_id: int | None = None,
+    ) -> dict[str, set[str]]:
+        """Map item signatures to the code(s) of the categories holding them.
+
+        The category is the item's *domain*: the set of values a component
+        typed on that category may take. Only enumerated categories are
+        returned -- a non-enumerated one (dates, identifiers, free text) is
+        not a value set. An item is normally in exactly one category per
+        release, but the mapping is release-versioned, so the value is a set.
+
+        Args:
+            session: SQLAlchemy session.
+            items: Item signatures to resolve.
+            release_id: Release the membership is resolved at.
+
+        Returns:
+            ``{signature: {category_code, ...}}``, omitting signatures with
+            no category open at ``release_id``.
+        """
+        if not items:
+            return {}
+        query = (
+            session.query(
+                ItemCategory.signature.label("Signature"),
+                Category.code.label("CategoryCode"),
+            )
+            .join(Category, Category.category_id == ItemCategory.category_id)
+            .filter(ItemCategory.signature.in_(items))
+            .filter(Category.is_enumerated == True)  # noqa: E712
+            .filter(Category.code.isnot(None))
+        )
+        query = filter_by_release(
+            query,
+            start_col=ItemCategory.start_release_id,
+            end_col=ItemCategory.end_release_id,
+            release_id=release_id,
+            active_only_fallback=True,
+        )
+        domains: dict[str, set[str]] = {}
+        for row in query.distinct().all():
+            domains.setdefault(row.Signature, set()).add(row.CategoryCode)
+        return domains
+
+
+# ------------------------------------------------------------------ #
+# PropertyCategory queries
+# ------------------------------------------------------------------ #
+
+
+class PropertyCategoryQuery:
+    """Query helpers around the PropertyCategory model."""
+
+    @staticmethod
+    def get_property_domains(
+        session: "Session",
+        property_ids: Sequence[int],
+        release_id: int | None = None,
+    ) -> dict[int, set[str]]:
+        """Map properties to the code(s) of the categories they are typed on.
+
+        A property's category is the domain of every component built on it:
+        the items that component may take. Only enumerated categories are
+        returned, so a property that holds dates, identifiers or free text
+        resolves to no domain at all. Like ``ItemCategory``, the link is
+        release-versioned, hence the set-valued result.
+
+        Args:
+            session: SQLAlchemy session.
+            property_ids: Property IDs to resolve.
+            release_id: Release the link is resolved at.
+
+        Returns:
+            ``{property_id: {category_code, ...}}``, omitting properties with
+            no category open at ``release_id``.
+        """
+        if not property_ids:
+            return {}
+        query = (
+            session.query(
+                PropertyCategory.property_id.label("PropertyID"),
+                Category.code.label("CategoryCode"),
+            )
+            .join(
+                Category,
+                Category.category_id == PropertyCategory.category_id,
+            )
+            .filter(PropertyCategory.property_id.in_(list(property_ids)))
+            .filter(Category.is_enumerated == True)  # noqa: E712
+            .filter(Category.code.isnot(None))
+        )
+        query = filter_by_release(
+            query,
+            start_col=PropertyCategory.start_release_id,
+            end_col=PropertyCategory.end_release_id,
+            release_id=release_id,
+            active_only_fallback=True,
+        )
+        domains: dict[int, set[str]] = {}
+        for row in query.distinct().all():
+            domains.setdefault(int(row.PropertyID), set()).add(
+                row.CategoryCode
+            )
+        return domains
 
 
 # ------------------------------------------------------------------ #
@@ -1813,6 +1923,7 @@ class ViewDatapointsQuery:
             aliases["tvh_col"].order.label("column_order"),
             aliases["tvh_sheet"].order.label("sheet_order"),
             VariableVersion.variable_id.label("variable_id"),
+            VariableVersion.property_id.label("property_id"),
             DataType.code.label("data_type"),
             TableVersion.table_vid.label("table_vid"),
             TableVersionCell.cell_id.label("cell_id"),
