@@ -743,6 +743,10 @@ class OperandsChecking(ASTTemplate, ABC):
             raise errors.SemanticError(
                 "6-2", operation_code=node.operation_code
             )
+        if node.operation_code not in self.operations:
+            raise errors.SemanticError(
+                "1-8", operations=[node.operation_code]
+            )
 
     def visit_ParameterRef(self, node: ParameterRef) -> None:
         # Record the referenced parameter. No DB lookup: parameters are not DPM
@@ -760,20 +764,14 @@ class OperandsChecking(ASTTemplate, ABC):
         self.visit(node.right)
 
     def check_operations(self) -> None:
-        if len(self.operations):
-            df_operations = OperationQuery.get_operations_from_codes(
-                session=self.session,
-                operation_codes=self.operations,
-                release_id=self.release_id,
-            )
-            if len(df_operations.values) < len(self.operations):
-                not_found_operations = list(
-                    set(self.operations).difference(set(df_operations["Code"]))
-                )
-                raise errors.SemanticError(
-                    "1-8", operations=not_found_operations
-                )
-            self.operations_data = df_operations
+        # Enriches operations_data when names match real codes, never required
+        if not self.operations:
+            return
+        self.operations_data = OperationQuery.get_operations_from_codes(
+            session=self.session,
+            operation_codes=self.operations,
+            release_id=self.release_id,
+        )
 
 
 def extract_data_types(node: VarID, database_types: "pd.Series[Any]") -> None:
