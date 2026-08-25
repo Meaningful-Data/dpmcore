@@ -238,6 +238,7 @@ class SemanticService:
         *,
         precondition_expression: Optional[str] = None,
         precondition_operation_vid: Optional[int] = None,
+        is_scripting: bool = False,
     ) -> SemanticResult:
         """Full semantic validation of *expression* and its optional gate.
 
@@ -289,6 +290,9 @@ class SemanticService:
                 current module scope when ``expression`` is valid
                 (``7-3``/``7-4``/``7-5``); a VID with nothing to check
                 against is accepted.
+            is_scripting: Allows ``{oCODE}`` references to other rules'
+                ``:=`` names declared earlier in the same batch. Applies
+                to ``expression`` only, not the precondition.
         """
         try:
             resolved = self._resolve_release(release_id, release_code)
@@ -303,7 +307,9 @@ class SemanticService:
             )
 
         if precondition_expression is None:
-            result = self._validate_resolved(expression, resolved)
+            result = self._validate_resolved(
+                expression, resolved, is_scripting=is_scripting
+            )
         else:
             # Gate first, main expression last: the trailing ``self.ast`` /
             # ``self.oc_*`` must describe the main expression (see
@@ -313,7 +319,9 @@ class SemanticService:
                     precondition_expression, resolved, as_precondition=True
                 )
             )
-            main = self._validate_resolved(expression, resolved)
+            main = self._validate_resolved(
+                expression, resolved, is_scripting=is_scripting
+            )
             result = self._combine(main, self._cross_check(main, precondition))
 
         if result.is_valid and precondition_operation_vid is not None:
@@ -365,6 +373,7 @@ class SemanticService:
         release_id: Optional[int],
         *,
         as_precondition: bool = False,
+        is_scripting: bool = False,
     ) -> SemanticResult:
         """Validate *expression* against an already-resolved release.
 
@@ -375,6 +384,8 @@ class SemanticService:
                 precondition gate, so the analyzer enforces a boolean result
                 (``2-1``) even though the expression itself contains no
                 precondition item.
+            is_scripting: Forwarded to ``OperandsChecking`` so ``{oCODE}``
+                references are allowed and resolved batch-locally.
         """
         try:
             with collect_warnings() as wc:
@@ -390,6 +401,7 @@ class SemanticService:
                     expression=expression,
                     ast=ast,
                     release_id=release_id,
+                    is_scripting=is_scripting,
                 )
                 self.oc_data = oc.data
                 self.oc_tables = oc.tables
@@ -583,6 +595,7 @@ class SemanticService:
         release_code: Optional[str] = None,
         *,
         precondition_expression: Optional[str] = None,
+        is_scripting: bool = False,
     ) -> bool:
         """Quick boolean check, pair-wide when a gate is supplied."""
         return self.validate(
@@ -590,6 +603,7 @@ class SemanticService:
             precondition_expression=precondition_expression,
             release_id=release_id,
             release_code=release_code,
+            is_scripting=is_scripting,
         ).is_valid
 
     # ------------------------------------------------------------------ #

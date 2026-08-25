@@ -78,12 +78,16 @@ class DpmXlService:
         release_code: Optional[str] = None,
         *,
         precondition_expression: Optional[str] = None,
+        is_scripting: bool = False,
     ) -> SemanticValidationResult:
         """Full semantic validation, optionally gated (requires DB).
 
         ``precondition_expression`` is keyword-only and appended after the
         pre-existing arguments, so ``validate_semantic(expr, 5)`` still means
         ``release_id=5``.
+
+        ``is_scripting`` allows ``{oCODE}`` references to other rules'
+        ``:=`` names declared earlier in the same batch.
         """
         if self.semantic is None:
             raise RuntimeError("No database session provided.")
@@ -92,6 +96,7 @@ class DpmXlService:
             precondition_expression=precondition_expression,
             release_id=release_id,
             release_code=release_code,
+            is_scripting=is_scripting,
         )
         return {
             "is_valid": result.is_valid,
