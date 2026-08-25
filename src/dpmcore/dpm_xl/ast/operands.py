@@ -744,9 +744,7 @@ class OperandsChecking(ASTTemplate, ABC):
                 "6-2", operation_code=node.operation_code
             )
         if node.operation_code not in self.operations:
-            raise errors.SemanticError(
-                "1-8", operations=[node.operation_code]
-            )
+            raise errors.SemanticError("1-8", operations=[node.operation_code])
 
     def visit_ParameterRef(self, node: ParameterRef) -> None:
         # Record the referenced parameter. No DB lookup: parameters are not DPM
