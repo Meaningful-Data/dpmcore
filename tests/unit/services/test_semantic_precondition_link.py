@@ -130,7 +130,9 @@ class TestLinkFailurePropagates:
         )
         monkeypatch.setattr(svc, "_resolve_release", lambda *a, **k: 42)
 
-        def _validate_resolved(expression, release_id, as_precondition=False):
+        def _validate_resolved(
+            expression, release_id, as_precondition=False, is_scripting=False
+        ):
             return gate_result if as_precondition else _ok("main")
 
         monkeypatch.setattr(svc, "_validate_resolved", _validate_resolved)
