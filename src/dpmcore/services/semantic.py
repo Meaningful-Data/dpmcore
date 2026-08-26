@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional, cast
 
 from sqlalchemy import func
 
+from dpmcore.dpm_xl.ast.domain_membership import DomainMembershipChecker
 from dpmcore.dpm_xl.ast.nodes import (
     AST,
     ParameterRef,
@@ -417,6 +418,13 @@ class SemanticService:
                 analyzer.release_id = release_id
 
                 results = analyzer.visit(ast)
+
+                # Runs last: a comparison against an item outside the
+                # component's domain is well-typed, so it only deserves a
+                # warning once the expression is otherwise valid.
+                DomainMembershipChecker(
+                    session=self.session, ast=ast, release_id=release_id
+                )
 
             if self.oc_parameters:
                 self._check_persisted_scope(
