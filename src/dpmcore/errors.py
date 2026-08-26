@@ -271,8 +271,9 @@ centralised_messages: Dict[str, str] = {
         " {operand} is neither."
     ),
     "4-6-1-3": (
-        "For if then else operator, then and else"
-        " have to be both recordset or both scalars."
+        "For if then else operator, then and else have to result in the"
+        " same key components once joined with the condition"
+        " (both recordset or both scalars, if the condition is a scalar)."
     ),
     # -- nvl
     "4-6-2-1": (

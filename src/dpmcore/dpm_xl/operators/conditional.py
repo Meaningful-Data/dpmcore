@@ -16,7 +16,12 @@ from dpmcore.dpm_xl.types.promotion import (
     binary_implicit_type_promotion_with_mixed_types,
     unary_implicit_type_promotion,
 )
-from dpmcore.dpm_xl.types.scalar import Mixed, ScalarFactory, ScalarType
+from dpmcore.dpm_xl.types.scalar import (
+    Mixed,
+    Null,
+    ScalarFactory,
+    ScalarType,
+)
 from dpmcore.dpm_xl.utils import tokens
 from dpmcore.dpm_xl.warning_collector import add_semantic_warning
 from dpmcore.errors import SemanticError
@@ -239,29 +244,25 @@ class IfOperator(ConditionalOperator):
         """Whether *operand* carries one value per global key combination.
 
         Scalars and single-cell selections — recordsets whose key
-        components are all global — are interchangeable as branches of
-        the same ``if``: neither contributes a key component the other
-        lacks, so pairing them needs no structural agreement.
+        components are all global — are interchangeable as branches of the
+        same ``if``: neither contributes a key component the other lacks.
+        The specification reads them the same way, calling the comparison
+        of a fully specified cell a "Scalar Boolean" (§8.1.7, example 5).
         """
         if isinstance(operand, RecordSet):
             return operand.has_only_global_components
         return True
 
     @classmethod
-    def _check_branch_kinds(
-        cls, first: CondOperand, second: CondOperand
-    ) -> None:
-        """The ``then`` and ``else`` branches must agree on their kind.
+    def _is_null_literal(cls, operand: CondOperand) -> bool:
+        """Whether *operand* is the ``null`` literal.
 
-        Enforced for every ``if``, whatever the kind of the condition: the
-        condition decides which branch is taken, not what shape the result
-        has. Before, this was only checked for a scalar condition, so a
-        scalar branch paired with a recordset branch passed unnoticed as
-        soon as the condition was a recordset — which is the usual case,
-        any comparison over a cell selection being one (issue #333).
+        The Null literal exception of §8.1.5: a null branch contributes no
+        Record, so the other branch may carry key components the condition
+        lacks without any Record of the result holding a null key value.
+        An explicit ``else null`` reads as an omitted ``else``.
         """
-        if cls._is_scalar_like(first) != cls._is_scalar_like(second):
-            raise SemanticError("4-6-1-3")
+        return isinstance(operand, Scalar) and isinstance(operand.type, Null)
 
     @classmethod
     def check_structures(
@@ -275,7 +276,6 @@ class IfOperator(ConditionalOperator):
         cls._check_branch_operand(first)
         if second is not None:
             cls._check_branch_operand(second)
-            cls._check_branch_kinds(first, second)
         if isinstance(condition, Scalar):
             return cls._scalar_condition_structures(first, second, origin)
         return cls._recordset_condition_structures(
@@ -291,27 +291,42 @@ class IfOperator(ConditionalOperator):
     ) -> tuple[Structure | CondOperand, pd.DataFrame | None]:
         """Result of an ``if`` whose condition is a scalar.
 
-        A scalar condition contributes no key component of its own, so the
-        result is whatever the branches carry. A single-cell selection keeps
-        its global key components here instead of collapsing to a scalar:
-        collapsing is what made the reported kind of an otherwise identical
-        expression depend on the kind of its condition.
+        A scalar condition has no key component of its own, so joining it
+        with a branch leaves the branch's own key components, and the
+        Matched join structure constraint of §8.1.5 reduces to: both
+        branches carry the same key components. A scalar branch therefore
+        cannot be paired with a recordset one — the case ``4-6-1-3`` has
+        always covered (§8.1.7, example 5).
         """
-        if (
-            isinstance(first, RecordSet)
-            and isinstance(second, RecordSet)
-            and not cls._is_scalar_like(first)
-        ):
-            # Both branches are recordsets with standard key components —
-            # ``_check_branch_kinds`` has already ruled out a mix — so
-            # their structures have to agree.
+        if second is None or cls._is_null_literal(second):
+            return cls._single_branch_structure(first)
+        if cls._is_null_literal(first):
+            return cls._single_branch_structure(second)
+
+        if isinstance(first, RecordSet) and isinstance(second, RecordSet):
+            if cls._is_scalar_like(first) != cls._is_scalar_like(second):
+                raise SemanticError("4-6-1-3")
+            if cls._is_scalar_like(first):
+                return first, None
+            # Both branches carry standard key components, so their
+            # structures have to be the same.
             cls._check_structures(first, second, origin, subset_allowed=False)
             return first.structure, first.records
-        if isinstance(first, RecordSet):
-            return first.structure, first.records
-        if isinstance(second, RecordSet):
-            return second.structure, second.records
+        # At most one branch is a recordset, and it agrees with a scalar
+        # branch only if it is a single cell contributing no key component.
+        for branch in (first, second):
+            if not cls._is_scalar_like(branch):
+                raise SemanticError("4-6-1-3")
         return first, None
+
+    @classmethod
+    def _single_branch_structure(
+        cls, branch: CondOperand
+    ) -> tuple[Structure | CondOperand, pd.DataFrame | None]:
+        """Result of a scalar-condition ``if`` with a single live branch."""
+        if isinstance(branch, RecordSet) and not cls._is_scalar_like(branch):
+            return branch.structure, branch.records
+        return branch, None
 
     @classmethod
     def _recordset_condition_structures(
@@ -324,46 +339,54 @@ class IfOperator(ConditionalOperator):
         """Result of an ``if`` whose condition is a recordset.
 
         The condition is evaluated per record, so its own key components
-        are part of the result even when both branches are scalars.
+        are part of the result even when both branches are scalars: a
+        scalar branch is applied to every record of the condition (§8.1.7,
+        example 3). Mixing a scalar branch with a recordset one is
+        therefore allowed here (§8.1.7, example 6) — what §8.1.5 requires
+        is that both branches, once joined with the condition, end up with
+        the same key components (§8.1.7, example 8).
         """
-        if second is None:
-            if isinstance(first, RecordSet):
-                return cls._check_if_structures(condition, first, origin)
-            return condition.structure, condition.records
+        if second is None or cls._is_null_literal(second):
+            return cls._branch_join(condition, first, origin)
+        if cls._is_null_literal(first):
+            return cls._branch_join(condition, second, origin)
 
-        # Determine structure for each recordset operand
-        then_struct: Structure | None = None
-        then_records: pd.DataFrame | None = None
-        if isinstance(first, RecordSet):
-            then_struct, then_records = cls._check_if_structures(
-                condition, first, origin
+        then_struct, then_records = cls._branch_join(condition, first, origin)
+        else_struct, else_records = cls._branch_join(condition, second, origin)
+        if set(then_struct.get_key_components_names()) != set(
+            else_struct.get_key_components_names()
+        ):
+            raise SemanticError("4-6-1-3")
+
+        # Both joins have the same key components, so either structure
+        # describes the result; ``check_is_subset`` also rules out two
+        # same-named key components of different types.
+        is_sub, largest = Binary.check_is_subset(then_struct, else_struct)
+        if not is_sub:
+            raise SemanticError(
+                "2-3",
+                op=cls.op,
+                structure_1=then_struct.get_key_components_names(),
+                structure_2=else_struct.get_key_components_names(),
+                origin=origin,
             )
-
-        else_struct: Structure | None = None
-        else_records: pd.DataFrame | None = None
-        if isinstance(second, RecordSet):
-            else_struct, else_records = cls._check_if_structures(
-                condition, second, origin
-            )
-
-        # Pick the largest result structure
-        if then_struct is not None and else_struct is not None:
-            is_sub, largest = Binary.check_is_subset(then_struct, else_struct)
-            if not is_sub:
-                raise SemanticError(
-                    "2-3",
-                    op=cls.op,
-                    structure_1=then_struct.get_key_components_names(),
-                    structure_2=else_struct.get_key_components_names(),
-                    origin=origin,
-                )
-            if largest is then_struct:
-                return then_struct, then_records
-            return else_struct, else_records
-        if then_struct is not None:
+        if largest is then_struct:
             return then_struct, then_records
-        if else_struct is not None:
-            return else_struct, else_records
+        return else_struct, else_records
+
+    @classmethod
+    def _branch_join(
+        cls, condition: RecordSet, branch: CondOperand, origin: str
+    ) -> tuple[Structure, pd.DataFrame | None]:
+        """Structure of ``join(condition, branch)``.
+
+        A scalar branch adds no key component, so the join is the condition
+        itself; a recordset branch has to be structurally compatible with
+        the condition and contributes the larger of the two key component
+        sets.
+        """
+        if isinstance(branch, RecordSet):
+            return cls._check_if_structures(condition, branch, origin)
         return condition.structure, condition.records
 
     @classmethod
