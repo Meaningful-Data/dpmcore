@@ -62,6 +62,22 @@ class ConditionalOperator(Operator):
             )
 
     @classmethod
+    def _check_combinable_operand(cls, operand: Operand, code: str) -> None:
+        """Reject an operand the conditional operators cannot combine.
+
+        The grammar accepts any expression wherever these operators take
+        an operand, so a set — the operand shape of ``in`` — reaches them
+        as a ``ScalarSet``, and §8.1.5 and §8.2.2 both admit ``rset`` and
+        ``scal`` only. A set used to be silently dropped (the other
+        operand's structure became the result), to break the analysis with
+        an ``AttributeError``, or to fall through the structure check to a
+        bare ``Exception``.
+        """
+        if not isinstance(operand, (RecordSet, Scalar)):
+            name = getattr(operand, "name", None) or operand.origin
+            raise SemanticError(code, operand=name)
+
+    @classmethod
     def _check_same_recordset_structures(
         cls, left: RecordSet, right: RecordSet, origin: str
     ) -> bool:
@@ -208,6 +224,7 @@ class IfOperator(ConditionalOperator):
     @classmethod
     def check_condition(cls, condition: CondOperand) -> bool:
         """Check if the condition has Boolean type."""
+        cls._check_combinable_operand(condition, "4-6-1-2")
         if isinstance(condition, RecordSet):
             condition_type = condition.structure.components["f"].type
         else:
@@ -224,20 +241,6 @@ class IfOperator(ConditionalOperator):
             return True
 
         raise SemanticError("4-6-1-1")
-
-    @classmethod
-    def _check_branch_operand(cls, operand: Operand) -> None:
-        """Reject a ``then``/``else`` operand the operator cannot combine.
-
-        The grammar accepts any expression in a branch, so a set — the
-        operand shape of ``in`` — reaches here as a ``ScalarSet``. The
-        operator only knows how to combine recordsets and scalars; a set
-        used to be silently dropped (the condition's own structure became
-        the result) or to break the analysis with an ``AttributeError``.
-        """
-        if not isinstance(operand, (RecordSet, Scalar)):
-            name = getattr(operand, "name", None) or operand.origin
-            raise SemanticError("4-6-1-2", operand=name)
 
     @classmethod
     def _is_scalar_like(cls, operand: CondOperand) -> bool:
@@ -273,9 +276,9 @@ class IfOperator(ConditionalOperator):
         origin: str,
     ) -> tuple[Structure | CondOperand, pd.DataFrame | None]:
         """ """
-        cls._check_branch_operand(first)
+        cls._check_combinable_operand(first, "4-6-1-2")
         if second is not None:
-            cls._check_branch_operand(second)
+            cls._check_combinable_operand(second, "4-6-1-2")
         if isinstance(condition, Scalar):
             return cls._scalar_condition_structures(first, second, origin)
         return cls._recordset_condition_structures(
@@ -528,18 +531,25 @@ class Nvl(ConditionalOperator):
         left: CondOperand,
         right: CondOperand,
         origin: str,
-    ) -> tuple[Structure | CondOperand | None, pd.DataFrame | None]:
-        if isinstance(left, RecordSet) and isinstance(right, RecordSet):
-            if cls._check_structures(left, right, origin):
-                result_dataframe = cls.generate_result_dataframe(left, right)
-                return left.structure, result_dataframe
-        elif isinstance(left, RecordSet) and isinstance(right, Scalar):
+    ) -> tuple[Structure | CondOperand, pd.DataFrame | None]:
+        """Result structure of ``nvl(left, right)``.
+
+        §8.2.2 admits ``rset`` and ``scal`` operands only, so a set is
+        rejected up front. The four remaining combinations are exhaustive:
+        none of them leaves the operator without a result structure.
+        """
+        cls._check_combinable_operand(left, "4-6-2-2")
+        cls._check_combinable_operand(right, "4-6-2-2")
+        if isinstance(left, RecordSet):
+            if isinstance(right, RecordSet):
+                cls._check_structures(left, right, origin)
+                return left.structure, cls.generate_result_dataframe(
+                    left, right
+                )
             return left.structure, left.records
-        elif isinstance(left, Scalar) and isinstance(right, RecordSet):
+        if isinstance(right, RecordSet):
             raise SemanticError("4-6-2-1")
-        elif isinstance(left, Scalar) and isinstance(right, Scalar):
-            return left, None
-        return None, None
+        return left, None
 
     @classmethod
     def check_types(
@@ -613,10 +623,6 @@ class Nvl(ConditionalOperator):
                 result_dataframe=rslt_dataframe,
             )
             return recordset
-        if rslt_structure is None:
-            raise Exception(
-                "Nvl produced no result structure; unhandled operand combination"
-            )
         labeled_scalar = cls.create_labeled_scalar(
             rslt_structure=rslt_structure, rslt_type=rslt_type, origin=origin
         )

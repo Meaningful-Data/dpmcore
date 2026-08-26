@@ -279,6 +279,17 @@ class TestOmittedAndNullBranches:
 class TestBranchOperandKind:
     """Only recordsets and scalars can be combined by the operator."""
 
+    def test_a_set_condition_is_a_semantic_error(self):
+        """A set condition used to break the analysis with an
+        ``AttributeError`` once its type promoted to Boolean.
+        """
+        with pytest.raises(SemanticError, match=NOT_A_BRANCH):
+            IfOperator.validate(
+                ScalarSet(type_=Boolean(), name="cond", origin="cond"),
+                _scalar(),
+                _scalar(),
+            )
+
     CONDITIONS = {
         "scalar": lambda: _scalar("cond", Boolean()),
         "single-cell": lambda: _single_cell("cond", Boolean()),

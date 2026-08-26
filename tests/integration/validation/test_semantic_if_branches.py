@@ -128,3 +128,12 @@ def test_set_valued_branch_is_a_semantic_error(validate):
     result = validate(f"if {CELL} = 0 then {{1, 2}} else {{3}} endif")
     assert not result.is_valid
     assert NOT_A_BRANCH in (result.error_message or "")
+
+
+def test_set_valued_condition_is_a_semantic_error(validate):
+    """The grammar accepts a set as the condition too, and a Boolean one
+    reached the structure check and broke it with an ``AttributeError``.
+    """
+    result = validate(f"if {{true, false}} then 1 else {CELL} endif")
+    assert not result.is_valid
+    assert NOT_A_BRANCH in (result.error_message or "")
