@@ -221,6 +221,49 @@ class IfOperator(ConditionalOperator):
         raise SemanticError("4-6-1-1")
 
     @classmethod
+    def _check_branch_operand(cls, operand: Operand) -> None:
+        """Reject a ``then``/``else`` operand the operator cannot combine.
+
+        The grammar accepts any expression in a branch, so a set — the
+        operand shape of ``in`` — reaches here as a ``ScalarSet``. The
+        operator only knows how to combine recordsets and scalars; a set
+        used to be silently dropped (the condition's own structure became
+        the result) or to break the analysis with an ``AttributeError``.
+        """
+        if not isinstance(operand, (RecordSet, Scalar)):
+            name = getattr(operand, "name", None) or operand.origin
+            raise SemanticError("4-6-1-2", operand=name)
+
+    @classmethod
+    def _is_scalar_like(cls, operand: CondOperand) -> bool:
+        """Whether *operand* carries one value per global key combination.
+
+        Scalars and single-cell selections — recordsets whose key
+        components are all global — are interchangeable as branches of
+        the same ``if``: neither contributes a key component the other
+        lacks, so pairing them needs no structural agreement.
+        """
+        if isinstance(operand, RecordSet):
+            return operand.has_only_global_components
+        return True
+
+    @classmethod
+    def _check_branch_kinds(
+        cls, first: CondOperand, second: CondOperand
+    ) -> None:
+        """The ``then`` and ``else`` branches must agree on their kind.
+
+        Enforced for every ``if``, whatever the kind of the condition: the
+        condition decides which branch is taken, not what shape the result
+        has. Before, this was only checked for a scalar condition, so a
+        scalar branch paired with a recordset branch passed unnoticed as
+        soon as the condition was a recordset — which is the usual case,
+        any comparison over a cell selection being one (issue #333).
+        """
+        if cls._is_scalar_like(first) != cls._is_scalar_like(second):
+            raise SemanticError("4-6-1-3")
+
+    @classmethod
     def check_structures(
         cls,
         condition: CondOperand,
@@ -229,86 +272,99 @@ class IfOperator(ConditionalOperator):
         origin: str,
     ) -> tuple[Structure | CondOperand, pd.DataFrame | None]:
         """ """
+        cls._check_branch_operand(first)
+        if second is not None:
+            cls._check_branch_operand(second)
+            cls._check_branch_kinds(first, second)
         if isinstance(condition, Scalar):
-            if second is not None:
-                # Helper: treat recordsets with only global key components as scalars
-                # Per DPM-XL spec, single-cell selections have only global keys
-                # ``CondOperand`` narrows to RecordSet when not Scalar, so the
-                # ``isinstance(..., RecordSet)`` check on the right of ``or``
-                # is technically redundant; the short-circuit still guards
-                # attribute access at runtime if CondOperand is widened later.
-                first_is_scalar = isinstance(first, Scalar) or (
-                    first.has_only_global_components
+            return cls._scalar_condition_structures(first, second, origin)
+        return cls._recordset_condition_structures(
+            condition, first, second, origin
+        )
+
+    @classmethod
+    def _scalar_condition_structures(
+        cls,
+        first: CondOperand,
+        second: CondOperand | None,
+        origin: str,
+    ) -> tuple[Structure | CondOperand, pd.DataFrame | None]:
+        """Result of an ``if`` whose condition is a scalar.
+
+        A scalar condition contributes no key component of its own, so the
+        result is whatever the branches carry. A single-cell selection keeps
+        its global key components here instead of collapsing to a scalar:
+        collapsing is what made the reported kind of an otherwise identical
+        expression depend on the kind of its condition.
+        """
+        if (
+            isinstance(first, RecordSet)
+            and isinstance(second, RecordSet)
+            and not cls._is_scalar_like(first)
+        ):
+            # Both branches are recordsets with standard key components —
+            # ``_check_branch_kinds`` has already ruled out a mix — so
+            # their structures have to agree.
+            cls._check_structures(first, second, origin, subset_allowed=False)
+            return first.structure, first.records
+        if isinstance(first, RecordSet):
+            return first.structure, first.records
+        if isinstance(second, RecordSet):
+            return second.structure, second.records
+        return first, None
+
+    @classmethod
+    def _recordset_condition_structures(
+        cls,
+        condition: RecordSet,
+        first: CondOperand,
+        second: CondOperand | None,
+        origin: str,
+    ) -> tuple[Structure | CondOperand, pd.DataFrame | None]:
+        """Result of an ``if`` whose condition is a recordset.
+
+        The condition is evaluated per record, so its own key components
+        are part of the result even when both branches are scalars.
+        """
+        if second is None:
+            if isinstance(first, RecordSet):
+                return cls._check_if_structures(condition, first, origin)
+            return condition.structure, condition.records
+
+        # Determine structure for each recordset operand
+        then_struct: Structure | None = None
+        then_records: pd.DataFrame | None = None
+        if isinstance(first, RecordSet):
+            then_struct, then_records = cls._check_if_structures(
+                condition, first, origin
+            )
+
+        else_struct: Structure | None = None
+        else_records: pd.DataFrame | None = None
+        if isinstance(second, RecordSet):
+            else_struct, else_records = cls._check_if_structures(
+                condition, second, origin
+            )
+
+        # Pick the largest result structure
+        if then_struct is not None and else_struct is not None:
+            is_sub, largest = Binary.check_is_subset(then_struct, else_struct)
+            if not is_sub:
+                raise SemanticError(
+                    "2-3",
+                    op=cls.op,
+                    structure_1=then_struct.get_key_components_names(),
+                    structure_2=else_struct.get_key_components_names(),
+                    origin=origin,
                 )
-                second_is_scalar = isinstance(second, Scalar) or (
-                    second.has_only_global_components
-                )
-
-                if (
-                    isinstance(first, RecordSet)
-                    and isinstance(second, RecordSet)
-                    and not (first_is_scalar or second_is_scalar)
-                ):
-                    # Both are true recordsets (with standard key components r/c/s)
-                    if cls._check_structures(
-                        first, second, origin, subset_allowed=False
-                    ):
-                        return first.structure, first.records
-                    raise SemanticError("4-6-1-3")
-                elif first_is_scalar and second_is_scalar:
-                    # Both are scalars (or single-cell recordsets with only global keys)
-                    return first, None
-                else:
-                    raise SemanticError("4-6-1-3")
-            else:
-                if isinstance(first, RecordSet):
-                    if first.has_only_global_components:
-                        return first, None
-                    return first.structure, first.records
-                return first, None
-        else:  # RecordSet condition
-            if second is not None:
-                # Determine structure for each recordset operand
-                then_struct: Structure | None = None
-                then_records: pd.DataFrame | None = None
-                if isinstance(first, RecordSet):
-                    then_struct, then_records = cls._check_if_structures(
-                        condition, first, origin
-                    )
-
-                else_struct: Structure | None = None
-                else_records: pd.DataFrame | None = None
-                if isinstance(second, RecordSet):
-                    else_struct, else_records = cls._check_if_structures(
-                        condition, second, origin
-                    )
-
-                # Pick the largest result structure
-                if then_struct is not None and else_struct is not None:
-                    is_sub, largest = Binary.check_is_subset(
-                        then_struct, else_struct
-                    )
-                    if not is_sub:
-                        raise SemanticError(
-                            "2-3",
-                            op=cls.op,
-                            structure_1=then_struct.get_key_components_names(),
-                            structure_2=else_struct.get_key_components_names(),
-                            origin=origin,
-                        )
-                    if largest is then_struct:
-                        return then_struct, then_records
-                    return else_struct, else_records
-                elif then_struct is not None:
-                    return then_struct, then_records
-                elif else_struct is not None:
-                    return else_struct, else_records
-                else:
-                    return condition.structure, condition.records
-            else:
-                if isinstance(first, RecordSet):
-                    return cls._check_if_structures(condition, first, origin)
-                return condition.structure, condition.records
+            if largest is then_struct:
+                return then_struct, then_records
+            return else_struct, else_records
+        if then_struct is not None:
+            return then_struct, then_records
+        if else_struct is not None:
+            return else_struct, else_records
+        return condition.structure, condition.records
 
     @classmethod
     def _check_if_structures(
