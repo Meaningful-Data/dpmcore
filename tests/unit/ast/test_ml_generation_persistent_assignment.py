@@ -27,12 +27,20 @@ def ml_generation():
 
 def _persistent_assignment():
     target = VarID(
-        table="tFND", rows=["r0010"], cols=["c0010"], sheets=None,
-        interval=None, default=None,
+        table="tFND",
+        rows=["r0010"],
+        cols=["c0010"],
+        sheets=None,
+        interval=None,
+        default=None,
     )
     formula = VarID(
-        table="tFND", rows=["r0020"], cols=["c0010"], sheets=None,
-        interval=None, default=None,
+        table="tFND",
+        rows=["r0020"],
+        cols=["c0010"],
+        sheets=None,
+        interval=None,
+        default=None,
     )
     return PersistentAssignment(left=target, op="<-", right=formula)
 
@@ -44,8 +52,16 @@ def test_left_hand_side_never_becomes_a_leaf_even_when_it_resolves(
     # some other rule in the batch reads it) -- legacy discards it anyway.
     ml_generation.extract_operand_data = MagicMock(
         return_value=[
-            {"x": None, "y": None, "z": None, "variable_id": 1, "cell_id": 7,
-             "row_code": "r0010", "column_code": "c0010", "sheet_code": None},
+            {
+                "x": None,
+                "y": None,
+                "z": None,
+                "variable_id": 1,
+                "cell_id": 7,
+                "row_code": "r0010",
+                "column_code": "c0010",
+                "sheet_code": None,
+            },
         ]
     )
 
