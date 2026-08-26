@@ -754,7 +754,12 @@ class MLGeneration(ASTTemplate):
         op_node = self.create_operation_node(node, is_leaf=True)
 
         for child in node.children:
-            if not isinstance(child, Scalar):
+            # A ``hasattr`` check, not ``isinstance(child, Scalar)``: a caller
+            # may feed MLGeneration an AST built by its own parser, as long as
+            # node classes match dpmcore's by name (see NodeVisitor.visit,
+            # which dispatches the same way) - the concrete Scalar class may
+            # not be the same object.
+            if not hasattr(child, "item"):
                 continue
             item_id = ItemCategoryQuery.get_item_category_id_from_signature(
                 signature=child.item, session=self.session_queries
