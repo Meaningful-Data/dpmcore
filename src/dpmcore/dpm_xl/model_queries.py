@@ -201,6 +201,60 @@ def _filter_elements(
 
 
 # ------------------------------------------------------------------ #
+# Category-link domain resolution
+# ------------------------------------------------------------------ #
+
+
+def _enumerated_domains(
+    session: "Session",
+    model: Any,
+    key_col: Any,
+    keys: Sequence[Any],
+    release_id: int | None,
+) -> dict[Any, set[str]]:
+    """Map the keys of a category link table to enumerated category codes.
+
+    ``ItemCategory`` and ``PropertyCategory`` are the same shape: a
+    release-versioned link to ``Category``. Only enumerated categories are
+    returned -- a non-enumerated one (dates, identifiers, free text) is not
+    a value set. Both links are release-versioned, hence the set-valued
+    result.
+
+    Args:
+        session: SQLAlchemy session.
+        model: Link model holding ``category_id`` and the release columns.
+        key_col: Column of *model* the result is keyed on.
+        keys: Values of *key_col* to resolve.
+        release_id: Release the link is resolved at.
+
+    Returns:
+        ``{key: {category_code, ...}}``, omitting keys with no enumerated
+        category open at ``release_id``.
+    """
+    query = (
+        session.query(
+            key_col.label("DomainKey"),
+            Category.code.label("CategoryCode"),
+        )
+        .join(Category, Category.category_id == model.category_id)
+        .filter(key_col.in_(list(keys)))
+        .filter(Category.is_enumerated == True)  # noqa: E712
+        .filter(Category.code.isnot(None))
+    )
+    query = filter_by_release(
+        query,
+        start_col=model.start_release_id,
+        end_col=model.end_release_id,
+        release_id=release_id,
+        active_only_fallback=True,
+    )
+    domains: dict[Any, set[str]] = {}
+    for row in query.distinct().all():
+        domains.setdefault(row.DomainKey, set()).add(row.CategoryCode)
+    return domains
+
+
+# ------------------------------------------------------------------ #
 # ItemCategory queries
 # ------------------------------------------------------------------ #
 
@@ -341,27 +395,13 @@ class ItemCategoryQuery:
         """
         if not items:
             return {}
-        query = (
-            session.query(
-                ItemCategory.signature.label("Signature"),
-                Category.code.label("CategoryCode"),
-            )
-            .join(Category, Category.category_id == ItemCategory.category_id)
-            .filter(ItemCategory.signature.in_(items))
-            .filter(Category.is_enumerated == True)  # noqa: E712
-            .filter(Category.code.isnot(None))
+        return _enumerated_domains(
+            session,
+            ItemCategory,
+            ItemCategory.signature,
+            items,
+            release_id,
         )
-        query = filter_by_release(
-            query,
-            start_col=ItemCategory.start_release_id,
-            end_col=ItemCategory.end_release_id,
-            release_id=release_id,
-            active_only_fallback=True,
-        )
-        domains: dict[str, set[str]] = {}
-        for row in query.distinct().all():
-            domains.setdefault(row.Signature, set()).add(row.CategoryCode)
-        return domains
 
 
 # ------------------------------------------------------------------ #
@@ -397,32 +437,14 @@ class PropertyCategoryQuery:
         """
         if not property_ids:
             return {}
-        query = (
-            session.query(
-                PropertyCategory.property_id.label("PropertyID"),
-                Category.code.label("CategoryCode"),
-            )
-            .join(
-                Category,
-                Category.category_id == PropertyCategory.category_id,
-            )
-            .filter(PropertyCategory.property_id.in_(list(property_ids)))
-            .filter(Category.is_enumerated == True)  # noqa: E712
-            .filter(Category.code.isnot(None))
+        domains = _enumerated_domains(
+            session,
+            PropertyCategory,
+            PropertyCategory.property_id,
+            property_ids,
+            release_id,
         )
-        query = filter_by_release(
-            query,
-            start_col=PropertyCategory.start_release_id,
-            end_col=PropertyCategory.end_release_id,
-            release_id=release_id,
-            active_only_fallback=True,
-        )
-        domains: dict[int, set[str]] = {}
-        for row in query.distinct().all():
-            domains.setdefault(int(row.PropertyID), set()).add(
-                row.CategoryCode
-            )
-        return domains
+        return {int(key): codes for key, codes in domains.items()}
 
 
 # ------------------------------------------------------------------ #

@@ -193,8 +193,11 @@ class DomainMembershipChecker(ASTTemplate):
         effect: str,
     ) -> None:
         reference, domains = component
-        item_domains = self._domains_of_items(literals)
-        for signature in literals:
+        # A set literal may repeat a member. The mismatch is one fact about
+        # the item, so it is reported once however often it is written.
+        signatures = list(dict.fromkeys(literals))
+        item_domains = self._domains_of_items(signatures)
+        for signature in signatures:
             found = item_domains.get(signature)
             # An item with no domain open at this release is reported as
             # not-found (1-1) before this pass runs; a set member the

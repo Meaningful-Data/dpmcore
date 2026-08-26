@@ -206,6 +206,17 @@ class TestSetMembership:
 
         assert "[eba_PL:x72]" in warning
 
+    def test_a_repeated_member_is_reported_once(self):
+        node = BinOp(
+            _selection(901),
+            "in",
+            Set([_item("eba_PL:x72"), _item("eba_PL:x72")]),
+        )
+
+        (warning,) = _run(node)
+
+        assert "[eba_PL:x72]" in warning
+
     def test_non_item_members_are_ignored(self):
         """A parameter member has no signature; the item member still counts."""
         node = BinOp(
