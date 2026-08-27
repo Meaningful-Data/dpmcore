@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import zlib
@@ -43,7 +44,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-_VAR_REF_PATTERN = re.compile(r"\{v_?([^}]+)\}")
 _TABLE_CODE_NORMALIZER = re.compile(r"^([A-Z]+)_(\d+)_(\d+)$")
 _DEFAULT_FROM_DATE = "2001-01-01"
 _DEFAULT_NAMESPACE = "default_module"
@@ -314,21 +314,27 @@ class ASTGeneratorService:
             for tbl in tables_block.values():
                 variables_block.update(tbl.get("variables", {}))
 
+            preconditions_block, precondition_variables_block = (
+                self._build_preconditions_block(
+                    preconditions or [],
+                    release_id=release_id,
+                    referenced_parameters=referenced_parameters,
+                )
+            )
+
             # Runtime-binding contract: the declared type of every parameter
             # this script's operations reference, keyed by code. This is the
             # scope-wide invariant. ``is_set`` is recoverable from the ``set-``
             # prefix and ``default`` is a per-reference fallback the engine
-            # binds per scope, so neither belongs in this registry.
+            # binds per scope, so neither belongs in this registry. Populated
+            # after ``_build_preconditions_block`` runs so parameters that
+            # appear only in a gate — legal per the grammar, and reaching the
+            # engine as a runtime input — are declared alongside the ones the
+            # expressions reference.
             parameters_block: Dict[str, str] = {
                 prm_code: prm.declared_type
                 for prm_code, prm in sorted(referenced_parameters.items())
             }
-
-            preconditions_block, precondition_variables_block = (
-                self._build_preconditions_block(
-                    preconditions or [], release_id=release_id
-                )
-            )
 
             dependency_info = self._build_dependency_info(
                 scope_pairs=scope_pairs,
@@ -917,61 +923,68 @@ class ASTGeneratorService:
         self,
         preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
         release_id: Optional[int],
+        referenced_parameters: Optional[Dict[str, ParameterInfo]] = None,
     ) -> Tuple[Dict[str, Any], Dict[str, str]]:
         """Build the ``preconditions`` and ``precondition_variables`` blocks.
 
-        Mirrors pydpm's ``_build_preconditions``: regex-extract
-        ``{v_*}`` variable codes, batch-resolve each to
-        ``(variable_id, variable_vid)``, then emit a
-        ``PreconditionItem`` AST for single-variable preconditions or
-        a left-folded ``BinOp(op="and")`` chain for compound ones.
-        Codes that don't resolve are silently skipped (matches pydpm).
+        Each gate is parsed once and the resulting AST is walked to build
+        the entry: a ``{v_*}`` selection contributes a ``PreconditionItem``
+        node with the resolved ``variable_id`` / ``variable_vid``, a
+        ``{p_*}`` reference contributes the ``ParameterRef`` node with
+        ``code`` / ``param_type`` preserved, and every logical operator
+        that connects them (``and``/``or``/``not``, ``ParExpr``) survives
+        into the emitted tree. Gates that used to depend on the regex
+        matching only ``{v_*}`` positions — a parameter-only gate, or a
+        mixed gate whose parameter half was silently dropped — now reach
+        the engine intact.
+
+        A parameter that shows up in a gate is added to
+        ``referenced_parameters`` in the same pass, so
+        ``parameters_block`` declares it alongside those the expressions
+        reference and the scope-wide type agreement in
+        :func:`~dpmcore.services._parameters.merge_parameters` runs
+        against a single registry.
         """
         from dpmcore.dpm_xl.model_queries import VariableVersionQuery
+        from dpmcore.dpm_xl.utils.serialization import serialize_ast
 
         preconditions_dict: Dict[str, Any] = {}
         precondition_variables: Dict[str, str] = {}
         if not preconditions or self.session is None:
             return preconditions_dict, precondition_variables
 
-        all_codes: List[str] = []
-        for precond_spec in preconditions:
-            precond_expr = (
-                precond_spec.get("expression")
-                if isinstance(precond_spec, dict)
-                else precond_spec[0]
-            )
-            if not precond_expr:
-                continue
-            for raw in _VAR_REF_PATTERN.findall(precond_expr):
-                normalized = _normalize_variable_code(raw)
-                if normalized not in all_codes:
-                    all_codes.append(normalized)
-        if not all_codes:
-            return preconditions_dict, precondition_variables
+        # Parse every gate once — later passes read the AST, not the
+        # source text — and collect every ``{v_*}`` code the trees carry
+        # so the DB lookup batches them all.
+        parsed_gates, all_codes = self._parse_gates(preconditions)
 
-        resolved = VariableVersionQuery.get_variable_vids_by_codes(
-            self.session, all_codes, release_id=release_id
+        resolved: Dict[str, Dict[str, int]] = (
+            VariableVersionQuery.get_variable_vids_by_codes(
+                self.session, all_codes, release_id=release_id
+            )
+            if all_codes
+            else {}
         )
 
-        for precond_spec in preconditions:
-            if isinstance(precond_spec, dict):
-                precond_expr = precond_spec["expression"]
-                validation_codes = precond_spec["affected_operations"]
-                provided_code = precond_spec.get("code")
-                provided_version_id = precond_spec.get("version_id")
-            else:
-                precond_expr, validation_codes = precond_spec
-                provided_code = None
-                provided_version_id = None
-
-            var_infos = self._collect_precondition_var_infos(
-                precond_expr, resolved, precondition_variables
+        for (
+            ast,
+            validation_codes,
+            provided_code,
+            provided_version_id,
+        ) in parsed_gates:
+            gate_ast = self._transform_precondition_ast(
+                ast, resolved, precondition_variables, serialize_ast
             )
-            if not var_infos:
+            if gate_ast is None:
+                # Every ``{v_*}`` position dropped for lack of resolution
+                # and the tree carried no parameter to keep it standing.
                 continue
-            key, entry = self._build_precondition_entry(
-                var_infos, validation_codes, provided_code, provided_version_id
+            if referenced_parameters is not None:
+                self._accumulate_precondition_parameters(
+                    referenced_parameters, gate_ast
+                )
+            key, entry = self._build_precondition_entry_from_ast(
+                gate_ast, validation_codes, provided_code, provided_version_id
             )
             self._merge_precondition_entry(preconditions_dict, key, entry)
 
@@ -999,102 +1012,364 @@ class ASTGeneratorService:
                 merged_ops.append(op)
         existing["affected_operations"] = merged_ops
 
-    @staticmethod
-    def _collect_precondition_var_infos(
-        precondition_expr: str,
+    def _parse_gates(
+        self,
+        preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
+    ) -> Tuple[
+        List[Tuple[Any, List[str], Optional[str], Optional[int]]],
+        List[str],
+    ]:
+        """Parse every gate once and index the ``{v_*}`` codes referenced.
+
+        Returns ``(parsed_gates, all_codes)`` where ``parsed_gates`` is
+        the list of ``(ast, validation_codes, provided_code,
+        provided_version_id)`` tuples the caller iterates over, and
+        ``all_codes`` is the deduplicated list of variable codes to feed
+        the batched DB resolution. A gate that fails to parse is dropped
+        silently — the top-level ``_build_precondition_index`` already
+        surfaces the failure and turns it into a script-level error, and
+        keeping the gate out here matches the pre-existing "codes that
+        don't resolve are silently skipped" contract.
+        """
+        parsed_gates: List[
+            Tuple[Any, List[str], Optional[str], Optional[int]]
+        ] = []
+        all_codes: List[str] = []
+        for precond_spec in preconditions:
+            if isinstance(precond_spec, dict):
+                precond_expr = precond_spec["expression"]
+                validation_codes = precond_spec["affected_operations"]
+                provided_code = precond_spec.get("code")
+                provided_version_id = precond_spec.get("version_id")
+            else:
+                precond_expr, validation_codes = precond_spec
+                provided_code = None
+                provided_version_id = None
+            if not precond_expr:
+                continue
+            try:
+                ast = self._syntax.parse(precond_expr)
+            except Exception:  # noqa: S112 — see docstring above
+                continue
+            parsed_gates.append(
+                (ast, validation_codes, provided_code, provided_version_id)
+            )
+            for var_code in self._extract_precondition_codes(ast):
+                if var_code not in all_codes:
+                    all_codes.append(var_code)
+        return parsed_gates, all_codes
+
+    @classmethod
+    def _transform_precondition_ast(
+        cls,
+        node: Any,
         resolved: Dict[str, Dict[str, int]],
         precondition_variables: Dict[str, str],
-    ) -> List[Dict[str, int]]:
-        """Resolve ``{v_*}`` codes in *precondition_expr* to var-info dicts.
+        serialize_ast: Any,
+    ) -> Any:
+        """Walk the parsed gate AST and emit the engine's dict shape.
 
-        Updates *precondition_variables* in-place with the resolved
-        ``{variable_vid: "b"}`` entries.
+        Three transformations happen along the way:
+
+        1. ``VarRef`` (the parser's node for ``{v_*}``) and any ``VarID``
+           whose selection uses the ``v`` prefix collapse to a
+           ``PreconditionItem`` dict with the resolved ``variable_id``,
+           and the resolved ``variable_vid`` is registered in
+           ``precondition_variables``. When the code cannot be resolved,
+           the node is dropped: the caller then rewires the surrounding
+           logical operator to keep the tree standing, or returns
+           ``None`` if nothing survives.
+        2. ``ParExpr`` wrappers unwrap once their child is finalised —
+           the engine reads meaning from operator precedence in the
+           tree, not from redundant grouping.
+        3. Every other node kind — ``ParameterRef``, ``BinOp`` /
+           ``UnaryOp`` whose operands are not selections, literals, and
+           so on — is serialised through the standard ``serialize_ast``
+           path, so the tree the engine sees matches the shape used in
+           expressions.
+
+        The walker takes the parsed AST (not the serialised dict) so
+        the ``variable`` attribute of a ``VarRef`` reaches the resolver
+        intact; the standard serializer's ``generic_visit`` does not
+        propagate that attribute.
         """
-        var_infos: List[Dict[str, int]] = []
-        raw_codes = [
-            _normalize_variable_code(m)
-            for m in _VAR_REF_PATTERN.findall(precondition_expr)
-        ]
-        for var_code in raw_codes:
-            info = resolved.get(var_code)
-            if info is None:
-                continue
-            var_infos.append(
-                {
-                    "variable_code": var_code,  # type: ignore[dict-item]
-                    "variable_id": info["variable_id"],
-                    "variable_vid": info["variable_vid"],
-                }
+        from dpmcore.dpm_xl.ast import nodes as ast_nodes
+
+        # Unwrap the top-level ``Start`` wrapper the grammar puts around
+        # every parsed expression. The engine's precondition entry
+        # matches the inside of that wrapper, not the wrapper itself.
+        node = cls._unwrap_start(node, ast_nodes)
+
+        if isinstance(node, ast_nodes.ParExpr):
+            return cls._transform_precondition_ast(
+                node.expression,
+                resolved,
+                precondition_variables,
+                serialize_ast,
             )
-            precondition_variables[str(info["variable_vid"])] = "b"
-        return var_infos
+        if isinstance(node, ast_nodes.VarRef):
+            return cls._precondition_item_from_varref(
+                node, resolved, precondition_variables
+            )
+        if isinstance(node, ast_nodes.VarID):
+            return cls._precondition_item_from_varid(
+                node, resolved, precondition_variables
+            )
+        if isinstance(node, ast_nodes.BinOp):
+            left = cls._transform_precondition_ast(
+                node.left,
+                resolved,
+                precondition_variables,
+                serialize_ast,
+            )
+            right = cls._transform_precondition_ast(
+                node.right,
+                resolved,
+                precondition_variables,
+                serialize_ast,
+            )
+            if left is None and right is None:
+                return None
+            if left is None:
+                return right
+            if right is None:
+                return left
+            return {
+                "class_name": "BinOp",
+                "op": node.op,
+                "left": left,
+                "right": right,
+            }
+        if isinstance(node, ast_nodes.UnaryOp):
+            operand = cls._transform_precondition_ast(
+                node.operand,
+                resolved,
+                precondition_variables,
+                serialize_ast,
+            )
+            if operand is None:
+                return None
+            return {
+                "class_name": "UnaryOp",
+                "op": node.op,
+                "operand": operand,
+            }
+        # Any other node kind (ParameterRef, Scalar, Set, ...) is
+        # serialised as-is; the tree walker never had special handling
+        # for it and the standard serializer already produces the shape
+        # the engine expects.
+        return serialize_ast(node)
 
     @staticmethod
-    def _build_precondition_entry(
-        var_infos: List[Dict[str, Any]],
+    def _unwrap_start(node: Any, ast_nodes: Any) -> Any:
+        """Strip the ``Start`` wrapper the parser adds to every AST.
+
+        ``SyntaxService.parse`` returns a ``Start`` node whose only child
+        is the actual expression. The engine's precondition entry is the
+        expression itself.
+        """
+        if isinstance(node, ast_nodes.Start):
+            children = getattr(node, "children", None) or []
+            if len(children) == 1:
+                return children[0]
+        return node
+
+    @staticmethod
+    def _precondition_item_from_varref(
+        node: Any,
+        resolved: Dict[str, Dict[str, int]],
+        precondition_variables: Dict[str, str],
+    ) -> Optional[Dict[str, Any]]:
+        """Rewrite a ``VarRef`` node as a ``PreconditionItem``.
+
+        ``VarRef`` is what the parser produces for a bare variable
+        selection; ``VarID`` handles the fuller cell-reference form.
+        Both routes converge on ``PreconditionItem`` here: the engine
+        binds a filing indicator, not a cell.
+        """
+        variable = getattr(node, "variable", None)
+        if not isinstance(variable, str):
+            return None
+        var_code = _normalize_variable_code(variable)
+        info = resolved.get(var_code)
+        if info is None:
+            return None
+        precondition_variables[str(info["variable_vid"])] = "b"
+        return {
+            "class_name": "PreconditionItem",
+            "variable_id": info["variable_id"],
+            "variable_code": var_code,
+            # Kept for key derivation in
+            # ``_build_precondition_entry_from_ast`` — the pre-existing
+            # ``p_<vid>`` scheme groups precondition entries by
+            # ``variable_vid``, not ``variable_id``. The engine ignores
+            # this field on the emitted node.
+            "variable_vid": info["variable_vid"],
+        }
+
+    @staticmethod
+    def _precondition_item_from_varid(
+        node: Any,
+        resolved: Dict[str, Dict[str, int]],
+        precondition_variables: Dict[str, str],
+    ) -> Optional[Dict[str, Any]]:
+        """Rewrite a variable-selection ``VarID`` as a ``PreconditionItem``.
+
+        Codes that don't resolve return ``None`` so the caller can drop
+        the position — the same non-fatal outcome the previous regex
+        path produced when a code was unknown.
+        """
+        table = getattr(node, "table", None)
+        if not isinstance(table, str):
+            return None
+        var_code = _normalize_variable_code(table)
+        info = resolved.get(var_code)
+        if info is None:
+            return None
+        precondition_variables[str(info["variable_vid"])] = "b"
+        return {
+            "class_name": "PreconditionItem",
+            "variable_id": info["variable_id"],
+            "variable_code": var_code,
+            # Kept for key derivation in
+            # ``_build_precondition_entry_from_ast`` — the pre-existing
+            # ``p_<vid>`` scheme groups precondition entries by
+            # ``variable_vid``, not ``variable_id``. The engine ignores
+            # this field on the emitted node.
+            "variable_vid": info["variable_vid"],
+        }
+
+    @classmethod
+    def _accumulate_precondition_parameters(
+        cls,
+        referenced_parameters: Dict[str, ParameterInfo],
+        node: Any,
+    ) -> None:
+        """Add every ``ParameterRef`` in the gate to the script registry.
+
+        Reads the type off the serialised node so the shared registry
+        holds the same value the engine will bind against. Two gate
+        positions with the same ``code`` but different ``param_type``
+        raise ``SemanticError`` ``3-8`` via :func:`merge_parameters`,
+        exactly as they would if the same conflict appeared between
+        two expressions.
+        """
+        if isinstance(node, dict):
+            if node.get("class_name") == "ParameterRef":
+                code = node.get("code")
+                declared_type = node.get("param_type")
+                if isinstance(code, str) and isinstance(declared_type, str):
+                    merge_parameters(
+                        referenced_parameters,
+                        (
+                            ParameterInfo(
+                                code=code,
+                                declared_type=declared_type,
+                                default=None,
+                            ),
+                        ),
+                    )
+            for value in node.values():
+                if isinstance(value, (dict, list)):
+                    cls._accumulate_precondition_parameters(
+                        referenced_parameters, value
+                    )
+        elif isinstance(node, list):
+            for item in node:
+                if isinstance(item, (dict, list)):
+                    cls._accumulate_precondition_parameters(
+                        referenced_parameters, item
+                    )
+
+    @classmethod
+    def _strip_precondition_item_vids(cls, node: Any) -> None:
+        """Drop the internal ``variable_vid`` field from every item node.
+
+        ``variable_vid`` is added by
+        :meth:`_precondition_item_from_varref` so key derivation groups
+        entries the same way ``p_<vid>`` used to. The engine's
+        ``PreconditionItem`` schema only carries ``variable_id`` and
+        ``variable_code``, so the field is stripped once the key has
+        been built.
+        """
+        if isinstance(node, dict):
+            if node.get("class_name") == "PreconditionItem":
+                node.pop("variable_vid", None)
+            for value in node.values():
+                if isinstance(value, (dict, list)):
+                    cls._strip_precondition_item_vids(value)
+        elif isinstance(node, list):
+            for item in node:
+                if isinstance(item, (dict, list)):
+                    cls._strip_precondition_item_vids(item)
+
+    @classmethod
+    def _build_precondition_entry_from_ast(
+        cls,
+        gate_ast: Dict[str, Any],
         validation_codes: List[str],
         provided_code: Optional[str] = None,
         provided_version_id: Optional[int] = None,
     ) -> Tuple[str, Dict[str, Any]]:
-        """Assemble a single ``preconditions[key]`` entry.
+        """Assemble a ``preconditions[key]`` entry from an emitted gate AST.
 
-        Single-variable case → ``p_<vid>`` with a ``PreconditionItem``
-        AST. Compound case → ``p_<sorted_vids>`` with a left-folded
-        chain of ``BinOp(op="and")`` nodes.
-
-        When provided_code or provided_version_id are supplied, they override
-        the auto-generated values.
+        The key groups together gates that emit the same sorted set of
+        ``PreconditionItem`` variable-vids — the pre-existing dedup
+        contract, preserved so a gate that today merges two operations
+        under one key keeps doing so. Gates whose only content is a
+        ``ParameterRef`` fall back to a hash-based key derived from the
+        canonical AST, so they still get a unique slot instead of
+        overwriting one another.
         """
-        if len(var_infos) == 1:
-            vi = var_infos[0]
-            default_key = f"p_{vi['variable_vid']}"
-            code = provided_code if provided_code is not None else default_key
-            version_id = (
-                provided_version_id
-                if provided_version_id is not None
-                else vi["variable_vid"]
+        item_vids = sorted(cls._collect_precondition_item_vids(gate_ast))
+        # Strip the internal ``variable_vid`` field once the key is
+        # settled; the engine's ``PreconditionItem`` schema does not
+        # carry it.
+        cls._strip_precondition_item_vids(gate_ast)
+        if item_vids:
+            default_key = "p_" + "_".join(str(v) for v in item_vids)
+            default_version_id: int = item_vids[0]
+        else:
+            digest = zlib.crc32(
+                json.dumps(gate_ast, sort_keys=True).encode("utf-8")
             )
-            return code, {
-                "ast": {
-                    "class_name": "PreconditionItem",
-                    "variable_id": vi["variable_id"],
-                    "variable_code": vi["variable_code"],
-                },
-                "affected_operations": list(validation_codes),
-                "version_id": version_id,
-                "code": code,
-            }
-
-        sorted_vids = sorted(vi["variable_vid"] for vi in var_infos)
-        default_key = "p_" + "_".join(str(v) for v in sorted_vids)
+            default_key = f"p_gate_{digest:08x}"
+            default_version_id = digest % 10000
         code = provided_code if provided_code is not None else default_key
         version_id = (
             provided_version_id
             if provided_version_id is not None
-            else sorted_vids[0]
+            else default_version_id
         )
-        ast_node: Dict[str, Any] = {
-            "class_name": "PreconditionItem",
-            "variable_id": var_infos[0]["variable_id"],
-            "variable_code": var_infos[0]["variable_code"],
-        }
-        for vi in var_infos[1:]:
-            ast_node = {
-                "class_name": "BinOp",
-                "op": "and",
-                "left": ast_node,
-                "right": {
-                    "class_name": "PreconditionItem",
-                    "variable_id": vi["variable_id"],
-                    "variable_code": vi["variable_code"],
-                },
-            }
         return code, {
-            "ast": ast_node,
+            "ast": gate_ast,
             "affected_operations": list(validation_codes),
             "version_id": version_id,
             "code": code,
         }
+
+    @classmethod
+    def _collect_precondition_item_vids(cls, node: Any) -> List[int]:
+        """Return the ``variable_vid`` of every ``PreconditionItem`` node.
+
+        The pre-existing ``p_<vid>`` naming keys entries by
+        ``variable_vid``, so gates that name the same filing indicator
+        collapse to the same entry.
+        """
+        vids: List[int] = []
+        if isinstance(node, dict):
+            if node.get("class_name") == "PreconditionItem":
+                vid = node.get("variable_vid")
+                if isinstance(vid, int):
+                    vids.append(vid)
+            for value in node.values():
+                if isinstance(value, (dict, list)):
+                    vids.extend(cls._collect_precondition_item_vids(value))
+        elif isinstance(node, list):
+            for item in node:
+                if isinstance(item, (dict, list)):
+                    vids.extend(cls._collect_precondition_item_vids(item))
+        return vids
 
     # ------------------------------------------------------------------ #
     # AST helpers
