@@ -265,15 +265,24 @@ centralised_messages: Dict[str, str] = {
     ),
     # -- if then else
     "4-6-1-1": ("Error for the condition in if then else operator"),
+    "4-6-1-2": (
+        "For if then else operator, the condition and the then and else"
+        " branches have to be a recordset or a scalar,"
+        " {operand} is neither."
+    ),
     "4-6-1-3": (
-        "For if then else operator, then and else"
-        " have to be both recordset or both scalars,"
-        " if the condition is a scalar."
+        "For if then else operator, then and else have to result in the"
+        " same key components once joined with the condition"
+        " (both recordset or both scalars, if the condition is a scalar)."
     ),
     # -- nvl
     "4-6-2-1": (
         "Invalid input structures for Nvl operator,"
         " right op has to be scalar too."
+    ),
+    "4-6-2-2": (
+        "For nvl operator, both operands have to be"
+        " a recordset or a scalar, {operand} is neither."
     ),
     # -- filter
     "4-6-3-1": (
