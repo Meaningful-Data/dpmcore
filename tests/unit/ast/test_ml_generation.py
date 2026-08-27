@@ -363,3 +363,52 @@ def test_visit_set_creates_operand_references_for_children_from_another_ast_impl
     op_refs = [o for o in added if isinstance(o, OperandReference)]
     assert len(op_refs) == 1
     assert op_refs[0].item_id == 1
+
+
+def test_create_operation_node_unwraps_a_constant_default(ml_generation):
+    """A ``default(...)`` fallback value must be unwrapped to its raw value."""
+    ml_generation.session = MagicMock()
+    ml_generation.op_version_id = 99
+    ml_generation.df_operators = pd.DataFrame(
+        columns=["Symbol", "OperatorID", "Name"]
+    )
+    ml_generation.df_arguments = pd.DataFrame(
+        columns=["Name", "OperatorID", "ArgumentID"]
+    )
+    node = Constant(type_="Integer", value=1)
+    node.default = Constant(type_="Integer", value=0)
+
+    result = MLGeneration.create_operation_node(ml_generation, node)
+
+    assert result.fallback_value == 0
+
+
+def test_create_operation_node_unwraps_a_default_from_another_ast_implementation(
+    ml_generation,
+):
+    """Regression test: ``create_operation_node`` used to require dpmcore's own
+    concrete ``Constant`` class via ``isinstance``, so a structurally identical
+    ``Constant`` from another parser was kept wrapped instead of unwrapped to
+    its raw value.
+    """
+
+    class Constant:  # a different, unrelated "Constant" class - not dpmcore's
+        def __init__(self, value):
+            self.value = value
+
+    ml_generation.session = MagicMock()
+    ml_generation.op_version_id = 99
+    ml_generation.df_operators = pd.DataFrame(
+        columns=["Symbol", "OperatorID", "Name"]
+    )
+    ml_generation.df_arguments = pd.DataFrame(
+        columns=["Name", "OperatorID", "ArgumentID"]
+    )
+    node = VarID(
+        table=None, rows=None, cols=None, sheets=None, interval=False,
+        default=Constant(value=0),
+    )
+
+    result = MLGeneration.create_operation_node(ml_generation, node)
+
+    assert result.fallback_value == 0

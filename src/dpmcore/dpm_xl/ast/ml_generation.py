@@ -189,7 +189,7 @@ class MLGeneration(ASTTemplate):
         interval = bool(interval_attr) if interval_attr is not None else False
         fallback_value = gather_element(node, "default")
 
-        if isinstance(fallback_value, Constant):
+        if hasattr(fallback_value, "value"):
             fallback_value = fallback_value.value
 
         if fallback_value is not None and isinstance(fallback_value, str):
