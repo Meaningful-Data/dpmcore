@@ -259,16 +259,13 @@ class MLGeneration(ASTTemplate):
         self.session_queries.close()
 
     def visit_PersistentAssignment(self, node: PersistentAssignment) -> None:
-
+        # node.left is the target cell, not an operand: never visited, so it
+        # never becomes a leaf (matches TemporaryAssignment below).
         operation_node = self.create_operation_node(node)
 
-        node.left.argument = "left"
         node.right.argument = "right"
-
-        node.left.parent = operation_node
         node.right.parent = operation_node
 
-        self.visit(node.left)
         self.visit(node.right)
 
     def visit_TemporaryAssignment(self, node: TemporaryAssignment) -> None:
