@@ -405,7 +405,11 @@ def test_create_operation_node_unwraps_a_default_from_another_ast_implementation
         columns=["Name", "OperatorID", "ArgumentID"]
     )
     node = VarID(
-        table=None, rows=None, cols=None, sheets=None, interval=False,
+        table=None,
+        rows=None,
+        cols=None,
+        sheets=None,
+        interval=False,
         default=Constant(value=0),
     )
 
