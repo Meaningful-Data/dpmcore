@@ -57,6 +57,7 @@ from dpmcore.orm.operations import (
     OperandReference,
     OperandReferenceLocation,
     OperationNode,
+    OperationVersion,
 )
 
 
@@ -267,6 +268,39 @@ class MLGeneration(ASTTemplate):
         node.right.parent = operation_node
 
         self.visit(node.right)
+
+        self._set_output_variable(node.left)
+
+    def _set_output_variable(self, target: Any) -> None:
+        variable_id = self._resolve_output_variable_id(target)
+        if variable_id is None or self.op_version_id is None:
+            return
+        operation_version = self.session.get(
+            OperationVersion, self.op_version_id
+        )
+        if operation_version is not None:
+            operation_version.output_variable_id = variable_id
+
+    def _resolve_output_variable_id(self, target: Any) -> int | None:
+        variable_code = gather_element(target, "variable")
+        if variable_code is not None:
+            variable_id_result = VariableVersionQuery.get_variable_id(
+                self.session, variable_code, self.release_id
+            )
+            return variable_id_result[0] if variable_id_result else None
+        table = gather_element(target, "table")
+        if table is None:
+            return None
+        # >1 result never happens in practice; left unresolved, not guessed.
+        data_xyz = self.extract_operand_data(
+            table,
+            gather_element(target, "rows"),
+            gather_element(target, "cols"),
+            gather_element(target, "sheets"),
+        )
+        if len(data_xyz) == 1:
+            return data_xyz[0]["variable_id"]
+        return None
 
     def visit_TemporaryAssignment(self, node: TemporaryAssignment) -> None:
         self.visit(node.right)
