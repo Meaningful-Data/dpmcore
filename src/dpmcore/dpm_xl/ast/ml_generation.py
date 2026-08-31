@@ -189,7 +189,7 @@ class MLGeneration(ASTTemplate):
         interval = bool(interval_attr) if interval_attr is not None else False
         fallback_value = gather_element(node, "default")
 
-        if isinstance(fallback_value, Constant):
+        if hasattr(fallback_value, "value"):
             fallback_value = fallback_value.value
 
         if fallback_value is not None and isinstance(fallback_value, str):
@@ -751,7 +751,7 @@ class MLGeneration(ASTTemplate):
         op_node = self.create_operation_node(node, is_leaf=True)
 
         for child in node.children:
-            if not isinstance(child, Scalar):
+            if not hasattr(child, "item"):
                 continue
             item_id = ItemCategoryQuery.get_item_category_id_from_signature(
                 signature=child.item, session=self.session_queries
