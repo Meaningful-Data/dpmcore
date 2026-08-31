@@ -456,16 +456,24 @@ annotations, and categorisation tooltips.
 Each generated workbook contains:
 
 - An **Index** sheet with a hyperlinked table of contents
-- One sheet per table (alphabetically sorted), each with:
+- One sheet per table (alphabetically sorted) — or one sheet per
+  Z-axis sheet for tables whose cells are sheet-scoped, named
+  ``<table code> (<sheet code>)`` and listed individually in the
+  Index — each with:
 
   - Table title and optional sheet (Z-axis) header
   - Hierarchical column headers with merged cells
   - Row headers with indentation reflecting the hierarchy
-  - Data cells showing the ``variable_vid`` (data point ID);
-    excluded cells are greyed out
+  - Data cells showing the ``variable_id`` (data point ID), the data
+    type and the sign recorded on the cell (a cell with no sign shows
+    none); excluded cells are greyed out and void cells get a darker
+    grey
+  - Cells reporting a data point that is also reported elsewhere in the
+    workbook ("identities") highlighted in yellow, with the other
+    locations listed in the cell comment
   - Dimensional annotations below the grid (for column dimensions)
     and to the right (for row dimensions), colour-coded per dimension
-  - Excel comments on headers and cells showing dimensional
-    categorisations (``Dimension = Member``)
+  - Excel comments on headers and cells showing the variable IDs,
+    identities and dimensional categorisations (``Dimension = Member``)
   - Outline groups for expanding/collapsing hierarchical rows and columns
   - Frozen panes at the data-area origin
