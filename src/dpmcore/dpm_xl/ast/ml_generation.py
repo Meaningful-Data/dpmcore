@@ -48,6 +48,7 @@ from dpmcore.dpm_xl.model_queries import (
     ItemCategoryQuery,
     OperatorQuery,
     VariableVersionQuery,
+    ViewDatapointsQuery,
 )
 from dpmcore.dpm_xl.utils import tokens
 from dpmcore.dpm_xl.utils.data_handlers import filter_all_data, generate_xyz
@@ -294,20 +295,24 @@ class MLGeneration(ASTTemplate):
         table = gather_element(target, "table")
         if table is None:
             return None
+        # The target is never visited during semantic analysis, so it's
+        # never in self.data. Resolve it straight from the DB instead
+        cell_data = ViewDatapointsQuery.get_table_data(
+            self.session,
+            table,
+            gather_element(target, "rows"),
+            gather_element(target, "cols"),
+            gather_element(target, "sheets"),
+            self.release_id,
+        )
         # >1 result never happens in practice; left unresolved, not guessed.
-        # Missing self.data also means unresolved, not a crash
-        try:
-            data_xyz = self.extract_operand_data(
-                table,
-                gather_element(target, "rows"),
-                gather_element(target, "cols"),
-                gather_element(target, "sheets"),
-            )
-        except RuntimeError:
+        if len(cell_data) != 1:
             return None
-        if len(data_xyz) == 1:
-            return data_xyz[0]["variable_id"]
-        return None
+        variable_id = cell_data.iloc[0]["variable_id"]
+        # Grey cells come back as NaN, upcasting the column to float64
+        if pd.isna(variable_id):
+            return None
+        return int(variable_id)
 
     def visit_TemporaryAssignment(self, node: TemporaryAssignment) -> None:
         self.visit(node.right)
