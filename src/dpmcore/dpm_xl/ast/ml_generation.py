@@ -272,8 +272,11 @@ class MLGeneration(ASTTemplate):
         self._set_output_variable(node.left)
 
     def _set_output_variable(self, target: Any) -> None:
+        # Scripting mode must not dirty a real OperationVersion row
+        if self.is_scripting or self.op_version_id is None:
+            return
         variable_id = self._resolve_output_variable_id(target)
-        if variable_id is None or self.op_version_id is None:
+        if variable_id is None:
             return
         operation_version = self.session.get(
             OperationVersion, self.op_version_id
@@ -292,12 +295,16 @@ class MLGeneration(ASTTemplate):
         if table is None:
             return None
         # >1 result never happens in practice; left unresolved, not guessed.
-        data_xyz = self.extract_operand_data(
-            table,
-            gather_element(target, "rows"),
-            gather_element(target, "cols"),
-            gather_element(target, "sheets"),
-        )
+        # Missing self.data also means unresolved, not a crash
+        try:
+            data_xyz = self.extract_operand_data(
+                table,
+                gather_element(target, "rows"),
+                gather_element(target, "cols"),
+                gather_element(target, "sheets"),
+            )
+        except RuntimeError:
+            return None
         if len(data_xyz) == 1:
             return data_xyz[0]["variable_id"]
         return None

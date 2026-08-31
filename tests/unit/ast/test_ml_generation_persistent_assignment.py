@@ -149,3 +149,33 @@ def test_var_id_left_hand_side_that_does_not_resolve_leaves_output_variable_unto
     ml_generation.visit_PersistentAssignment(_persistent_assignment())
 
     ml_generation.session.get.assert_not_called()
+
+
+def test_scripting_mode_never_touches_output_variable(ml_generation):
+    # Scripting mode must not dirty a real OperationVersion row
+    ml_generation.is_scripting = True
+    ml_generation.extract_operand_data = MagicMock(return_value=[])
+
+    ml_generation.visit_PersistentAssignment(_persistent_assignment())
+
+    # Only the right-hand formula call; the left-hand resolution is skipped
+    assert ml_generation.extract_operand_data.call_count == 1
+    ml_generation.session.get.assert_not_called()
+
+
+def test_var_id_left_hand_side_without_data_degrades_to_unresolved(
+    ml_generation,
+):
+    # A RuntimeError from extract_operand_data must not propagate
+    def extract_operand_data(table, rows, cols, sheets):
+        if rows == ["r0010"]:  # the left-hand target
+            raise RuntimeError("extract_operand_data requires data")
+        return []
+
+    ml_generation.extract_operand_data = MagicMock(
+        side_effect=extract_operand_data
+    )
+
+    ml_generation.visit_PersistentAssignment(_persistent_assignment())
+
+    ml_generation.session.get.assert_not_called()
