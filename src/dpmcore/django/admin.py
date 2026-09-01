@@ -90,7 +90,6 @@ from dpmcore.django.models.variables import (
     CompoundKey,
     KeyComposition,
     Variable,
-    VariableCalculation,
     VariableVersion,
 )
 
@@ -643,17 +642,6 @@ class VariableVersionAdmin(DpmModelAdmin):
     search_fields = ("code", "name")
 
 
-@admin.register(VariableCalculation)
-class VariableCalculationAdmin(DpmModelAdmin):
-    list_display = (
-        "module",
-        "variable",
-        "operation_version",
-        "from_reference_date",
-        "to_reference_date",
-    )
-
-
 @admin.register(CompoundKey)
 class CompoundKeyAdmin(DpmModelAdmin):
     list_display = ("key_id", "signature")
@@ -688,6 +676,7 @@ class OperationVersionAdmin(DpmModelAdmin):
         "endorsement",
         "start_release",
         "end_release",
+        "output_variable",
     )
     search_fields = ("description", "expression")
     list_filter = ("endorsement", "is_variant_approved")

@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     )
     from dpmcore.orm.packaging import ModuleVersion
     from dpmcore.orm.rendering import Cell
-    from dpmcore.orm.variables import Variable, VariableCalculation
+    from dpmcore.orm.variables import Variable
 
 
 # ------------------------------------------------------------------
@@ -169,6 +169,11 @@ class OperationVersion(Base):
     is_variant_approved: Mapped[Optional[bool]] = mapped_column(
         "IsVariantApproved", Boolean
     )
+    output_variable_id: Mapped[Optional[int]] = mapped_column(
+        "OutputVariableID",
+        Integer,
+        ForeignKey("Variable.VariableID"),
+    )
 
     operation: Mapped[Optional["Operation"]] = relationship(
         "Operation", back_populates="operation_versions"
@@ -225,9 +230,10 @@ class OperationVersion(Base):
             uselist=False,
         )
     )
-    variable_calculations: Mapped[List["VariableCalculation"]] = relationship(
-        "VariableCalculation",
-        back_populates="operation_version",
+    output_variable: Mapped[Optional["Variable"]] = relationship(
+        "Variable",
+        foreign_keys=[output_variable_id],
+        back_populates="output_operation_versions",
     )
 
 

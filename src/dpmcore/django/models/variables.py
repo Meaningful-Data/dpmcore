@@ -129,49 +129,6 @@ class VariableVersion(models.Model):
         app_label = "dpmcore_django"
 
 
-class VariableCalculation(models.Model):
-    """Link between a Module, Variable, and OperationVersion."""
-
-    module = models.ForeignKey(
-        "Module",
-        on_delete=models.DO_NOTHING,
-        db_column="ModuleID",
-        primary_key=True,
-    )
-    variable = models.ForeignKey(
-        "Variable",
-        on_delete=models.DO_NOTHING,
-        db_column="VariableID",
-    )
-    operation_version = models.ForeignKey(
-        "OperationVersion",
-        on_delete=models.DO_NOTHING,
-        db_column="OperationVID",
-    )
-    from_reference_date = models.DateField(
-        db_column="FromReferenceDate",
-        null=True,
-        blank=True,
-    )
-    to_reference_date = models.DateField(
-        db_column="ToReferenceDate",
-        null=True,
-        blank=True,
-    )
-    row_guid = models.CharField(
-        db_column="RowGUID",
-        max_length=36,
-        null=True,
-        blank=True,
-    )
-
-    class Meta:
-        managed = False
-        db_table = "VariableCalculation"
-        app_label = "dpmcore_django"
-        unique_together = (("module", "variable", "operation_version"),)
-
-
 class CompoundKey(models.Model):
     """Composite key definition for Variables."""
 

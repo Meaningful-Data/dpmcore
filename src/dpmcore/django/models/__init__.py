@@ -79,7 +79,6 @@ from dpmcore.django.models.variables import (
     CompoundKey,
     KeyComposition,
     Variable,
-    VariableCalculation,
     VariableVersion,
 )
 
@@ -157,6 +156,5 @@ __all__ = [
     "CompoundKey",
     "KeyComposition",
     "Variable",
-    "VariableCalculation",
     "VariableVersion",
 ]
