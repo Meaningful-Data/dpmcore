@@ -7,14 +7,16 @@ comments, and outline groups.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional
 
 from openpyxl import Workbook
 from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.hyperlink import Hyperlink
 
 from dpmcore.services.layout_exporter.models import (
+    CellData,
     DimensionMember,
     ExportConfig,
     LayoutHeader,
@@ -31,6 +33,22 @@ _GREY_FILL = PatternFill(
 _EXCLUDED_FILL = PatternFill(
     start_color="999999", end_color="999999", fill_type="solid"
 )
+# Void cells are excluded too, so they get a darker grey to stand out
+# from the cells that are merely not reportable.
+_VOID_FILL = PatternFill(
+    start_color="595959", end_color="595959", fill_type="solid"
+)
+# Cells whose datapoint is shared with another cell of the workbook:
+# "identities" in DPM terms — the same figure reported in two places.
+_IDENTITY_FILL = PatternFill(
+    start_color="FFFF00", end_color="FFFF00", fill_type="solid"
+)
+# Excel worksheet titles are limited to 31 characters.
+_MAX_SHEET_TITLE = 31
+# Cap the identity list in a tooltip; a few datapoints are reported in
+# dozens of cells and the comment box would be unreadable.
+_MAX_IDENTITIES_IN_TOOLTIP = 15
+
 _TITLE_FONT = Font(bold=True, size=11)
 _HEADER_FONT = Font(bold=True, size=10)
 _DATA_FONT = Font(size=9)
@@ -67,6 +85,14 @@ _DIM_COLORS = [
 ]
 
 
+class _IndexEntry(NamedTuple):
+    """One worksheet written for a table (one per Z-axis sheet)."""
+
+    title: str
+    layout: TableLayout
+    sheet_label: str
+
+
 class ExcelLayoutWriter:
     """Writes one or more TableLayouts to an openpyxl Workbook."""
 
@@ -78,6 +104,9 @@ class ExcelLayoutWriter:
         """Initialise with the layouts to render and optional config."""
         self.layouts = layouts
         self.config = config or ExportConfig()
+        # {variable_vid: [cell location, ...]} for shared datapoints;
+        # filled in write().
+        self.identities: dict[int, list[str]] = {}
         self.wb = Workbook()
         # Remove default sheet (Workbook() always creates one).
         if self.wb.sheetnames:  # pragma: no branch
@@ -88,16 +117,35 @@ class ExcelLayoutWriter:
         # Sort layouts alphabetically by table code
         sorted_layouts = sorted(self.layouts, key=lambda lo: lo.table_code)
 
+        # Identities are shared datapoints, so they are computed over
+        # the whole workbook — one module for export_module().
+        self.identities = _build_identity_index(sorted_layouts)
+
+        entries: list[_IndexEntry] = []
+        used_titles: set[str] = set()
         for layout in sorted_layouts:
-            self._write_table(layout)
+            for active_sheets, sheet_id, sheet in _sheet_renderings(layout):
+                title = _worksheet_title(
+                    layout.table_code,
+                    sheet,
+                    used_titles,
+                )
+                self._write_table(layout, active_sheets, sheet_id, title)
+                entries.append(
+                    _IndexEntry(
+                        title=title,
+                        layout=layout,
+                        sheet_label=sheet.label if sheet else "",
+                    ),
+                )
 
         # Add index sheet at the beginning
-        self._write_index(sorted_layouts)
+        self._write_index(entries)
 
         return self.wb
 
-    def _write_index(self, sorted_layouts: list[TableLayout]) -> None:
-        """Write an index sheet with hyperlinks to each table."""
+    def _write_index(self, entries: list[_IndexEntry]) -> None:
+        """Write an index sheet with hyperlinks to each worksheet."""
         ws = self.wb.create_sheet(title="Index", index=0)
 
         # Title
@@ -106,40 +154,78 @@ class ExcelLayoutWriter:
             size=14,
         )
 
+        # A "Sheet" column is only meaningful when at least one table
+        # was split into one worksheet per Z-axis sheet.
+        has_sheets = any(e.sheet_label for e in entries)
+
         # Column headers
-        for col, header in enumerate(
-            ["#", "Table Code", "Table Name"],
-            start=1,
-        ):
+        headers = ["#", "Table Code", "Table Name"]
+        if has_sheets:
+            headers.append("Sheet")
+        for col, header in enumerate(headers, start=1):
             cell = ws.cell(row=3, column=col, value=header)
             cell.font = _HEADER_FONT
             cell.fill = _GREY_FILL
             cell.border = _BORDER_ALL
 
         # Table entries with hyperlinks
-        for i, layout in enumerate(sorted_layouts):
+        for i, entry in enumerate(entries):
             row = 4 + i
             ws.cell(row=row, column=1, value=i + 1).border = _BORDER_ALL
 
-            sheet_name = layout.table_code[:31]
-            code_cell = ws.cell(row=row, column=2, value=layout.table_code)
+            code_cell = ws.cell(
+                row=row, column=2, value=entry.layout.table_code
+            )
             code_cell.border = _BORDER_ALL
             code_cell.font = Font(color="0000CC", underline="single")
-            code_cell.hyperlink = f"#{sheet_name}!A1"
+            # An internal link needs a quoted location: titles carry
+            # dots, spaces and parentheses, which Excel rejects
+            # unquoted.
+            code_cell.hyperlink = Hyperlink(
+                ref=code_cell.coordinate,
+                location=f"'{entry.title}'!A1",
+            )
 
-            name_cell = ws.cell(row=row, column=3, value=layout.table_name)
+            name_cell = ws.cell(
+                row=row, column=3, value=entry.layout.table_name
+            )
             name_cell.border = _BORDER_ALL
+
+            if has_sheets:
+                sheet_cell = ws.cell(
+                    row=row, column=4, value=entry.sheet_label
+                )
+                sheet_cell.border = _BORDER_ALL
 
         # Column widths
         ws.column_dimensions["A"].width = 6
         ws.column_dimensions["B"].width = 18
         ws.column_dimensions["C"].width = 80
+        if has_sheets:
+            ws.column_dimensions["D"].width = 50
 
-    def _write_table(self, layout: TableLayout) -> None:  # noqa: C901
-        """Write a single table layout to a worksheet."""
-        # Truncate sheet name to 31 chars (Excel limit)
-        sheet_name = layout.table_code[:31]
-        ws = self.wb.create_sheet(title=sheet_name)
+    def _write_table(  # noqa: C901
+        self,
+        layout: TableLayout,
+        active_sheets: list[LayoutHeader],
+        sheet_id: Optional[int],
+        title: str,
+    ) -> None:
+        """Write one grid of a table layout to a worksheet.
+
+        ``active_sheets`` are the Z-axis headers annotated on this
+        worksheet and ``sheet_id`` the sheet its data cells are read
+        from: one worksheet per Z sheet for sheet-scoped tables, a
+        single worksheet carrying every Z header otherwise.
+        """
+        ws = self.wb.create_sheet(title=title)
+
+        # True when this worksheet renders one specific Z sheet (rather
+        # than a single grid whose Z headers are fixed context).
+        per_sheet = bool(active_sheets) and (
+            active_sheets[0].header_id == sheet_id
+        )
+        sheet_code = active_sheets[0].code if per_sheet else ""
 
         cfg = self.config
         code_row_offset = 1 if cfg.show_code_row else 0
@@ -147,15 +233,16 @@ class ExcelLayoutWriter:
 
         # Layout geometry
         # Row 1: title
-        # Row 2: empty (gap)
-        # Row 3: sheet header (if sheets) or empty
-        # Row 4: "Columns" label + row annotation dimension headers
-        # Row 5+: column header depth levels (start + 1 + depth)
+        # Row 2: Z-axis annotation label (if sheets) or empty
+        # Row 3+: one row per annotated Z header, then a gap row
+        # Next: "Columns" label + row annotation dimension headers
+        # Next: column header depth levels (start + 1 + depth)
         # Then: column code row (if enabled)
         # Then: data rows
 
-        # "Columns" row: row 4 without sheets, row 5 when sheets exist
-        col_header_start_row = 5 if layout.sheets else 4
+        # "Columns" row: row 4 without sheets, one row lower per
+        # annotated Z header.
+        col_header_start_row = 4 + len(active_sheets)
         col_label_rows = layout.max_col_depth + 1
         col_code_row = (
             col_header_start_row + 1 + col_label_rows
@@ -213,29 +300,36 @@ class ExcelLayoutWriter:
             )
 
         # --- Sheet header (Z-axis) ---
-        # For tables with sheets, rows 2-4 are used for Z-axis annotation:
+        # For tables with sheets:
         #   Row 2: annotation label (dimension name in data columns)
-        #   Row 3: "Sheet per {label}" + annotation value in data columns
-        #   Row 4: empty gap
-        if layout.sheets:
-            for sh in layout.sheets:
-                # Row 2: annotation label in data_start_col
-                # Use "(member_code:domain_code) label" format for ATY dim
-                for dm in sh.categorisations:
-                    label_text = (
-                        f"({dm.member_code}:{dm.domain_code}) "
-                        f"{dm.member_label}"
-                    )
-                    ann_label_cell = ws.cell(
-                        row=2, column=data_start_col, value=label_text
-                    )
-                    ann_label_cell.font = Font(bold=True, size=9)
-                    ann_label_cell.alignment = Alignment(horizontal="left")
-                    break  # only write for first (ATY) categorisation
+        #   Row 3+: "Sheet: {label}" (one worksheet per sheet) or
+        #           "Sheet per {label}" (Z header as fixed context),
+        #           plus the annotation value in the data columns
+        #   Following row: empty gap
+        if active_sheets:
+            # Row 2: annotation label in data_start_col
+            # Use "(member_code:domain_code) label" format for ATY dim
+            for dm in active_sheets[0].categorisations:
+                label_text = (
+                    f"({dm.member_code}:{dm.domain_code}) {dm.member_label}"
+                )
+                ann_label_cell = ws.cell(
+                    row=2, column=data_start_col, value=label_text
+                )
+                ann_label_cell.font = Font(bold=True, size=9)
+                ann_label_cell.alignment = Alignment(horizontal="left")
+                break  # only write for first (ATY) categorisation
 
-                # Row 3: sheet header label + annotation value
-                sheet_text = f"Sheet per {sh.label}"
-                sc = ws.cell(row=3, column=row_label_col, value=sheet_text)
+            for sheet_idx, sh in enumerate(active_sheets):
+                sheet_row = 3 + sheet_idx
+
+                # Sheet header label + annotation value
+                prefix = "Sheet: " if per_sheet else "Sheet per "
+                sc = ws.cell(
+                    row=sheet_row,
+                    column=row_label_col,
+                    value=f"{prefix}{sh.label}",
+                )
                 sc.font = _HEADER_FONT
                 sc.fill = _GREY_FILL
                 sc.border = _BORDER_ALL
@@ -243,7 +337,7 @@ class ExcelLayoutWriter:
                     horizontal="center", vertical="center"
                 )
 
-                # Row 3 annotation value: SubCategory info
+                # Annotation value: SubCategory info
                 if sh.subcategory_code and sh.subcategory_cat_code:
                     cat = sh.subcategory_cat_code
                     sc_code = sh.subcategory_code
@@ -252,7 +346,7 @@ class ExcelLayoutWriter:
                     if sh.is_key:
                         ann_val += " <Key value> "
                     ann_val_cell = ws.cell(
-                        row=3, column=data_start_col, value=ann_val
+                        row=sheet_row, column=data_start_col, value=ann_val
                     )
                     ann_val_cell.font = Font(size=9)
                     ann_val_cell.alignment = Alignment(horizontal="left")
@@ -432,29 +526,6 @@ class ExcelLayoutWriter:
                     height=150,
                 )
 
-        # Per-column flag: does this column have any explicitly signed cell?
-        # NULL-sign monetary cells default to 'positive' only in such columns,
-        # OR when the row is a "Closing balance".
-        col_positive_only: dict[int, bool] = {
-            _ch.header_id: any(
-                _cd.sign
-                for _cd in layout.cells.values()
-                if _cd.col_header_id == _ch.header_id
-            )
-            for _ch in layout.columns
-            if not _ch.is_abstract
-        }
-
-        # Per-row explicit sign (used to check parent sign).
-        row_explicit_sign: dict[int, str] = {}
-        for _cd in layout.cells.values():
-            if (
-                _cd.sign
-                and _cd.row_header_id is not None
-                and _cd.row_header_id not in row_explicit_sign
-            ):
-                row_explicit_sign[_cd.row_header_id] = _cd.sign
-
         # --- Open-row tables ---
         if layout.is_open_row:
             self._write_open_row_data(
@@ -465,16 +536,11 @@ class ExcelLayoutWriter:
                 col_positions,
                 row_label_col,
                 cfg,
+                sheet_id,
+                sheet_code,
             )
 
         # --- Data cells ---
-        default_sheet_id = None
-        if not layout.sheets:
-            # Find the sheet_id used in cells (usually None or a default)
-            for key in layout.cells:
-                default_sheet_id = key[2]
-                break
-
         for rh in layout.rows:
             if rh.is_abstract:
                 continue
@@ -487,7 +553,6 @@ class ExcelLayoutWriter:
                 excel_col = data_start_col - 1 + col_offset
 
                 # Try to find cell data
-                sheet_id = default_sheet_id
                 cell_data = layout.cells.get(
                     (rh.header_id, ch.header_id, sheet_id),
                 )
@@ -496,7 +561,9 @@ class ExcelLayoutWriter:
                 cell.font = _DATA_FONT
                 cell.border = _BORDER_ALL
 
-                if cell_data is None or cell_data.is_excluded:
+                if cell_data is not None and cell_data.is_void:
+                    cell.fill = _VOID_FILL
+                elif cell_data is None or cell_data.is_excluded:
                     cell.fill = _EXCLUDED_FILL
                 elif cell_data.variable_vid:
                     # Build cell content: VariableID + data type + sign
@@ -514,27 +581,11 @@ class ExcelLayoutWriter:
                             cell_lines.append(
                                 _DATA_TYPE_SYMBOLS[cell_data.data_type_code]
                             )
-                    # Determine sign to display
-                    _sign = cell_data.sign
-                    if not _sign and cell_data.data_type_code == "m":
-                        _label = rh.label or ""
-                        # Suppress NULL→positive default when the
-                        # parent row has an explicit sign: these are
-                        # rollforward-table movements whose sign is
-                        # genuinely undetermined (positive or negative).
-                        _parent_id = rh.parent_header_id
-                        _suppress = bool(
-                            row_explicit_sign.get(_parent_id, "")
-                            if _parent_id is not None
-                            else ""
-                        )
-                        if not _suppress and (
-                            col_positive_only.get(ch.header_id, False)
-                            or _label.startswith("Closing balance")
-                        ):
-                            _sign = "positive"
-                    if _sign:
-                        cell_lines.append(_sign)
+                    # Only the sign stored on the cell is shown: a
+                    # NULL sign is "No Sign" in DPM Studio and must not
+                    # be reported as positive (DRR-1967, DRR-1970).
+                    if cell_data.sign:
+                        cell_lines.append(cell_data.sign)
                     cell.value = "\n".join(cell_lines)
                     cell.alignment = Alignment(
                         horizontal="center",
@@ -542,19 +593,28 @@ class ExcelLayoutWriter:
                         wrap_text=True,
                     )
 
+                    # Identities: highlight datapoints reported by more
+                    # than one cell of the workbook.
+                    location = _cell_location(
+                        layout.table_code,
+                        rh.code,
+                        ch.code,
+                        sheet_code,
+                    )
+                    others = self._other_identity_locations(
+                        cell_data.variable_vid,
+                        location,
+                    )
+                    if others:
+                        cell.fill = _IDENTITY_FILL
+
                     # Cell tooltip
-                    if cfg.add_cell_comments and cell_data.dp_categorisations:
-                        tooltip = (
-                            f"VariableVID = {cell_data.variable_vid}\n"
-                            + _format_categorisations(
-                                cell_data.dp_categorisations,
-                            )
-                        )
+                    if cfg.add_cell_comments:
                         cell.comment = Comment(
-                            tooltip,
+                            _cell_tooltip(cell_data, others),
                             "dpmcore",
                             width=400,
-                            height=180,
+                            height=200,
                         )
 
         # --- Annotations ---
@@ -569,6 +629,7 @@ class ExcelLayoutWriter:
                 num_visible_cols,
                 row_label_col,
                 col_header_start_row,
+                sheet_id,
             )
 
         # --- Outline groups ---
@@ -602,6 +663,8 @@ class ExcelLayoutWriter:
         col_positions: dict[int, int],
         row_label_col: int,
         cfg: ExportConfig,
+        sheet_id: Optional[int],
+        sheet_code: str,
     ) -> None:
         """Write the single 'Open Rows' data row for open-row tables."""
         open_rows_cell = ws.cell(
@@ -615,12 +678,6 @@ class ExcelLayoutWriter:
             horizontal="left", vertical="center"
         )
         open_rows_cell.font = _HEADER_FONT
-
-        default_sheet_id = None
-        if not layout.sheets:
-            for key in layout.cells:
-                default_sheet_id = key[2]
-                break
 
         for ch in layout.columns:
             if ch.is_abstract:
@@ -650,9 +707,7 @@ class ExcelLayoutWriter:
                     wrap_text=True,
                 )
             else:
-                cell_data = layout.cells.get(
-                    (None, ch.header_id, default_sheet_id)
-                )
+                cell_data = layout.cells.get((None, ch.header_id, sheet_id))
                 if (
                     cell_data is not None
                     and not cell_data.is_excluded
@@ -680,8 +735,42 @@ class ExcelLayoutWriter:
                         vertical="center",
                         wrap_text=True,
                     )
+
+                    location = _cell_location(
+                        layout.table_code,
+                        "",
+                        ch.code,
+                        sheet_code,
+                    )
+                    others = self._other_identity_locations(
+                        cell_data.variable_vid,
+                        location,
+                    )
+                    if others:
+                        cell.fill = _IDENTITY_FILL
+                    if cfg.add_cell_comments:
+                        cell.comment = Comment(
+                            _cell_tooltip(cell_data, others),
+                            "dpmcore",
+                            width=400,
+                            height=200,
+                        )
+                elif cell_data is not None and cell_data.is_void:
+                    cell.fill = _VOID_FILL
                 else:
                     cell.fill = _EXCLUDED_FILL
+
+    def _other_identity_locations(
+        self,
+        variable_vid: int,
+        location: str,
+    ) -> list[str]:
+        """Other cells of the workbook reporting the same datapoint."""
+        return [
+            loc
+            for loc in self.identities.get(variable_vid, [])
+            if loc != location
+        ]
 
     def _write_annotations(  # noqa: C901
         self,
@@ -694,6 +783,7 @@ class ExcelLayoutWriter:
         num_visible_cols: int,
         row_label_col: int,
         col_header_start_row: int,
+        sheet_id: Optional[int] = None,
     ) -> None:
         """Write dimensional annotations around the data grid."""
         col_dims = _collect_axis_dimensions(layout.columns)
@@ -706,8 +796,8 @@ class ExcelLayoutWriter:
         col_dim_set = set(col_dims)
         row_dp_cats: dict[int, list[DimensionMember]] = {}
         for cell_key, cell_data in layout.cells.items():
-            row_id, _col_id, _sheet_id = cell_key
-            if row_id is None:
+            row_id, _col_id, cell_sheet_id = cell_key
+            if row_id is None or cell_sheet_id != sheet_id:
                 continue
             if cell_data.dp_categorisations:
                 extra = [
@@ -842,6 +932,125 @@ class ExcelLayoutWriter:
 
                 # Set annotation column width
                 ws.column_dimensions[get_column_letter(ann_col)].width = 25
+
+
+def _sheet_renderings(
+    layout: TableLayout,
+) -> list[tuple[list[LayoutHeader], Optional[int], Optional[LayoutHeader]]]:
+    """Split a layout into the worksheets it needs.
+
+    Cells of a Z-axis table are keyed by the sheet they belong to, so
+    such a table is rendered as one worksheet per Z sheet. Tables whose
+    cells carry no sheet get a single worksheet on which every Z header
+    is annotated as fixed context.
+
+    Returns ``(annotated Z headers, sheet id for cell lookup, sheet)``
+    per worksheet; ``sheet`` is None for a single-worksheet table.
+    """
+    cell_sheet_ids = {key[2] for key in layout.cells if key[2] is not None}
+    if layout.sheets and cell_sheet_ids:
+        per_sheet: list[
+            tuple[list[LayoutHeader], Optional[int], Optional[LayoutHeader]]
+        ] = [
+            ([sh], sh.header_id, sh)
+            for sh in layout.sheets
+            if sh.header_id in cell_sheet_ids
+        ]
+        if per_sheet:
+            return per_sheet
+
+    # Single grid: the sheet id the cells were keyed with (usually None).
+    default_sheet_id = None
+    for key in layout.cells:
+        default_sheet_id = key[2]
+        break
+    return [(layout.sheets, default_sheet_id, None)]
+
+
+def _worksheet_title(
+    table_code: str,
+    sheet: Optional[LayoutHeader],
+    used: set[str],
+) -> str:
+    """Build a unique worksheet title of at most 31 characters."""
+    suffix = f" ({sheet.code or sheet.label})" if sheet is not None else ""
+    title = table_code[: _MAX_SHEET_TITLE - len(suffix)] + suffix
+    if title in used:
+        # Distinct sheets can collide once truncated; keep them apart.
+        counter = 2
+        while True:
+            tag = f"~{counter}"
+            candidate = title[: _MAX_SHEET_TITLE - len(tag)] + tag
+            if candidate not in used:
+                title = candidate
+                break
+            counter += 1
+    used.add(title)
+    return title
+
+
+def _cell_location(
+    table_code: str,
+    row_code: str,
+    col_code: str,
+    sheet_code: str,
+) -> str:
+    """Human-readable cell address used to report identities."""
+    parts = [table_code]
+    if sheet_code:
+        parts.append(f"s{sheet_code}")
+    if row_code:
+        parts.append(f"r{row_code}")
+    if col_code:
+        parts.append(f"c{col_code}")
+    return " ".join(parts)
+
+
+def _build_identity_index(layouts: list[TableLayout]) -> dict[int, list[str]]:
+    """Map VariableVID to the cells reporting it, for shared datapoints.
+
+    Cells sharing a datapoint are "identities": the same figure is
+    reported in more than one place. Only variables used by at least
+    two cells are returned.
+    """
+    locations: dict[int, list[str]] = {}
+    for layout in layouts:
+        codes: dict[int, str] = {
+            h.header_id: h.code
+            for h in layout.rows + layout.columns + layout.sheets
+        }
+        for (row_id, col_id, sheet_id), cd in layout.cells.items():
+            if not cd.variable_vid or cd.is_excluded or cd.is_void:
+                continue
+            locations.setdefault(cd.variable_vid, []).append(
+                _cell_location(
+                    layout.table_code,
+                    codes.get(row_id, "") if row_id is not None else "",
+                    codes.get(col_id, ""),
+                    codes.get(sheet_id, "") if sheet_id is not None else "",
+                ),
+            )
+    return {vvid: locs for vvid, locs in locations.items() if len(locs) > 1}
+
+
+def _cell_tooltip(cell_data: CellData, identities: list[str]) -> str:
+    """Tooltip for a data cell: variable ids, identities, dimensions."""
+    lines = []
+    if cell_data.variable_id:
+        lines.append(f"VariableID = {cell_data.variable_id}")
+    lines.append(f"VariableVID = {cell_data.variable_vid}")
+    if identities:
+        shown = identities[:_MAX_IDENTITIES_IN_TOOLTIP]
+        lines.append("")
+        lines.append("Identity - same datapoint also reported in:")
+        lines.extend(f"  {loc}" for loc in shown)
+        hidden = len(identities) - len(shown)
+        if hidden:
+            lines.append(f"  ... and {hidden} more")
+    if cell_data.dp_categorisations:
+        lines.append("")
+        lines.append(_format_categorisations(cell_data.dp_categorisations))
+    return "\n".join(lines)
 
 
 def _collect_axis_dimensions(
