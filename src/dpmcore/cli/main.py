@@ -692,9 +692,7 @@ def export_script(
                 console.print(f"[red]{exc}[/red]")
                 sys.exit(1)
             if not targets:
-                console.print(
-                    "[red]No active module versions matched.[/red]"
-                )
+                console.print("[red]No active module versions matched.[/red]")
                 sys.exit(1)
 
             out_dir = Path(output) if output else Path(".")
@@ -813,8 +811,7 @@ def _validate_export_script_args(
 
     if bool(module_code) == bool(all_modules):
         console.print(
-            "[red]Specify exactly one of --module-code or "
-            "--all-modules.[/red]"
+            "[red]Specify exactly one of --module-code or --all-modules.[/red]"
         )
         sys.exit(1)
     _validate_version_selector_args(

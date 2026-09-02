@@ -79,9 +79,7 @@ class TestExportScriptSuccess:
         with patch(
             "dpmcore.services.ast_generator.ASTGeneratorService"
         ) as Svc:
-            Svc.return_value.script_for_module.return_value = (
-                _success_result()
-            )
+            Svc.return_value.script_for_module.return_value = _success_result()
             result = runner.invoke(
                 main,
                 [
@@ -120,9 +118,7 @@ class TestExportScriptSuccess:
         with patch(
             "dpmcore.services.ast_generator.ASTGeneratorService"
         ) as Svc:
-            Svc.return_value.script_for_module.return_value = (
-                _success_result()
-            )
+            Svc.return_value.script_for_module.return_value = _success_result()
             runner.invoke(
                 main,
                 [
@@ -317,9 +313,7 @@ class TestExportScriptSweep:
                 ("MOD_A", "1.0"),
                 ("MOD_B", "2.0"),
             ]
-            Svc.return_value.script_for_module.return_value = (
-                _success_result()
-            )
+            Svc.return_value.script_for_module.return_value = _success_result()
             result = runner.invoke(
                 main,
                 [
@@ -623,9 +617,7 @@ class TestExportScriptReleaseOnlyMode:
             Svc.return_value.list_module_versions.return_value = [
                 ("FINREP_Con", "2.0.1"),
             ]
-            Svc.return_value.script_for_module.return_value = (
-                _success_result()
-            )
+            Svc.return_value.script_for_module.return_value = _success_result()
             result = runner.invoke(
                 main,
                 [
@@ -658,9 +650,7 @@ class TestExportScriptReleaseOnlyMode:
                 ("MOD_A", "1.0"),
                 ("MOD_B", "2.0"),
             ]
-            Svc.return_value.script_for_module.return_value = (
-                _success_result()
-            )
+            Svc.return_value.script_for_module.return_value = _success_result()
             result = runner.invoke(
                 main,
                 [
@@ -692,9 +682,7 @@ class TestExportScriptReleaseOnlyMode:
             Svc.return_value.list_module_versions.return_value = [
                 ("FINREP_Con", "2.0.1"),
             ]
-            Svc.return_value.script_for_module.return_value = (
-                _success_result()
-            )
+            Svc.return_value.script_for_module.return_value = _success_result()
             runner.invoke(
                 main,
                 [

@@ -1,4 +1,3 @@
-
 """Integration tests for ``ASTGeneratorService.script_for_module``.
 
 Verifies the auto-discovery path (issue #625): given only a
@@ -185,7 +184,9 @@ def test_discovers_active_validations(fixture_session):
 
     for code, entry in operations.items():
         candidates = oracle[code]
-        matching = [r for r in candidates if r.Expression == entry["expression"]]
+        matching = [
+            r for r in candidates if r.Expression == entry["expression"]
+        ]
         assert matching, (
             f"discovered expression for {code!r} matches none of the "
             f"active OperationVersion rows for it in the fixture DB"
@@ -223,7 +224,9 @@ def test_discovered_preconditions_reference_affected_operations(
         if code not in operations:
             continue
         entry = operations[code]
-        matching = [r for r in candidates if r.Expression == entry["expression"]]
+        matching = [
+            r for r in candidates if r.Expression == entry["expression"]
+        ]
         if not matching or not matching[0].PreconditionOperationVID:
             continue
         prec_row = _precondition_expression(
