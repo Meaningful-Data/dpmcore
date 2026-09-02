@@ -393,6 +393,294 @@ class ASTGeneratorService:
                 "failed_operations": {},
             }
 
+    def script_for_module(
+        self,
+        module_code: str,
+        module_version: str,
+        release: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Auto-discover a module version's active validations and script them.
+
+        No ``expressions``, ``preconditions`` or ``severities`` need to be
+        supplied — they are looked up from ``OperationScope`` /
+        ``OperationScopeComposition`` / ``OperationVersion`` for this module
+        version, then handed to :meth:`script`.
+
+        Args:
+            module_code: Code of the module (e.g. ``"COREP_Con"``).
+            module_version: Version of the module (e.g. ``"2.0.1"``).
+            release: Optional release code; resolved the same way as in
+                :meth:`script`.
+
+        Returns:
+            Same shape as :meth:`script`.
+        """
+        if self.session is None:
+            return {
+                "success": False,
+                "enriched_ast": None,
+                "error": "No database session — cannot generate script.",
+                "failed_operations": {},
+            }
+
+        try:
+            mv, release_row = self._resolve_release(
+                module_code, module_version, release
+            )
+            expressions, preconditions, severities = (
+                self._discover_module_validations(mv, release_row)
+            )
+        except ValueError as exc:
+            return {
+                "success": False,
+                "enriched_ast": None,
+                "error": str(exc),
+                "failed_operations": {},
+            }
+
+        return self.script(
+            expressions=expressions,
+            module_code=module_code,
+            module_version=module_version,
+            preconditions=preconditions or None,
+            severities=severities or None,
+            release=release_row.code,
+        )
+
+    def list_module_versions(
+        self,
+        module_code: Optional[str] = None,
+        release: Optional[str] = None,
+    ) -> List[Tuple[str, str]]:
+        """Enumerate ``(module_code, version_number)`` pairs to sweep.
+
+        Used by the CLI's ``--all-modules``/``--all-versions`` sweep to
+        discover targets for :meth:`script_for_module`.
+
+        Args:
+            module_code: Restrict to this module's versions. ``None``
+                enumerates every module in the database.
+            release: When given, only ``ModuleVersion`` rows whose window
+                contains this release (via :func:`filter_by_release`) are
+                returned.
+
+        Returns:
+            ``(module_code, version_number)`` pairs, ordered by
+            ``(code, start_release_id)``, excluding ghost/phantom
+            ``ModuleVersion`` rows (``from_reference_date ==
+            to_reference_date``, both non-null — the same test
+            :meth:`_walk_ghost_chain` uses).
+
+        Raises:
+            ValueError: If a database session is missing, or ``release``
+                doesn't match any ``Release.code``.
+        """
+        from sqlalchemy import or_
+
+        from dpmcore.dpm_xl.utils.filters import (
+            filter_by_release,
+            resolve_release_id,
+        )
+        from dpmcore.orm.packaging import ModuleVersion
+
+        if self.session is None:
+            raise ValueError("No database session — cannot list modules.")
+        session = self.session
+
+        query = session.query(
+            ModuleVersion.code, ModuleVersion.version_number
+        ).filter(
+            or_(
+                ModuleVersion.from_reference_date.is_(None),
+                ModuleVersion.to_reference_date.is_(None),
+                ModuleVersion.from_reference_date
+                != ModuleVersion.to_reference_date,
+            )
+        )
+        if module_code is not None:
+            query = query.filter(ModuleVersion.code == module_code)
+        if release is not None:
+            release_id = resolve_release_id(session, release_code=release)
+            query = filter_by_release(
+                query,
+                start_col=ModuleVersion.start_release_id,
+                end_col=ModuleVersion.end_release_id,
+                release_id=release_id,
+            )
+        query = query.order_by(
+            ModuleVersion.code, ModuleVersion.start_release_id
+        )
+
+        seen: set[Tuple[str, str]] = set()
+        pairs: List[Tuple[str, str]] = []
+        for code, version_number in query.all():
+            if code is None or version_number is None:
+                continue
+            pair = (code, version_number)
+            if pair not in seen:
+                seen.add(pair)
+                pairs.append(pair)
+        return pairs
+
+    def _discover_module_validations(
+        self,
+        mv: Any,
+        release_row: Any,
+    ) -> Tuple[
+        List[Tuple[str, str]],
+        List[Union[Tuple[str, List[str]], Dict[str, Any]]],
+        Dict[str, str],
+    ]:
+        """Look up the active ``(expression, code)`` pairs for a module.
+
+        Resolves the module version's active operations by joining
+        ``OperationVersion`` to ``OperationScope`` /
+        ``OperationScopeComposition``, filtered to this release using
+        dpmcore's point-release model (:func:`filter_by_release`, a window
+        containment check rather than a raw ``StartReleaseID``/
+        ``EndReleaseID`` overlap). This does not filter out operations
+        scoped exclusively to phantom module versions (see
+        :meth:`list_module_versions`'s docstring for what "phantom" means
+        here) — that guard only matters when sweeping every module in the
+        database, which this single-module lookup never does; revisit
+        alongside a future ``--all-modules`` sweep.
+
+        Returns:
+            ``(expressions, preconditions, severities)`` ready to pass to
+            :meth:`script`.
+        """
+        from sqlalchemy import or_
+
+        from dpmcore.dpm_xl.utils.filters import filter_by_release
+        from dpmcore.orm.operations import (
+            Operation,
+            OperationScope,
+            OperationScopeComposition,
+            OperationVersion,
+        )
+
+        session = self.session
+        if session is None:
+            raise ValueError("No database session — cannot generate script.")
+
+        query = (
+            session.query(
+                OperationVersion.operation_vid,
+                Operation.code,
+                OperationVersion.expression,
+                OperationScope.severity,
+                OperationVersion.precondition_operation_vid,
+            )
+            .join(
+                OperationScope,
+                OperationVersion.operation_vid == OperationScope.operation_vid,
+            )
+            .join(
+                OperationScopeComposition,
+                OperationScope.operation_scope_id
+                == OperationScopeComposition.operation_scope_id,
+            )
+            .join(
+                Operation,
+                OperationVersion.operation_id == Operation.operation_id,
+            )
+            .filter(OperationScopeComposition.module_vid == mv.module_vid)
+            # Access boolean convention: True is stored as -1, not 1.
+            .filter(OperationScope.is_active.in_([-1, 1, True]))
+            .filter(
+                or_(
+                    Operation.code.startswith("v"),
+                    Operation.code.startswith("e"),
+                )
+            )
+        )
+        query = filter_by_release(
+            query,
+            start_col=OperationVersion.start_release_id,
+            end_col=OperationVersion.end_release_id,
+            release_id=release_row.release_id,
+        )
+
+        # A code can match more than one OperationVersion row; keep the
+        # latest (highest OperationVID) per code.
+        _Row = Tuple[int, str, Optional[str], Optional[int]]
+        latest_by_code: Dict[str, _Row] = {}
+        for op_vid, code, expression, severity, prec_vid in query.all():
+            existing = latest_by_code.get(code)
+            if existing is None or op_vid > existing[0]:
+                latest_by_code[code] = (op_vid, expression, severity, prec_vid)
+
+        expressions: List[Tuple[str, str]] = []
+        severities: Dict[str, str] = {}
+        prec_vid_to_codes: Dict[int, List[str]] = {}
+        for code, (_, expression, severity, prec_vid) in sorted(
+            latest_by_code.items()
+        ):
+            expressions.append((expression, code))
+            if severity:
+                severities[code] = severity
+            if prec_vid is not None:
+                prec_vid_to_codes.setdefault(prec_vid, []).append(code)
+
+        preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]] = (
+            list(self._resolve_preconditions(prec_vid_to_codes))
+        )
+        return expressions, preconditions, severities
+
+    def _resolve_preconditions(
+        self, prec_vid_to_codes: Dict[int, List[str]]
+    ) -> List[Dict[str, Any]]:
+        """Resolve discovered ``PreconditionOperationVID``s into entries.
+
+        Note: :meth:`_build_preconditions_block` does not build a
+        precondition's AST structurally from the DB's stored
+        ``OperationNode`` graph, so it cannot express arbitrary DPM-XL
+        boolean expressions — it only recognises ``{v_<variable_code>}``
+        markers (or an ``and``-chain of them) in the expression text — see
+        its docstring and ``TestBuildPreconditionsBlock`` in
+        ``tests/unit/services/test_ast_generator.py``. A discovered
+        precondition whose stored ``Expression`` isn't in that form resolves
+        to no variables and is silently dropped, same as pydpm. This is a
+        pre-existing limitation of ``script()``'s precondition support, not
+        specific to auto-discovery.
+        """
+        if not prec_vid_to_codes:
+            return []
+
+        from dpmcore.orm.operations import Operation, OperationVersion
+
+        session = self.session
+        if session is None:
+            raise ValueError("No database session — cannot generate script.")
+
+        rows = (
+            session.query(
+                OperationVersion.operation_vid,
+                Operation.code,
+                OperationVersion.expression,
+            )
+            .join(
+                Operation,
+                OperationVersion.operation_id == Operation.operation_id,
+            )
+            .filter(
+                OperationVersion.operation_vid.in_(prec_vid_to_codes.keys())
+            )
+            .all()
+        )
+
+        preconditions: List[Dict[str, Any]] = []
+        for prec_vid, prec_code, prec_expression in rows:
+            preconditions.append(
+                {
+                    "expression": prec_expression,
+                    "affected_operations": sorted(prec_vid_to_codes[prec_vid]),
+                    "code": prec_code,
+                    "version_id": prec_vid,
+                }
+            )
+        return preconditions
+
     # ------------------------------------------------------------------ #
     # Resolution helpers
     # ------------------------------------------------------------------ #

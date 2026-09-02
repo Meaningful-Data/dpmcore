@@ -177,6 +177,69 @@ curl -X POST http://localhost:8000/api/v1/scripts \
         }'
 ```
 
+**Auto-discovered script (no expressions file needed):**
+
+`generate-script` requires the caller to already know every validation's
+expression text. `export-script` instead discovers the active validations,
+preconditions and severities for a module version directly from the
+database (`OperationScope` / `OperationScopeComposition` /
+`OperationVersion`):
+
+```python
+from dpmcore import connect
+
+with connect("sqlite:///dpm.db") as db:
+    script = db.services.ast_generator.script_for_module(
+        module_code="COREP_Con",
+        module_version="2.0.1",
+        release="4.2",  # optional; latest available if omitted
+    )
+```
+
+```bash
+dpmcore export-script \
+    --module-code COREP_Con --module-version 2.0.1 \
+    --database sqlite:///dpm.db --output ./script.json
+```
+
+Severities come from `OperationScope.Severity` in the database rather than
+a manual `--severity` override. `--output` is optional for a single target;
+when omitted, the script is written to
+`<module_code>-<module_version>.json` in the current directory.
+
+**Bulk export (`--all-modules`/`--all-versions`):**
+
+Sweep every module and/or every active version of a module.
+`--output` becomes a directory —
+one `<module_code>-<module_version>.json` file is written per discovered
+target (defaults to the current directory when omitted). A target that
+fails to resolve is skipped with a warning instead of aborting the whole
+sweep; the command exits non-zero if any target failed.
+
+```bash
+# Every version of every module
+dpmcore export-script --all-modules --all-versions \
+    --database sqlite:///dpm.db --output ./scripts/
+
+# Every version of one module
+dpmcore export-script --module-code COREP_Con --all-versions \
+    --database sqlite:///dpm.db --output ./scripts/
+
+# Every module, pinned to its version active at one release (no
+# --all-versions: exactly one file per module)
+dpmcore export-script --all-modules --release 4.2 \
+    --database sqlite:///dpm.db --output ./scripts/
+```
+
+`--module-code`/`--all-modules` are mutually exclusive, and one is
+required. `--module-version` cannot be combined with `--all-modules` (a
+version number isn't portable across modules). Exactly one of
+`--module-version`, `--all-versions`, or `--release` is required, and the
+three are pairwise mutually exclusive — a bare `--release` (no
+`--module-version`/`--all-versions`) resolves each selected module to its
+single version active at that release, instead of naming a version
+directly.
+
 **Data dictionary queries:**
 
 Release-aware methods accept `release_id` (integer ID) or
@@ -600,7 +663,7 @@ src/dpmcore/
 │   └── routers/           scope, scripts, structure
 ├── django/                Django integration app (models, admin, views)
 ├── cli/
-│   └── main.py            Click CLI (migrate, export-csv, build-meili-json, update-db, serve, generate-script, export-layout)
+│   └── main.py            Click CLI (migrate, export-csv, build-meili-json, update-db, serve, generate-script, export-script, export-layout)
 └── dpm_xl/                DPM-XL engine internals
     ├── grammar/           ANTLR4 grammar + generated parser
     ├── ast/               AST nodes, visitor, operands
