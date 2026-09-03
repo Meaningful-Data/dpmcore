@@ -380,6 +380,36 @@ def test_write_open_row_table_with_key_columns(memory_session, tmp_path):
                 found = True
     assert found
 
+    # The key variable's data cell is filled green; the reported figure
+    # next to it keeps the default (unfilled) background.
+    fills = {
+        cell.value: cell.fill.start_color.rgb
+        for row in ws.iter_rows()
+        for cell in row
+        if isinstance(cell.value, str)
+        and cell.value.startswith(("400\n", "401\n"))
+    }
+    assert fills["400\n[Currency]\n<Currency>"].endswith("C4D79B")
+    assert not fills["401\n€£$\npositive"].endswith("C4D79B")
+    # Open rows have no code, so the label spans the row code column.
+    open_rows_cell = next(
+        cell
+        for row in ws.iter_rows()
+        for cell in row
+        if cell.value == "Open Rows"
+    )
+    merged = {str(r) for r in ws.merged_cells.ranges}
+    assert f"{open_rows_cell.coordinate}:C{open_rows_cell.row}" in merged
+
+    # The headers themselves are untouched.
+    header_fills = {
+        cell.value: cell.fill.start_color.rgb
+        for row in ws.iter_rows()
+        for cell in row
+        if cell.value in ("Currency", "Amount")
+    }
+    assert all(f.endswith("D8D8D8") for f in header_fills.values())
+
 
 def test_write_table_with_sheets_and_subcategory(memory_session, tmp_path):
     seed_releases(memory_session)
