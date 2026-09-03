@@ -3,13 +3,18 @@
 from types import SimpleNamespace
 
 from dpmcore.services.layout_exporter.models import (
+    CellData,
     DimensionMember,
+    Enumeration,
+    EnumValue,
     LayoutHeader,
 )
 from dpmcore.services.layout_exporter.processing import (
+    attach_enumerations,
     build_cells,
     build_layout_headers,
     build_table_layout,
+    resolve_enumeration_sources,
     sort_headers,
 )
 
@@ -108,6 +113,7 @@ def test_build_layout_headers_subcategory_attached():
     _, _, sheets = build_layout_headers(
         raws, {}, {}, {8: ("SC", "Desc", "CAT")}
     )
+    assert sheets[0].subcategory_vid == 8
     assert sheets[0].subcategory_code == "SC"
     assert sheets[0].subcategory_description == "Desc"
     assert sheets[0].subcategory_cat_code == "CAT"
@@ -393,3 +399,98 @@ def test_build_table_layout_with_rows_not_open_row():
     assert layout.max_row_depth == 2
     assert layout.table_code == ""
     assert layout.table_name == ""
+
+
+# ---------------------------------------------------------------- #
+# Enumerations
+# ---------------------------------------------------------------- #
+
+
+def _enum_cells():
+    return {
+        (1, 2, None): CellData(
+            row_header_id=1,
+            col_header_id=2,
+            sheet_header_id=None,
+            variable_vid=100,
+            data_type_code="e",
+        ),
+    }
+
+
+def _enum_header(header_id, subcategory_vid=None, **kwargs):
+    return LayoutHeader(
+        header_id=header_id,
+        header_vid=header_id * 10,
+        code="C",
+        label="L",
+        direction=kwargs.pop("direction", "x"),
+        order=1,
+        is_abstract=False,
+        is_key=kwargs.pop("is_key", False),
+        parent_header_id=None,
+        parent_first=True,
+        subcategory_vid=subcategory_vid,
+        **kwargs,
+    )
+
+
+def test_resolve_enumeration_sources_uses_column_hierarchy():
+    cells = _enum_cells()
+    headers = [_enum_header(2, subcategory_vid=7)]
+    assert resolve_enumeration_sources(cells, headers) == {7}
+    assert cells[(1, 2, None)].subcategory_vid == 7
+
+
+def test_resolve_enumeration_sources_falls_back_to_row_hierarchy():
+    cells = _enum_cells()
+    headers = [_enum_header(2), _enum_header(1, subcategory_vid=8)]
+    assert resolve_enumeration_sources(cells, headers) == {8}
+    assert cells[(1, 2, None)].subcategory_vid == 8
+
+
+def test_resolve_enumeration_sources_ignores_non_enumerated_cells():
+    cells = _enum_cells()
+    cells[(1, 2, None)].data_type_code = "m"
+    headers = [_enum_header(2, subcategory_vid=7)]
+    assert resolve_enumeration_sources(cells, headers) == set()
+    assert cells[(1, 2, None)].subcategory_vid is None
+
+
+def test_resolve_enumeration_sources_includes_enumerated_key_columns():
+    headers = [
+        _enum_header(2, subcategory_vid=9, is_key=True, key_data_type_code="e")
+    ]
+    assert resolve_enumeration_sources({}, headers) == {9}
+
+
+def test_resolve_enumeration_sources_skips_non_enumerated_key_columns():
+    headers = [
+        _enum_header(2, subcategory_vid=9, is_key=True, key_data_type_code="m")
+    ]
+    assert resolve_enumeration_sources({}, headers) == set()
+
+
+def test_attach_enumerations_sets_cells_and_key_columns():
+    cells = _enum_cells()
+    cells[(1, 2, None)].subcategory_vid = 7
+    key = _enum_header(
+        3, subcategory_vid=7, is_key=True, key_data_type_code="e"
+    )
+    enum = Enumeration(
+        subcategory_vid=7,
+        code="SC",
+        name="Hierarchy",
+        category_code="DOM",
+        values=[EnumValue(code="m1", label="Member 1")],
+    )
+    attach_enumerations(cells, [_enum_header(2), key], {7: enum})
+    assert cells[(1, 2, None)].enumeration is enum
+    assert key.key_enumeration is enum
+
+
+def test_attach_enumerations_tolerates_missing_hierarchy():
+    cells = _enum_cells()
+    cells[(1, 2, None)].subcategory_vid = 7
+    attach_enumerations(cells, [], {})
+    assert cells[(1, 2, None)].enumeration is None

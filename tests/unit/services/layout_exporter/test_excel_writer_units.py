@@ -21,6 +21,8 @@ from dpmcore.services.layout_exporter.excel_writer import (
 from dpmcore.services.layout_exporter.models import (
     CellData,
     DimensionMember,
+    Enumeration,
+    EnumValue,
     ExportConfig,
     LayoutHeader,
     TableLayout,
@@ -1124,3 +1126,217 @@ def test_open_row_void_cell_is_darker():
 
     cell = _data_cell_of_row(ws, "Open Rows")
     assert cell.fill.start_color.rgb == "00595959"
+
+
+# --------------------------------------------------------------------------- #
+# Possible values of enumerated cells
+# --------------------------------------------------------------------------- #
+
+
+def _enum(values=None, code="SC1", name="Type of identifier"):
+    return Enumeration(
+        subcategory_vid=7,
+        code=code,
+        name=name,
+        category_code="qCO",
+        values=values
+        if values is not None
+        else [
+            EnumValue(
+                code="x1", label="LEI code type", signature="eba_qCO:x1"
+            ),
+            EnumValue(
+                code="x2",
+                label="MFI code",
+                depth=1,
+                signature="eba_qCO:x2",
+            ),
+        ],
+    )
+
+
+def test_format_enumeration_lists_values_with_domain_codes():
+    text = ew._format_enumeration(_enum())
+    assert text.splitlines() == [
+        "Possible values - (SC1) Type of identifier [2]:",
+        "  (eba_qCO:x1) LEI code type",
+        "    (eba_qCO:x2) MFI code",
+    ]
+
+
+def test_format_enumeration_falls_back_to_domain_and_code():
+    """A member imported without a signature still gets an address."""
+    values = [EnumValue(code="x1", label="No signature")]
+    text = ew._format_enumeration(_enum(values=values))
+    assert text.splitlines()[1] == "  (qCO:x1) No signature"
+
+
+def test_cell_tooltip_lists_the_possible_values():
+    cell_data = CellData(
+        row_header_id=1,
+        col_header_id=10,
+        sheet_header_id=None,
+        variable_vid=800,
+        variable_id=800,
+        data_type_code="e",
+        enumeration=_enum(),
+    )
+    text = ew._cell_tooltip(cell_data, [])
+    assert "Possible values - (SC1) Type of identifier [2]:" in text
+    assert "  (eba_qCO:x1) LEI code type" in text
+
+
+def test_cell_tooltip_without_enumeration_is_unchanged():
+    cell_data = CellData(
+        row_header_id=1,
+        col_header_id=10,
+        sheet_header_id=None,
+        variable_vid=800,
+        variable_id=800,
+        data_type_code="m",
+    )
+    assert "Possible values" not in ew._cell_tooltip(cell_data, [])
+
+
+def test_key_cell_tooltip_lists_the_possible_values():
+    header = _h(
+        1,
+        is_key=True,
+        key_vid=500,
+        key_var_id=500,
+        key_dt="e",
+        key_pname="Type of code",
+    )
+    header.key_enumeration = _enum()
+    text = ew._key_cell_tooltip(header)
+    assert "VariableID = 500" in text
+    assert "Property = Type of code" in text
+    assert "  (eba_qCO:x1) LEI code type" in text
+
+
+def test_fit_tooltip_truncates_on_a_line_boundary():
+    """Excel refuses a comment over 32,767 characters."""
+    values = [EnumValue(code=f"x{i}", label="A" * 40) for i in range(2000)]
+    text = ew._format_enumeration(_enum(values=values))
+    assert len(text) > ew._MAX_TOOLTIP_CHARS
+
+    fitted = ew._fit_tooltip(text)
+    assert len(fitted) <= ew._MAX_TOOLTIP_CHARS
+    assert fitted.splitlines()[-1].startswith("... and ")
+    assert fitted.splitlines()[-2].endswith("A" * 40)
+
+
+def test_fit_tooltip_leaves_short_text_alone():
+    assert ew._fit_tooltip("a\nb") == "a\nb"
+
+
+def test_comment_box_grows_with_the_text_up_to_a_maximum():
+    short = ew._comment("one line")
+    tall = ew._comment("\n".join("line" for _ in range(20)))
+    huge = ew._comment("\n".join("line" for _ in range(500)))
+    assert short.height == ew._COMMENT_MIN_HEIGHT
+    assert ew._COMMENT_MIN_HEIGHT < tall.height < ew._COMMENT_MAX_HEIGHT
+    assert huge.height == ew._COMMENT_MAX_HEIGHT
+
+
+def _open_row_key_layout(enumeration=None):
+    """Open-row table whose single column is an enumerated key column."""
+    key = _h(
+        10,
+        direction="x",
+        code="0010",
+        label="Key",
+        is_key=True,
+        key_vid=500,
+        key_var_id=500,
+        key_dt="e",
+        key_pname="Type of code",
+    )
+    key.key_enumeration = enumeration
+    return TableLayout(
+        table_vid=1,
+        table_code="T",
+        table_name="T",
+        columns=[key],
+        is_open_row=True,
+    )
+
+
+def test_open_row_key_cell_gets_a_comment_with_the_possible_values():
+    layout = _open_row_key_layout(_enum())
+    wb = ExcelLayoutWriter([layout], ExportConfig()).write()
+
+    cell = _only_data_cell(wb["T"], "500")
+    assert "VariableID = 500" in cell.comment.text
+    assert "  (eba_qCO:x1) LEI code type" in cell.comment.text
+
+
+def test_open_row_key_cell_comments_disabled():
+    cfg = ExportConfig(add_cell_comments=False)
+    wb = ExcelLayoutWriter([_open_row_key_layout(_enum())], cfg).write()
+
+    assert _only_data_cell(wb["T"], "500").comment is None
+
+
+def _open_sheet_layout(enumeration=None, cats=None):
+    """Open-sheet table: the Z header keys the sheets off a variable."""
+    sheet = _h(
+        20,
+        direction="z",
+        code="0010",
+        label="Exposure class",
+        is_key=True,
+        key_vid=500,
+        key_var_id=500,
+        key_dt="e",
+        key_pname="Exposure class",
+        cats=cats,
+        sub_code="EC2",
+        sub_cat="qEC",
+        sub_desc="Subcategory 2",
+    )
+    sheet.key_enumeration = enumeration
+    return _empty_layout(
+        rows=[_h(1, direction="y", code="0010", label="Row")],
+        columns=[_h(10, direction="x", code="0010", label="Col")],
+        sheets=[sheet],
+    )
+
+
+def _sheet_label_comment(wb):
+    return next(
+        c.comment
+        for row in wb["T"].iter_rows()
+        for c in row
+        if isinstance(c.value, str) and c.value.startswith("Sheet per ")
+    )
+
+
+def test_open_sheet_key_header_lists_the_possible_values():
+    """An open-sheet table has no key cell: the Z header carries them."""
+    wb = ExcelLayoutWriter(
+        [_open_sheet_layout(_enum())], ExportConfig()
+    ).write()
+
+    text = _sheet_label_comment(wb).text
+    assert "VariableID = 500" in text
+    assert "  (eba_qCO:x1) LEI code type" in text
+
+
+def test_open_sheet_key_header_keeps_its_categorisations():
+    """The dimension tooltip stays, with the values appended after it."""
+    wb = ExcelLayoutWriter(
+        [_open_sheet_layout(_enum(), cats=[_dm(label="Main Property")])],
+        ExportConfig(),
+    ).write()
+
+    text = _sheet_label_comment(wb).text
+    assert text.startswith("Main Property  =  M")
+    assert "Possible values" in text
+
+
+def test_sheet_header_comments_disabled():
+    cfg = ExportConfig(add_header_comments=False)
+    wb = ExcelLayoutWriter([_open_sheet_layout(_enum())], cfg).write()
+
+    assert _sheet_label_comment(wb) is None
