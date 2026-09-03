@@ -43,6 +43,11 @@ _VOID_FILL = PatternFill(
 _IDENTITY_FILL = PatternFill(
     start_color="FFFF00", end_color="FFFF00", fill_type="solid"
 )
+# Key cells of open tables: the variables that identify a reported row
+# rather than carrying a reported figure.
+_KEY_FILL = PatternFill(
+    start_color="C4D79B", end_color="C4D79B", fill_type="solid"
+)
 # Excel worksheet titles are limited to 31 characters.
 _MAX_SHEET_TITLE = 31
 # Cap the identity list in a tooltip; a few datapoints are reported in
@@ -690,6 +695,7 @@ class ExcelLayoutWriter:
             cell.border = _BORDER_ALL
 
             if ch.is_key and ch.key_variable_id:
+                cell.fill = _KEY_FILL
                 if ch.key_data_type_code == "e":
                     type_symbol = f"[{ch.key_property_name}]"
                 else:
