@@ -18,6 +18,8 @@ from openpyxl.worksheet.hyperlink import Hyperlink
 from dpmcore.services.layout_exporter.models import (
     CellData,
     DimensionMember,
+    Enumeration,
+    EnumValue,
     ExportConfig,
     LayoutHeader,
     TableLayout,
@@ -53,6 +55,16 @@ _MAX_SHEET_TITLE = 31
 # Cap the identity list in a tooltip; a few datapoints are reported in
 # dozens of cells and the comment box would be unreadable.
 _MAX_IDENTITIES_IN_TOOLTIP = 15
+# Excel rejects a comment longer than 32,767 characters and shows a
+# repair dialog for the whole workbook, so the list of possible values
+# of a very large hierarchy (NACE runs to 841 codes) is cut short.
+_MAX_TOOLTIP_CHARS = 30000
+# Comment box geometry: it grows with the text so a long value list is
+# readable without resizing, up to a height that still fits a screen.
+_COMMENT_WIDTH = 400
+_COMMENT_MIN_HEIGHT = 200
+_COMMENT_MAX_HEIGHT = 600
+_COMMENT_LINE_HEIGHT = 14
 
 _TITLE_FONT = Font(bold=True, size=11)
 _HEADER_FONT = Font(bold=True, size=10)
@@ -356,11 +368,19 @@ class ExcelLayoutWriter:
                     ann_val_cell.font = Font(size=9)
                     ann_val_cell.alignment = Alignment(horizontal="left")
 
-                if cfg.add_header_comments and sh.categorisations:
-                    tooltip = _format_categorisations(sh.categorisations)
-                    sc.comment = Comment(
-                        tooltip, "dpmcore", width=400, height=150
-                    )
+                if cfg.add_header_comments:
+                    # An open-sheet table keys its sheets off the Z
+                    # header's variable, so its possible values belong
+                    # here — there is no key cell to hang them on.
+                    parts = []
+                    if sh.categorisations:
+                        parts.append(
+                            _format_categorisations(sh.categorisations)
+                        )
+                    if sh.is_key and sh.key_variable_vid:
+                        parts.append(_key_cell_tooltip(sh))
+                    if parts:
+                        sc.comment = _comment("\n\n".join(parts))
 
         # --- "Columns" label ---
         col_cell = ws.cell(
@@ -616,11 +636,8 @@ class ExcelLayoutWriter:
 
                     # Cell tooltip
                     if cfg.add_cell_comments:
-                        cell.comment = Comment(
+                        cell.comment = _comment(
                             _cell_tooltip(cell_data, others),
-                            "dpmcore",
-                            width=400,
-                            height=200,
                         )
 
         # --- Annotations ---
@@ -730,6 +747,8 @@ class ExcelLayoutWriter:
                     vertical="center",
                     wrap_text=True,
                 )
+                if cfg.add_cell_comments:
+                    cell.comment = _comment(_key_cell_tooltip(ch))
             else:
                 cell_data = layout.cells.get((None, ch.header_id, sheet_id))
                 if (
@@ -773,11 +792,8 @@ class ExcelLayoutWriter:
                     if others:
                         cell.fill = _IDENTITY_FILL
                     if cfg.add_cell_comments:
-                        cell.comment = Comment(
+                        cell.comment = _comment(
                             _cell_tooltip(cell_data, others),
-                            "dpmcore",
-                            width=400,
-                            height=200,
                         )
                 elif cell_data is not None and cell_data.is_void:
                     cell.fill = _VOID_FILL
@@ -1074,7 +1090,78 @@ def _cell_tooltip(cell_data: CellData, identities: list[str]) -> str:
     if cell_data.dp_categorisations:
         lines.append("")
         lines.append(_format_categorisations(cell_data.dp_categorisations))
+    if cell_data.enumeration:
+        lines.append("")
+        lines.append(_format_enumeration(cell_data.enumeration))
+    return _fit_tooltip("\n".join(lines))
+
+
+def _key_cell_tooltip(header: LayoutHeader) -> str:
+    """Tooltip for the key cell of an open table."""
+    lines = []
+    if header.key_variable_id:
+        lines.append(f"VariableID = {header.key_variable_id}")
+    lines.append(f"VariableVID = {header.key_variable_vid}")
+    if header.key_property_name:
+        lines.append(f"Property = {header.key_property_name}")
+    if header.key_enumeration:
+        lines.append("")
+        lines.append(_format_enumeration(header.key_enumeration))
+    return _fit_tooltip("\n".join(lines))
+
+
+def _format_enumeration(enum: Enumeration) -> str:
+    """Format the possible values of an enumerated cell.
+
+    Child values are indented under their parent, matching the order
+    and nesting of the hierarchy.
+    """
+    title = f"Possible values - ({enum.code}) {enum.name}"
+    lines = [f"{title} [{len(enum.values)}]:"]
+    lines.extend(
+        f"  {'  ' * value.depth}({_member_signature(enum, value)}) "
+        f"{value.label}"
+        for value in enum.values
+    )
     return "\n".join(lines)
+
+
+def _member_signature(enum: Enumeration, value: EnumValue) -> str:
+    """Fully qualified member signature, e.g. ``eba_CU:ALL``.
+
+    Members imported without a signature fall back to the plain
+    ``domain:code`` pair.
+    """
+    return value.signature or f"{enum.category_code}:{value.code}"
+
+
+def _fit_tooltip(text: str) -> str:
+    """Cut a tooltip down to what Excel accepts, on a line boundary."""
+    if len(text) <= _MAX_TOOLTIP_CHARS:
+        return text
+    kept: list[str] = []
+    used = 0
+    lines = text.split("\n")
+    for index, line in enumerate(lines):
+        used += len(line) + 1
+        if used > _MAX_TOOLTIP_CHARS:
+            kept.append(f"... and {len(lines) - index} more lines")
+            break
+        kept.append(line)
+    return "\n".join(kept)
+
+
+def _comment(text: str) -> Comment:
+    """Build a comment sized to its content."""
+    height = _COMMENT_MIN_HEIGHT + _COMMENT_LINE_HEIGHT * max(
+        0, text.count("\n") - 8
+    )
+    return Comment(
+        text,
+        "dpmcore",
+        width=_COMMENT_WIDTH,
+        height=min(height, _COMMENT_MAX_HEIGHT),
+    )
 
 
 def _collect_axis_dimensions(

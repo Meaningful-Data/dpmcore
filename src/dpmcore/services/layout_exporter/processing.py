@@ -11,6 +11,7 @@ from typing import Any, Optional
 from dpmcore.services.layout_exporter.models import (
     CellData,
     DimensionMember,
+    Enumeration,
     LayoutHeader,
     TableLayout,
 )
@@ -63,6 +64,7 @@ def build_layout_headers(
             if tvh.parent_first is not None
             else True,
             categorisations=cats,
+            subcategory_vid=hv.subcategory_vid,
             subcategory_code=sc_code,
             subcategory_description=sc_desc,
             subcategory_cat_code=sc_cat,
@@ -200,6 +202,62 @@ def build_cells(
         cells[(row_id, col_id, sheet_id)] = cd
 
     return cells
+
+
+def resolve_enumeration_sources(
+    cells: dict[tuple[Optional[int], int, Optional[int]], CellData],
+    headers: list[LayoutHeader],
+) -> set[int]:
+    """Point every enumerated cell at the hierarchy that restricts it.
+
+    An enumerated variable carries no value list of its own: the
+    allowed values come from the SubCategoryVersion of the header that
+    bounds the cell (in practice exactly one of its column, row or
+    sheet header carries one). Key columns of open tables use their
+    own header's hierarchy.
+
+    ``subcategory_vid`` is written on each enumerated cell in place;
+    the returned set is the hierarchies to load.
+    """
+    by_header: dict[int, Optional[int]] = {
+        h.header_id: h.subcategory_vid for h in headers
+    }
+    needed: set[int] = set()
+
+    for cd in cells.values():
+        if cd.data_type_code != "e":
+            continue
+        for header_id in (
+            cd.col_header_id,
+            cd.row_header_id,
+            cd.sheet_header_id,
+        ):
+            svid = by_header.get(header_id) if header_id else None
+            if svid:
+                cd.subcategory_vid = svid
+                needed.add(svid)
+                break
+
+    for h in headers:
+        if h.is_key and h.key_data_type_code == "e" and h.subcategory_vid:
+            needed.add(h.subcategory_vid)
+
+    return needed
+
+
+def attach_enumerations(
+    cells: dict[tuple[Optional[int], int, Optional[int]], CellData],
+    headers: list[LayoutHeader],
+    enumerations: dict[int, Enumeration],
+) -> None:
+    """Attach loaded enumerations to the cells and key columns."""
+    for cd in cells.values():
+        if cd.subcategory_vid:
+            cd.enumeration = enumerations.get(cd.subcategory_vid)
+
+    for h in headers:
+        if h.is_key and h.key_data_type_code == "e" and h.subcategory_vid:
+            h.key_enumeration = enumerations.get(h.subcategory_vid)
 
 
 def build_table_layout(
