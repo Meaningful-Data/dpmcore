@@ -540,6 +540,7 @@ class ExcelLayoutWriter:
                 data_start_col,
                 col_positions,
                 row_label_col,
+                row_code_col,
                 cfg,
                 sheet_id,
                 sheet_code,
@@ -667,6 +668,7 @@ class ExcelLayoutWriter:
         data_start_col: int,
         col_positions: dict[int, int],
         row_label_col: int,
+        row_code_col: int,
         cfg: ExportConfig,
         sheet_id: Optional[int],
         sheet_code: str,
@@ -683,6 +685,22 @@ class ExcelLayoutWriter:
             horizontal="left", vertical="center"
         )
         open_rows_cell.font = _HEADER_FONT
+
+        # Open rows have no code, so the row code column would sit there
+        # empty: merge it into the label instead.
+        if row_code_col:
+            ws.merge_cells(
+                start_row=data_start_row,
+                start_column=row_label_col,
+                end_row=data_start_row,
+                end_column=row_code_col,
+            )
+            # Merging resets the covered cell's style, so fill it after
+            # the merge: Excel paints the range from the top-left cell,
+            # but the trailing border has to sit on the last one.
+            code_cell = ws.cell(row=data_start_row, column=row_code_col)
+            code_cell.fill = _GREY_FILL
+            code_cell.border = _BORDER_ALL
 
         for ch in layout.columns:
             if ch.is_abstract:
