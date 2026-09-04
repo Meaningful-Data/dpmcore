@@ -111,6 +111,11 @@ Generate an engine-ready validations script
 The same generation is exposed via ``dpmcore generate-script`` and the
 ``/api/v1/scripts`` REST endpoint.
 
+For a module version's active validations, preconditions and severities
+discovered directly from the database — no ``expressions`` list needed —
+use :meth:`~dpmcore.services.ast_generator.ASTGeneratorService.script_for_module`
+or ``dpmcore export-script``.
+
 Export table layouts to Excel
 -----------------------------
 

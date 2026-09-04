@@ -464,7 +464,7 @@ Package Layout
    |   +-- meili_json.py      MeiliJsonService (operations JSON generation)
    |   +-- database_update.py DatabaseUpdateService (atomic DB update)
    +-- cli/
-   |   +-- main.py            Click CLI (migrate, export-csv, build-meili-json, update-db, serve, generate-script, export-layout)
+   |   +-- main.py            Click CLI (migrate, export-csv, build-meili-json, update-db, serve, generate-script, export-script, export-layout)
    +-- dpm_xl/                DPM-XL engine internals
    |   +-- grammar/           ANTLR4 grammar + generated parser
    |   +-- ast/               AST nodes, visitor, operands
