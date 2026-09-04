@@ -38,6 +38,91 @@ def _patch_orm(monkeypatch):
         monkeypatch.setitem(sys.modules, name, stub)
 
 
+@pytest.fixture
+def real_parameter_info(monkeypatch):
+    """Install the real ``ParameterInfo`` dataclass in place of the mock.
+
+    ``dpmcore.services.semantic`` is stubbed wholesale by ``_patch_orm``,
+    so ``ParameterInfo`` reaches ``ast_generator`` as a ``MagicMock``
+    class whose instances compare unequal by identity. Tests that
+    exercise the parameter registry need a real dataclass with proper
+    ``__eq__`` semantics.
+    """
+    from dataclasses import dataclass, field
+    from types import SimpleNamespace as _SNS
+
+    @dataclass(frozen=True)
+    class ParameterInfo:  # type: ignore[no-redef]
+        code: str
+        declared_type: str
+        default: object = field(default=None)
+
+        @property
+        def is_set(self) -> bool:  # pragma: no cover — parity with real
+            return self.declared_type.startswith("Set")
+
+    stub = _SNS(
+        ParameterInfo=ParameterInfo,
+        SemanticService=MagicMock(),
+    )
+    monkeypatch.setitem(sys.modules, "dpmcore.services.semantic", stub)
+    return ParameterInfo
+
+
+@pytest.fixture
+def real_syntax(monkeypatch):
+    """Install a real SyntaxService for tests that parse gate expressions.
+
+    The shadow-loader in ``_load_ast_generator`` swaps in stubs for the
+    heavy ORM chain before importing ``ast_generator``. Neither
+    ``SyntaxService`` nor ``serialize_ast`` needs the ORM, so we load
+    them by file path (bypassing the module-cached stubs) and rebind
+    ``dpmcore.dpm_xl.utils.serialization`` to the real thing so
+    ``_build_preconditions_block`` walks a real AST.
+    """
+    import importlib.util
+    from types import SimpleNamespace as _SNS
+
+    # These modules are needed to load the real syntax + serialization
+    # by-path — ``_precondition_codes`` walks the AST via a visitor
+    # whose ``ASTTemplate`` base pulls in ``dpm_xl.utils.filters``,
+    # which in turn imports ``release_sort_order`` and
+    # ``query_utils``. Neither runs any real query in this test.
+    for extra in (
+        "dpmcore.orm.release_sort_order",
+        "dpmcore.orm.query_utils",
+    ):
+        monkeypatch.setitem(sys.modules, extra, MagicMock())
+
+    def _load(name: str, relpath: str):
+        spec = importlib.util.spec_from_file_location(
+            name, _REPO_ROOT / relpath
+        )
+        assert spec is not None
+        assert spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        # Register with the shadow name so intra-module references keep
+        # working, but leave the canonical module name pointing at the
+        # existing stub for callers that never come through the fixture.
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+        return module
+
+    syntax_module = _load(
+        "_test_shadow_syntax", "src/dpmcore/services/syntax.py"
+    )
+    serialization = _load(
+        "_test_shadow_serialization",
+        "src/dpmcore/dpm_xl/utils/serialization.py",
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dpmcore.dpm_xl.utils.serialization",
+        _SNS(serialize_ast=serialization.serialize_ast),
+    )
+    return syntax_module.SyntaxService()
+
+
 def _load_ast_generator():
     """Load ``ast_generator`` under a private shadow name."""
     shadow_name = "_test_shadow_ast_generator"
@@ -347,6 +432,17 @@ class TestBuildOperationEntry:
 # ------------------------------------------------------------------ #
 
 
+def _install_variable_resolver(monkeypatch, resolved):
+    """Wire ``VariableVersionQuery.get_variable_vids_by_codes`` to *resolved*."""
+    fake_query = MagicMock()
+    fake_query.get_variable_vids_by_codes.return_value = resolved
+    monkeypatch.setitem(
+        sys.modules,
+        "dpmcore.dpm_xl.model_queries",
+        SimpleNamespace(VariableVersionQuery=fake_query),
+    )
+
+
 class TestBuildPreconditionsBlock:
     def test_empty_input_returns_empty(self):
         svc, _, _ = _bare_svc()
@@ -363,18 +459,15 @@ class TestBuildPreconditionsBlock:
             "{vC_01.00}",  # cosmetic underscore omitted
         ],
     )
-    def test_single_variable_emits_p_vid(self, expression, monkeypatch):
-        svc, _, mod = _bare_svc()
+    def test_single_variable_emits_p_vid(
+        self, expression, monkeypatch, real_syntax
+    ):
+        svc, _, _ = _bare_svc()
         svc.session = MagicMock()
-
-        fake_query = MagicMock()
-        fake_query.get_variable_vids_by_codes.return_value = {
-            "C_01.00": {"variable_id": 11, "variable_vid": 110}
-        }
-        monkeypatch.setitem(
-            sys.modules,
-            "dpmcore.dpm_xl.model_queries",
-            SimpleNamespace(VariableVersionQuery=fake_query),
+        svc._syntax = real_syntax
+        _install_variable_resolver(
+            monkeypatch,
+            {"C_01.00": {"variable_id": 11, "variable_vid": 110}},
         )
 
         preconds, vars_ = svc._build_preconditions_block(
@@ -389,20 +482,21 @@ class TestBuildPreconditionsBlock:
         assert entry["code"] == "p_110"
         assert vars_ == {"110": "b"}
 
-    def test_compound_emits_left_folded_binop(self, monkeypatch):
+    def test_compound_emits_binop_tree(self, monkeypatch, real_syntax):
+        """Compound gates preserve the ``and``/``or`` structure the source
+        text carries — the parser's associativity, not a left-fold hard-
+        coded by the emitter.
+        """
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
-
-        fake_query = MagicMock()
-        fake_query.get_variable_vids_by_codes.return_value = {
-            "A": {"variable_id": 1, "variable_vid": 10},
-            "B": {"variable_id": 2, "variable_vid": 20},
-            "C": {"variable_id": 3, "variable_vid": 30},
-        }
-        monkeypatch.setitem(
-            sys.modules,
-            "dpmcore.dpm_xl.model_queries",
-            SimpleNamespace(VariableVersionQuery=fake_query),
+        svc._syntax = real_syntax
+        _install_variable_resolver(
+            monkeypatch,
+            {
+                "A": {"variable_id": 1, "variable_vid": 10},
+                "B": {"variable_id": 2, "variable_vid": 20},
+                "C": {"variable_id": 3, "variable_vid": 30},
+            },
         )
 
         preconds, vars_ = svc._build_preconditions_block(
@@ -410,26 +504,32 @@ class TestBuildPreconditionsBlock:
         )
         assert "p_10_20_30" in preconds
         ast = preconds["p_10_20_30"]["ast"]
-        # Left fold: ((A and B) and C)
         assert ast["class_name"] == "BinOp"
         assert ast["op"] == "and"
-        assert ast["right"]["variable_id"] == 3
-        assert ast["left"]["class_name"] == "BinOp"
-        assert ast["left"]["right"]["variable_id"] == 2
-        assert ast["left"]["left"]["variable_id"] == 1
+
+        # Every PreconditionItem the tree carries maps back to A/B/C —
+        # the exact associativity depends on the parser, so we assert
+        # the multiset of ``variable_id``s rather than the shape.
+        vids = set()
+
+        def _collect(node):
+            if not isinstance(node, dict):
+                return
+            if node.get("class_name") == "PreconditionItem":
+                vids.add(node.get("variable_id"))
+            for value in node.values():
+                if isinstance(value, (dict, list)):
+                    _collect(value)
+
+        _collect(ast)
+        assert vids == {1, 2, 3}
         assert vars_ == {"10": "b", "20": "b", "30": "b"}
 
-    def test_unresolved_codes_silently_skipped(self, monkeypatch):
+    def test_unresolved_codes_silently_skipped(self, monkeypatch, real_syntax):
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
-
-        fake_query = MagicMock()
-        fake_query.get_variable_vids_by_codes.return_value = {}
-        monkeypatch.setitem(
-            sys.modules,
-            "dpmcore.dpm_xl.model_queries",
-            SimpleNamespace(VariableVersionQuery=fake_query),
-        )
+        svc._syntax = real_syntax
+        _install_variable_resolver(monkeypatch, {})
 
         preconds, vars_ = svc._build_preconditions_block(
             [("{v_unresolved}", ["v1"])], release_id=None
@@ -437,25 +537,22 @@ class TestBuildPreconditionsBlock:
         assert preconds == {}
         assert vars_ == {}
 
-    def test_collision_merges_affected_operations(self, monkeypatch):
-        """Same precondition shape across two entries merges ops.
+    def test_collision_merges_affected_operations(
+        self, monkeypatch, real_syntax
+    ):
+        """Two gates that collapse to the same key merge their operations.
 
-        Regression for B2: two preconditions producing the same key
-        used to silently overwrite each other, dropping the earlier
-        ``affected_operations``. The merged entry should now contain
-        both validation codes, deduplicated and order-preserving.
+        Regression for B2: two preconditions producing the same key used
+        to silently overwrite each other and drop the earlier
+        ``affected_operations``. The merged entry should now list both
+        validation codes, deduplicated and in order.
         """
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
-
-        fake_query = MagicMock()
-        fake_query.get_variable_vids_by_codes.return_value = {
-            "C_01.00": {"variable_id": 11, "variable_vid": 110},
-        }
-        monkeypatch.setitem(
-            sys.modules,
-            "dpmcore.dpm_xl.model_queries",
-            SimpleNamespace(VariableVersionQuery=fake_query),
+        svc._syntax = real_syntax
+        _install_variable_resolver(
+            monkeypatch,
+            {"C_01.00": {"variable_id": 11, "variable_vid": 110}},
         )
 
         preconds, _vars = svc._build_preconditions_block(
@@ -472,19 +569,16 @@ class TestBuildPreconditionsBlock:
             "v3",
         ]
 
-    def test_dict_format_with_custom_code_and_version_id(self, monkeypatch):
-        """Dict format allows overriding code and version_id"""
+    def test_dict_format_with_custom_code_and_version_id(
+        self, monkeypatch, real_syntax
+    ):
+        """Dict format allows overriding code and version_id."""
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
-
-        fake_query = MagicMock()
-        fake_query.get_variable_vids_by_codes.return_value = {
-            "C_01.00": {"variable_id": 11, "variable_vid": 110}
-        }
-        monkeypatch.setitem(
-            sys.modules,
-            "dpmcore.dpm_xl.model_queries",
-            SimpleNamespace(VariableVersionQuery=fake_query),
+        svc._syntax = real_syntax
+        _install_variable_resolver(
+            monkeypatch,
+            {"C_01.00": {"variable_id": 11, "variable_vid": 110}},
         )
 
         preconds, vars_ = svc._build_preconditions_block(
@@ -492,8 +586,8 @@ class TestBuildPreconditionsBlock:
                 {
                     "expression": "{v_C_01.00}",
                     "affected_operations": ["v1", "v2"],
-                    "code": "P_571",  # Override default p_110
-                    "version_id": 8341,  # Override default 110
+                    "code": "P_571",  # override default p_110
+                    "version_id": 8341,  # override default 110
                 }
             ],
             release_id=5,
@@ -505,22 +599,18 @@ class TestBuildPreconditionsBlock:
         assert entry["affected_operations"] == ["v1", "v2"]
         assert vars_ == {"110": "b"}
 
-    def test_backward_compat_tuple_format_still_works(self, monkeypatch):
+    def test_backward_compat_tuple_format_still_works(
+        self, monkeypatch, real_syntax
+    ):
         """Tuple format (old) still works for backward compatibility."""
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
-
-        fake_query = MagicMock()
-        fake_query.get_variable_vids_by_codes.return_value = {
-            "C_01.00": {"variable_id": 11, "variable_vid": 110}
-        }
-        monkeypatch.setitem(
-            sys.modules,
-            "dpmcore.dpm_xl.model_queries",
-            SimpleNamespace(VariableVersionQuery=fake_query),
+        svc._syntax = real_syntax
+        _install_variable_resolver(
+            monkeypatch,
+            {"C_01.00": {"variable_id": 11, "variable_vid": 110}},
         )
 
-        # Old tuple format should still work
         preconds, vars_ = svc._build_preconditions_block(
             [("{v_C_01.00}", ["v1", "v2"])],
             release_id=5,
@@ -529,6 +619,107 @@ class TestBuildPreconditionsBlock:
         entry = preconds["p_110"]
         assert entry["code"] == "p_110"
         assert entry["version_id"] == 110
+
+
+# ------------------------------------------------------------------ #
+# Issue #338 — gates carrying parameters and mixed shapes
+# ------------------------------------------------------------------ #
+
+
+class TestGateParameterPropagation:
+    """A ``{p_*}`` reference in the gate reaches the engine intact.
+
+    Regression for #338: the old regex path extracted only ``{v_*}``
+    positions, so a parameter or a logical operator that connected one
+    to a filing indicator was silently dropped and never reached
+    ``preconditions[<key>]["ast"]`` or the script-level ``parameters``
+    registry. The AST walker now emits ``ParameterRef`` alongside
+    ``PreconditionItem`` and populates the parameter registry in the
+    same pass.
+    """
+
+    def test_parameter_only_gate_emits_entry(
+        self, monkeypatch, real_syntax, real_parameter_info
+    ):
+        """A gate that is nothing but a parameter reference no longer
+        vanishes — it produces a precondition entry the engine can
+        evaluate at runtime.
+        """
+        svc, _, mod = _bare_svc()
+        svc.session = MagicMock()
+        svc._syntax = real_syntax
+        _install_variable_resolver(monkeypatch, {})
+
+        referenced: dict = {}
+        preconds, vars_ = svc._build_preconditions_block(
+            [("{p_flag, boolean}", ["v1"])],
+            release_id=None,
+            referenced_parameters=referenced,
+        )
+        assert preconds, "parameter-only gate must not vanish"
+        [entry] = preconds.values()
+        assert entry["ast"]["class_name"] == "ParameterRef"
+        assert entry["ast"]["code"] == "flag"
+        assert entry["affected_operations"] == ["v1"]
+        assert vars_ == {}
+        assert "flag" in referenced
+        assert referenced["flag"].declared_type == "Boolean"
+
+    def test_mixed_item_and_parameter_gate_preserves_both_sides(
+        self, monkeypatch, real_syntax, real_parameter_info
+    ):
+        """``{v_F} and {p_flag, boolean}`` reaches the engine as a
+        BinOp with both operands intact.
+
+        The previous emitter kept only ``{v_F}``, so the parameter half
+        of the gate — and any runtime binding based on it — was lost.
+        """
+        svc, _, mod = _bare_svc()
+        svc.session = MagicMock()
+        svc._syntax = real_syntax
+        _install_variable_resolver(
+            monkeypatch,
+            {"F_01.02": {"variable_id": 42, "variable_vid": 420}},
+        )
+
+        referenced: dict = {}
+        preconds, vars_ = svc._build_preconditions_block(
+            [("{v_F_01.02} and {p_flag, boolean}", ["v1"])],
+            release_id=None,
+            referenced_parameters=referenced,
+        )
+        [entry] = preconds.values()
+        binop = entry["ast"]
+        assert binop["class_name"] == "BinOp"
+        assert binop["op"] == "and"
+
+        kinds = {binop["left"]["class_name"], binop["right"]["class_name"]}
+        assert kinds == {"PreconditionItem", "ParameterRef"}
+        assert vars_ == {"420": "b"}
+        assert referenced["flag"].declared_type == "Boolean"
+
+    def test_or_operator_preserved(self, monkeypatch, real_syntax):
+        """``{v_A} or {v_B}`` used to collapse to a flat item list under
+        an implicit ``and`` because the regex path lost the operator.
+        The walker preserves it.
+        """
+        svc, _, mod = _bare_svc()
+        svc.session = MagicMock()
+        svc._syntax = real_syntax
+        _install_variable_resolver(
+            monkeypatch,
+            {
+                "A": {"variable_id": 1, "variable_vid": 10},
+                "B": {"variable_id": 2, "variable_vid": 20},
+            },
+        )
+
+        preconds, _vars = svc._build_preconditions_block(
+            [("{v_A} or {v_B}", ["v1"])], release_id=None
+        )
+        [entry] = preconds.values()
+        assert entry["ast"]["class_name"] == "BinOp"
+        assert entry["ast"]["op"] == "or"
 
 
 # ------------------------------------------------------------------ #
