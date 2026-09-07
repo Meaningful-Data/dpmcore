@@ -22,7 +22,8 @@ from _helpers import (  # noqa: E402  (sys.path injected via conftest)
     seed_releases,
 )
 
-from dpmcore.orm.glossary import Item, ItemCategory
+from dpmcore.orm.glossary import Item, ItemCategory, PropertyCategory
+from dpmcore.orm.infrastructure import Release
 from dpmcore.orm.release_sort_order import load_release_sort_orders
 from dpmcore.services.layout_exporter import queries
 from dpmcore.services.layout_exporter.models import ReleaseWindow
@@ -730,3 +731,111 @@ def test_pick_in_window_breaks_ties_on_release_id(memory_session):
         list(reversed(rows)), sort_orders, ReleaseWindow()
     )
     assert picked == {"k": "second"}
+
+
+def test_pick_in_window_keeps_rows_added_in_an_undated_end_release(
+    memory_session,
+):
+    """A window ending at a working release is open at that release.
+
+    An undated release carries the "latest" sentinel, so a row starting
+    there ranks equal to the window's end. Treating that end as an
+    upper bound would drop every code introduced in the very release
+    the window reaches.
+    """
+    seed_releases(memory_session)
+    memory_session.add(Release(release_id=7, code="Playground", date=None))
+    memory_session.commit()
+    sort_orders = load_release_sort_orders(memory_session)
+    rows = [
+        ("k", 1, None, "dated"),
+        ("k", 7, None, "added_in_working_release"),
+    ]
+
+    window = ReleaseWindow(start_release_id=1, end_release_id=7)
+    picked = queries._pick_in_window(rows, sort_orders, window)
+
+    assert picked == {"k": "added_in_working_release"}
+
+
+def test_pick_in_window_still_bounds_a_dated_end_release(memory_session):
+    """The undated exception must not weaken a normal closed window."""
+    seed_releases(memory_session)
+    memory_session.commit()
+    sort_orders = load_release_sort_orders(memory_session)
+    rows = [
+        ("k", 1, None, "in_window"),
+        ("k", 2, None, "starts_at_the_end"),
+    ]
+
+    window = ReleaseWindow(start_release_id=1, end_release_id=2)
+    picked = queries._pick_in_window(rows, sort_orders, window)
+
+    assert picked == {"k": "in_window"}
+
+
+def test_load_categorisations_ignores_an_uncategorised_property(
+    memory_session,
+):
+    """A NULL ``CategoryID`` must not widen the domain set.
+
+    ``PropertyCategory.category_id`` and ``ItemCategory.category_id``
+    are both nullable. Letting ``None`` into the domain set makes the
+    member-code filter match uncategorised rows, and sorting the
+    resulting mixed ``(item_id, category_id)`` keys raises
+    ``TypeError``, aborting the export.
+    """
+    seed_releases(memory_session)
+    seed_data_types(memory_session)
+    seed_property_category(memory_session)
+    seed_domain_category(memory_session, 20, "DOMM")
+
+    # One dimension whose domain link names no category, and one
+    # normal dimension, so the domain set holds both None and a real ID.
+    make_property(
+        memory_session,
+        property_id=200,
+        name="Uncategorised dim",
+        dim_code="UD",
+        domain_category_id=None,
+    )
+    memory_session.add(
+        PropertyCategory(property_id=200, start_release_id=1, category_id=None)
+    )
+    make_property(
+        memory_session,
+        property_id=201,
+        name="Normal dim",
+        dim_code="ND",
+        domain_category_id=20,
+    )
+    # The member carries a real in-domain code plus an uncategorised row.
+    make_member(
+        memory_session,
+        item_id=300,
+        name="Member A",
+        domain_category_id=20,
+        code="mA",
+        signature="DOMM:mA",
+    )
+    memory_session.add(
+        ItemCategory(
+            item_id=300,
+            category_id=None,
+            start_release_id=2,
+            code="bogus",
+        )
+    )
+    add_context_composition(
+        memory_session, context_id=50, property_id=200, item_id=300
+    )
+    add_context_composition(
+        memory_session, context_id=50, property_id=201, item_id=300
+    )
+    memory_session.commit()
+
+    # Without the guard this raises TypeError on the mixed keys.
+    result = queries.load_categorisations(memory_session, {50}, OPEN)
+
+    codes = {dm.member_code for dm in result[50]}
+    assert codes == {"mA"}, "the uncategorised code must never win"

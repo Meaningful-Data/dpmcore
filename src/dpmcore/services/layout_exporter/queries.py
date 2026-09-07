@@ -262,6 +262,13 @@ def _pick_in_window(
         if window.end_release_id is not None
         else None
     )
+    # A window ending at an undated (working) release is as open as one
+    # with no end at all: rows introduced *in* that release carry the
+    # same "latest" sentinel as its start, so an upper bound here would
+    # exclude them from the very release the window reaches. This is the
+    # same exception ``filter_by_release`` makes via its perpetual IDs.
+    if window_end == _LATEST:
+        window_end = None
 
     best: dict[Any, tuple[int, int]] = {}
     chosen: dict[Any, Any] = {}
@@ -465,7 +472,11 @@ def load_categorisations(
             member_item_ids.add(row[3])
 
     domains = _load_property_categories(session, prop_ids, window)
-    domain_cat_ids = {cat_id for cat_id, _code in domains.values()}
+    # ``PropertyCategory.category_id`` is nullable, and so is
+    # ``ItemCategory.category_id``: letting ``None`` into the domain
+    # set would make ``_load_member_codes`` match uncategorised rows
+    # and then fail to sort its mixed ``(item_id, category_id)`` keys.
+    domain_cat_ids = {cat_id for cat_id, _code in domains.values() if cat_id}
     dim_codes = _load_dimension_codes(session, prop_ids, window)
     member_codes = _load_member_codes(
         session,
@@ -604,7 +615,11 @@ def load_dp_categorisations(
             member_item_ids.add(row[3])
 
     domains = _load_property_categories(session, prop_ids, window)
-    domain_cat_ids = {cat_id for cat_id, _code in domains.values()}
+    # ``PropertyCategory.category_id`` is nullable, and so is
+    # ``ItemCategory.category_id``: letting ``None`` into the domain
+    # set would make ``_load_member_codes`` match uncategorised rows
+    # and then fail to sort its mixed ``(item_id, category_id)`` keys.
+    domain_cat_ids = {cat_id for cat_id, _code in domains.values() if cat_id}
     dim_codes = _load_dimension_codes(session, prop_ids, window)
     member_codes = _load_member_codes(
         session,

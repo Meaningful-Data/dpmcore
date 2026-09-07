@@ -439,9 +439,8 @@ class ExcelLayoutWriter:
 
             # Header tooltip
             if cfg.add_header_comments and ch.categorisations:
-                tooltip = _format_categorisations(ch.categorisations)
-                cell.comment = Comment(
-                    tooltip, "dpmcore", width=400, height=150
+                cell.comment = _comment(
+                    _format_categorisations(ch.categorisations)
                 )
 
         # Grey-fill the entire column header grid (including empty cells)
@@ -543,12 +542,8 @@ class ExcelLayoutWriter:
 
             # Header tooltip
             if cfg.add_header_comments and rh.categorisations:
-                tooltip = _format_categorisations(rh.categorisations)
-                label_cell.comment = Comment(
-                    tooltip,
-                    "dpmcore",
-                    width=400,
-                    height=150,
+                label_cell.comment = _comment(
+                    _format_categorisations(rh.categorisations)
                 )
 
         # --- Open-row tables ---
@@ -1139,12 +1134,17 @@ def _fit_tooltip(text: str) -> str:
     """Cut a tooltip down to what Excel accepts, on a line boundary."""
     if len(text) <= _MAX_TOOLTIP_CHARS:
         return text
+    lines = text.split("\n")
+    # The marker counts against the cap too, so reserve its longest
+    # possible form up front. Without this the result overshoots by the
+    # marker's length, which would also make a second pass over an
+    # already-fitted tooltip truncate it again.
+    budget = _MAX_TOOLTIP_CHARS - len(f"... and {len(lines)} more lines\n")
     kept: list[str] = []
     used = 0
-    lines = text.split("\n")
     for index, line in enumerate(lines):
         used += len(line) + 1
-        if used > _MAX_TOOLTIP_CHARS:
+        if used > budget:
             kept.append(f"... and {len(lines) - index} more lines")
             break
         kept.append(line)
@@ -1152,12 +1152,18 @@ def _fit_tooltip(text: str) -> str:
 
 
 def _comment(text: str) -> Comment:
-    """Build a comment sized to its content."""
+    """Build a comment sized to its content.
+
+    The text is fitted here rather than by the callers: several
+    tooltips are assembled from parts that were each fitted on their
+    own, and only their concatenation can breach Excel's limit.
+    """
+    fitted = _fit_tooltip(text)
     height = _COMMENT_MIN_HEIGHT + _COMMENT_LINE_HEIGHT * max(
-        0, text.count("\n") - 8
+        0, fitted.count("\n") - 8
     )
     return Comment(
-        text,
+        fitted,
         "dpmcore",
         width=_COMMENT_WIDTH,
         height=min(height, _COMMENT_MAX_HEIGHT),

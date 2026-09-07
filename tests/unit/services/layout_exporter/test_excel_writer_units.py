@@ -1226,8 +1226,41 @@ def test_fit_tooltip_truncates_on_a_line_boundary():
     assert fitted.splitlines()[-2].endswith("A" * 40)
 
 
+def test_fit_tooltip_reserves_room_for_its_own_marker():
+    """The truncation marker counts against the cap too.
+
+    150-char lines divide 30,000 exactly, so the budget runs out on a
+    line boundary and an unreserved marker has nowhere to go. That
+    overshoot would also make a second pass truncate an already-fitted
+    tooltip a second time.
+    """
+    text = "\n".join(["A" * 149] * 3000)
+    assert len(text) > ew._MAX_TOOLTIP_CHARS
+
+    fitted = ew._fit_tooltip(text)
+    assert len(fitted) <= ew._MAX_TOOLTIP_CHARS
+    assert fitted.splitlines()[-1].startswith("... and ")
+    # Fitting is idempotent: no second "... and N more lines".
+    assert ew._fit_tooltip(fitted) == fitted
+
+
 def test_fit_tooltip_leaves_short_text_alone():
     assert ew._fit_tooltip("a\nb") == "a\nb"
+
+
+def test_comment_fits_text_assembled_from_already_fitted_parts():
+    """Only the concatenation can breach Excel's limit.
+
+    A header comment joins a categorisation block with a key tooltip
+    that was fitted on its own, so the fit has to happen in
+    ``_comment`` rather than in each caller.
+    """
+    values = [EnumValue(code=f"x{i}", label="A" * 40) for i in range(3000)]
+    key_part = ew._fit_tooltip(ew._format_enumeration(_enum(values=values)))
+    combined = "B" * 5000 + "\n\n" + key_part
+    assert len(combined) > ew._MAX_TOOLTIP_CHARS
+
+    assert len(ew._comment(combined).text) <= ew._MAX_TOOLTIP_CHARS
 
 
 def test_comment_box_grows_with_the_text_up_to_a_maximum():
