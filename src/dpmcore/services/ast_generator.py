@@ -24,7 +24,7 @@ from dpmcore.dpm_xl.utils.tokens import (
     SEVERITY_WARNING,
     VALID_SEVERITIES,
 )
-from dpmcore.errors import SemanticError
+from dpmcore.errors import InternalError, SemanticError
 from dpmcore.services._parameters import merge_parameters
 from dpmcore.services._precondition_codes import (
     extract_precondition_codes as _extract_precondition_codes,
@@ -68,12 +68,13 @@ class _PreparedExpression:
     """One expression readied for the script, or the reason it is not.
 
     ``error`` is set when the expression cannot become a declarable
-    operation — it failed semantic validation, or it carries a shift
-    whose reference period cannot be declared (#326). Both are reported
-    the same way, through ``failed_operations``, and both must be caught
-    before the caller accumulates anything for the operation: a skip
-    afterwards would leave its tables, parameters and operation entry in
-    the script.
+    operation — it failed semantic validation, it carries a shift whose
+    reference period cannot be declared (#326), or its precondition is
+    one the engine cannot evaluate (#338). All are reported the same
+    way, through ``failed_operations``, and all must be caught before
+    the caller accumulates anything for the operation: a skip afterwards
+    would leave its tables, parameters and operation entry in the
+    script.
     """
 
     result: Any = None
@@ -168,8 +169,10 @@ class ASTGeneratorService:
             namespaced dict, or ``None`` on failure), ``error`` (str or
             ``None``), and ``failed_operations`` (a
             ``{validation_code: error_message}`` map of expressions
-            skipped due to semantic errors). The namespaced dict mirrors
-            the shape pydpm's ``generate_validations_script`` produces.
+            skipped due to semantic errors, or because their
+            precondition cannot be evaluated by the engine). The
+            namespaced dict mirrors the shape pydpm's
+            ``generate_validations_script`` produces.
         """
         session = self.session
         if (
@@ -209,6 +212,12 @@ class ASTGeneratorService:
                     "error": str(exc),
                     "failed_operations": {},
                 }
+            # Operations whose gate the engine cannot evaluate leave the
+            # script here, before any accumulation, and are reported in
+            # ``failed_operations`` (see ``_unsupported_gate_operations``).
+            gate_failures = self._unsupported_gate_operations(
+                preconditions or []
+            )
 
             from_submission_date = _format_date(
                 mv.from_reference_date, fallback=_DEFAULT_FROM_DATE
@@ -230,12 +239,16 @@ class ASTGeneratorService:
             for item in expressions:
                 expr, code = item[0], item[1]
                 # Semantic validation plus the reference periods the
-                # expression needs; either can reject it. The
-                # _accumulate_parameters call below is complementary to
-                # the scope check inside — it catches conflicts between
-                # two expressions in this same script.
+                # expression needs; either can reject it, as can a gate
+                # the engine cannot evaluate. The _accumulate_parameters
+                # call below is complementary to the scope check inside —
+                # it catches conflicts between two expressions in this
+                # same script.
                 prepared = self._prepare_expression(
-                    self._semantic, expr, release_id
+                    self._semantic,
+                    expr,
+                    release_id,
+                    gate_failure=gate_failures.get(code),
                 )
                 if prepared.error is not None:
                     failed_operations[code] = prepared.error
@@ -323,14 +336,12 @@ class ASTGeneratorService:
             )
 
             # Runtime-binding contract: the declared type of every parameter
-            # this script's operations reference, keyed by code. This is the
-            # scope-wide invariant. ``is_set`` is recoverable from the ``set-``
-            # prefix and ``default`` is a per-reference fallback the engine
-            # binds per scope, so neither belongs in this registry. Populated
-            # after ``_build_preconditions_block`` runs so parameters that
-            # appear only in a gate — legal per the grammar, and reaching the
-            # engine as a runtime input — are declared alongside the ones the
-            # expressions reference.
+            # this script needs, keyed by code. This is the scope-wide
+            # invariant. ``is_set`` is recoverable from the ``set-`` prefix
+            # and ``default`` is a per-reference fallback the engine binds
+            # per scope, so neither belongs in this registry. Built after
+            # the gates so a parameter that only appears in a gate is
+            # declared alongside the ones the expressions reference.
             parameters_block: Dict[str, str] = {
                 prm_code: prm.declared_type
                 for prm_code, prm in sorted(referenced_parameters.items())
@@ -919,6 +930,16 @@ class ASTGeneratorService:
             "severity": severity,
         }
 
+    # The gate contract shared with the engine's precondition evaluator:
+    # filing indicators, run-time parameters and boolean literals combined
+    # with these operators (grouping parentheses are unwrapped). A gate
+    # carrying anything else — a comparison, arithmetic, a cell reference,
+    # a non-boolean literal — has no runtime meaning on the engine side, so
+    # it stays out of the script and its operations are reported through
+    # ``failed_operations`` (see ``_unsupported_gate_operations``).
+    _GATE_BINARY_OPS = frozenset({"and", "or", "xor"})
+    _GATE_UNARY_OPS = frozenset({"not"})
+
     def _build_preconditions_block(
         self,
         preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
@@ -928,22 +949,28 @@ class ASTGeneratorService:
         """Build the ``preconditions`` and ``precondition_variables`` blocks.
 
         Each gate is parsed once and the resulting AST is walked to build
-        the entry: a ``{v_*}`` selection contributes a ``PreconditionItem``
-        node with the resolved ``variable_id`` / ``variable_vid``, a
-        ``{p_*}`` reference contributes the ``ParameterRef`` node with
-        ``code`` / ``param_type`` preserved, and every logical operator
-        that connects them (``and``/``or``/``not``, ``ParExpr``) survives
-        into the emitted tree. Gates that used to depend on the regex
-        matching only ``{v_*}`` positions — a parameter-only gate, or a
-        mixed gate whose parameter half was silently dropped — now reach
-        the engine intact.
+        the entry: a ``{v_*}`` selection becomes a ``PreconditionItem``
+        node with the resolved ``variable_id``, a ``{p_*}`` reference is
+        emitted as the same ``ParameterRef`` node an expression produces
+        (``code``, canonical ``param_type``, ``default``), and every
+        logical operator that connects them (``and`` / ``or`` / ``xor`` /
+        ``not``) survives into the emitted tree, so ``{v_A} or {v_B}``
+        reaches the engine as a disjunction instead of the ``and``-fold
+        the old regex path produced. Grouping parentheses are unwrapped:
+        the tree shape already carries the precedence.
 
-        A parameter that shows up in a gate is added to
-        ``referenced_parameters`` in the same pass, so
-        ``parameters_block`` declares it alongside those the expressions
-        reference and the scope-wide type agreement in
+        A parameter that appears in a gate is added to
+        ``referenced_parameters`` in the same pass, so the script-level
+        ``parameters`` block declares it alongside the ones the
+        expressions reference and the scope-wide type agreement in
         :func:`~dpmcore.services._parameters.merge_parameters` runs
-        against a single registry.
+        against a single registry (``3-8`` on a conflicting type).
+
+        Gates outside that contract (a comparison, a cell reference, a
+        non-boolean literal) are excluded here, and :meth:`script`
+        reports their operations in ``failed_operations`` instead of
+        shipping a gate the engine cannot evaluate. Codes that don't
+        resolve are still skipped silently (matches pydpm).
         """
         from dpmcore.dpm_xl.model_queries import VariableVersionQuery
         from dpmcore.dpm_xl.utils.serialization import serialize_ast
@@ -977,7 +1004,7 @@ class ASTGeneratorService:
             )
             if gate_ast is None:
                 # Every ``{v_*}`` position dropped for lack of resolution
-                # and the tree carried no parameter to keep it standing.
+                # and nothing else in the tree to keep it standing.
                 continue
             if referenced_parameters is not None:
                 self._accumulate_precondition_parameters(
@@ -1012,6 +1039,120 @@ class ASTGeneratorService:
                 merged_ops.append(op)
         existing["affected_operations"] = merged_ops
 
+    @staticmethod
+    def _gate_spec_fields(
+        precond_spec: Union[Tuple[str, List[str]], Dict[str, Any]],
+    ) -> Tuple[str, List[str], Optional[str], Optional[int]]:
+        """Normalise a gate spec to ``(expression, codes, code, vid)``.
+
+        Both input shapes are accepted: the ``(expression,
+        affected_operations)`` tuple, and the dict form that may also
+        carry an explicit ``code`` / ``version_id`` override.
+        """
+        if isinstance(precond_spec, dict):
+            return (
+                precond_spec["expression"],
+                precond_spec["affected_operations"],
+                precond_spec.get("code"),
+                precond_spec.get("version_id"),
+            )
+        precond_expr, validation_codes = precond_spec
+        return precond_expr, validation_codes, None, None
+
+    def _unsupported_gate_operations(
+        self,
+        preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
+    ) -> Dict[str, str]:
+        """Map each operation gated by an engine-unsupported gate to a reason.
+
+        The gate contract is filing indicators, run-time parameters and
+        boolean literals combined with ``and`` / ``or`` / ``xor`` /
+        ``not``. The engine's precondition evaluator has no evaluation
+        for anything else — a comparison, arithmetic, a cell reference —
+        and such a node in a gate fails the run. A gate outside the
+        contract must therefore not be emitted, and silently dropping it
+        would ungate the operations it guards. This is the third option:
+        the operations are reported in :meth:`script`'s
+        ``failed_operations`` with the reason, and left out of the
+        script. Gates that fail to parse are ignored here —
+        ``_build_precondition_index`` already turns them into a
+        script-level error.
+        """
+        failures: Dict[str, str] = {}
+        for precond_spec in preconditions:
+            precond_expr, validation_codes, _, _ = self._gate_spec_fields(
+                precond_spec
+            )
+            if not precond_expr:
+                continue
+            try:
+                ast = self._syntax.parse(precond_expr)
+            except Exception:  # noqa: S112 — see docstring above
+                continue
+            reason = self._gate_unsupported_reason(ast)
+            if reason is None:
+                continue
+            message = (
+                f"Precondition {precond_expr!r} cannot be evaluated by the "
+                f"engine: {reason}. A precondition may only combine "
+                "filing indicators, parameters and boolean literals with "
+                "and/or/xor/not."
+            )
+            for validation_code in validation_codes:
+                failures.setdefault(validation_code, message)
+        return failures
+
+    @classmethod
+    def _gate_unsupported_reason(cls, node: Any) -> Optional[str]:
+        """Why the engine could not evaluate this gate, or ``None`` if it can.
+
+        Walks the parsed gate and returns a short reason for the first
+        node outside the contract: filing-indicator selections
+        (``VarRef`` / ``PreconditionItem``), ``ParameterRef`` and boolean
+        ``Constant`` leaves joined by ``_GATE_BINARY_OPS`` /
+        ``_GATE_UNARY_OPS``, optionally grouped.
+        """
+        from dpmcore.dpm_xl.ast import nodes as ast_nodes
+
+        node = cls._unwrap_start(node, ast_nodes)
+        if isinstance(node, ast_nodes.Start):
+            return "it is not a single expression"
+        if isinstance(node, ast_nodes.ParExpr):
+            return cls._gate_unsupported_reason(node.expression)
+        if isinstance(node, (ast_nodes.BinOp, ast_nodes.UnaryOp)):
+            return cls._gate_operator_unsupported_reason(node, ast_nodes)
+        if isinstance(
+            node,
+            (
+                ast_nodes.VarRef,
+                ast_nodes.PreconditionItem,
+                ast_nodes.ParameterRef,
+            ),
+        ):
+            return None
+        if isinstance(node, ast_nodes.Constant):
+            if node.type == "Boolean":
+                return None
+            return f"it contains the non-boolean literal {node.value!r}"
+        if isinstance(node, ast_nodes.VarID):
+            return "it references a cell"
+        return f"it contains a {node.__class__.__name__} node"
+
+    @classmethod
+    def _gate_operator_unsupported_reason(
+        cls, node: Any, ast_nodes: Any
+    ) -> Optional[str]:
+        """The operator half of :meth:`_gate_unsupported_reason`."""
+        if isinstance(node, ast_nodes.BinOp):
+            if node.op not in cls._GATE_BINARY_OPS:
+                return f"it uses the operator {node.op!r}"
+            return cls._gate_unsupported_reason(
+                node.left
+            ) or cls._gate_unsupported_reason(node.right)
+        if node.op not in cls._GATE_UNARY_OPS:
+            return f"it uses the operator {node.op!r}"
+        return cls._gate_unsupported_reason(node.operand)
+
     def _parse_gates(
         self,
         preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
@@ -1019,37 +1160,36 @@ class ASTGeneratorService:
         List[Tuple[Any, List[str], Optional[str], Optional[int]]],
         List[str],
     ]:
-        """Parse every gate once and index the ``{v_*}`` codes referenced.
+        """Parse every emittable gate once and index its ``{v_*}`` codes.
 
         Returns ``(parsed_gates, all_codes)`` where ``parsed_gates`` is
         the list of ``(ast, validation_codes, provided_code,
         provided_version_id)`` tuples the caller iterates over, and
         ``all_codes`` is the deduplicated list of variable codes to feed
-        the batched DB resolution. A gate that fails to parse is dropped
-        silently — the top-level ``_build_precondition_index`` already
-        surfaces the failure and turns it into a script-level error, and
-        keeping the gate out here matches the pre-existing "codes that
-        don't resolve are silently skipped" contract.
+        the batched DB resolution. Two kinds of gate are left out: one
+        that fails to parse — ``_build_precondition_index`` already
+        surfaces that as a script-level error — and one the engine
+        cannot evaluate, whose operations
+        ``_unsupported_gate_operations`` has already reported.
         """
         parsed_gates: List[
             Tuple[Any, List[str], Optional[str], Optional[int]]
         ] = []
         all_codes: List[str] = []
         for precond_spec in preconditions:
-            if isinstance(precond_spec, dict):
-                precond_expr = precond_spec["expression"]
-                validation_codes = precond_spec["affected_operations"]
-                provided_code = precond_spec.get("code")
-                provided_version_id = precond_spec.get("version_id")
-            else:
-                precond_expr, validation_codes = precond_spec
-                provided_code = None
-                provided_version_id = None
+            (
+                precond_expr,
+                validation_codes,
+                provided_code,
+                provided_version_id,
+            ) = self._gate_spec_fields(precond_spec)
             if not precond_expr:
                 continue
             try:
                 ast = self._syntax.parse(precond_expr)
             except Exception:  # noqa: S112 — see docstring above
+                continue
+            if self._gate_unsupported_reason(ast) is not None:
                 continue
             parsed_gates.append(
                 (ast, validation_codes, provided_code, provided_version_id)
@@ -1066,32 +1206,26 @@ class ASTGeneratorService:
         resolved: Dict[str, Dict[str, int]],
         precondition_variables: Dict[str, str],
         serialize_ast: Any,
-    ) -> Any:
+    ) -> Optional[Dict[str, Any]]:
         """Walk the parsed gate AST and emit the engine's dict shape.
 
-        Three transformations happen along the way:
+        ``VarRef`` (the parser's node for ``{v_*}``) and ``PreconditionItem``
+        collapse to a ``PreconditionItem`` dict with the resolved
+        ``variable_id``, registering the ``variable_vid`` in
+        ``precondition_variables`` on the way. A selection that does not
+        resolve is dropped and the surrounding operator is rewired to keep
+        the tree standing — or the whole gate returns ``None`` when nothing
+        survives. ``ParExpr`` wrappers are unwrapped; ``BinOp`` /
+        ``UnaryOp`` keep their operator. ``ParameterRef`` and boolean
+        ``Constant`` leaves go through the standard ``serialize_ast`` path,
+        so the gate carries exactly the node shape an expression would
+        (``code`` / ``param_type`` / ``default``; ``type_`` / ``value``).
+        Any other node is a programming error here: ``_parse_gates`` keeps
+        gates carrying one out, so the emitter never has to guess a wire
+        shape the engine lacks.
 
-        1. ``VarRef`` (the parser's node for ``{v_*}``) and any ``VarID``
-           whose selection uses the ``v`` prefix collapse to a
-           ``PreconditionItem`` dict with the resolved ``variable_id``,
-           and the resolved ``variable_vid`` is registered in
-           ``precondition_variables``. When the code cannot be resolved,
-           the node is dropped: the caller then rewires the surrounding
-           logical operator to keep the tree standing, or returns
-           ``None`` if nothing survives.
-        2. ``ParExpr`` wrappers unwrap once their child is finalised —
-           the engine reads meaning from operator precedence in the
-           tree, not from redundant grouping.
-        3. Every other node kind — ``ParameterRef``, ``BinOp`` /
-           ``UnaryOp`` whose operands are not selections, literals, and
-           so on — is serialised through the standard ``serialize_ast``
-           path, so the tree the engine sees matches the shape used in
-           expressions.
-
-        The walker takes the parsed AST (not the serialised dict) so
-        the ``variable`` attribute of a ``VarRef`` reaches the resolver
-        intact; the standard serializer's ``generic_visit`` does not
-        propagate that attribute.
+        The walker takes the parsed AST (not the serialised dict) so the
+        ``variable`` attribute of a ``VarRef`` reaches the resolver intact.
         """
         from dpmcore.dpm_xl.ast import nodes as ast_nodes
 
@@ -1107,29 +1241,23 @@ class ASTGeneratorService:
                 precondition_variables,
                 serialize_ast,
             )
-        if isinstance(node, ast_nodes.VarRef):
-            return cls._precondition_item_from_varref(
-                node, resolved, precondition_variables
+        if isinstance(node, (ast_nodes.VarRef, ast_nodes.PreconditionItem)):
+            variable = getattr(node, "variable", None) or getattr(
+                node, "variable_code", None
             )
-        if isinstance(node, ast_nodes.VarID):
-            return cls._precondition_item_from_varid(
-                node, resolved, precondition_variables
+            return cls._precondition_item(
+                variable, resolved, precondition_variables
             )
+        if isinstance(node, (ast_nodes.ParameterRef, ast_nodes.Constant)):
+            serialized: Dict[str, Any] = serialize_ast(node)
+            return serialized
         if isinstance(node, ast_nodes.BinOp):
             left = cls._transform_precondition_ast(
-                node.left,
-                resolved,
-                precondition_variables,
-                serialize_ast,
+                node.left, resolved, precondition_variables, serialize_ast
             )
             right = cls._transform_precondition_ast(
-                node.right,
-                resolved,
-                precondition_variables,
-                serialize_ast,
+                node.right, resolved, precondition_variables, serialize_ast
             )
-            if left is None and right is None:
-                return None
             if left is None:
                 return right
             if right is None:
@@ -1142,10 +1270,7 @@ class ASTGeneratorService:
             }
         if isinstance(node, ast_nodes.UnaryOp):
             operand = cls._transform_precondition_ast(
-                node.operand,
-                resolved,
-                precondition_variables,
-                serialize_ast,
+                node.operand, resolved, precondition_variables, serialize_ast
             )
             if operand is None:
                 return None
@@ -1154,11 +1279,11 @@ class ASTGeneratorService:
                 "op": node.op,
                 "operand": operand,
             }
-        # Any other node kind (ParameterRef, Scalar, Set, ...) is
-        # serialised as-is; the tree walker never had special handling
-        # for it and the standard serializer already produces the shape
-        # the engine expects.
-        return serialize_ast(node)
+        raise InternalError(
+            "Unsupported node in a precondition gate",
+            f"{node.__class__.__name__} reached the gate emitter; "
+            "_parse_gates should have excluded this gate.",
+        )
 
     @staticmethod
     def _unwrap_start(node: Any, ast_nodes: Any) -> Any:
@@ -1175,19 +1300,17 @@ class ASTGeneratorService:
         return node
 
     @staticmethod
-    def _precondition_item_from_varref(
-        node: Any,
+    def _precondition_item(
+        variable: Any,
         resolved: Dict[str, Dict[str, int]],
         precondition_variables: Dict[str, str],
     ) -> Optional[Dict[str, Any]]:
-        """Rewrite a ``VarRef`` node as a ``PreconditionItem``.
+        """Emit the ``PreconditionItem`` dict for a filing-indicator code.
 
-        ``VarRef`` is what the parser produces for a bare variable
-        selection; ``VarID`` handles the fuller cell-reference form.
-        Both routes converge on ``PreconditionItem`` here: the engine
-        binds a filing indicator, not a cell.
+        Codes that don't resolve return ``None`` so the caller can drop
+        the position — the same non-fatal outcome the previous regex
+        path produced when a code was unknown.
         """
-        variable = getattr(node, "variable", None)
         if not isinstance(variable, str):
             return None
         var_code = _normalize_variable_code(variable)
@@ -1202,40 +1325,8 @@ class ASTGeneratorService:
             # Kept for key derivation in
             # ``_build_precondition_entry_from_ast`` — the pre-existing
             # ``p_<vid>`` scheme groups precondition entries by
-            # ``variable_vid``, not ``variable_id``. The engine ignores
-            # this field on the emitted node.
-            "variable_vid": info["variable_vid"],
-        }
-
-    @staticmethod
-    def _precondition_item_from_varid(
-        node: Any,
-        resolved: Dict[str, Dict[str, int]],
-        precondition_variables: Dict[str, str],
-    ) -> Optional[Dict[str, Any]]:
-        """Rewrite a variable-selection ``VarID`` as a ``PreconditionItem``.
-
-        Codes that don't resolve return ``None`` so the caller can drop
-        the position — the same non-fatal outcome the previous regex
-        path produced when a code was unknown.
-        """
-        table = getattr(node, "table", None)
-        if not isinstance(table, str):
-            return None
-        var_code = _normalize_variable_code(table)
-        info = resolved.get(var_code)
-        if info is None:
-            return None
-        precondition_variables[str(info["variable_vid"])] = "b"
-        return {
-            "class_name": "PreconditionItem",
-            "variable_id": info["variable_id"],
-            "variable_code": var_code,
-            # Kept for key derivation in
-            # ``_build_precondition_entry_from_ast`` — the pre-existing
-            # ``p_<vid>`` scheme groups precondition entries by
-            # ``variable_vid``, not ``variable_id``. The engine ignores
-            # this field on the emitted node.
+            # ``variable_vid``, not ``variable_id``. Stripped before the
+            # entry is emitted; the engine's node has no such field.
             "variable_vid": info["variable_vid"],
         }
 
@@ -1245,14 +1336,15 @@ class ASTGeneratorService:
         referenced_parameters: Dict[str, ParameterInfo],
         node: Any,
     ) -> None:
-        """Add every ``ParameterRef`` in the gate to the script registry.
+        """Add every ``ParameterRef`` in the emitted gate to the registry.
 
         Reads the type off the serialised node so the shared registry
-        holds the same value the engine will bind against. Two gate
-        positions with the same ``code`` but different ``param_type``
-        raise ``SemanticError`` ``3-8`` via :func:`merge_parameters`,
-        exactly as they would if the same conflict appeared between
-        two expressions.
+        holds the same canonical name the engine binds against. A gate
+        parameter redeclared with another type — in another gate or in an
+        expression — raises ``SemanticError`` ``3-8`` through
+        :func:`~dpmcore.services._parameters.merge_parameters`, exactly
+        as the conflict between two expressions does. ``default`` is a
+        per-reference fallback and stays on the node only.
         """
         if isinstance(node, dict):
             if node.get("class_name") == "ParameterRef":
@@ -1282,13 +1374,32 @@ class ASTGeneratorService:
                     )
 
     @classmethod
+    def _is_conjunction_of_items(cls, node: Any) -> bool:
+        """``True`` for the shape the regex path used to emit.
+
+        That is a ``PreconditionItem`` or an ``and`` tree whose leaves
+        are all ``PreconditionItem`` — the only shape for which the
+        ``p_<sorted vids>`` key alone identifies the gate.
+        """
+        if not isinstance(node, dict):
+            return False
+        class_name = node.get("class_name")
+        if class_name == "PreconditionItem":
+            return True
+        return (
+            class_name == "BinOp"
+            and node.get("op") == "and"
+            and cls._is_conjunction_of_items(node.get("left"))
+            and cls._is_conjunction_of_items(node.get("right"))
+        )
+
+    @classmethod
     def _strip_precondition_item_vids(cls, node: Any) -> None:
         """Drop the internal ``variable_vid`` field from every item node.
 
-        ``variable_vid`` is added by
-        :meth:`_precondition_item_from_varref` so key derivation groups
-        entries the same way ``p_<vid>`` used to. The engine's
-        ``PreconditionItem`` schema only carries ``variable_id`` and
+        ``variable_vid`` is added by :meth:`_precondition_item` so key
+        derivation groups entries the same way ``p_<vid>`` used to. The
+        engine's ``PreconditionItem`` only carries ``variable_id`` and
         ``variable_code``, so the field is stripped once the key has
         been built.
         """
@@ -1313,28 +1424,38 @@ class ASTGeneratorService:
     ) -> Tuple[str, Dict[str, Any]]:
         """Assemble a ``preconditions[key]`` entry from an emitted gate AST.
 
-        The key groups together gates that emit the same sorted set of
-        ``PreconditionItem`` variable-vids — the pre-existing dedup
-        contract, preserved so a gate that today merges two operations
-        under one key keeps doing so. Gates whose only content is a
-        ``ParameterRef`` fall back to a hash-based key derived from the
-        canonical AST, so they still get a unique slot instead of
-        overwriting one another.
+        The key must identify the gate's meaning, because
+        :meth:`_merge_precondition_entry` unions the ``affected_operations``
+        of entries that share a key under the first entry's ``ast``. For
+        the shape the regex path used to emit — filing indicators joined
+        by ``and`` — the key stays ``p_<sorted vids>``, so those gates
+        (all of them on the dictionaries shipped so far) are unchanged
+        and keep merging as before. Any other shape (``or`` / ``xor`` /
+        ``not``, a parameter, a literal) appends a CRC-32 of the canonical
+        AST — ``p_<sorted vids>_<crc>``, or ``p_<crc>`` when the gate has
+        no filing indicator — so ``{v_A} or {v_B}`` can never be merged
+        into ``{v_A} and {v_B}``. ``version_id`` follows the same rule as
+        an operation without one: the first vid, or the CRC folded to four
+        digits. ``provided_code`` / ``provided_version_id`` override both.
         """
         item_vids = sorted(cls._collect_precondition_item_vids(gate_ast))
-        # Strip the internal ``variable_vid`` field once the key is
-        # settled; the engine's ``PreconditionItem`` schema does not
-        # carry it.
+        # Strip the internal ``variable_vid`` field before hashing and
+        # emitting; the engine's ``PreconditionItem`` does not carry it.
         cls._strip_precondition_item_vids(gate_ast)
-        if item_vids:
-            default_key = "p_" + "_".join(str(v) for v in item_vids)
-            default_version_id: int = item_vids[0]
+        vids_part = "_".join(str(v) for v in item_vids)
+        if cls._is_conjunction_of_items(gate_ast):
+            default_key = f"p_{vids_part}"
+            default_version_id = item_vids[0]
         else:
             digest = zlib.crc32(
                 json.dumps(gate_ast, sort_keys=True).encode("utf-8")
             )
-            default_key = f"p_gate_{digest:08x}"
-            default_version_id = digest % 10000
+            default_key = (
+                f"p_{vids_part}_{digest:08x}"
+                if item_vids
+                else f"p_{digest:08x}"
+            )
+            default_version_id = item_vids[0] if item_vids else digest % 10000
         code = provided_code if provided_code is not None else default_key
         version_id = (
             provided_version_id
@@ -1514,12 +1635,9 @@ class ASTGeneratorService:
         """
         index: Dict[str, List[str]] = {}
         for precond_spec in preconditions:
-            if isinstance(precond_spec, dict):
-                precond_expr = precond_spec["expression"]
-                validation_codes = precond_spec["affected_operations"]
-            else:
-                precond_expr, validation_codes = precond_spec
-
+            precond_expr, validation_codes, _, _ = self._gate_spec_fields(
+                precond_spec
+            )
             try:
                 ast = self._syntax.parse(precond_expr)
             except Exception as exc:
@@ -1768,6 +1886,7 @@ extract_precondition_codes`, shared with
         semantic: SemanticService,
         expr: str,
         release_id: int,
+        gate_failure: Optional[str] = None,
     ) -> _PreparedExpression:
         """Validate *expr* and read the reference periods it needs.
 
@@ -1776,7 +1895,14 @@ extract_precondition_codes`, shared with
         co-scoped operation already persisted in the DB (raises 3-8).
         ``_accumulate_parameters`` in the caller is complementary — it
         catches conflicts between two expressions in the same script.
+
+        ``gate_failure`` is the reason the operation's precondition
+        cannot be evaluated by the engine, when there is one (see
+        ``_unsupported_gate_operations``); such an operation is skipped
+        before validation, with that reason as its error.
         """
+        if gate_failure is not None:
+            return _PreparedExpression(error=gate_failure)
         result = semantic.validate(expr, release_id=release_id)
         if not result.is_valid:
             return _PreparedExpression(

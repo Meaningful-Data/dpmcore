@@ -622,30 +622,38 @@ class TestBuildPreconditionsBlock:
 
 
 # ------------------------------------------------------------------ #
-# Issue #338 — gates carrying parameters and mixed shapes
+# Issue #338 — gate parameters reach the engine; gates outside the
+# contract are reported
 # ------------------------------------------------------------------ #
 
 
+def _collect_class_names(node, acc=None):
+    acc = set() if acc is None else acc
+    if isinstance(node, dict):
+        acc.add(node.get("class_name"))
+        for value in node.values():
+            _collect_class_names(value, acc)
+    elif isinstance(node, list):
+        for item in node:
+            _collect_class_names(item, acc)
+    return acc
+
+
 class TestGateParameterPropagation:
-    """A ``{p_*}`` reference in the gate reaches the engine intact.
+    """A ``{p_*}`` reference in a gate reaches the engine intact.
 
     Regression for #338: the old regex path extracted only ``{v_*}``
-    positions, so a parameter or a logical operator that connected one
-    to a filing indicator was silently dropped and never reached
-    ``preconditions[<key>]["ast"]`` or the script-level ``parameters``
-    registry. The AST walker now emits ``ParameterRef`` alongside
-    ``PreconditionItem`` and populates the parameter registry in the
-    same pass.
+    positions, so a parameter — or the operator joining it to a filing
+    indicator — was silently dropped and the operation ran ungated. The
+    walker emits the parameter as the same ``ParameterRef`` node an
+    expression produces and declares it in the script-level ``parameters``
+    registry in the same pass.
     """
 
-    def test_parameter_only_gate_emits_entry(
+    def test_parameter_only_gate_emits_parameter_ref(
         self, monkeypatch, real_syntax, real_parameter_info
     ):
-        """A gate that is nothing but a parameter reference no longer
-        vanishes — it produces a precondition entry the engine can
-        evaluate at runtime.
-        """
-        svc, _, mod = _bare_svc()
+        svc, _, _ = _bare_svc()
         svc.session = MagicMock()
         svc._syntax = real_syntax
         _install_variable_resolver(monkeypatch, {})
@@ -656,25 +664,47 @@ class TestGateParameterPropagation:
             release_id=None,
             referenced_parameters=referenced,
         )
-        assert preconds, "parameter-only gate must not vanish"
+
         [entry] = preconds.values()
-        assert entry["ast"]["class_name"] == "ParameterRef"
-        assert entry["ast"]["code"] == "flag"
+        assert entry["ast"] == {
+            "class_name": "ParameterRef",
+            "code": "flag",
+            "param_type": "Boolean",
+            "default": None,
+        }
         assert entry["affected_operations"] == ["v1"]
+        assert entry["code"].startswith("p_")
+        assert isinstance(entry["version_id"], int)
         assert vars_ == {}
-        assert "flag" in referenced
         assert referenced["flag"].declared_type == "Boolean"
 
-    def test_mixed_item_and_parameter_gate_preserves_both_sides(
+    def test_parameter_default_is_preserved_on_the_node(
         self, monkeypatch, real_syntax, real_parameter_info
     ):
-        """``{v_F} and {p_flag, boolean}`` reaches the engine as a
-        BinOp with both operands intact.
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        svc._syntax = real_syntax
+        _install_variable_resolver(monkeypatch, {})
 
-        The previous emitter kept only ``{v_F}``, so the parameter half
-        of the gate — and any runtime binding based on it — was lost.
+        referenced: dict = {}
+        preconds, _vars = svc._build_preconditions_block(
+            [("{p_flag, boolean, default: true}", ["v1"])],
+            release_id=None,
+            referenced_parameters=referenced,
+        )
+
+        [entry] = preconds.values()
+        assert entry["ast"]["default"] is True
+        # The registry is type-only: defaults are per-reference fallbacks.
+        assert referenced["flag"].default is None
+
+    def test_mixed_gate_keeps_both_sides(
+        self, monkeypatch, real_syntax, real_parameter_info
+    ):
+        """``{v_F} and {p_flag, boolean}`` reaches the engine as a BinOp
+        with the filing indicator and the parameter both intact.
         """
-        svc, _, mod = _bare_svc()
+        svc, _, _ = _bare_svc()
         svc.session = MagicMock()
         svc._syntax = real_syntax
         _install_variable_resolver(
@@ -688,22 +718,75 @@ class TestGateParameterPropagation:
             release_id=None,
             referenced_parameters=referenced,
         )
-        [entry] = preconds.values()
-        binop = entry["ast"]
-        assert binop["class_name"] == "BinOp"
-        assert binop["op"] == "and"
 
-        kinds = {binop["left"]["class_name"], binop["right"]["class_name"]}
-        assert kinds == {"PreconditionItem", "ParameterRef"}
+        [entry] = preconds.values()
+        assert entry["ast"] == {
+            "class_name": "BinOp",
+            "op": "and",
+            "left": {
+                "class_name": "PreconditionItem",
+                "variable_id": 42,
+                "variable_code": "F_01.02",
+            },
+            "right": {
+                "class_name": "ParameterRef",
+                "code": "flag",
+                "param_type": "Boolean",
+                "default": None,
+            },
+        }
+        assert entry["code"].startswith("p_420_")
+        assert entry["version_id"] == 420
         assert vars_ == {"420": "b"}
         assert referenced["flag"].declared_type == "Boolean"
+
+    def test_boolean_literal_is_emitted_as_constant(
+        self, monkeypatch, real_syntax
+    ):
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        svc._syntax = real_syntax
+        _install_variable_resolver(
+            monkeypatch, {"A": {"variable_id": 1, "variable_vid": 10}}
+        )
+
+        preconds, _vars = svc._build_preconditions_block(
+            [("{v_A} and true", ["v1"])], release_id=None
+        )
+
+        [entry] = preconds.values()
+        assert entry["ast"]["right"] == {
+            "class_name": "Constant",
+            "type_": "Boolean",
+            "value": True,
+        }
+
+    def test_gate_parameter_conflicting_with_expression_type_raises_3_8(
+        self, monkeypatch, real_syntax, real_parameter_info
+    ):
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        svc._syntax = real_syntax
+        _install_variable_resolver(monkeypatch, {})
+        referenced = {
+            "flag": real_parameter_info(code="flag", declared_type="Integer")
+        }
+
+        with pytest.raises(errors.SemanticError) as exc_info:
+            svc._build_preconditions_block(
+                [("{p_flag, boolean}", ["v1"])],
+                release_id=None,
+                referenced_parameters=referenced,
+            )
+
+        assert exc_info.value.code == "3-8"
 
     def test_or_operator_preserved(self, monkeypatch, real_syntax):
         """``{v_A} or {v_B}`` used to collapse to a flat item list under
         an implicit ``and`` because the regex path lost the operator.
         The walker preserves it.
         """
-        svc, _, mod = _bare_svc()
+        svc, _, _ = _bare_svc()
         svc.session = MagicMock()
         svc._syntax = real_syntax
         _install_variable_resolver(
@@ -720,6 +803,137 @@ class TestGateParameterPropagation:
         [entry] = preconds.values()
         assert entry["ast"]["class_name"] == "BinOp"
         assert entry["ast"]["op"] == "or"
+
+    def test_not_xor_and_grouping_preserved(self, monkeypatch, real_syntax):
+        """Every operator the engine's evaluator implements survives, and
+        grouping parentheses are unwrapped rather than emitted.
+        """
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        svc._syntax = real_syntax
+        _install_variable_resolver(
+            monkeypatch,
+            {
+                "A": {"variable_id": 1, "variable_vid": 10},
+                "B": {"variable_id": 2, "variable_vid": 20},
+                "C": {"variable_id": 3, "variable_vid": 30},
+            },
+        )
+
+        preconds, vars_ = svc._build_preconditions_block(
+            [("not ({v_A} xor {v_B}) or {v_C}", ["v1"])], release_id=None
+        )
+
+        [entry] = preconds.values()
+        assert entry["code"].startswith("p_10_20_30_")
+        assert entry["version_id"] == 10
+        ast = entry["ast"]
+        assert ast["class_name"] == "BinOp"
+        assert ast["op"] == "or"
+        assert ast["right"] == {
+            "class_name": "PreconditionItem",
+            "variable_id": 3,
+            "variable_code": "C",
+        }
+        negation = ast["left"]
+        assert negation["class_name"] == "UnaryOp"
+        assert negation["op"] == "not"
+        assert negation["operand"]["class_name"] == "BinOp"
+        assert negation["operand"]["op"] == "xor"
+        assert "ParExpr" not in _collect_class_names(ast)
+        assert vars_ == {"10": "b", "20": "b", "30": "b"}
+
+    def test_gates_with_different_shapes_never_share_a_key(
+        self, monkeypatch, real_syntax
+    ):
+        """Regression: ``{v_A} or {v_B}`` and ``{v_A} and {v_B}`` name the
+        same indicators. Keyed by vids alone they would collide, and the
+        merge-on-collision step would file the ``or`` gate's operations
+        under the ``and`` gate's AST. Only the legacy ``and``-of-items
+        shape keeps the bare ``p_<vids>`` key.
+        """
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        svc._syntax = real_syntax
+        _install_variable_resolver(
+            monkeypatch,
+            {
+                "A": {"variable_id": 1, "variable_vid": 10},
+                "B": {"variable_id": 2, "variable_vid": 20},
+            },
+        )
+
+        preconds, _vars = svc._build_preconditions_block(
+            [
+                ("{v_A} and {v_B}", ["v1"]),
+                ("{v_A} or {v_B}", ["v2"]),
+                ("{v_B} and {v_A}", ["v3"]),
+            ],
+            release_id=None,
+        )
+
+        assert len(preconds) == 2
+        conjunction = preconds["p_10_20"]
+        assert conjunction["affected_operations"] == ["v1", "v3"]
+        [disjunction_key] = [k for k in preconds if k != "p_10_20"]
+        assert disjunction_key.startswith("p_10_20_")
+        assert preconds[disjunction_key]["affected_operations"] == ["v2"]
+        assert preconds[disjunction_key]["ast"]["op"] == "or"
+
+
+class TestUnsupportedGates:
+    """A gate outside the engine contract fails its operations explicitly.
+
+    The engine's precondition evaluator binds filing indicators and
+    parameters and combines them with ``and`` / ``or`` / ``xor`` / ``not``;
+    a comparison, a cell reference or a non-boolean literal has no
+    evaluation there, so such a gate is kept out of the script and its
+    operations are reported through ``failed_operations`` instead of
+    running ungated.
+    """
+
+    @pytest.mark.parametrize(
+        ("expression", "reason"),
+        [
+            ("{v_A} = true", "operator '='"),
+            ("{tC_01.00, r0010, c0010}", "references a cell"),
+            ("{v_A} and 3", "non-boolean literal 3"),
+        ],
+    )
+    def test_unsupported_shapes_are_reported(
+        self, expression, reason, monkeypatch, real_syntax
+    ):
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        svc._syntax = real_syntax
+        _install_variable_resolver(
+            monkeypatch, {"A": {"variable_id": 1, "variable_vid": 10}}
+        )
+
+        failures = svc._unsupported_gate_operations([(expression, ["v1"])])
+        preconds, vars_ = svc._build_preconditions_block(
+            [(expression, ["v1"])], release_id=None
+        )
+
+        assert reason in failures["v1"]
+        assert "cannot be evaluated by the engine" in failures["v1"]
+        assert preconds == {}
+        assert vars_ == {}
+
+    def test_contract_shapes_report_nothing(self, monkeypatch, real_syntax):
+        svc, _, _ = _bare_svc()
+        svc._syntax = real_syntax
+
+        failures = svc._unsupported_gate_operations(
+            [
+                ("not ({v_A} xor {v_B}) or {v_C}", ["v1"]),
+                ("{p_flag, boolean}", ["v2"]),
+                ("{v_A} and {p_flag, boolean, default: false}", ["v3"]),
+                ("{v_A} and true", ["v4"]),
+            ]
+        )
+
+        assert failures == {}
 
 
 # ------------------------------------------------------------------ #
@@ -1476,6 +1690,91 @@ class TestScript:
         assert out["failed_operations"] == {
             "v1": "Grey cells {F_32.03.a, r0040, c0010} were found."
         }
+
+    def _stub_serialize_ast_for_operations(self, monkeypatch, return_value):
+        """Stub ``serialize_ast`` for the operations' ``"AST"`` sentinel only.
+
+        Gate nodes keep going through the real serializer installed by
+        ``real_syntax``, so the emitted gate carries the real
+        ``ParameterRef`` shape.
+        """
+        real = sys.modules["dpmcore.dpm_xl.utils.serialization"].serialize_ast
+        ser_mod = MagicMock()
+        ser_mod.serialize_ast = lambda ast: (
+            return_value if ast == "AST" else real(ast)
+        )
+        monkeypatch.setitem(
+            sys.modules, "dpmcore.dpm_xl.utils.serialization", ser_mod
+        )
+
+    def test_parameter_gate_is_emitted_and_declared(
+        self, monkeypatch, real_syntax, real_parameter_info
+    ):
+        """#338: a gate parameter reaches the script twice — as the
+        ``ParameterRef`` node in the gate and as an entry in the
+        script-level ``parameters`` registry — and the operation ships.
+        """
+        self._stub_serialize_ast_for_operations(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+        svc._syntax = real_syntax
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+
+        out = svc.script(
+            expressions=[("e1", "v1"), ("e2", "v2")],
+            module_code="MOD",
+            module_version="1.0",
+            preconditions=[("{p_flag, boolean}", ["v1"])],
+        )
+
+        assert out["success"] is True, out["error"]
+        assert out["failed_operations"] == {}
+        ns = next(iter(out["enriched_ast"].values()))
+        assert {"v1", "v2"} <= set(ns["operations"])
+        [gate] = ns["preconditions"].values()
+        assert gate["ast"]["class_name"] == "ParameterRef"
+        assert gate["ast"]["code"] == "flag"
+        assert gate["affected_operations"] == ["v1"]
+        assert ns["parameters"] == {"flag": "Boolean"}
+
+    def test_cell_reference_gate_skips_op_preserves_others(
+        self, monkeypatch, real_syntax
+    ):
+        """An operation whose gate is outside the engine contract is
+        reported in ``failed_operations`` and left out of the script,
+        instead of shipping an ungated operation or a gate the engine
+        cannot evaluate.
+        """
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+        svc._syntax = real_syntax
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+
+        out = svc.script(
+            expressions=[("e1", "v1"), ("e2", "v2")],
+            module_code="MOD",
+            module_version="1.0",
+            preconditions=[("{tC_01.00, r0010, c0010}", ["v1"])],
+        )
+
+        assert out["success"] is True
+        ns = next(iter(out["enriched_ast"].values()))
+        assert "v1" not in ns["operations"]
+        assert "v2" in ns["operations"]
+        assert ns["preconditions"] == {}
+        assert list(out["failed_operations"]) == ["v1"]
+        assert "references a cell" in out["failed_operations"]["v1"]
 
     def test_non_literal_shift_skips_op_preserves_others(self, monkeypatch):
         """#326: a shift whose period cannot be declared skips that op.
