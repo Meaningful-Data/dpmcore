@@ -63,6 +63,8 @@ def build_layout_headers(
             parent_first=bool(tvh.parent_first)
             if tvh.parent_first is not None
             else True,
+            property_id=hv.property_id,
+            context_id=hv.context_id,
             categorisations=cats,
             subcategory_vid=hv.subcategory_vid,
             subcategory_code=sc_code,
@@ -202,6 +204,80 @@ def build_cells(
         cells[(row_id, col_id, sheet_id)] = cd
 
     return cells
+
+
+def derive_missing_cell_data(
+    cells: dict[tuple[Optional[int], int, Optional[int]], CellData],
+    headers: list[LayoutHeader],
+    property_info: dict[int, tuple[str, str]],
+    table_categorisations: Optional[list[DimensionMember]] = None,
+) -> int:
+    """Fill in cells whose variable has not been generated yet.
+
+    A table under construction has cells before it has variables. The
+    datapoint each cell is meant to hold is still known: its property
+    is the one on the header bounding it (column first, then row, then
+    sheet), and its dimensions are those headers' categorisations plus
+    the table's own. Both are written on the cell, which is flagged
+    ``is_derived`` so the workbook can show it as pending.
+
+    Excluded and void cells are left alone: nothing is reportable
+    there, and they already render as such.
+
+    Returns the number of cells that were completed.
+    """
+    by_id = {h.header_id: h for h in headers}
+    table_cats = table_categorisations or []
+    derived = 0
+
+    for cd in cells.values():
+        if cd.variable_vid or cd.is_excluded or cd.is_void:
+            continue
+
+        bounding = [
+            by_id[header_id]
+            for header_id in (
+                cd.col_header_id,
+                cd.row_header_id,
+                cd.sheet_header_id,
+            )
+            if header_id is not None and header_id in by_id
+        ]
+
+        property_id = next(
+            (h.property_id for h in bounding if h.property_id),
+            None,
+        )
+        if property_id is not None and property_id in property_info:
+            data_type, property_name = property_info[property_id]
+            cd.data_type_code = data_type
+            cd.domain_label = property_name
+
+        cd.dp_categorisations = _merge_categorisations(
+            table_cats,
+            *(h.categorisations for h in bounding),
+        )
+        cd.is_derived = True
+        derived += 1
+
+    return derived
+
+
+def _merge_categorisations(
+    *groups: list[DimensionMember],
+) -> list[DimensionMember]:
+    """Merge dimensional assignments, one per dimension.
+
+    A cell's dimensions are spread over the headers bounding it and
+    the table itself. The later groups are the more specific ones
+    (table, then sheet, row and column), so a dimension assigned twice
+    keeps its last, most specific member.
+    """
+    merged: dict[int, DimensionMember] = {}
+    for group in groups:
+        for dm in group:
+            merged[dm.property_id] = dm
+    return list(merged.values())
 
 
 def resolve_enumeration_sources(

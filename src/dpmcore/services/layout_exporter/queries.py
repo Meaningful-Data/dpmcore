@@ -700,6 +700,37 @@ def load_key_variable_property_ids(
     return {r[0]: r[1] for r in rows if r[1]}
 
 
+def load_property_info(
+    session: Session,
+    property_ids: set[int],
+) -> dict[int, tuple[str, str]]:
+    """Load data type code and name for a set of properties.
+
+    The variable-free counterpart of :func:`load_variable_info`: a cell
+    whose variable has not been generated yet still knows its property
+    through the header bounding it.
+
+    Returns {property_id: (data_type_code, property_name)}.
+    """
+    if not property_ids:
+        return {}
+
+    from dpmcore.orm.glossary import Item, Property
+    from dpmcore.orm.infrastructure import DataType
+
+    base = (
+        session.query(
+            Property.property_id,
+            DataType.code,
+            Item.name,
+        )
+        .outerjoin(DataType, DataType.data_type_id == Property.data_type_id)
+        .outerjoin(Item, Item.item_id == Property.property_id)
+    )
+    rows = chunked_in(base, Property.property_id, property_ids)
+    return {r[0]: (r[1] or "", r[2] or "") for r in rows}
+
+
 def load_variable_info(
     session: Session,
     variable_vids: set[int],

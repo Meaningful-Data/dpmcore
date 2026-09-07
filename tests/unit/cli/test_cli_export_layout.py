@@ -82,3 +82,40 @@ def test_export_layout_tables_invokes_service():
     assert config.annotate is False
     assert config.add_cell_comments is False
     assert config.add_header_comments is False
+
+
+def test_export_layout_derives_missing_variables_by_default():
+    runner = CliRunner()
+    cm, svc = _fake_db()
+    with patch("dpmcore.connection.connect", return_value=cm):
+        runner.invoke(
+            main,
+            [
+                "export-layout",
+                "--database",
+                "sqlite:///:memory:",
+                "--module",
+                "FINREP9",
+            ],
+        )
+    config = svc.export_module.call_args[0][3]
+    assert config.derive_missing_variables is True
+
+
+def test_export_layout_no_derive_missing_variables():
+    runner = CliRunner()
+    cm, svc = _fake_db()
+    with patch("dpmcore.connection.connect", return_value=cm):
+        runner.invoke(
+            main,
+            [
+                "export-layout",
+                "--database",
+                "sqlite:///:memory:",
+                "--module",
+                "FINREP9",
+                "--no-derive-missing-variables",
+            ],
+        )
+    config = svc.export_module.call_args[0][3]
+    assert config.derive_missing_variables is False

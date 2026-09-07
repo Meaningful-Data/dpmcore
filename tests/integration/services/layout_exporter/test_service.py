@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from _helpers import (  # noqa: E402  (sys.path injected via conftest)
     add_cell,
+    add_context_composition,
     add_header,
     add_item_category,
     add_subcategory,
@@ -27,7 +28,13 @@ from openpyxl import load_workbook
 
 from dpmcore.orm.glossary import ItemCategory
 from dpmcore.orm.packaging import ModuleVersion, ModuleVersionComposition
-from dpmcore.orm.rendering import TableVersion
+from dpmcore.orm.rendering import (
+    Header,
+    HeaderVersion,
+    TableVersion,
+    TableVersionCell,
+)
+from dpmcore.services.layout_exporter.models import ExportConfig
 from dpmcore.services.layout_exporter.service import (
     LayoutExporterService,
     _fix_xlsx_timestamps,
@@ -909,3 +916,112 @@ def test_build_layout_populates_key_fields_on_open_sheet_headers(
     assert [v.signature for v in sheet.key_enumeration.values] == [
         "eba_DOM:m1",
     ]
+
+
+def _clear_variables(memory_session):
+    """Strip every generated variable, as in a table under construction."""
+    memory_session.query(TableVersionCell).update({"variable_vid": None})
+    memory_session.query(HeaderVersion).update({"key_variable_vid": None})
+    memory_session.commit()
+
+
+def test_build_layout_derives_cells_that_have_no_variable(memory_session):
+    """A cell without a variable still knows its property and dimensions."""
+    _build_enumerated_table(memory_session)
+    # The column header names the metric, the row header the dimension:
+    # between them they describe the datapoint the cell will hold.
+    memory_session.query(HeaderVersion).filter(
+        HeaderVersion.header_vid == 11,
+    ).update({"property_id": 200})
+    add_context_composition(
+        memory_session,
+        context_id=50,
+        property_id=200,
+        item_id=201,
+    )
+    memory_session.query(HeaderVersion).filter(
+        HeaderVersion.header_vid == 12,
+    ).update({"context_id": 50})
+    _clear_variables(memory_session)
+
+    layout = LayoutExporterService(memory_session).build_layout("T_ENUM")
+
+    cd = layout.cells[(2, 1, None)]
+    assert cd.variable_vid is None
+    assert cd.is_derived is True
+    # The column header names the property, so the cell is still known
+    # to be enumerated over its hierarchy.
+    assert cd.data_type_code == "e"
+    assert cd.domain_label == "Type of code"
+    assert [dm.member_label for dm in cd.dp_categorisations] == [
+        "LEI code type",
+    ]
+    assert cd.enumeration is not None
+    assert [v.signature for v in cd.enumeration.values] == [
+        "eba_DOM:m1",
+        "eba_DOM:m2",
+    ]
+
+
+def test_build_layout_leaves_cells_alone_when_derivation_is_off(
+    memory_session,
+):
+    _build_enumerated_table(memory_session)
+    _clear_variables(memory_session)
+
+    layout = LayoutExporterService(memory_session).build_layout(
+        "T_ENUM",
+        config=ExportConfig(derive_missing_variables=False),
+    )
+
+    cd = layout.cells[(2, 1, None)]
+    assert cd.is_derived is False
+    assert cd.data_type_code == ""
+    assert cd.enumeration is None
+
+
+def test_build_layout_derives_key_headers_without_a_key_variable(
+    memory_session,
+):
+    """A key column stays a key, with its property and values."""
+    _build_enumerated_table(memory_session)
+    memory_session.query(Header).filter(Header.header_id == 1).update(
+        {"is_key": True},
+    )
+    memory_session.query(HeaderVersion).filter(
+        HeaderVersion.header_vid == 11,
+    ).update({"property_id": 200})
+    _clear_variables(memory_session)
+
+    layout = LayoutExporterService(memory_session).build_layout("T_ENUM")
+
+    key = layout.columns[0]
+    assert key.is_key is True
+    assert key.key_variable_id is None
+    assert key.key_data_type_code == "e"
+    assert key.key_property_name == "Type of code"
+    assert key.key_enumeration is not None
+    assert key.key_categorisations != []
+
+
+def test_export_marks_cells_without_a_variable(memory_session, tmp_path):
+    _build_enumerated_table(memory_session)
+    _clear_variables(memory_session)
+
+    out = LayoutExporterService(memory_session).export_tables(
+        ["T_ENUM"],
+        output_path=str(tmp_path / "pending.xlsx"),
+    )
+
+    wb = load_workbook(out)
+    cell = next(
+        c
+        for row in wb["T_ENUM"].iter_rows()
+        for c in row
+        if c.comment and "No variable generated" in c.comment.text
+    )
+    assert cell.fill.start_color.rgb == "00FDE9D9"
+    assert wb["Index"].cell(row=3, column=4).value == (
+        "Cells without a variable"
+    )
+    assert wb["Index"].cell(row=4, column=4).value == 1

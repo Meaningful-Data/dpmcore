@@ -1373,3 +1373,143 @@ def test_sheet_header_comments_disabled():
     wb = ExcelLayoutWriter([_open_sheet_layout(_enum())], cfg).write()
 
     assert _sheet_label_comment(wb) is None
+
+
+# --------------------------------------------------------------------------- #
+# Cells whose variable has not been generated yet
+# --------------------------------------------------------------------------- #
+
+
+def _pending_cell(**kwargs):
+    return CellData(
+        row_header_id=1,
+        col_header_id=10,
+        sheet_header_id=None,
+        variable_vid=None,
+        **kwargs,
+    )
+
+
+def _pending_layout(**kwargs):
+    return _empty_layout(
+        rows=[_h(1, direction="y", code="0010", label="Row")],
+        columns=[_h(10, direction="x", code="0010", label="Col")],
+        cells={(1, 10, None): _pending_cell(**kwargs)},
+    )
+
+
+def test_cell_content_omits_the_id_when_there_is_no_variable():
+    cell_data = _pending_cell(
+        is_derived=True, data_type_code="m", sign="positive"
+    )
+    assert ew._cell_content(cell_data) == "€£$\npositive"
+
+
+def test_cell_content_of_an_unresolved_cell_is_empty():
+    assert ew._cell_content(_pending_cell()) == ""
+
+
+def test_pending_cell_is_filled_and_annotated():
+    wb = ExcelLayoutWriter(
+        [_pending_layout(is_derived=True, data_type_code="p")],
+        ExportConfig(),
+    ).write()
+
+    cell = wb["T"].cell(row=7, column=4)
+    assert cell.value == "%"
+    assert cell.fill.start_color.rgb == "00FDE9D9"
+    assert cell.comment.text.startswith(
+        "No variable generated for this cell yet."
+    )
+    assert "derived from the table structure" in cell.comment.text
+
+
+def test_pending_cell_without_derivation_says_only_what_it_knows():
+    wb = ExcelLayoutWriter([_pending_layout()], ExportConfig()).write()
+
+    cell = wb["T"].cell(row=7, column=4)
+    assert cell.value is None
+    assert cell.fill.start_color.rgb == "00FDE9D9"
+    assert "derived from the table structure" not in cell.comment.text
+
+
+def test_pending_cell_lists_the_possible_values():
+    """A derived enumerated cell documents its values like any other."""
+    wb = ExcelLayoutWriter(
+        [
+            _pending_layout(
+                is_derived=True,
+                data_type_code="e",
+                domain_label="Type of identifier",
+                enumeration=_enum(),
+            )
+        ],
+        ExportConfig(),
+    ).write()
+
+    cell = wb["T"].cell(row=7, column=4)
+    assert cell.value == "[Type of identifier]"
+    assert "  (eba_qCO:x1) LEI code type" in cell.comment.text
+
+
+def test_open_row_key_cell_without_its_variable_stays_a_key():
+    """A key column is a key whether or not its variable exists yet."""
+    layout = _open_row_key_layout(_enum())
+    key = layout.columns[0]
+    key.key_variable_vid = None
+    key.key_variable_id = None
+
+    wb = ExcelLayoutWriter([layout], ExportConfig()).write()
+
+    cell = next(
+        c
+        for row in wb["T"].iter_rows()
+        for c in row
+        if isinstance(c.value, str) and c.value.startswith("[Type of code")
+    )
+    assert cell.fill.start_color.rgb == "00C4D79B"
+    assert cell.value == "[Type of code]\n<Type of code>"
+    assert "No variable generated" in cell.comment.text
+    assert "  (eba_qCO:x1) LEI code type" in cell.comment.text
+
+
+def test_index_counts_the_cells_without_a_variable():
+    layouts = [
+        _pending_layout(is_derived=True, data_type_code="m"),
+        _empty_layout(
+            rows=[_h(1, direction="y", code="0010", label="Row")],
+            columns=[_h(10, direction="x", code="0010", label="Col")],
+            cells={
+                (1, 10, None): CellData(
+                    row_header_id=1,
+                    col_header_id=10,
+                    sheet_header_id=None,
+                    variable_vid=700,
+                ),
+            },
+        ),
+    ]
+    wb = ExcelLayoutWriter(layouts, ExportConfig()).write()
+
+    index = wb["Index"]
+    assert index.cell(row=3, column=4).value == "Cells without a variable"
+    assert index.cell(row=4, column=4).value == 1
+    assert index.cell(row=5, column=4).value == 0
+
+
+def test_index_omits_the_count_for_a_complete_dictionary():
+    layout = _empty_layout(
+        rows=[_h(1, direction="y", code="0010", label="Row")],
+        columns=[_h(10, direction="x", code="0010", label="Col")],
+        cells={
+            (1, 10, None): CellData(
+                row_header_id=1,
+                col_header_id=10,
+                sheet_header_id=None,
+                variable_vid=700,
+            ),
+        },
+    )
+    wb = ExcelLayoutWriter([layout], ExportConfig()).write()
+
+    assert wb["Index"].cell(row=3, column=4).value is None

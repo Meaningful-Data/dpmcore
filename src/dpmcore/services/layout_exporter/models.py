@@ -76,6 +76,8 @@ class LayoutHeader:
     parent_first: bool
     depth: int = 0
     sort_key: str = ""
+    property_id: Optional[int] = None
+    context_id: Optional[int] = None
     categorisations: list[DimensionMember] = field(default_factory=list)
     subcategory_vid: Optional[int] = None
     subcategory_code: str = ""
@@ -105,6 +107,9 @@ class CellData:
     data_type_code: str = ""
     domain_label: str = ""
     dp_categorisations: list[DimensionMember] = field(default_factory=list)
+    # True when the cell has no variable yet and its metadata was
+    # derived from the table structure instead.
+    is_derived: bool = False
     # Enumerated cells only: the hierarchy of the bounding header that
     # restricts which values may be reported here.
     subcategory_vid: Optional[int] = None
@@ -116,6 +121,11 @@ class ExportConfig:
     """Configuration flags for the export."""
 
     annotate: bool = True
+    # Tables under construction have cells before their variables are
+    # generated. When set, such a cell's property and dimensions are
+    # derived from the headers bounding it, so the workbook shows the
+    # datapoint the table is being built to hold.
+    derive_missing_variables: bool = True
     add_header_comments: bool = True
     add_cell_comments: bool = True
     show_code_row: bool = True

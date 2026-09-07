@@ -839,3 +839,32 @@ def test_load_categorisations_ignores_an_uncategorised_property(
 
     codes = {dm.member_code for dm in result[50]}
     assert codes == {"mA"}, "the uncategorised code must never win"
+
+
+# ---------------------------------------------------------------- #
+# load_property_info
+# ---------------------------------------------------------------- #
+
+
+def test_load_property_info_returns_data_type_and_name(memory_session):
+    seed_releases(memory_session)
+    seed_data_types(memory_session)
+    seed_property_category(memory_session)
+    seed_domain_category(memory_session, 30, "DOM")
+    make_property(
+        memory_session,
+        property_id=200,
+        name="Carrying amount",
+        data_type_id=1,  # 'm'
+        dim_code="qCA",
+        domain_category_id=30,
+    )
+    memory_session.commit()
+
+    assert queries.load_property_info(memory_session, {200}) == {
+        200: ("m", "Carrying amount"),
+    }
+
+
+def test_load_property_info_empty(memory_session):
+    assert queries.load_property_info(memory_session, set()) == {}

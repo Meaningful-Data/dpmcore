@@ -14,6 +14,7 @@ from dpmcore.services.layout_exporter.processing import (
     build_cells,
     build_layout_headers,
     build_table_layout,
+    derive_missing_cell_data,
     resolve_enumeration_sources,
     sort_headers,
 )
@@ -494,3 +495,127 @@ def test_attach_enumerations_tolerates_missing_hierarchy():
     cells[(1, 2, None)].subcategory_vid = 7
     attach_enumerations(cells, [], {})
     assert cells[(1, 2, None)].enumeration is None
+
+
+# ---------------------------------------------------------------- #
+# Cells without variables
+# ---------------------------------------------------------------- #
+
+
+def _pending_cell(**kwargs):
+    return CellData(
+        row_header_id=kwargs.pop("row_header_id", 1),
+        col_header_id=kwargs.pop("col_header_id", 2),
+        sheet_header_id=kwargs.pop("sheet_header_id", None),
+        variable_vid=None,
+        **kwargs,
+    )
+
+
+def test_derive_missing_cell_data_takes_the_property_of_the_column():
+    cells = {(1, 2, None): _pending_cell()}
+    headers = [
+        _enum_header(2, property_id=7),
+        _enum_header(1, direction="y", property_id=8),
+    ]
+    assert derive_missing_cell_data(cells, headers, {7: ("m", "Amount")}) == 1
+
+    cd = cells[(1, 2, None)]
+    assert cd.data_type_code == "m"
+    assert cd.domain_label == "Amount"
+    assert cd.is_derived is True
+
+
+def test_derive_missing_cell_data_falls_back_to_row_then_sheet():
+    cells = {(1, 2, 3): _pending_cell(sheet_header_id=3)}
+    headers = [
+        _enum_header(2),
+        _enum_header(1, direction="y"),
+        _enum_header(3, direction="z", property_id=9),
+    ]
+    derive_missing_cell_data(cells, headers, {9: ("e", "Currency")})
+    assert cells[(1, 2, 3)].data_type_code == "e"
+
+
+def test_derive_missing_cell_data_merges_the_dimensions_in_play():
+    table_dm = DimensionMember(
+        property_id=1,
+        dimension_label="Portfolio",
+        dimension_code="PL",
+        domain_code="DOM",
+        member_label="Trading book",
+        member_code="t",
+    )
+    col_dm = DimensionMember(
+        property_id=2,
+        dimension_label="Currency",
+        dimension_code="CU",
+        domain_code="DOM",
+        member_label="Euro",
+        member_code="eur",
+    )
+    cells = {(1, 2, None): _pending_cell()}
+    headers = [_enum_header(2, categorisations=[col_dm]), _enum_header(1)]
+
+    derive_missing_cell_data(cells, headers, {}, [table_dm])
+
+    assert cells[(1, 2, None)].dp_categorisations == [table_dm, col_dm]
+
+
+def test_derive_missing_cell_data_prefers_the_most_specific_member():
+    """A dimension set on the table and again on a header keeps both."""
+    broad = DimensionMember(
+        property_id=1,
+        dimension_label="Portfolio",
+        dimension_code="PL",
+        domain_code="DOM",
+        member_label="All",
+        member_code="all",
+    )
+    narrow = DimensionMember(
+        property_id=1,
+        dimension_label="Portfolio",
+        dimension_code="PL",
+        domain_code="DOM",
+        member_label="Trading book",
+        member_code="t",
+    )
+    cells = {(1, 2, None): _pending_cell()}
+    headers = [_enum_header(2, categorisations=[narrow]), _enum_header(1)]
+
+    derive_missing_cell_data(cells, headers, {}, [broad])
+
+    assert cells[(1, 2, None)].dp_categorisations == [narrow]
+
+
+def test_derive_missing_cell_data_skips_cells_that_have_a_variable():
+    cells = {
+        (1, 2, None): CellData(
+            row_header_id=1,
+            col_header_id=2,
+            sheet_header_id=None,
+            variable_vid=100,
+        ),
+    }
+    headers = [_enum_header(2, property_id=7)]
+    assert derive_missing_cell_data(cells, headers, {7: ("m", "Amount")}) == 0
+    assert cells[(1, 2, None)].is_derived is False
+
+
+def test_derive_missing_cell_data_skips_excluded_and_void_cells():
+    cells = {
+        (1, 2, None): _pending_cell(is_excluded=True),
+        (1, 3, None): _pending_cell(col_header_id=3, is_void=True),
+    }
+    headers = [_enum_header(2, property_id=7), _enum_header(3, property_id=7)]
+    assert derive_missing_cell_data(cells, headers, {7: ("m", "Amount")}) == 0
+
+
+def test_derive_missing_cell_data_without_a_property_still_marks_the_cell():
+    """An unresolvable property leaves the cell derived but typeless."""
+    cells = {(1, 2, None): _pending_cell()}
+    derive_missing_cell_data(cells, [_enum_header(2)], {})
+
+    cd = cells[(1, 2, None)]
+    assert cd.is_derived is True
+    assert cd.data_type_code == ""
