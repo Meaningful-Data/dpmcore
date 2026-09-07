@@ -1,17 +1,15 @@
 """ORM models for DPM Variables domain.
 
-This module defines Variable, VariableVersion, VariableCalculation,
-CompoundKey, and KeyComposition models.
+This module defines Variable, VariableVersion, CompoundKey, and
+KeyComposition models.
 """
 
 from __future__ import annotations
 
-from datetime import date
 from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import (
     Boolean,
-    Date,
     ForeignKey,
     Integer,
     String,
@@ -30,7 +28,7 @@ if TYPE_CHECKING:
         SubCategoryVersion,
     )
     from dpmcore.orm.operations import OperandReference, OperationVersion
-    from dpmcore.orm.packaging import Module, ModuleParameters, ModuleVersion
+    from dpmcore.orm.packaging import ModuleParameters, ModuleVersion
     from dpmcore.orm.rendering import (
         HeaderVersion,
         TableVersion,
@@ -79,13 +77,14 @@ class Variable(Base):
         "VariableVersion",
         back_populates="variable",
     )
-    variable_calculations: Mapped[List["VariableCalculation"]] = relationship(
-        "VariableCalculation",
-        back_populates="variable",
-    )
     operand_references: Mapped[List["OperandReference"]] = relationship(
         "OperandReference",
         back_populates="variable",
+    )
+    output_operation_versions: Mapped[List["OperationVersion"]] = relationship(
+        "OperationVersion",
+        foreign_keys="[OperationVersion.output_variable_id]",
+        back_populates="output_variable",
     )
 
 
@@ -203,62 +202,6 @@ class VariableVersion(Base):
     header_versions: Mapped[List["HeaderVersion"]] = relationship(
         "HeaderVersion",
         back_populates="key_variable_version",
-    )
-
-
-# ------------------------------------------------------------------
-# VariableCalculation
-# ------------------------------------------------------------------
-
-
-class VariableCalculation(Base):
-    """Link between a Module, Variable, and OperationVersion.
-
-    Attributes:
-        module_id: FK to Module (composite PK).
-        variable_id: FK to Variable (composite PK).
-        operation_vid: FK to OperationVersion (composite PK).
-        from_reference_date: Start of reference period.
-        to_reference_date: End of reference period.
-        row_guid: Row GUID.
-    """
-
-    __tablename__ = "VariableCalculation"
-
-    module_id: Mapped[int] = mapped_column(
-        "ModuleID",
-        Integer,
-        ForeignKey("Module.ModuleID"),
-        primary_key=True,
-    )
-    variable_id: Mapped[int] = mapped_column(
-        "VariableID",
-        Integer,
-        ForeignKey("Variable.VariableID"),
-        primary_key=True,
-    )
-    operation_vid: Mapped[int] = mapped_column(
-        "OperationVID",
-        Integer,
-        ForeignKey("OperationVersion.OperationVID"),
-        primary_key=True,
-    )
-    from_reference_date: Mapped[Optional[date]] = mapped_column(
-        "FromReferenceDate", Date
-    )
-    to_reference_date: Mapped[Optional[date]] = mapped_column(
-        "ToReferenceDate", Date
-    )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
-
-    module: Mapped["Module"] = relationship(
-        "Module", back_populates="variable_calculations"
-    )
-    variable: Mapped["Variable"] = relationship(
-        "Variable", back_populates="variable_calculations"
-    )
-    operation_version: Mapped["OperationVersion"] = relationship(
-        "OperationVersion", back_populates="variable_calculations"
     )
 
 

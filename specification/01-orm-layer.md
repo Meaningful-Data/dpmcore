@@ -80,7 +80,7 @@ functional components plus infrastructure and packaging:
 |--------|---------------|--------|
 | `orm/glossary.py` | Glossary | Category, Item, SubCategory, SubCategoryVersion, SubCategoryItem, Property, PropertyCategory, Context, ContextComposition, CompoundItemContext, SuperCategory |
 | `orm/rendering.py` | Rendering | Table, TableVersion, Header, HeaderVersion, Cell, TableVersionCell, TableVersionHeader, TableGroup, TableGroupComposition, TableAssociation |
-| `orm/variables.py` | Variables | Variable, VariableVersion, VariableCalculation, VariableGeneration, Dimension (logical concept via Property+SubCategory) |
+| `orm/variables.py` | Variables | Variable, VariableVersion, VariableGeneration, Dimension (logical concept via Property+SubCategory) |
 | `orm/operations.py` | Operations | Operation, OperationVersion, OperationVersionData, OperationNode, OperationScope, OperationScopeComposition, Operator, OperatorArgument, OperandReference, OperandReferenceLocation |
 | `orm/packaging.py` | Packaging | Framework, Module, ModuleVersion, ModuleVersionComposition, ModuleParameters, Release |
 | `orm/infrastructure.py` | Infrastructure | Organisation, Language, User, Role, UserRole, DataType, DpmClass, DpmAttribute, Concept, ConceptRelation, Document, DocumentVersion, Subdivision, SubdivisionType, Translation, Changelog |
@@ -550,8 +550,8 @@ Variable
 ├── concept_guid: str (FK → Concept)
 │
 ├── variable_versions → VariableVersion[] (1:N)
-├── variable_calculations → VariableCalculation[] (1:N)
 ├── operand_references → OperandReference[] (1:N)
+├── output_operation_versions → OperationVersion[] (1:N)
 └── concept → Concept
 ```
 
@@ -587,23 +587,7 @@ VariableVersion
 └── end_release → Release (optional)
 ```
 
-### 7.3 VariableCalculation
-
-Links a Variable to an Operation within a Module.
-
-```
-VariableCalculation
-├── (module_id, variable_id, operation_vid): composite PK
-├── from_reference_date: date (optional)
-├── to_reference_date: date (optional)
-├── concept_guid: str
-│
-├── module → Module
-├── variable → Variable
-└── operation_version → OperationVersion
-```
-
-### 7.4 VariableGeneration
+### 7.3 VariableGeneration
 
 Tracks batch variable generation jobs.
 
@@ -619,7 +603,7 @@ VariableGeneration
 └── release → Release
 ```
 
-### 7.5 CompoundKey & KeyComposition
+### 7.4 CompoundKey & KeyComposition
 
 Multi-variable key definitions.
 
@@ -678,6 +662,7 @@ OperationVersion
 ├── description: str (optional)
 ├── endorsement: str (optional)
 ├── is_variant_approved: bool
+├── output_variable_id: int (FK → Variable, optional)
 ├── concept_guid: str (FK → Concept)
 │
 ├── operation → Operation
@@ -686,7 +671,7 @@ OperationVersion
 ├── operation_nodes → OperationNode[] (1:N)
 ├── operation_scopes → OperationScope[] (1:N)
 ├── operation_version_data → OperationVersionData (1:1)
-├── variable_calculations → VariableCalculation[] (1:N)
+├── output_variable → Variable (optional)
 ├── start_release → Release
 └── end_release → Release (optional)
 ```
@@ -846,7 +831,6 @@ Module
 │
 ├── framework → Framework
 ├── module_versions → ModuleVersion[] (1:N)
-├── variable_calculations → VariableCalculation[] (1:N)
 └── concept → Concept
 
 ModuleVersion

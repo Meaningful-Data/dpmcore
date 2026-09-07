@@ -380,6 +380,36 @@ def test_write_open_row_table_with_key_columns(memory_session, tmp_path):
                 found = True
     assert found
 
+    # The key variable's data cell is filled green; the reported figure
+    # next to it keeps the default (unfilled) background.
+    fills = {
+        cell.value: cell.fill.start_color.rgb
+        for row in ws.iter_rows()
+        for cell in row
+        if isinstance(cell.value, str)
+        and cell.value.startswith(("400\n", "401\n"))
+    }
+    assert fills["400\n[Currency]\n<Currency>"].endswith("C4D79B")
+    assert not fills["401\n€£$\npositive"].endswith("C4D79B")
+    # Open rows have no code, so the label spans the row code column.
+    open_rows_cell = next(
+        cell
+        for row in ws.iter_rows()
+        for cell in row
+        if cell.value == "Open Rows"
+    )
+    merged = {str(r) for r in ws.merged_cells.ranges}
+    assert f"{open_rows_cell.coordinate}:C{open_rows_cell.row}" in merged
+
+    # The headers themselves are untouched.
+    header_fills = {
+        cell.value: cell.fill.start_color.rgb
+        for row in ws.iter_rows()
+        for cell in row
+        if cell.value in ("Currency", "Amount")
+    }
+    assert all(f.endswith("D8D8D8") for f in header_fills.values())
+
 
 def test_write_table_with_sheets_and_subcategory(memory_session, tmp_path):
     seed_releases(memory_session)
@@ -727,8 +757,8 @@ def test_write_table_with_multi_depth_columns_and_rows(
     assert has_outline
 
 
-def test_write_table_closing_balance_sign_branch(memory_session, tmp_path):
-    """Row labelled 'Closing balance' triggers positive default for monetary."""
+def test_write_table_blank_sign_stays_blank(memory_session, tmp_path):
+    """A blank sign on a monetary cell is not filled in (DRR-1970)."""
     seed_releases(memory_session)
     seed_data_types(memory_session)
     seed_property_category(memory_session)
@@ -798,17 +828,19 @@ def test_write_table_closing_balance_sign_branch(memory_session, tmp_path):
     )
     wb = load_workbook(out)
     ws = wb["T_CB"]
-    # Look for "positive" appended to a cell (the monetary one)
+    # No cell may show a sign the database does not hold
     has_positive = False
     for row in ws.iter_rows(values_only=True):
         for v in row:
             if isinstance(v, str) and "positive" in v:
                 has_positive = True
-    assert has_positive
+    assert not has_positive
 
 
-def test_write_table_col_positive_only_default(memory_session, tmp_path):
-    """When column has at least one signed cell, NULL→positive default."""
+def test_write_table_sign_not_inherited_within_column(
+    memory_session, tmp_path
+):
+    """A signed cell does not give its sign to blank-sign siblings."""
     seed_releases(memory_session)
     seed_data_types(memory_session)
     seed_property_category(memory_session)
@@ -911,7 +943,7 @@ def test_write_table_col_positive_only_default(memory_session, tmp_path):
         for v in row:
             if isinstance(v, str) and "positive" in v:
                 pos_count += 1
-    assert pos_count >= 2  # both cells should display 'positive'
+    assert pos_count == 1  # only the cell actually signed positive
 
 
 def test_write_table_parent_sign_suppression(memory_session, tmp_path):

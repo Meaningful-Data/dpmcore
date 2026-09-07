@@ -555,7 +555,7 @@ def test_data_cell_no_data_type_no_sign():
 
 
 def test_data_cell_sign_suppressed_by_parent_explicit_sign():
-    """Monetary cell with parent that has an explicit sign: no auto-positive."""
+    """Monetary cell with a NULL sign renders no sign of its own."""
     layout = _empty_layout(
         rows=[
             _h(1, direction="y", code="P"),
@@ -598,8 +598,8 @@ def test_data_cell_sign_suppressed_by_parent_explicit_sign():
     assert all("positive" not in v for v in found_child)
 
 
-def test_data_cell_closing_balance_default_positive():
-    """Row labelled 'Closing balance ...' triggers default positive sign."""
+def test_data_cell_null_sign_never_reported_as_positive():
+    """A NULL sign is 'No Sign' and is never rendered (DRR-1967)."""
     layout = _empty_layout(
         rows=[_h(1, direction="y", code="R", label="Closing balance Q4")],
         columns=[_h(10, direction="x", code="X")],
@@ -622,7 +622,7 @@ def test_data_cell_closing_balance_default_positive():
         for row in ws.iter_rows()
         for c in row
     )
-    assert has_pos
+    assert not has_pos
 
 
 def test_abstract_row_without_visible_columns():
@@ -732,3 +732,395 @@ def test_apply_col_groups_skips_abstract():
     ws = wb["T"]
     # Smoke check: column dimensions object is accessible.
     assert ws.column_dimensions is not None
+
+
+# --------------------------------------------------------------------------- #
+# Z-axis sheets and identities
+# --------------------------------------------------------------------------- #
+
+
+def _sheet_scoped_layout(table_code="T"):
+    """Two Z sheets whose cells are keyed by the sheet they belong to."""
+    return TableLayout(
+        table_vid=1,
+        table_code=table_code,
+        table_name=table_code,
+        rows=[_h(1, direction="y", code="0010", label="Row")],
+        columns=[_h(10, direction="x", code="0010", label="Col")],
+        sheets=[
+            _h(20, direction="z", code="0010", label="Sheet A"),
+            _h(21, direction="z", code="0020", label="Sheet B"),
+        ],
+        cells={
+            (1, 10, 20): CellData(
+                row_header_id=1,
+                col_header_id=10,
+                sheet_header_id=20,
+                variable_vid=901,
+                variable_id=901,
+                data_type_code="m",
+                sign="positive",
+            ),
+            (1, 10, 21): CellData(
+                row_header_id=1,
+                col_header_id=10,
+                sheet_header_id=21,
+                variable_vid=902,
+                variable_id=902,
+                data_type_code="m",
+            ),
+        },
+    )
+
+
+def test_sheet_scoped_table_writes_one_worksheet_per_sheet():
+    """Regression for DRR-1946/1947/1949: cells were all greyed out."""
+    wb = ExcelLayoutWriter([_sheet_scoped_layout()], ExportConfig()).write()
+
+    assert [n for n in wb.sheetnames if n != "Index"] == [
+        "T (0010)",
+        "T (0020)",
+    ]
+    for name, expected_vid, expected_label in (
+        ("T (0010)", "901", "Sheet: Sheet A"),
+        ("T (0020)", "902", "Sheet: Sheet B"),
+    ):
+        ws = wb[name]
+        values = [
+            c.value
+            for row in ws.iter_rows()
+            for c in row
+            if isinstance(c.value, str)
+        ]
+        assert any(v.startswith(expected_vid) for v in values), name
+        assert expected_label in values
+        # The datapoint cell carries its id, so it is not greyed out.
+        data_cell = next(
+            c
+            for row in ws.iter_rows()
+            for c in row
+            if isinstance(c.value, str) and c.value.startswith(expected_vid)
+        )
+        assert data_cell.fill.start_color.rgb != "00999999"
+
+
+def test_sheet_scoped_table_index_lists_each_sheet():
+    """The index names the Z sheet each worksheet renders."""
+    wb = ExcelLayoutWriter([_sheet_scoped_layout()], ExportConfig()).write()
+    ws = wb["Index"]
+
+    assert ws.cell(row=3, column=4).value == "Sheet"
+    assert ws.cell(row=4, column=4).value == "Sheet A"
+    assert ws.cell(row=5, column=4).value == "Sheet B"
+    assert ws.cell(row=5, column=2).hyperlink.location == "'T (0020)'!A1"
+
+
+def test_z_headers_without_sheet_scoped_cells_stay_on_one_worksheet():
+    """Z headers that are fixed context keep a single grid."""
+    layout = _empty_layout(
+        rows=[_h(1, direction="y", code="0010", label="Row")],
+        columns=[_h(10, direction="x", code="0010", label="Col")],
+        sheets=[
+            _h(20, direction="z", code="0010", label="Axis A"),
+            _h(21, direction="z", code="0020", label="Axis B"),
+        ],
+        cells={
+            (1, 10, None): CellData(
+                row_header_id=1,
+                col_header_id=10,
+                sheet_header_id=None,
+                variable_vid=901,
+                variable_id=901,
+                data_type_code="m",
+            ),
+        },
+    )
+    wb = ExcelLayoutWriter([layout], ExportConfig()).write()
+
+    assert [n for n in wb.sheetnames if n != "Index"] == ["T"]
+    ws = wb["T"]
+    values = [
+        c.value
+        for row in ws.iter_rows()
+        for c in row
+        if isinstance(c.value, str)
+    ]
+    # Both Z headers are annotated, one per row, and the grid follows.
+    assert "Sheet per Axis A" in values
+    assert "Sheet per Axis B" in values
+    assert any(v.startswith("901") for v in values)
+
+
+def test_worksheet_title_truncates_and_disambiguates():
+    used: set[str] = set()
+    long_code = "T" * 40
+    sheet = _h(1, direction="z", code="0010")
+    first = ew._worksheet_title(long_code, sheet, used)
+    second = ew._worksheet_title(long_code, sheet, used)
+
+    assert len(first) == 31
+    assert first.endswith(" (0010)")
+    assert second != first
+    assert len(second) == 31
+
+
+def test_shared_datapoint_is_highlighted_and_reported():
+    """Regression for DRR-1947/1949: identities in yellow, with a comment."""
+    first = TableLayout(
+        table_vid=1,
+        table_code="T_A",
+        table_name="A",
+        rows=[_h(1, direction="y", code="0010", label="Row")],
+        columns=[_h(10, direction="x", code="0010", label="Col")],
+        cells={
+            (1, 10, None): CellData(
+                row_header_id=1,
+                col_header_id=10,
+                sheet_header_id=None,
+                variable_vid=700,
+                variable_id=70,
+                data_type_code="m",
+            ),
+        },
+    )
+    second = TableLayout(
+        table_vid=2,
+        table_code="T_B",
+        table_name="B",
+        rows=[_h(2, direction="y", code="0020", label="Row")],
+        columns=[_h(20, direction="x", code="0030", label="Col")],
+        cells={
+            (2, 20, None): CellData(
+                row_header_id=2,
+                col_header_id=20,
+                sheet_header_id=None,
+                variable_vid=700,
+                variable_id=70,
+                data_type_code="m",
+            ),
+        },
+    )
+    wb = ExcelLayoutWriter([first, second], ExportConfig()).write()
+
+    cell = next(
+        c
+        for row in wb["T_A"].iter_rows()
+        for c in row
+        if isinstance(c.value, str) and c.value.startswith("70")
+    )
+    assert cell.fill.start_color.rgb == "00FFFF00"
+    assert "VariableVID = 700" in cell.comment.text
+    assert "T_B r0020 c0030" in cell.comment.text
+
+
+def test_unshared_datapoint_is_not_highlighted():
+    """A datapoint used by a single cell is left unfilled."""
+    layout = _empty_layout(
+        rows=[_h(1, direction="y", code="0010", label="Row")],
+        columns=[_h(10, direction="x", code="0010", label="Col")],
+        cells={
+            (1, 10, None): CellData(
+                row_header_id=1,
+                col_header_id=10,
+                sheet_header_id=None,
+                variable_vid=700,
+                variable_id=70,
+                data_type_code="m",
+            ),
+        },
+    )
+    wb = ExcelLayoutWriter([layout], ExportConfig()).write()
+    cell = next(
+        c
+        for row in wb["T"].iter_rows()
+        for c in row
+        if isinstance(c.value, str) and c.value.startswith("70")
+    )
+    assert cell.fill.fill_type is None
+    assert "Identity" not in cell.comment.text
+
+
+def _open_row_layout(table_code, vvid, col_code="0010"):
+    """Open-row table with one non-key column carrying a datapoint."""
+    return TableLayout(
+        table_vid=1,
+        table_code=table_code,
+        table_name=table_code,
+        columns=[_h(10, direction="x", code=col_code, label="Col")],
+        cells={
+            (None, 10, None): CellData(
+                row_header_id=None,
+                col_header_id=10,
+                sheet_header_id=None,
+                variable_vid=vvid,
+                variable_id=vvid,
+                data_type_code="m",
+            ),
+        },
+        is_open_row=True,
+    )
+
+
+def _only_data_cell(ws, prefix):
+    return next(
+        c
+        for row in ws.iter_rows()
+        for c in row
+        if isinstance(c.value, str) and c.value.startswith(prefix)
+    )
+
+
+def test_open_row_shared_datapoint_is_highlighted():
+    """Identities are reported on open-row tables too."""
+    layouts = [
+        _open_row_layout("T_A", 800),
+        _open_row_layout("T_B", 800, col_code="0020"),
+    ]
+    wb = ExcelLayoutWriter(layouts, ExportConfig()).write()
+
+    cell = _only_data_cell(wb["T_A"], "800")
+    assert cell.fill.start_color.rgb == "00FFFF00"
+    assert "T_B c0020" in cell.comment.text
+
+
+def test_open_row_cell_comments_disabled():
+    """add_cell_comments=False leaves open-row cells without a comment."""
+    cfg = ExportConfig(add_cell_comments=False)
+    wb = ExcelLayoutWriter([_open_row_layout("T_A", 800)], cfg).write()
+
+    assert _only_data_cell(wb["T_A"], "800").comment is None
+
+
+def test_data_cell_comments_disabled():
+    """add_cell_comments=False leaves closed-table cells without a comment."""
+    layout = _empty_layout(
+        rows=[_h(1, direction="y", code="0010", label="Row")],
+        columns=[_h(10, direction="x", code="0010", label="Col")],
+        cells={
+            (1, 10, None): CellData(
+                row_header_id=1,
+                col_header_id=10,
+                sheet_header_id=None,
+                variable_vid=800,
+                variable_id=800,
+                data_type_code="m",
+            ),
+        },
+    )
+    cfg = ExportConfig(add_cell_comments=False)
+    wb = ExcelLayoutWriter([layout], cfg).write()
+
+    assert _only_data_cell(wb["T"], "800").comment is None
+
+
+def test_sheet_renderings_falls_back_when_no_z_header_matches():
+    """Cells keyed by an unknown sheet still get a single grid."""
+    layout = _empty_layout(
+        rows=[_h(1, direction="y", code="0010")],
+        columns=[_h(10, direction="x", code="0010")],
+        sheets=[_h(20, direction="z", code="0010")],
+        cells={
+            (1, 10, 99): CellData(
+                row_header_id=1,
+                col_header_id=10,
+                sheet_header_id=99,
+                variable_vid=800,
+            ),
+        },
+    )
+    renderings = ew._sheet_renderings(layout)
+
+    assert renderings == [(layout.sheets, 99, None)]
+
+
+def test_worksheet_title_disambiguates_repeated_collisions():
+    """A third colliding title keeps counting up."""
+    used: set[str] = set()
+    sheet = _h(1, direction="z", code="0010")
+    titles = [ew._worksheet_title("T" * 40, sheet, used) for _ in range(3)]
+
+    assert len(set(titles)) == 3
+    assert titles[2].endswith("~3")
+
+
+def test_cell_location_without_row_column_or_sheet():
+    """Only the parts that exist appear in a location."""
+    assert ew._cell_location("T_A", "", "", "") == "T_A"
+
+
+def test_cell_tooltip_caps_the_identity_list():
+    """Very shared datapoints list a capped number of locations."""
+    identities = [f"T_{i} r0010 c0010" for i in range(20)]
+    cell_data = CellData(
+        row_header_id=1,
+        col_header_id=10,
+        sheet_header_id=None,
+        variable_vid=800,
+        variable_id=800,
+    )
+    text = ew._cell_tooltip(cell_data, identities)
+
+    assert "T_0 r0010 c0010" in text
+    assert "T_19 r0010 c0010" not in text
+    assert "... and 5 more" in text
+
+
+def _void_cell(**kw):
+    return CellData(
+        row_header_id=kw.get("row_header_id"),
+        col_header_id=10,
+        sheet_header_id=None,
+        variable_vid=None,
+        is_excluded=True,
+        is_void=True,
+    )
+
+
+def _data_cell_of_row(ws, row_label):
+    """The first data cell of the row whose label is ``row_label``."""
+    row = next(
+        c.row for rows in ws.iter_rows() for c in rows if c.value == row_label
+    )
+    # Column A holds the "Rows" band, B the labels and C the codes.
+    return ws.cell(row=row, column=4)
+
+
+def test_void_cell_is_darker_than_an_excluded_cell():
+    """Void cells are excluded too, so they need their own shade."""
+    layout = _empty_layout(
+        rows=[
+            _h(1, direction="y", code="0010", label="Void"),
+            _h(2, direction="y", code="0020", label="Excluded"),
+        ],
+        columns=[_h(10, direction="x", code="0010", label="Col")],
+        cells={
+            (1, 10, None): _void_cell(row_header_id=1),
+            (2, 10, None): CellData(
+                row_header_id=2,
+                col_header_id=10,
+                sheet_header_id=None,
+                variable_vid=None,
+                is_excluded=True,
+            ),
+        },
+    )
+    ws = ExcelLayoutWriter([layout], ExportConfig()).write()["T"]
+
+    assert _data_cell_of_row(ws, "Void").fill.start_color.rgb == "00595959"
+    assert _data_cell_of_row(ws, "Excluded").fill.start_color.rgb == "00999999"
+
+
+def test_open_row_void_cell_is_darker():
+    """The open-row grid marks void cells the same way."""
+    layout = TableLayout(
+        table_vid=1,
+        table_code="T",
+        table_name="T",
+        columns=[_h(10, direction="x", code="0010", label="Col")],
+        cells={(None, 10, None): _void_cell()},
+        is_open_row=True,
+    )
+    ws = ExcelLayoutWriter([layout], ExportConfig()).write()["T"]
+
+    cell = _data_cell_of_row(ws, "Open Rows")
+    assert cell.fill.start_color.rgb == "00595959"

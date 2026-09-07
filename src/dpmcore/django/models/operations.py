@@ -134,6 +134,14 @@ class OperationVersion(models.Model):
         null=True,
         blank=True,
     )
+    output_variable = models.ForeignKey(
+        "Variable",
+        on_delete=models.DO_NOTHING,
+        db_column="OutputVariableID",
+        related_name="output_operation_versions",
+        null=True,
+        blank=True,
+    )
 
     class Meta:
         managed = False

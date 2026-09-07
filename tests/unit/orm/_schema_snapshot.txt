@@ -332,6 +332,7 @@ TABLE OperationVersion
   COL IsVariantApproved pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
   COL OperationID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Operation.OperationID
   COL OperationVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL OutputVariableID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Variable.VariableID
   COL PreconditionOperationVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=OperationVersion.OperationVID
   COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
   COL SeverityOperationVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=OperationVersion.OperationVID
@@ -568,14 +569,6 @@ TABLE Variable
   COL Type pg=VARCHAR(20) mssql=VARCHAR(20) null=True pk=False ai=auto fks=
   COL VariableID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
   PK VariableID
-TABLE VariableCalculation
-  COL FromReferenceDate pg=DATE mssql=DATETIME null=True pk=False ai=auto fks=
-  COL ModuleID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Module.ModuleID
-  COL OperationVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=OperationVersion.OperationVID
-  COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
-  COL ToReferenceDate pg=DATE mssql=DATETIME null=True pk=False ai=auto fks=
-  COL VariableID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=Variable.VariableID
-  PK ModuleID,VariableID,OperationVID
 TABLE VariableGeneration
   COL EndDate pg=TIMESTAMP WITHOUT TIME ZONE mssql=DATETIME null=True pk=False ai=auto fks=
   COL Error pg=VARCHAR(4000) mssql=VARCHAR(4000) null=True pk=False ai=auto fks=
