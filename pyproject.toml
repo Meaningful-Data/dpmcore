@@ -89,7 +89,7 @@ pytest-cov = ">=6.0"
 pyroma = ">=4.2"
 httpx = ">=0.28,<1.0"
 pytest-django = ">=4.13.0"
-django-stubs = ">=6.0.7"
+django-stubs = ">=6.0.9"
 pandas-stubs = ">=2.2.2,<3.0"
 # django and numpy are not imported by the dev tooling directly; they are
 # pinned here only to keep the resolver from picking a second version.
