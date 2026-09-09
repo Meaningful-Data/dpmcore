@@ -6,6 +6,13 @@ module needs the primary to complete coverage), the primary module's script
 must treat it as intra-instance, while the sibling's script treats it as a
 cross-instance dependency.
 
+Since #304 the engine no longer emits a cross scope that strictly
+contains an intra one, so the exact pairing these tests feed in is not
+reachable from ``OperationScopeService`` any more. The override still
+fires for a cross scope disjoint from the intra module, and these tests
+now pin it as an invariant of ``detect_cross_module_dependencies``
+rather than as an observed engine output.
+
 Imports the service normally (works on Python 3.11+) to avoid the legacy
 ORM-stubbing shim used elsewhere in the suite.
 """

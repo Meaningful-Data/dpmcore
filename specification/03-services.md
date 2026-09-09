@@ -588,7 +588,9 @@ class LayoutExporterService(BaseService):
         """Export all tables in a module to a single workbook.
 
         The workbook contains an Index sheet with hyperlinks, followed
-        by one sheet per table in alphabetical order.
+        by one worksheet per table in alphabetical order — or one
+        worksheet per Z-axis sheet for tables whose cells are
+        sheet-scoped.
         """
         ...
 
@@ -669,6 +671,25 @@ sort_key = parent_sort_key + order + trailing_separator
 
 Where `trailing_separator` is `.` if the header appears before its children,
 or `:` if it appears after (`:` > `.` in ASCII, so the parent sorts last).
+
+### 8.3 Z-axis sheets
+
+Cells of a table with a Z axis are keyed by the sheet they belong to, so such
+a table is rendered as one worksheet per Z sheet, named
+`<table code> (<sheet code>)`. Tables whose cells carry no sheet get a single
+worksheet on which every Z header is annotated as fixed context.
+
+### 8.4 Greyed cells
+
+Excluded cells are filled mid-grey. Void cells are excluded too, so they get a
+darker grey to stay distinguishable from the merely non-reportable ones.
+
+### 8.5 Signs and identities
+
+Only the sign stored on the cell is rendered: a cell with no sign in DPM
+Studio shows no sign in the export. Cells whose data point is reported by
+more than one cell of the workbook — identities — are highlighted in yellow,
+and their comment lists the other locations.
 
 ## 9. Migration Service
 

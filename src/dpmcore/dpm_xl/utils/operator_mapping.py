@@ -102,9 +102,9 @@ AGGR_OP_MAPPING = {
     COUNT: Count,
     AVG: Avg,
     MEDIAN: Median,
-}
-
-RANK_OP_MAPPING = {
+    # ``rank`` is an alternative of the ``aggregateOperators`` grammar
+    # rule and is built as an ``AggregationOp``, so it resolves here and
+    # not through a mapping of its own.
     RANK: Rank,
 }
 

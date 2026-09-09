@@ -259,3 +259,45 @@ class TestGenerateXyzOrdering:
         result = generate_xyz(_xyz_frame(rows, with_order=False))
         x_by_row = {r["row_code"]: r["x"] for r in result}
         assert x_by_row["10"] == 2  # lexicographic: "1","10","11","2",...
+
+
+class TestValueOverridesMisleadingDisplayOrder:
+    """A numeric code's own value beats a misleading display order.
+
+    Regression for real EBA tables (C_35.01, F_04.10, E_09.02, ...) that
+    show a code out of numeric sequence for layout reasons: order-only
+    resolution either sees a valid range as reversed (false ``1-2``) or spans
+    extra codes sitting between the endpoints in display order (false ``1-17``).
+    """
+
+    def test_range_resolves_by_value_when_display_order_disagrees(self):
+        # Column "0110" is numerically highest but shown FIRST (order=1),
+        # C_35.01's real layout -- by order alone, "0030-0110" looks
+        # reversed and would resolve to nothing.
+        data = pd.DataFrame(
+            {
+                "table_code": ["T"] * 3,
+                "row_code": ["0010"] * 3,
+                "column_code": ["0110", "0030", "0070"],
+                "sheet_code": ["0000"] * 3,
+                "column_order": [1, 2, 3],
+            }
+        )
+        result = filter_all_data(data, "T", ["0010"], ["0030-0110"], ["0000"])
+        assert sorted(result["column_code"]) == ["0030", "0070", "0110"]
+
+    def test_range_does_not_over_include_by_misleading_order(self):
+        # "0381" is inside 0300-0381 but shown LAST (order=6), after
+        # "0390"/"0400"/"0410" -- E_09.02's real layout. By order alone the
+        # range isn't reversed, so it would wrongly span those three too.
+        data = pd.DataFrame(
+            {
+                "table_code": ["T"] * 6,
+                "row_code": ["0300", "0301", "0390", "0400", "0410", "0381"],
+                "column_code": ["0010"] * 6,
+                "sheet_code": ["0000"] * 6,
+                "row_order": [1, 2, 3, 4, 5, 6],
+            }
+        )
+        result = filter_all_data(data, "T", ["0300-0381"], ["0010"], ["0000"])
+        assert sorted(result["row_code"]) == ["0300", "0301", "0381"]

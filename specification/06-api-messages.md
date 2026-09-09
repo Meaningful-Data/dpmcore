@@ -80,7 +80,6 @@ returned inline within their parent or via sub-resource URLs:
 | ModuleVersionComposition | ModuleVersion | Inline |
 | ModuleParameters | ModuleVersion | Inline |
 | VariableVersion | Variable | Via `{version}` path segment |
-| VariableCalculation | Variable | Inline |
 | CompoundKey | *(shared)* | Inline wherever referenced |
 | KeyComposition | CompoundKey | Inline |
 | ItemCategory | Category / Item | Inline (release-versioned join) |

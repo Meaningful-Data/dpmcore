@@ -9,6 +9,7 @@ from dpmcore.dpm_xl.symbols import RecordSet, Scalar, Structure
 from dpmcore.dpm_xl.types.promotion import unary_implicit_type_promotion
 from dpmcore.dpm_xl.types.scalar import (
     Integer,
+    Mixed,
     Number,
     ScalarFactory,
     ScalarType,
@@ -195,6 +196,12 @@ class AggregateOperator(Unary):
         Returns a RecordSet with the same structure as the operand — analytic
         invocation never reduces Records.
         """
+        # A Mixed fact has no single type to promote, so reject it before
+        # ``unary_implicit_type_promotion`` reports it as a type clash.
+        # Overrides that do no promotion (``Rank``) are exempt by not
+        # inheriting this method.
+        if isinstance(operand.get_fact_component().type, Mixed):
+            raise errors.SemanticError("4-4-0-3", origin=f"{cls.op}(...)")
         cls.check_operator_well_defined()
         return_type = (
             None

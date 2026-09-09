@@ -23,6 +23,7 @@ from dpmcore.dpm_xl.utils.tokens import (
     SEVERITY_WARNING,
     VALID_SEVERITIES,
 )
+from dpmcore.errors import SemanticError
 from dpmcore.services._parameters import merge_parameters
 from dpmcore.services._precondition_codes import (
     extract_precondition_codes as _extract_precondition_codes,
@@ -60,6 +61,25 @@ class _OperandRefs:
 
     tables: set[str] = field(default_factory=set)
     variables: Dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class _PreparedExpression:
+    """One expression readied for the script, or the reason it is not.
+
+    ``error`` is set when the expression cannot become a declarable
+    operation — it failed semantic validation, or it carries a shift
+    whose reference period cannot be declared (#326). Both are reported
+    the same way, through ``failed_operations``, and both must be caught
+    before the caller accumulates anything for the operation: a skip
+    afterwards would leave its tables, parameters and operation entry in
+    the script.
+    """
+
+    result: Any = None
+    ast: Any = None
+    ts: Dict[str, List[str]] = field(default_factory=dict)
+    error: Optional[str] = None
 
 
 def _normalize_variable_code(code: str) -> str:
@@ -200,7 +220,7 @@ class ASTGeneratorService:
                 Tuple[
                     Tuple[str, str],
                     "ScopeResult",
-                    Dict[str, str],
+                    Dict[str, List[str]],
                     _OperandRefs,
                 ]
             ] = []
@@ -209,17 +229,18 @@ class ASTGeneratorService:
 
             for item in expressions:
                 expr, code = item[0], item[1]
-                # validate() runs the per-expression scope check: a parameter
-                # referenced here must not clash with the declared type of a
-                # co-scoped operation already persisted in the DB (raises 3-8).
-                # _accumulate_parameters below is complementary — it catches
-                # conflicts between two expressions in this same script.
-                result = self._semantic.validate(expr, release_id=release_id)
-                if not result.is_valid:
-                    failed_operations[code] = result.error_message or ""
+                # Semantic validation plus the reference periods the
+                # expression needs; either can reject it. The
+                # _accumulate_parameters call below is complementary to
+                # the scope check inside — it catches conflicts between
+                # two expressions in this same script.
+                prepared = self._prepare_expression(
+                    self._semantic, expr, release_id
+                )
+                if prepared.error is not None:
+                    failed_operations[code] = prepared.error
                     continue
-
-                ast = self._semantic.ast
+                result, ast, ts = prepared.result, prepared.ast, prepared.ts
                 ast_dict = serialize_ast(ast)
                 # Operand refs come off the *raw* serialisation: cleaning
                 # strips the ``data_type`` each datapoint is typed by.
@@ -264,7 +285,6 @@ class ASTGeneratorService:
                         ),
                         "failed_operations": failed_operations,
                     }
-                ts = self._extract_time_shifts(ast)
                 scope_pairs.append((item, sr, ts, op_refs))
 
             primary_tables_full = self._scope_calc._get_module_tables(
@@ -372,6 +392,294 @@ class ASTGeneratorService:
                 "error": str(exc),
                 "failed_operations": {},
             }
+
+    def script_for_module(
+        self,
+        module_code: str,
+        module_version: str,
+        release: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Auto-discover a module version's active validations and script them.
+
+        No ``expressions``, ``preconditions`` or ``severities`` need to be
+        supplied — they are looked up from ``OperationScope`` /
+        ``OperationScopeComposition`` / ``OperationVersion`` for this module
+        version, then handed to :meth:`script`.
+
+        Args:
+            module_code: Code of the module (e.g. ``"COREP_Con"``).
+            module_version: Version of the module (e.g. ``"2.0.1"``).
+            release: Optional release code; resolved the same way as in
+                :meth:`script`.
+
+        Returns:
+            Same shape as :meth:`script`.
+        """
+        if self.session is None:
+            return {
+                "success": False,
+                "enriched_ast": None,
+                "error": "No database session — cannot generate script.",
+                "failed_operations": {},
+            }
+
+        try:
+            mv, release_row = self._resolve_release(
+                module_code, module_version, release
+            )
+            expressions, preconditions, severities = (
+                self._discover_module_validations(mv, release_row)
+            )
+        except ValueError as exc:
+            return {
+                "success": False,
+                "enriched_ast": None,
+                "error": str(exc),
+                "failed_operations": {},
+            }
+
+        return self.script(
+            expressions=expressions,
+            module_code=module_code,
+            module_version=module_version,
+            preconditions=preconditions or None,
+            severities=severities or None,
+            release=release_row.code,
+        )
+
+    def list_module_versions(
+        self,
+        module_code: Optional[str] = None,
+        release: Optional[str] = None,
+    ) -> List[Tuple[str, str]]:
+        """Enumerate ``(module_code, version_number)`` pairs to sweep.
+
+        Used by the CLI's ``--all-modules``/``--all-versions`` sweep to
+        discover targets for :meth:`script_for_module`.
+
+        Args:
+            module_code: Restrict to this module's versions. ``None``
+                enumerates every module in the database.
+            release: When given, only ``ModuleVersion`` rows whose window
+                contains this release (via :func:`filter_by_release`) are
+                returned.
+
+        Returns:
+            ``(module_code, version_number)`` pairs, ordered by
+            ``(code, start_release_id)``, excluding ghost/phantom
+            ``ModuleVersion`` rows (``from_reference_date ==
+            to_reference_date``, both non-null — the same test
+            :meth:`_walk_ghost_chain` uses).
+
+        Raises:
+            ValueError: If a database session is missing, or ``release``
+                doesn't match any ``Release.code``.
+        """
+        from sqlalchemy import or_
+
+        from dpmcore.dpm_xl.utils.filters import (
+            filter_by_release,
+            resolve_release_id,
+        )
+        from dpmcore.orm.packaging import ModuleVersion
+
+        if self.session is None:
+            raise ValueError("No database session — cannot list modules.")
+        session = self.session
+
+        query = session.query(
+            ModuleVersion.code, ModuleVersion.version_number
+        ).filter(
+            or_(
+                ModuleVersion.from_reference_date.is_(None),
+                ModuleVersion.to_reference_date.is_(None),
+                ModuleVersion.from_reference_date
+                != ModuleVersion.to_reference_date,
+            )
+        )
+        if module_code is not None:
+            query = query.filter(ModuleVersion.code == module_code)
+        if release is not None:
+            release_id = resolve_release_id(session, release_code=release)
+            query = filter_by_release(
+                query,
+                start_col=ModuleVersion.start_release_id,
+                end_col=ModuleVersion.end_release_id,
+                release_id=release_id,
+            )
+        query = query.order_by(
+            ModuleVersion.code, ModuleVersion.start_release_id
+        )
+
+        seen: set[Tuple[str, str]] = set()
+        pairs: List[Tuple[str, str]] = []
+        for code, version_number in query.all():
+            if code is None or version_number is None:
+                continue
+            pair = (code, version_number)
+            if pair not in seen:
+                seen.add(pair)
+                pairs.append(pair)
+        return pairs
+
+    def _discover_module_validations(
+        self,
+        mv: Any,
+        release_row: Any,
+    ) -> Tuple[
+        List[Tuple[str, str]],
+        List[Union[Tuple[str, List[str]], Dict[str, Any]]],
+        Dict[str, str],
+    ]:
+        """Look up the active ``(expression, code)`` pairs for a module.
+
+        Resolves the module version's active operations by joining
+        ``OperationVersion`` to ``OperationScope`` /
+        ``OperationScopeComposition``, filtered to this release using
+        dpmcore's point-release model (:func:`filter_by_release`, a window
+        containment check rather than a raw ``StartReleaseID``/
+        ``EndReleaseID`` overlap). This does not filter out operations
+        scoped exclusively to phantom module versions (see
+        :meth:`list_module_versions`'s docstring for what "phantom" means
+        here) — that guard only matters when sweeping every module in the
+        database, which this single-module lookup never does; revisit
+        alongside a future ``--all-modules`` sweep.
+
+        Returns:
+            ``(expressions, preconditions, severities)`` ready to pass to
+            :meth:`script`.
+        """
+        from sqlalchemy import or_
+
+        from dpmcore.dpm_xl.utils.filters import filter_by_release
+        from dpmcore.orm.operations import (
+            Operation,
+            OperationScope,
+            OperationScopeComposition,
+            OperationVersion,
+        )
+
+        session = self.session
+        if session is None:
+            raise ValueError("No database session — cannot generate script.")
+
+        query = (
+            session.query(
+                OperationVersion.operation_vid,
+                Operation.code,
+                OperationVersion.expression,
+                OperationScope.severity,
+                OperationVersion.precondition_operation_vid,
+            )
+            .join(
+                OperationScope,
+                OperationVersion.operation_vid == OperationScope.operation_vid,
+            )
+            .join(
+                OperationScopeComposition,
+                OperationScope.operation_scope_id
+                == OperationScopeComposition.operation_scope_id,
+            )
+            .join(
+                Operation,
+                OperationVersion.operation_id == Operation.operation_id,
+            )
+            .filter(OperationScopeComposition.module_vid == mv.module_vid)
+            # Access boolean convention: True is stored as -1, not 1.
+            .filter(OperationScope.is_active.in_([-1, 1, True]))
+            .filter(
+                or_(
+                    Operation.code.startswith("v"),
+                    Operation.code.startswith("e"),
+                )
+            )
+        )
+        query = filter_by_release(
+            query,
+            start_col=OperationVersion.start_release_id,
+            end_col=OperationVersion.end_release_id,
+            release_id=release_row.release_id,
+        )
+
+        # A code can match more than one OperationVersion row; keep the
+        # latest (highest OperationVID) per code.
+        _Row = Tuple[int, str, Optional[str], Optional[int]]
+        latest_by_code: Dict[str, _Row] = {}
+        for op_vid, code, expression, severity, prec_vid in query.all():
+            existing = latest_by_code.get(code)
+            if existing is None or op_vid > existing[0]:
+                latest_by_code[code] = (op_vid, expression, severity, prec_vid)
+
+        expressions: List[Tuple[str, str]] = []
+        severities: Dict[str, str] = {}
+        prec_vid_to_codes: Dict[int, List[str]] = {}
+        for code, (_, expression, severity, prec_vid) in sorted(
+            latest_by_code.items()
+        ):
+            expressions.append((expression, code))
+            if severity:
+                severities[code] = severity
+            if prec_vid is not None:
+                prec_vid_to_codes.setdefault(prec_vid, []).append(code)
+
+        preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]] = (
+            list(self._resolve_preconditions(prec_vid_to_codes))
+        )
+        return expressions, preconditions, severities
+
+    def _resolve_preconditions(
+        self, prec_vid_to_codes: Dict[int, List[str]]
+    ) -> List[Dict[str, Any]]:
+        """Resolve discovered ``PreconditionOperationVID``s into entries.
+
+        Note: :meth:`_build_preconditions_block` does not build a
+        precondition's AST structurally from the DB's stored
+        ``OperationNode`` graph, so it cannot express arbitrary DPM-XL
+        boolean expressions — it only recognises ``{v_<variable_code>}``
+        markers (or an ``and``-chain of them) in the expression text — see
+        its docstring and ``TestBuildPreconditionsBlock`` in
+        ``tests/unit/services/test_ast_generator.py``. A discovered
+        precondition whose stored ``Expression`` isn't in that form resolves
+        to no variables and is silently dropped, same as pydpm. This is a
+        pre-existing limitation of ``script()``'s precondition support, not
+        specific to auto-discovery.
+        """
+        if not prec_vid_to_codes:
+            return []
+
+        from dpmcore.orm.operations import Operation, OperationVersion
+
+        session = self.session
+        if session is None:
+            raise ValueError("No database session — cannot generate script.")
+
+        rows = (
+            session.query(
+                OperationVersion.operation_vid,
+                Operation.code,
+                OperationVersion.expression,
+            )
+            .join(
+                Operation,
+                OperationVersion.operation_id == Operation.operation_id,
+            )
+            .filter(
+                OperationVersion.operation_vid.in_(prec_vid_to_codes.keys())
+            )
+            .all()
+        )
+
+        preconditions: List[Dict[str, Any]] = []
+        for prec_vid, prec_code, prec_expression in rows:
+            preconditions.append(
+                {
+                    "expression": prec_expression,
+                    "affected_operations": sorted(prec_vid_to_codes[prec_vid]),
+                    "code": prec_code,
+                    "version_id": prec_vid,
+                }
+            )
+        return preconditions
 
     # ------------------------------------------------------------------ #
     # Resolution helpers
@@ -1256,7 +1564,7 @@ extract_precondition_codes`, shared with
             Tuple[
                 Tuple[str, str],
                 "ScopeResult",
-                Dict[str, str],
+                Dict[str, List[str]],
                 _OperandRefs,
             ]
         ],
@@ -1345,15 +1653,25 @@ extract_precondition_codes`, shared with
     ) -> None:
         """Merge *new* cross-instance deps into *existing*.
 
-        Deduplicates by the set of module URIs.  When a duplicate is
-        found, its ``affected_operations`` are merged instead.
+        Deduplicates by the set of ``(module URI, reference period)``
+        pairs. When a duplicate is found, its ``affected_operations``
+        are merged instead.
+
+        The reference period is part of the key because two operations
+        can need the *same* module at *different* instances — one at
+        ``T``, another at ``T-1Q`` (#325 makes a non-default period
+        reachable for the home module). Keying on the URI alone merged
+        them into a single entry whose period was whichever operation
+        came first, silently sending the other to the wrong instance.
         """
 
-        def _uri_key(dep: Dict[str, Any]) -> Tuple[str, ...]:
+        def _uri_key(dep: Dict[str, Any]) -> Tuple[Tuple[str, str], ...]:
             modules = dep.get("modules", [])
             return tuple(
                 sorted(
-                    m.get("URI", "") if isinstance(m, dict) else str(m)
+                    (m.get("URI", ""), m.get("ref_period", ""))
+                    if isinstance(m, dict)
+                    else (str(m), "")
                     for m in modules
                 )
             )
@@ -1404,28 +1722,140 @@ extract_precondition_codes`, shared with
 
     @staticmethod
     def _to_ref_period(internal: str) -> str:
-        if internal.startswith("t+"):
+        """Render a ``t(+|-)<indicator><n>`` marker as a reference period.
+
+        The declared period is the *opposite* of the shift the expression
+        asks for. ``time_shift`` moves the operand's reference period by
+        ``shift_number``, so the instance whose shifted operand lines up
+        with the one being reported is the one at ``T - shift_number``:
+        ``time_shift(x, A, 1, refPeriod)`` needs ``T-1A`` and
+        ``time_shift(x, Q, -1, refPeriod)`` needs ``T+1Q``. The marker is
+        built with that inversion already applied (see
+        :meth:`_extract_time_shifts`), so this only reorders it.
+        """
+        if internal.startswith(("t+", "t-")):
+            sign = internal[1]
             ind = internal[2]
             num = internal[3:]
-            if num.startswith("-"):
-                return f"T{num}{ind}"
-            return f"T+{num}{ind}"
-        if internal.startswith("t-"):
-            ind = internal[2]
-            num = internal[3:]
-            return f"T-{num}{ind}"
+            return f"T{sign}{num}{ind}"
         return "T"
 
     @staticmethod
-    def _extract_time_shifts(ast: Any) -> Dict[str, str]:
-        """Extract per-table time shifts from an AST.
+    def _literal_shift(node: Any) -> Tuple[int, Optional[int]]:
+        """Resolve a ``shift_number`` expression to ``(sign, magnitude)``.
 
-        Returns a mapping of table codes to ref-period strings
-        (e.g. ``{"C_01.00": "T-1Q"}``).
+        ``sign`` is the direction the expression asks for (``1`` or
+        ``-1``) and ``magnitude`` its size, or ``None`` when the shift
+        number is not an integer literal — a reference or a computed
+        expression, whose size no reference period can name.
+
+        The same written literal reaches this in several shapes, and
+        reading only the two obvious ones mis-declared the rest: ``+1``
+        is a ``UnaryOp``, so it lost its size and rendered ``T-nQ``;
+        ``( -1 )`` is a ``ParExpr`` around one, so it lost its direction
+        too; and ``(-1)`` without the spaces is lexed as a *negative*
+        ``Constant``, which rendered the sign twice (``T--1Q``).
+        """
+        from dpmcore.dpm_xl.ast.nodes import Constant, ParExpr, UnaryOp
+
+        sign = 1
+        while True:
+            if isinstance(node, ParExpr):
+                node = node.expression
+            elif isinstance(node, UnaryOp) and node.op in ("+", "-"):
+                if node.op == "-":
+                    sign = -sign
+                node = node.operand
+            else:
+                break
+        if not isinstance(node, Constant):
+            return sign, None
+        try:
+            shift = sign * int(node.value)
+        except (TypeError, ValueError):
+            return sign, None
+        return (-1 if shift < 0 else 1), abs(shift)
+
+    def _prepare_expression(
+        self,
+        semantic: SemanticService,
+        expr: str,
+        release_id: int,
+    ) -> _PreparedExpression:
+        """Validate *expr* and read the reference periods it needs.
+
+        ``validate()`` runs the per-expression scope check: a parameter
+        referenced here must not clash with the declared type of a
+        co-scoped operation already persisted in the DB (raises 3-8).
+        ``_accumulate_parameters`` in the caller is complementary — it
+        catches conflicts between two expressions in the same script.
+        """
+        result = semantic.validate(expr, release_id=release_id)
+        if not result.is_valid:
+            return _PreparedExpression(
+                error=result.error_message or "",
+            )
+        ast = semantic.ast
+        try:
+            return _PreparedExpression(
+                result=result,
+                ast=ast,
+                ts=self._extract_time_shifts(ast),
+            )
+        except SemanticError as exc:
+            return _PreparedExpression(error=str(exc))
+
+    @staticmethod
+    def _shift_marker(node: Any) -> str:
+        """Return the ``t(+|-)<indicator><n>`` marker for a time shift.
+
+        The marker encodes the *declared* period, which inverts the
+        shift the expression asks for: ``time_shift(x, A, 1, refPeriod)``
+        reads the instance at ``T-1A`` and
+        ``time_shift(x, Q, -1, refPeriod)`` the one at ``T+1Q``. A shift
+        of ``0`` is no shift at all, so it keeps the plain marker.
+
+        Raises:
+            SemanticError: 4-7-5, when the shift number is not an
+                integer literal. Such a shift used
+                to render as ``T-nQ``, which names no resolvable
+                instance and so silently sent the operation to an
+                instance the engine cannot load (#326).
+        """
+        sign, magnitude = ASTGeneratorService._literal_shift(node.shift_number)
+        if magnitude is None:
+            raise SemanticError("4-7-5")
+        if magnitude == 0:
+            return "t"
+        # ``magnitude`` is unsigned, so the sign is carried by the marker
+        # alone — a ``Constant`` holding a negative value would otherwise
+        # render two signs (``t-Q-1``).
+        marker = "-" if sign > 0 else "+"
+        return f"t{marker}{node.period_indicator}{magnitude}"
+
+    @staticmethod
+    def _extract_time_shifts(ast: Any) -> Dict[str, List[str]]:
+        """Extract the reference periods each table is referenced at.
+
+        Returns a mapping of table codes to the sorted, de-duplicated
+        reference periods that table is read at, e.g.
+        ``{"C_01.00": ["T", "T-1Q"]}``.
+
+        One period per table is not enough (#326): a table read both
+        plain and shifted, or shifted twice by different amounts, needs
+        one instance per period, and keeping a single period collapsed
+        the rest into whichever the visitor reached last. Unshifted
+        references are recorded as ``"T"`` too, so a module read at both
+        the current and a shifted instance is visible to the caller
+        instead of being declared at the shifted one alone.
+
+        Raises:
+            SemanticError: 4-7-5, propagated from
+                :meth:`_shift_marker` for a non-literal shift number.
         """
         from dpmcore.dpm_xl.ast.template import ASTTemplate
 
-        time_shifts: Dict[str, str] = {}
+        time_shifts: Dict[str, Set[str]] = {}
         current_period = ["t"]
 
         class _Extractor(ASTTemplate):
@@ -1433,41 +1863,35 @@ extract_precondition_codes`, shared with
                 self.visit(node.operand)
 
             def visit_TimeShiftOp(self, node: Any) -> None:
-                from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
-
                 prev = current_period[0]
-                pi = node.period_indicator
-                sn = node.shift_number
-                if isinstance(sn, Constant):
-                    current_period[0] = f"t-{pi}{sn.value}"
-                elif isinstance(sn, UnaryOp) and sn.op == "-":
-                    inner = sn.operand
-                    sn_str = (
-                        f"-{inner.value}"
-                        if isinstance(inner, Constant)
-                        else "n"
-                    )
-                    current_period[0] = f"t+{pi}{sn_str}"
-                else:
-                    current_period[0] = f"t-{pi}n"
+                current_period[0] = ASTGeneratorService._shift_marker(node)
                 self.visit(node.operand)
                 current_period[0] = prev
 
             def visit_VarID(self, node: Any) -> None:
-                if node.table and current_period[0] != "t":
-                    time_shifts[node.table] = current_period[0]
+                if node.table:
+                    time_shifts.setdefault(node.table, set()).add(
+                        current_period[0]
+                    )
 
         try:
             _Extractor().visit(ast)
-            return {
-                t: ASTGeneratorService._to_ref_period(p)
-                for t, p in time_shifts.items()
-            }
+        except SemanticError:
+            # A shift whose period cannot be declared is the caller's
+            # decision to act on, not something to swallow into an
+            # empty mapping.
+            raise
         except Exception:
             logger.exception(
                 "Failed to extract time shifts; returning an empty mapping.",
             )
             return {}
+        return {
+            table: sorted(
+                {ASTGeneratorService._to_ref_period(p) for p in periods}
+            )
+            for table, periods in time_shifts.items()
+        }
 
 
 __all__ = ["ASTGeneratorService"]

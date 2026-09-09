@@ -55,7 +55,9 @@ def _stub(svc, monkeypatch, results=None, calls=None):
     """
     monkeypatch.setattr(svc, "_resolve_release", lambda *a, **k: 42)
 
-    def _validate_resolved(expression, release_id, *, as_precondition=False):
+    def _validate_resolved(
+        expression, release_id, *, as_precondition=False, is_scripting=False
+    ):
         if calls is not None:
             calls.append((expression, as_precondition, release_id))
         return (results or {}).get(expression) or _ok(expression)
@@ -281,7 +283,7 @@ class TestReleaseHandling:
         monkeypatch.setattr(
             svc,
             "_validate_resolved",
-            lambda expression, release_id, *, as_precondition=False: (
+            lambda expression, release_id, *, as_precondition=False, is_scripting=False: (
                 calls.append((expression, release_id)) or _ok(expression)
             ),
         )

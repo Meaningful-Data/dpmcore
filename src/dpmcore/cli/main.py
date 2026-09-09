@@ -13,7 +13,7 @@ Usage::
 from __future__ import annotations
 
 import sys
-from typing import Any
+from typing import Any, cast
 
 import click
 
@@ -561,6 +561,296 @@ def generate_script(
         f"[green]Wrote script to[/green] {output} "
         f"({len(items)} expressions, {n_dep} dependency modules)"
     )
+
+
+@main.command("export-script")
+@click.option(
+    "--module-code",
+    default=None,
+    help="Primary module code (e.g. COREP_Con). Required unless "
+    "--all-modules is given.",
+)
+@click.option(
+    "--module-version",
+    default=None,
+    help="Primary module version (e.g. 2.0.1). Mutually exclusive with "
+    "--all-versions and --release; one of the three is required.",
+)
+@click.option(
+    "--all-modules",
+    is_flag=True,
+    default=False,
+    help="Sweep every module in the database, instead of --module-code.",
+)
+@click.option(
+    "--all-versions",
+    is_flag=True,
+    default=False,
+    help="Sweep every active version of the selected module(s), "
+    "instead of --module-version. Mutually exclusive with "
+    "--module-version and --release.",
+)
+@click.option(
+    "--release",
+    default=None,
+    help=(
+        "Release code (e.g. '4.2'). Mutually exclusive with "
+        "--module-version and --all-versions: on its own, resolves each "
+        "selected module to its single version active at this release. "
+        "One of --module-version, --all-versions, or --release is "
+        "required."
+    ),
+)
+@click.option(
+    "--database",
+    required=True,
+    help="SQLAlchemy database URL.",
+)
+@click.option(
+    "--output",
+    default=None,
+    type=click.Path(),
+    help="Where to write the generated script(s). For a single "
+    "module/version target, a JSON file path (defaults to "
+    "'<module_code>-<module_version>.json' in the current directory). "
+    "When sweeping (--all-modules/--all-versions), a directory to write "
+    "one '<module_code>-<version>.json' file per target into (defaults "
+    "to the current directory).",
+)
+def export_script(
+    module_code: str | None,
+    module_version: str | None,
+    all_modules: bool,
+    all_versions: bool,
+    release: str | None,
+    database: str,
+    output: str | None,
+) -> None:
+    """Generate engine-ready DPM-XL validations scripts from the database.
+
+    Unlike ``generate-script``, no ``--expressions`` file is needed: the
+    active validations, preconditions and severities for each module
+    version are discovered directly from the database. Pass
+    ``--module-code``/``--module-version`` for a single target, or
+    ``--all-modules``/``--all-versions`` to sweep many at once.
+    ``--release`` on its own (no ``--module-version``/``--all-versions``)
+    selects each targeted module's version active at that release instead.
+    """
+    import json
+    from pathlib import Path
+
+    try:
+        from rich.console import Console
+    except ImportError:
+        click.echo(
+            "Install 'rich' for pretty output: pip install dpmcore[cli]",
+            err=True,
+        )
+        sys.exit(1)
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.exc import ArgumentError
+    from sqlalchemy.orm import Session
+
+    from dpmcore.services.ast_generator import ASTGeneratorService
+
+    console = Console()
+
+    _validate_export_script_args(
+        console,
+        module_code=module_code,
+        module_version=module_version,
+        all_modules=all_modules,
+        all_versions=all_versions,
+        release=release,
+        output=output,
+    )
+    sweeping = module_version is None
+
+    try:
+        engine = create_engine(database)
+    except ArgumentError:
+        console.print(
+            f"[red]--database is not a valid SQLAlchemy URL:[/red] "
+            f"{database!r}\n"
+            "Pass a URL such as "
+            "[bold]sqlite:////absolute/path/to.sqlite[/bold] or "
+            "[bold]sqlite:///relative/path.sqlite[/bold], not a bare "
+            "filesystem path."
+        )
+        sys.exit(1)
+    with Session(engine) as session:
+        svc = ASTGeneratorService(session)
+
+        if sweeping:
+            try:
+                targets = svc.list_module_versions(
+                    module_code=None if all_modules else module_code,
+                    release=release,
+                )
+            except ValueError as exc:
+                console.print(f"[red]{exc}[/red]")
+                sys.exit(1)
+            if not targets:
+                console.print("[red]No active module versions matched.[/red]")
+                sys.exit(1)
+
+            out_dir = Path(output) if output else Path(".")
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+            succeeded: list[tuple[str, str]] = []
+            failed: list[tuple[str, str]] = []
+            for code, version in targets:
+                result = svc.script_for_module(
+                    module_code=code, module_version=version, release=release
+                )
+                if not result.get("success"):
+                    console.print(
+                        f"[yellow]Skipped {code} {version}:[/yellow] "
+                        f"{result.get('error')}"
+                    )
+                    failed.append((code, version))
+                    continue
+
+                out_path = out_dir / f"{code}-{version}.json"
+                out_path.write_text(
+                    json.dumps(result, indent=2, default=str),
+                    encoding="utf-8",
+                )
+                n_ops, n_dep = _script_result_counts(result)
+                console.print(
+                    f"[green]Wrote[/green] {out_path} "
+                    f"({n_ops} validations discovered, "
+                    f"{n_dep} dependency modules)"
+                )
+                succeeded.append((code, version))
+
+            console.print(
+                f"\n[bold]{len(succeeded)} succeeded, {len(failed)} "
+                f"failed[/bold] out of {len(targets)} module versions"
+            )
+            if failed:
+                sys.exit(1)
+            return
+
+        # _validate_export_script_args guarantees both are set here (the
+        # sweeping branch, which allows either to be None, returned above).
+        result = svc.script_for_module(
+            module_code=cast(str, module_code),
+            module_version=cast(str, module_version),
+            release=release,
+        )
+
+    if not result.get("success"):
+        console.print(
+            f"[red]Script generation failed:[/red] {result.get('error')}"
+        )
+        sys.exit(1)
+
+    out_path = (
+        Path(output)
+        if output
+        else Path(f"{module_code}-{module_version}.json")
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(
+        json.dumps(result, indent=2, default=str), encoding="utf-8"
+    )
+
+    n_ops, n_dep = _script_result_counts(result)
+    console.print(
+        f"[green]Wrote script to[/green] {out_path} "
+        f"({n_ops} validations discovered, {n_dep} dependency modules)"
+    )
+
+
+def _validate_version_selector_args(
+    console: Any,
+    *,
+    module_version: str | None,
+    all_versions: bool,
+    release: str | None,
+) -> None:
+    """Validate the version-selector option combination, exiting on error.
+
+    ``--module-version``, ``--all-versions`` and a bare ``--release`` (no
+    version selector) are pairwise mutually exclusive, and exactly one of
+    the three is required.
+    """
+    if module_version and all_versions:
+        console.print(
+            "[red]--module-version and --all-versions are mutually "
+            "exclusive.[/red]"
+        )
+        sys.exit(1)
+    if release is not None and (module_version or all_versions):
+        console.print(
+            "[red]--release is mutually exclusive with "
+            "--module-version and --all-versions.[/red]"
+        )
+        sys.exit(1)
+    if not module_version and not all_versions and release is None:
+        console.print(
+            "[red]Specify one of --module-version, --all-versions, or "
+            "--release.[/red]"
+        )
+        sys.exit(1)
+
+
+def _validate_export_script_args(
+    console: Any,
+    *,
+    module_code: str | None,
+    module_version: str | None,
+    all_modules: bool,
+    all_versions: bool,
+    release: str | None,
+    output: str | None,
+) -> None:
+    """Validate ``export-script``'s option combination, exiting on error."""
+    from pathlib import Path
+
+    if bool(module_code) == bool(all_modules):
+        console.print(
+            "[red]Specify exactly one of --module-code or --all-modules.[/red]"
+        )
+        sys.exit(1)
+    _validate_version_selector_args(
+        console,
+        module_version=module_version,
+        all_versions=all_versions,
+        release=release,
+    )
+    if module_version and all_modules:
+        console.print(
+            "[red]--module-version requires --module-code, not "
+            "--all-modules.[/red]"
+        )
+        sys.exit(1)
+
+    sweeping = module_version is None
+    if sweeping and output and Path(output).is_file():
+        console.print(
+            "[red]--output must be a directory when sweeping "
+            "(--all-modules/--all-versions/--release).[/red]"
+        )
+        sys.exit(1)
+
+
+def _script_result_counts(result: dict[str, Any]) -> tuple[int, int]:
+    """Count validations/dependency modules across a script() result."""
+    enriched = result.get("enriched_ast") or {}
+    n_ops = sum(
+        len((ns_block or {}).get("operations") or {})
+        for ns_block in enriched.values()
+        if isinstance(ns_block, dict)
+    )
+    n_dep = sum(
+        len((ns_block or {}).get("dependency_modules") or {})
+        for ns_block in enriched.values()
+        if isinstance(ns_block, dict)
+    )
+    return n_ops, n_dep
 
 
 @main.command()

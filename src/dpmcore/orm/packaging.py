@@ -30,7 +30,6 @@ if TYPE_CHECKING:
     from dpmcore.orm.rendering import Table, TableVersion
     from dpmcore.orm.variables import (
         CompoundKey,
-        VariableCalculation,
         VariableVersion,
     )
 
@@ -139,10 +138,6 @@ class Module(Base):
     )
     module_versions: Mapped[List["ModuleVersion"]] = relationship(
         "ModuleVersion",
-        back_populates="module",
-    )
-    variable_calculations: Mapped[List["VariableCalculation"]] = relationship(
-        "VariableCalculation",
         back_populates="module",
     )
 

@@ -94,6 +94,31 @@ def sort_by_order(
     return ordered + unordered
 
 
+def build_axis_value_map(codes: Iterable[Any]) -> dict[str, int] | None:
+    """Build a ``{code: int}`` map from each code's own numeric value.
+
+    Some tables show a code out of numeric sequence for layout reasons,
+    which breaks range resolution by display order. Callers should prefer
+    this map and fall back to :func:`build_axis_order_map` only when it fails.
+
+    Args:
+        codes: The axis code of each row (may contain ``None``/NaN).
+
+    Returns:
+        ``{code: int(code)}`` when every present code is numeric, else
+        ``None``.
+    """
+    result: dict[str, int] = {}
+    for code in codes:
+        if _is_missing(code):
+            continue
+        key = str(code)
+        if not key.isdigit():
+            return None
+        result[key] = int(key)
+    return result
+
+
 def build_axis_order_map(
     codes: Iterable[Any], orders: Iterable[Any]
 ) -> dict[str, int] | None:
