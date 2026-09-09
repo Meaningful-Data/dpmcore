@@ -134,7 +134,7 @@ class TestGenerateScriptSuccess:
         assert payload["success"] is True
         ns = payload["enriched_ast"][_NS_URI]
         assert "dependency_modules" in ns
-        assert "1 dependency modules" in result.output
+        assert "1 dependency modules" in " ".join(result.output.split())
 
     def test_reports_skipped_validations(
         self, runner, expressions_file, tmp_path
