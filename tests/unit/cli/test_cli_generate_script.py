@@ -136,6 +136,41 @@ class TestGenerateScriptSuccess:
         assert "dependency_modules" in ns
         assert "1 dependency modules" in result.output
 
+    def test_reports_skipped_validations(
+        self, runner, expressions_file, tmp_path
+    ):
+        """#355: semantically rejected expressions must be surfaced."""
+        out = tmp_path / "script.json"
+        result_payload = _success_result()
+        result_payload["failed_operations"] = {
+            "v0002": "3-6: Invalid default type"
+        }
+        with patch(
+            "dpmcore.services.ast_generator.ASTGeneratorService"
+        ) as Svc:
+            Svc.return_value.script.return_value = result_payload
+            result = runner.invoke(
+                main,
+                [
+                    "generate-script",
+                    "--expressions",
+                    str(expressions_file),
+                    "--database",
+                    "sqlite:///:memory:",
+                    "--output",
+                    str(out),
+                    "--module-code",
+                    "FINREP_Con",
+                    "--module-version",
+                    "2.0.1",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        output = " ".join(result.output.split())
+        assert "1 skipped" in output
+        assert "v0002: 3-6: Invalid default type" in output
+
     def test_passes_all_args_to_service(
         self, runner, expressions_file, tmp_path
     ):

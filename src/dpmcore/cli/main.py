@@ -551,16 +551,13 @@ def generate_script(
         json.dumps(result, indent=2, default=str), encoding="utf-8"
     )
 
-    enriched = result.get("enriched_ast") or {}
-    n_dep = sum(
-        len((ns_block or {}).get("dependency_modules") or {})
-        for ns_block in enriched.values()
-        if isinstance(ns_block, dict)
-    )
+    _n_ops, n_skipped, n_dep = _script_result_counts(result)
     console.print(
         f"[green]Wrote script to[/green] {output} "
-        f"({len(items)} expressions, {n_dep} dependency modules)"
+        f"({len(items)} expressions, {n_skipped} skipped, "
+        f"{n_dep} dependency modules)"
     )
+    _report_skipped_operations(console, result)
 
 
 @main.command("export-script")
@@ -700,6 +697,7 @@ def export_script(
 
             succeeded: list[tuple[str, str]] = []
             failed: list[tuple[str, str]] = []
+            total_skipped = 0
             for code, version in targets:
                 result = svc.script_for_module(
                     module_code=code, module_version=version, release=release
@@ -717,17 +715,22 @@ def export_script(
                     json.dumps(result, indent=2, default=str),
                     encoding="utf-8",
                 )
-                n_ops, n_dep = _script_result_counts(result)
+                n_ops, n_skipped, n_dep = _script_result_counts(result)
+                total_skipped += n_skipped
                 console.print(
                     f"[green]Wrote[/green] {out_path} "
                     f"({n_ops} validations discovered, "
+                    f"{n_skipped} skipped, "
                     f"{n_dep} dependency modules)"
                 )
                 succeeded.append((code, version))
 
-            console.print(
-                f"\n[bold]{len(succeeded)} succeeded, {len(failed)} "
-                f"failed[/bold] out of {len(targets)} module versions"
+            _print_sweep_summary(
+                console,
+                n_succeeded=len(succeeded),
+                n_failed=len(failed),
+                n_targets=len(targets),
+                total_skipped=total_skipped,
             )
             if failed:
                 sys.exit(1)
@@ -757,11 +760,13 @@ def export_script(
         json.dumps(result, indent=2, default=str), encoding="utf-8"
     )
 
-    n_ops, n_dep = _script_result_counts(result)
+    n_ops, n_skipped, n_dep = _script_result_counts(result)
     console.print(
         f"[green]Wrote script to[/green] {out_path} "
-        f"({n_ops} validations discovered, {n_dep} dependency modules)"
+        f"({n_ops} validations discovered, {n_skipped} skipped, "
+        f"{n_dep} dependency modules)"
     )
+    _report_skipped_operations(console, result)
 
 
 def _validate_version_selector_args(
@@ -837,8 +842,67 @@ def _validate_export_script_args(
         sys.exit(1)
 
 
-def _script_result_counts(result: dict[str, Any]) -> tuple[int, int]:
-    """Count validations/dependency modules across a script() result."""
+def _print_sweep_summary(
+    console: Any,
+    *,
+    n_succeeded: int,
+    n_failed: int,
+    n_targets: int,
+    total_skipped: int,
+) -> None:
+    """Print the closing tally of an ``export-script`` sweep."""
+    console.print(
+        f"\n[bold]{n_succeeded} succeeded, {n_failed} failed[/bold] "
+        f"out of {n_targets} module versions"
+    )
+    if total_skipped:
+        console.print(
+            f"[yellow]{total_skipped} validations skipped[/yellow] for "
+            "semantic errors — see 'failed_operations' in each script "
+            "for the reason per validation."
+        )
+
+
+def _report_skipped_operations(
+    console: Any, result: dict[str, Any], limit: int = 10
+) -> None:
+    """Print why each skipped validation was left out of the script.
+
+    ``failed_operations`` is already written to the output JSON, but a
+    console line that only counts what made it gives no hint that
+    anything was dropped (#355). Long lists are truncated — the file
+    holds all of them.
+
+    Reasons are escaped before printing: a message naming an item, e.g.
+    ``[eba_AS:x2]``, reads as rich markup and would otherwise be
+    swallowed on its way to the terminal.
+    """
+    from rich.markup import escape
+
+    failed_ops: dict[str, str] = result.get("failed_operations") or {}
+    if not failed_ops:
+        return
+    console.print(
+        f"[yellow]{len(failed_ops)} validations skipped[/yellow] "
+        "for semantic errors:"
+    )
+    for code, reason in list(failed_ops.items())[:limit]:
+        console.print(f"  [yellow]{escape(code)}[/yellow]: {escape(reason)}")
+    if len(failed_ops) > limit:
+        console.print(
+            f"  ... and {len(failed_ops) - limit} more — see "
+            "'failed_operations' in the output file."
+        )
+
+
+def _script_result_counts(result: dict[str, Any]) -> tuple[int, int, int]:
+    """Count validations/skipped/dependency modules in a script() result.
+
+    The skipped count is the size of ``failed_operations``: validations
+    that were discovered in the database but rejected by semantic
+    validation, so they are not in the script. Reporting only the
+    validations that made it hides them (#355).
+    """
     enriched = result.get("enriched_ast") or {}
     n_ops = sum(
         len((ns_block or {}).get("operations") or {})
@@ -850,7 +914,7 @@ def _script_result_counts(result: dict[str, Any]) -> tuple[int, int]:
         for ns_block in enriched.values()
         if isinstance(ns_block, dict)
     )
-    return n_ops, n_dep
+    return n_ops, len(result.get("failed_operations") or {}), n_dep
 
 
 @main.command()
