@@ -15,6 +15,7 @@ from typing import (
     Callable,
     Collection,
     Hashable,
+    NamedTuple,
     Sequence,
 )
 
@@ -1238,6 +1239,149 @@ def _resolve_with_ghost_fallback(
     return pd.concat([non_ghost, fallback_rows], ignore_index=True)
 
 
+class _TableVersionScope(NamedTuple):
+    """The table version(s) of one table code effective at a release.
+
+    Attributes:
+        table_vids: ``TableVersion.table_vid`` values to read cells from.
+        fallback_module_vids: The module versions hosting ``table_vids``
+            when the ghost fallback fired, ``None`` when the plain release
+            window applies. A fallback version's release window ends
+            *before* the target release, so callers must narrow the
+            ``ModuleVersion`` join to these VIDs rather than applying
+            :func:`filter_by_release`, which would drop every row.
+    """
+
+    table_vids: list[int]
+    fallback_module_vids: list[int] | None = None
+
+
+def _is_collapsed_window(from_date: Any, to_date: Any) -> bool:
+    """Whether one version's reference-date window is collapsed (ghost).
+
+    Row-level mirror of :func:`_collapsed_mask`: collapsed only when both
+    reference dates are present and equal; an open-ended window is a
+    genuine range.
+    """
+    return (
+        from_date is not None and to_date is not None and from_date == to_date
+    )
+
+
+def _ghost_module_ids_for_table_vids(
+    session: "Session",
+    table_vids: Sequence[int],
+    release_id: int,
+) -> set[int] | None:
+    """Modules whose ghosts are the only versions hosting ``table_vids``.
+
+    Args:
+        session: SQLAlchemy session.
+        table_vids: Table versions open at ``release_id``.
+        release_id: Target release id.
+
+    Returns:
+        The module ids of those ghosts, or ``None`` as soon as a
+        non-ghost module version covering ``release_id`` hosts one of
+        ``table_vids`` (the table version is then genuinely live at the
+        release and needs no substitution). Also ``None`` when no module
+        version hosts them at all.
+    """
+    rows = (
+        filter_by_release(
+            session.query(
+                ModuleVersion.module_id,
+                ModuleVersion.from_reference_date,
+                ModuleVersion.to_reference_date,
+            )
+            .join(
+                ModuleVersionComposition,
+                ModuleVersion.module_vid
+                == ModuleVersionComposition.module_vid,
+            )
+            .filter(ModuleVersionComposition.table_vid.in_(list(table_vids))),
+            start_col=ModuleVersion.start_release_id,
+            end_col=ModuleVersion.end_release_id,
+            release_id=release_id,
+        )
+        .distinct()
+        .all()
+    )
+    ghost_module_ids: set[int] = set()
+    for module_id, from_date, to_date in rows:
+        if not _is_collapsed_window(from_date, to_date):
+            return None
+        if module_id is not None:
+            ghost_module_ids.add(module_id)
+    return ghost_module_ids or None
+
+
+def _apply_table_ghost_fallback(
+    session: "Session",
+    table: str,
+    table_vids: list[int],
+    release_id: int,
+) -> _TableVersionScope:
+    """Substitute a ghost-only table version with its fallback's (#356).
+
+    The table-version mirror of :func:`_resolve_with_ghost_fallback`: when
+    every module version hosting ``table_vids`` at ``release_id`` is a
+    ghost, the table's cells are read from the latest prior non-ghost
+    version of the same module instead, so datapoint resolution and module
+    resolution report the same module version. Without it the cells --
+    hence their variables, properties and domains -- come from a version
+    that has no reporting period of its own.
+
+    Substitution only: when there is nothing to fall back to (no prior
+    non-ghost version, or one that does not contain ``table``) the ghost's
+    table version is kept, since dropping it would make the table
+    unresolvable at that release.
+
+    Args:
+        session: SQLAlchemy session.
+        table: Table version code being resolved.
+        table_vids: The versions of ``table`` open at ``release_id``.
+        release_id: Target release id.
+
+    Returns:
+        The effective scope, ghost substituted where a fallback exists.
+    """
+    ghost_module_ids = _ghost_module_ids_for_table_vids(
+        session, table_vids, release_id
+    )
+    if ghost_module_ids is None:
+        return _TableVersionScope(table_vids)
+    fallback_vids = _latest_prior_non_collapsed_vids(
+        session, ghost_module_ids, release_id
+    )
+    if not fallback_vids:
+        return _TableVersionScope(table_vids)
+    rows = (
+        session.query(
+            ModuleVersionComposition.module_vid,
+            ModuleVersionComposition.table_vid,
+        )
+        .join(
+            TableVersion,
+            TableVersion.table_vid == ModuleVersionComposition.table_vid,
+        )
+        .filter(
+            ModuleVersionComposition.module_vid.in_(
+                list(fallback_vids.values())
+            ),
+            TableVersion.code == table,
+        )
+        .distinct()
+        .all()
+    )
+    if not rows:
+        return _TableVersionScope(table_vids)
+    return _TableVersionScope(
+        sorted({table_vid for _module_vid, table_vid in rows}),
+        sorted({module_vid for module_vid, _table_vid in rows}),
+    )
+
+
 class ModuleVersionQuery:
     """Query helpers around ModuleVersion."""
 
@@ -1752,25 +1896,32 @@ class ViewDatapointsQuery:
         }
         return query, aliases
 
-    @staticmethod
-    def _resolve_current_table_vids(
-        session: "Session", table: str, release_id: int | None
-    ) -> list[int]:
-        """Resolve the ``TableVersion.table_vid`` value(s) of ``table`` open at ``release_id``.
+    @classmethod
+    def _resolve_table_version_scope(
+        cls, session: "Session", table: str, release_id: int | None
+    ) -> _TableVersionScope:
+        """Resolve the table version(s) of ``table`` effective at ``release_id``.
 
         At the perpetual release, an adopted version and one just started
         there can both compare as "open now". When both are present, only
         the adopted one(s) are kept.
 
+        A version open at ``release_id`` only through a *ghost* module
+        version is then substituted with the one the ghost fallback
+        resolves to (see :func:`_apply_table_ghost_fallback`), so cells
+        resolve through the same module version module resolution reports.
+
         Args:
             session: SQLAlchemy session.
             table: Table version code.
             release_id: Release filter; ``None`` resolves to whichever
-                version(s) are currently open.
+                version(s) are currently open, and applies no ghost
+                fallback -- without a target release there is no "prior"
+                version to fall back to.
 
         Returns:
-            The matching ``table_vid`` values (empty when ``table`` has none
-            open at ``release_id``).
+            The effective scope; its ``table_vids`` are empty when
+            ``table`` has no version open at ``release_id``.
         """
         query = session.query(
             TableVersion.table_vid, TableVersion.start_release_id
@@ -1784,15 +1935,56 @@ class ViewDatapointsQuery:
         )
         rows = query.all()
         if len(rows) <= 1:
-            return [row.table_vid for row in rows]
-        sort_orders = load_release_sort_orders(session)
-        perpetual = compute_sort_order(None, None)
-        adopted = [
-            row.table_vid
-            for row in rows
-            if sort_orders.get(row.start_release_id, perpetual) < perpetual
-        ]
-        return adopted or [row.table_vid for row in rows]
+            table_vids = [row.table_vid for row in rows]
+        else:
+            sort_orders = load_release_sort_orders(session)
+            perpetual = compute_sort_order(None, None)
+            adopted = [
+                row.table_vid
+                for row in rows
+                if sort_orders.get(row.start_release_id, perpetual) < perpetual
+            ]
+            table_vids = adopted or [row.table_vid for row in rows]
+        if not table_vids or release_id is None:
+            return _TableVersionScope(table_vids)
+        return _apply_table_ghost_fallback(
+            session, table, table_vids, release_id
+        )
+
+    @staticmethod
+    def _filter_module_versions(
+        query: "Query[Any]",
+        scope: _TableVersionScope,
+        release_id: int | None,
+    ) -> "Query[Any]":
+        """Narrow the ``ModuleVersion`` join to the versions ``scope`` resolved.
+
+        Normally that is the plain release window. In the ghost-fallback
+        case the effective versions are the fallback's, whose release
+        window ends before ``release_id``, so filtering by release would
+        drop every row; the join is narrowed to their VIDs instead --
+        keeping the module-membership scoping the release filter provides.
+
+        Args:
+            query: Query joining ``ModuleVersion``.
+            scope: Scope from :meth:`_resolve_table_version_scope`.
+            release_id: Release filter; ``None`` leaves ``query`` as is.
+
+        Returns:
+            The narrowed query.
+        """
+        if scope.fallback_module_vids is not None:
+            return query.filter(
+                ModuleVersion.module_vid.in_(scope.fallback_module_vids)
+            )
+        if release_id is None:
+            return query
+        return filter_by_release(
+            query,
+            start_col=ModuleVersion.start_release_id,
+            end_col=ModuleVersion.end_release_id,
+            release_id=release_id,
+        )
 
     @classmethod
     def get_axis_orders(
@@ -1841,19 +2033,10 @@ class ViewDatapointsQuery:
             aliases["tvh_sheet"].order.label("sheet_order"),
         ).distinct()
 
+        scope = cls._resolve_table_version_scope(session, table, release_id)
         query = query.filter(TableVersion.code == table)
-        query = query.filter(
-            TableVersion.table_vid.in_(
-                cls._resolve_current_table_vids(session, table, release_id)
-            )
-        )
-        if release_id is not None:
-            query = filter_by_release(
-                query,
-                start_col=ModuleVersion.start_release_id,
-                end_col=ModuleVersion.end_release_id,
-                release_id=release_id,
-            )
+        query = query.filter(TableVersion.table_vid.in_(scope.table_vids))
+        query = cls._filter_module_versions(query, scope, release_id)
 
         data = read_sql_with_connection(query.statement, session)
 
@@ -1953,12 +2136,9 @@ class ViewDatapointsQuery:
             ModuleVersion.end_release_id.label("end_release_id"),
         )
 
+        scope = cls._resolve_table_version_scope(session, table, release_id)
         query = query.filter(TableVersion.code == table)
-        query = query.filter(
-            TableVersion.table_vid.in_(
-                cls._resolve_current_table_vids(session, table, release_id)
-            )
-        )
+        query = query.filter(TableVersion.table_vid.in_(scope.table_vids))
 
         # Range endpoints are resolved against the stored display order, not
         # the code text; ``get_axis_orders`` supplies the per-axis map (or
@@ -1986,13 +2166,7 @@ class ViewDatapointsQuery:
                 query, aliases["hvs"].code, sheets, axis_orders["sheets"]
             )
 
-        if release_id is not None:
-            query = filter_by_release(
-                query,
-                start_col=ModuleVersion.start_release_id,
-                end_col=ModuleVersion.end_release_id,
-                release_id=release_id,
-            )
+        query = cls._filter_module_versions(query, scope, release_id)
 
         data = read_sql_with_connection(query.statement, session)
 
@@ -2070,17 +2244,11 @@ class ViewDatapointsQuery:
                     query = query.filter(clause)
 
         if release_id:
-            query = filter_by_release(
-                query,
-                start_col=ModuleVersion.start_release_id,
-                end_col=ModuleVersion.end_release_id,
-                release_id=release_id,
+            scope = cls._resolve_table_version_scope(
+                session, table, release_id
             )
-            query = query.filter(
-                TableVersion.table_vid.in_(
-                    cls._resolve_current_table_vids(session, table, release_id)
-                )
-            )
+            query = cls._filter_module_versions(query, scope, release_id)
+            query = query.filter(TableVersion.table_vid.in_(scope.table_vids))
 
         return read_sql_with_connection(query.statement, session)
 
