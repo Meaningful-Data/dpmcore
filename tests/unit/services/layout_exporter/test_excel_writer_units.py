@@ -1497,6 +1497,53 @@ def test_index_counts_the_cells_without_a_variable():
     assert index.cell(row=5, column=4).value == 0
 
 
+def test_index_counts_a_key_column_without_its_variable():
+    """A key cell has no cell entry, so the count reads its header."""
+    layout = _open_row_key_layout()
+    layout.columns[0].key_variable_vid = None
+    layout.columns[0].key_variable_id = None
+
+    wb = ExcelLayoutWriter([layout], ExportConfig()).write()
+
+    index = wb["Index"]
+    assert index.cell(row=3, column=4).value == "Cells without a variable"
+    assert index.cell(row=4, column=4).value == 1
+
+
+def test_index_counts_the_cells_of_each_sheet_separately():
+    """Sheets of a Z-split table share a layout but not their count."""
+    layout = _empty_layout(
+        rows=[_h(1, direction="y", code="0010", label="Row")],
+        columns=[_h(10, direction="x", code="0010", label="Col")],
+        sheets=[
+            _h(20, direction="z", code="S1", label="Sheet 1"),
+            _h(21, direction="z", code="S2", label="Sheet 2"),
+        ],
+        cells={
+            (1, 10, 20): CellData(
+                row_header_id=1,
+                col_header_id=10,
+                sheet_header_id=20,
+                variable_vid=None,
+            ),
+            (1, 10, 21): CellData(
+                row_header_id=1,
+                col_header_id=10,
+                sheet_header_id=21,
+                variable_vid=700,
+            ),
+        },
+    )
+    wb = ExcelLayoutWriter([layout], ExportConfig()).write()
+
+    index = wb["Index"]
+    assert index.cell(row=3, column=5).value == "Cells without a variable"
+    assert index.cell(row=4, column=4).value == "Sheet 1"
+    assert index.cell(row=4, column=5).value == 1
+    assert index.cell(row=5, column=4).value == "Sheet 2"
+    assert index.cell(row=5, column=5).value == 0
+
+
 def test_index_omits_the_count_for_a_complete_dictionary():
     layout = _empty_layout(
         rows=[_h(1, direction="y", code="0010", label="Row")],

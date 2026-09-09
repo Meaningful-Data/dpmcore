@@ -216,10 +216,13 @@ def derive_missing_cell_data(
 
     A table under construction has cells before it has variables. The
     datapoint each cell is meant to hold is still known: its property
-    is the one on the header bounding it (column first, then row, then
-    sheet), and its dimensions are those headers' categorisations plus
-    the table's own. Both are written on the cell, which is flagged
+    and dimensions are those of the headers bounding it plus the
+    table's own. Both are written on the cell, which is flagged
     ``is_derived`` so the workbook can show it as pending.
+
+    An axis narrows the ones outside it, so where the same property or
+    dimension is set more than once the innermost assignment wins:
+    column over row, row over sheet, sheet over the table.
 
     Excluded and void cells are left alone: nothing is reportable
     there, and they already render as such.
@@ -234,18 +237,20 @@ def derive_missing_cell_data(
         if cd.variable_vid or cd.is_excluded or cd.is_void:
             continue
 
+        # Least specific first, so that the merge below keeps the
+        # innermost member of a dimension set on several axes.
         bounding = [
             by_id[header_id]
             for header_id in (
-                cd.col_header_id,
-                cd.row_header_id,
                 cd.sheet_header_id,
+                cd.row_header_id,
+                cd.col_header_id,
             )
             if header_id is not None and header_id in by_id
         ]
 
         property_id = next(
-            (h.property_id for h in bounding if h.property_id),
+            (h.property_id for h in reversed(bounding) if h.property_id),
             None,
         )
         if property_id is not None and property_id in property_info:

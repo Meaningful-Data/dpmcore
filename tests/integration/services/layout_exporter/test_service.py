@@ -928,16 +928,31 @@ def _clear_variables(memory_session):
 def test_build_layout_derives_cells_that_have_no_variable(memory_session):
     """A cell without a variable still knows its property and dimensions."""
     _build_enumerated_table(memory_session)
-    # The column header names the metric, the row header the dimension:
+    # The column header names the metric, the row header a dimension:
     # between them they describe the datapoint the cell will hold.
     memory_session.query(HeaderVersion).filter(
         HeaderVersion.header_vid == 11,
     ).update({"property_id": 200})
+    make_property(
+        memory_session,
+        property_id=210,
+        name="Portfolio",
+        dim_code="qPO",
+        domain_category_id=30,
+    )
+    make_member(
+        memory_session,
+        item_id=203,
+        name="Trading book",
+        domain_category_id=30,
+        code="m3",
+        signature="eba_DOM:m3",
+    )
     add_context_composition(
         memory_session,
         context_id=50,
-        property_id=200,
-        item_id=201,
+        property_id=210,
+        item_id=203,
     )
     memory_session.query(HeaderVersion).filter(
         HeaderVersion.header_vid == 12,
@@ -953,8 +968,11 @@ def test_build_layout_derives_cells_that_have_no_variable(memory_session):
     # to be enumerated over its hierarchy.
     assert cd.data_type_code == "e"
     assert cd.domain_label == "Type of code"
+    # The row's dimension and, as the Main Property, the metric the
+    # column names.
     assert [dm.member_label for dm in cd.dp_categorisations] == [
-        "LEI code type",
+        "Trading book",
+        "Type of code",
     ]
     assert cd.enumeration is not None
     assert [v.signature for v in cd.enumeration.values] == [

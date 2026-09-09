@@ -115,6 +115,7 @@ class _IndexEntry(NamedTuple):
     title: str
     layout: TableLayout
     sheet_label: str
+    pending: int
 
 
 class ExcelLayoutWriter:
@@ -160,6 +161,7 @@ class ExcelLayoutWriter:
                         title=title,
                         layout=layout,
                         sheet_label=sheet.label if sheet else "",
+                        pending=_count_pending_cells(layout, sheet_id),
                     ),
                 )
 
@@ -183,10 +185,7 @@ class ExcelLayoutWriter:
         has_sheets = any(e.sheet_label for e in entries)
         # So is a "Pending" one: it counts the cells still waiting for
         # a variable, which is zero for a finished dictionary.
-        pending = {
-            id(e.layout): _count_pending_cells(e.layout) for e in entries
-        }
-        has_pending = any(pending.values())
+        has_pending = any(e.pending for e in entries)
 
         # Column headers
         headers = ["#", "Table Code", "Table Name"]
@@ -230,7 +229,7 @@ class ExcelLayoutWriter:
                 sheet_cell.border = _BORDER_ALL
 
             if has_pending:
-                count = pending[id(entry.layout)]
+                count = entry.pending
                 pending_cell = ws.cell(
                     row=row,
                     column=5 if has_sheets else 4,
@@ -246,6 +245,8 @@ class ExcelLayoutWriter:
         ws.column_dimensions["C"].width = 80
         if has_sheets:
             ws.column_dimensions["D"].width = 50
+        if has_pending:
+            ws.column_dimensions["E" if has_sheets else "D"].width = 26
 
     def _write_table(  # noqa: C901
         self,
@@ -1068,13 +1069,39 @@ def _build_identity_index(layouts: list[TableLayout]) -> dict[int, list[str]]:
     return {vvid: locs for vvid, locs in locations.items() if len(locs) > 1}
 
 
-def _count_pending_cells(layout: TableLayout) -> int:
-    """Reportable cells of a table that have no variable yet."""
-    return sum(
+def _count_pending_cells(
+    layout: TableLayout,
+    sheet_id: Optional[int],
+) -> int:
+    """Reportable cells of one worksheet that have no variable yet.
+
+    A Z-axis-split table is written one worksheet per sheet, each
+    rendering only the cells keyed with its own ``sheet_id``, so the
+    count is taken over those alone — counting the whole layout would
+    repeat the table's total on every one of its rows in the index.
+
+    An open table draws one key cell per key column on every one of
+    its worksheets, from the header rather than from a cell, and those
+    count as well.
+    """
+    pending = sum(
         1
-        for cd in layout.cells.values()
-        if not cd.variable_vid and not cd.is_excluded and not cd.is_void
+        for (_row_id, _col_id, cell_sheet_id), cd in layout.cells.items()
+        if cell_sheet_id == sheet_id
+        and not cd.variable_vid
+        and not cd.is_excluded
+        and not cd.is_void
     )
+    # The key cells of an open table are rendered from their header
+    # and have no ``cells`` entry of their own, so they have to be
+    # counted here too — the worksheet already flags them as pending.
+    if not layout.rows:
+        pending += sum(
+            1
+            for ch in layout.columns
+            if ch.is_key and not ch.is_abstract and not ch.key_variable_vid
+        )
+    return pending
 
 
 def _cell_content(cell_data: CellData) -> str:

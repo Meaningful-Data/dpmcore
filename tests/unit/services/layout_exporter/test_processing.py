@@ -588,6 +588,36 @@ def test_derive_missing_cell_data_prefers_the_most_specific_member():
     assert cells[(1, 2, None)].dp_categorisations == [narrow]
 
 
+def test_derive_missing_cell_data_lets_the_inner_axis_win():
+    """A dimension set on the Z axis and again on the column."""
+    broad = DimensionMember(
+        property_id=1,
+        dimension_label="Currency",
+        dimension_code="CU",
+        domain_code="DOM",
+        member_label="All currencies",
+        member_code="all",
+    )
+    narrow = DimensionMember(
+        property_id=1,
+        dimension_label="Currency",
+        dimension_code="CU",
+        domain_code="DOM",
+        member_label="Euro",
+        member_code="eur",
+    )
+    cells = {(1, 2, 3): _pending_cell(sheet_header_id=3)}
+    headers = [
+        _enum_header(2, categorisations=[narrow]),
+        _enum_header(1, direction="y"),
+        _enum_header(3, direction="z", categorisations=[broad]),
+    ]
+
+    derive_missing_cell_data(cells, headers, {})
+
+    assert cells[(1, 2, 3)].dp_categorisations == [narrow]
+
+
 def test_derive_missing_cell_data_skips_cells_that_have_a_variable():
     cells = {
         (1, 2, None): CellData(
