@@ -104,7 +104,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.ruff]
 line-length = 79
-exclude = ["src/dpmcore/dpm_xl/grammar/generated"]
+exclude = ["src/dpmcore/dpm_xl/grammar/generated", "*.md"]
 lint.select = [
     "ASYNC",
     "B",
