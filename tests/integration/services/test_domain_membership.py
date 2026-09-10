@@ -6,7 +6,9 @@ not hand-built. At release ``4.2.1``:
 * ``{tC_14.00, c0060}`` takes items from ``qPO``, ``c0061`` from ``qST`` and
   ``c0160`` from ``qTU`` -- so ``eba_PL:x72`` (``PL``), ``eba_RT:x14``
   (``RT``) and ``eba_UE:x23`` (``UE``) are all impossible there, which is what
-  the shipped ``v7368_m`` and ``v7364_m`` do.
+  the shipped ``v7368_m`` and ``v7364_m`` do. ``qPO`` and ``qTU`` are
+  super-categories, so their value set is their own items plus those of the
+  categories composing them (#359).
 * ``{tF_00.01, r0010, c0010}`` takes items from ``qAS`` while the pre-refit
   ``eba_AS:x2`` is still in ``AS`` -- the domain rename that five more shipped
   operations were never updated for.
@@ -60,13 +62,15 @@ class TestShippedOperations:
         assert len(warnings) == 2
         dead_member = next(w for w in warnings if "eba_PL:x72" in w)
         assert "domain PL" in dead_member
-        assert "domain qPO" in dead_member
+        # qPO is a super-category: qOR and qPL are in its value set,
+        # PL is not.
+        assert "domain qOR, qPL, qPO" in dead_member
         assert "this member of the set never matches" in dead_member
         always_true = next(w for w in warnings if "eba_RT:x14" in w)
         assert "domain qST" in always_true
         assert "the comparison is always true" in always_true
 
-    def test_v7364_m_reports_both_members_of_an_unmatchable_set(
+    def test_v7364_m_reports_only_the_member_outside_the_value_set(
         self, semantic
     ):
         expression = (
@@ -79,12 +83,12 @@ class TestShippedOperations:
 
         warnings = _domain_warnings(semantic, expression)
 
-        # c0040 is qST, so the three qST members are silent; c0160 is qTU, so
-        # both of its members are impossible.
-        assert len(warnings) == 2
-        assert all("domain qTU" in w for w in warnings)
-        assert any("eba_qFI:qx2370" in w for w in warnings)
-        assert any("eba_UE:x23" in w for w in warnings)
+        # c0040 is qST, so the three qST members are silent. c0160 is the
+        # super-category qTU, which composes qFI among others, so only
+        # ``eba_UE:x23`` is impossible there (#359).
+        (warning,) = warnings
+        assert "eba_UE:x23" in warning
+        assert "domain qAI, qFI, qSR, qTA, qTU" in warning
 
     def test_the_pre_refit_accounting_standard_rename_is_reported(
         self, semantic
@@ -101,6 +105,59 @@ class TestShippedOperations:
         expression = "{tF_00.01, r0010, c0010} = [eba_qAS:qx2000]"
 
         assert _domain_warnings(semantic, expression) == []
+
+
+class TestSuperCategories:
+    """A super-category's value set is its own items plus its members'.
+
+    ``{tC_14.00, c0160}`` is typed on ``qTU``, which composes ``qAI``,
+    ``qFI``, ``qSR`` and ``qTA`` and holds a single item of its own. The
+    18 items the column actually offers come almost entirely from the
+    members, so judging them against ``qTU`` alone condemned all of them.
+    """
+
+    def test_the_reported_expression_is_silent(self, semantic):
+        """The expression the issue was raised with (#359)."""
+        expression = (
+            "with {tC_14.00}: if {c0446} and {c0160} in "
+            "{[eba_qFI:qx2366], [eba_qFI:qx2369], [eba_qFI:qx2370], "
+            "[eba_qFI:qx2372], [eba_qFI:qx2374]} then "
+            "{c0223, default: 0} / 0.08 <= 0.75 endif"
+        )
+
+        assert _domain_warnings(semantic, expression) == []
+
+    @pytest.mark.parametrize(
+        "signature",
+        [
+            "eba_qAI:qx2006",
+            "eba_qFI:qx2366",
+            "eba_qSR:qx2018",
+            "eba_qTA:qx2042",
+        ],
+    )
+    def test_an_item_of_each_composing_category_is_silent(
+        self, semantic, signature
+    ):
+        expression = f"{{tC_14.00, c0160}} = [{signature}]"
+
+        assert _domain_warnings(semantic, expression) == []
+
+    def test_the_super_categorys_own_item_is_silent(self, semantic):
+        expression = "{tC_14.00, c0160} = [eba_qTU:qx0]"
+
+        assert _domain_warnings(semantic, expression) == []
+
+    def test_an_item_outside_every_composing_category_still_warns(
+        self, semantic
+    ):
+        expression = "{tC_14.00, c0160} = [eba_qCQ:qx2060]"
+
+        (warning,) = _domain_warnings(semantic, expression)
+
+        assert "domain qCQ" in warning
+        assert "domain qAI, qFI, qSR, qTA, qTU" in warning
+        assert "the comparison is never true" in warning
 
 
 class TestComponentKinds:

@@ -1,7 +1,8 @@
 """Domain-membership check for comparisons against item literals.
 
-An enumerated component takes its values from exactly one *domain* (a
-``Category``). Comparing it with an item that belongs to a different domain is
+An enumerated component takes its values from one *domain* (a ``Category``)
+-- or, when that category is a super-category, from the domains composing it.
+Comparing it with an item that belongs to a different domain is
 accepted by every other check -- the item exists (1-1) and ``Item`` is
 type-compatible with ``Item`` -- yet the comparison can never hold: ``=`` and
 ``in`` are always false, ``!=`` is always true, and a ``sub`` clause on an
@@ -14,12 +15,17 @@ legacy signatures behind in expressions that still validate clean), and those
 must keep validating.
 
 Domain resolution is the same for every component kind -- the component's
-property, then the category that property is typed on at the script's release.
-``Category.IsEnumerated`` is the gate: a property in a non-enumerated category
-(dates, identifiers, free text, "not applicable") describes no value set, so
-nothing is claimed about it. The dictionary offers nothing finer: the
-subcategory link on variable versions is unpopulated, so the check is domain
-membership and nothing more.
+property, then the category that property is typed on at the script's release,
+plus the categories composing that one when it is a *super-category*: EBA's
+``qTU`` ("qAI, qFI, qSR & qTA") holds a single item of its own and draws the
+rest of its value set from those four, which ``ItemCategory`` files under the
+member domains (#359). ``Category.IsEnumerated`` is the gate: a property in a
+non-enumerated category (dates, identifiers, free text, "not applicable")
+describes no value set, so nothing is claimed about it. The dictionary offers
+nothing finer: the subcategory link on variable versions is unpopulated, so
+the check is domain membership and nothing more -- a super-category component
+accepts every item of every member domain, not only the ones the column's
+subcategory actually lists.
 
 The pass runs after semantic analysis has succeeded, so a genuine type error
 is reported on its own rather than alongside this warning.

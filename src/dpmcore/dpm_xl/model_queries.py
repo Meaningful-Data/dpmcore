@@ -34,6 +34,7 @@ from dpmcore.orm.glossary import (
     ItemCategory,
     Property,
     PropertyCategory,
+    SupercategoryComposition,
 )
 from dpmcore.orm.infrastructure import (
     DataType,
@@ -254,6 +255,66 @@ def _enumerated_domains(
     return domains
 
 
+def _supercategory_members(
+    session: "Session",
+    codes: Collection[str],
+    release_id: int | None,
+) -> dict[str, set[str]]:
+    """Map super-category codes to the codes of the categories in them.
+
+    A super-category (``SuperCategoryComposition``) is a domain whose
+    value set is the union of the value sets of the categories composing
+    it: EBA's ``qTU`` ("qAI, qFI, qSR & qTA") holds one item of its own
+    and draws the rest from those four. ``ItemCategory`` records the item
+    only under the category that owns it, so a component typed on the
+    super-category has to be judged against the members as well.
+
+    Args:
+        session: SQLAlchemy session.
+        codes: Category codes to expand; non-super-categories yield no
+            entry.
+        release_id: Release the composition is resolved at.
+
+    Returns:
+        ``{supercategory_code: {member_code, ...}}``, omitting codes that
+        compose nothing at ``release_id``.
+    """
+    if not codes:
+        return {}
+    supercategory = aliased(Category)
+    member = aliased(Category)
+    query = (
+        session.query(
+            supercategory.code.label("SupercategoryCode"),
+            member.code.label("MemberCode"),
+        )
+        .select_from(SupercategoryComposition)
+        .join(
+            supercategory,
+            supercategory.category_id
+            == SupercategoryComposition.supercategory_id,
+        )
+        .join(
+            member,
+            member.category_id == SupercategoryComposition.category_id,
+        )
+        .filter(supercategory.code.in_(list(codes)))
+        .filter(member.is_enumerated == True)  # noqa: E712
+        .filter(member.code.isnot(None))
+    )
+    query = filter_by_release(
+        query,
+        start_col=SupercategoryComposition.start_release_id,
+        end_col=SupercategoryComposition.end_release_id,
+        release_id=release_id,
+        active_only_fallback=True,
+    )
+    members: dict[str, set[str]] = {}
+    for row in query.distinct().all():
+        members.setdefault(row.SupercategoryCode, set()).add(row.MemberCode)
+    return members
+
+
 # ------------------------------------------------------------------ #
 # ItemCategory queries
 # ------------------------------------------------------------------ #
@@ -426,6 +487,12 @@ class PropertyCategoryQuery:
         resolves to no domain at all. Like ``ItemCategory``, the link is
         release-versioned, hence the set-valued result.
 
+        A category that is a *super-category* is returned together with the
+        categories composing it: the component takes items from any of them,
+        while ``ItemCategory`` files each item under the one category that
+        owns it. The dictionary nests super-categories no deeper than one
+        level, so the members are not expanded again.
+
         Args:
             session: SQLAlchemy session.
             property_ids: Property IDs to resolve.
@@ -444,7 +511,17 @@ class PropertyCategoryQuery:
             property_ids,
             release_id,
         )
-        return {int(key): codes for key, codes in domains.items()}
+        members = _supercategory_members(
+            session,
+            {code for codes in domains.values() for code in codes},
+            release_id,
+        )
+        return {
+            int(key): codes.union(
+                *(members.get(code, set()) for code in codes)
+            )
+            for key, codes in domains.items()
+        }
 
 
 # ------------------------------------------------------------------ #

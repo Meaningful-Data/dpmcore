@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 from dpmcore.dpm_xl.model_queries import (
     ItemCategoryQuery,
     PropertyCategoryQuery,
+    _supercategory_members,
 )
 
 
@@ -21,4 +22,11 @@ def test_no_items_does_not_query():
 def test_no_properties_does_not_query():
     session = MagicMock()
     assert PropertyCategoryQuery.get_property_domains(session, []) == {}
+    session.query.assert_not_called()
+
+
+def test_no_domains_does_not_query_supercategories():
+    """A property with no enumerated domain expands nothing (#359)."""
+    session = MagicMock()
+    assert _supercategory_members(session, set(), None) == {}
     session.query.assert_not_called()

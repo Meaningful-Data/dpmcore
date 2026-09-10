@@ -28,6 +28,7 @@ from dpmcore.orm.glossary import (
     SubCategory,
     SubCategoryItem,
     SubCategoryVersion,
+    SupercategoryComposition,
 )
 from dpmcore.orm.infrastructure import (
     Concept,
@@ -990,6 +991,41 @@ class StructureService:
         rows = chunked_in(base, Item.item_id, property_ids)
         return {r[0]: r[1] for r in rows}
 
+    def _load_supercategory_members(
+        self,
+        category_ids: set[int],
+        *,
+        release_id: Optional[int],
+    ) -> Dict[int, set[int]]:
+        """Return ``{supercategory_id: {member_category_id, ...}}``.
+
+        A super-category is a domain whose value set is the union of the
+        value sets of the categories composing it (EBA's ``qTU``, "qAI,
+        qFI, qSR & qTA", holds one item of its own and draws the rest
+        from those four). ``category_ids`` that compose nothing at
+        *release_id* get no entry. The dictionary nests super-categories
+        no deeper than one level, so members are not expanded again.
+        """
+        if not category_ids:
+            return {}
+
+        from dpmcore.dpm_xl.utils.filters import filter_by_release
+
+        base = filter_by_release(
+            self.session.query(SupercategoryComposition),
+            start_col=SupercategoryComposition.start_release_id,
+            end_col=SupercategoryComposition.end_release_id,
+            release_id=release_id,
+            active_only_fallback=True,
+        )
+        rows = chunked_in(
+            base, SupercategoryComposition.supercategory_id, category_ids
+        )
+        members: Dict[int, set[int]] = defaultdict(set)
+        for row in rows:
+            members[row.supercategory_id].add(row.category_id)
+        return dict(members)
+
     def _load_subcategory_enumerations(
         self,
         subcategory_vids: set[int],
@@ -1005,6 +1041,11 @@ class StructureService:
         ``code``/``signature`` from the :class:`ItemCategory` rows
         valid at *release_id*. Items lacking an ItemCategory entry at
         the release are dropped (they have no code at that release).
+
+        When the parent Category is a *super-category* its items are
+        filed under the categories composing it, not under the
+        super-category itself, so those are searched too — the parent
+        first, then its members in ``category_id`` order.
         """
         if not subcategory_vids:
             return {}
@@ -1046,12 +1087,20 @@ class StructureService:
             items_by_subcat[si.subcategory_vid].append((si, item))
 
         # ItemCategory at release window — gives code/signature per
-        # (item_id, parent_category_id).
+        # (item_id, category_id). A super-category parent contributes
+        # the categories composing it as well, since that is where its
+        # items are actually filed.
         parent_cat_ids = {
             cat.category_id for (_sv, _sc, cat) in subcat_info.values()
         }
+        members_by_parent = self._load_supercategory_members(
+            parent_cat_ids, release_id=release_id
+        )
+        lookup_cat_ids = set(parent_cat_ids)
+        for member_ids in members_by_parent.values():
+            lookup_cat_ids.update(member_ids)
         item_codes: Dict[Tuple[int, int], ItemCategory] = {}
-        if parent_cat_ids:
+        if lookup_cat_ids:
             ic_q = self.session.query(ItemCategory)
             ic_q = filter_by_release(
                 ic_q,
@@ -1061,18 +1110,27 @@ class StructureService:
                 active_only_fallback=True,
             )
             for ic in chunked_in(
-                ic_q, ItemCategory.category_id, parent_cat_ids
+                ic_q, ItemCategory.category_id, lookup_cat_ids
             ):
                 item_codes[(ic.item_id, ic.category_id)] = ic
 
         result: Dict[int, Dict[str, Any]] = {}
         for svid, (_sv, sc, cat) in subcat_info.items():
             items_payload: List[Dict[str, Any]] = []
+            # Parent first, then its members in a fixed order, so an item
+            # filed in more than one of them resolves the same way twice.
+            search_cat_ids = [
+                cat.category_id,
+                *sorted(members_by_parent.get(cat.category_id, set())),
+            ]
             for si, item in items_by_subcat.get(svid, []):
-                ic = item_codes.get((item.item_id, cat.category_id))
+                ic = _first_item_category(
+                    item_codes, item.item_id, search_cat_ids
+                )
                 if ic is None:
                     # Item has no ItemCategory in the parent category
-                    # at this release — skip; no code to surface.
+                    # (nor, for a super-category, in its members) at
+                    # this release — skip; no code to surface.
                     continue
                 items_payload.append(
                     {
@@ -3139,6 +3197,23 @@ def _collect_subcategory_vids_per_variable(
                 out[tvc.variable_vid].add(matched.subcategory_vid)
 
     return out
+
+
+def _first_item_category(
+    item_codes: Dict[Tuple[int, int], ItemCategory],
+    item_id: int,
+    category_ids: List[int],
+) -> Optional[ItemCategory]:
+    """Return the item's ItemCategory row in the first category holding it.
+
+    ``category_ids`` is searched in order, so the caller decides which
+    category names the item when several do.
+    """
+    for category_id in category_ids:
+        found = item_codes.get((item_id, category_id))
+        if found is not None:
+            return found
+    return None
 
 
 def _table_stub_to_dict(
