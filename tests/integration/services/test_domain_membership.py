@@ -8,7 +8,8 @@ not hand-built. At release ``4.2.1``:
   (``RT``) and ``eba_UE:x23`` (``UE``) are all impossible there, which is what
   the shipped ``v7368_m`` and ``v7364_m`` do. ``qPO`` and ``qTU`` are
   super-categories, so their value set is their own items plus those of the
-  categories composing them (#359).
+  categories composing them (#359) -- narrowed back to the 18 items
+  ``c0160``'s header enumerates, where that is what the column offers.
 * ``{tF_00.01, r0010, c0010}`` takes items from ``qAS`` while the pre-refit
   ``eba_AS:x2`` is still in ``AS`` -- the domain rename that five more shipped
   operations were never updated for.
@@ -27,7 +28,9 @@ from dpmcore.services.semantic import SemanticService
 
 RELEASE = "4.2.1"
 
-MARKER = "takes items from domain"
+# Both the domain mismatch and the narrower "the column does not
+# enumerate this item" message open this way.
+MARKER = "belongs to domain"
 
 
 @pytest.fixture
@@ -158,6 +161,64 @@ class TestSuperCategories:
         assert "domain qCQ" in warning
         assert "domain qAI, qFI, qSR, qTA, qTU" in warning
         assert "the comparison is never true" in warning
+
+
+class TestHeaderSubcategories:
+    """The header says which of a super-category's items a column takes.
+
+    Widening ``qTU`` to its members takes the accepted set from 1 item
+    to 927, of which ``{tC_14.00, c0160}`` offers 18: its header names
+    ``SubCategoryVersion`` 20918. Judging against that list instead
+    keeps the widening from swallowing the check whole (#359). Only
+    ``qTU``'s own items stay accepted regardless -- a subcategory does
+    not list the domain's "not applicable / all" default.
+    """
+
+    def test_a_member_item_the_column_does_not_offer_warns(self, semantic):
+        """``qx2001`` is in ``qFI``, but not among the column's 18."""
+        expression = "{tC_14.00, c0160} = [eba_qFI:qx2001]"
+
+        (warning,) = _domain_warnings(semantic, expression)
+
+        assert "[eba_qFI:qx2001] belongs to domain qFI" in warning
+        assert "which composes qTU" in warning
+        assert "the 18 items { tC_14.00, c0160 } enumerates there" in warning
+        assert "the comparison is never true" in warning
+
+    def test_the_shipped_operation_this_catches(self, semantic):
+        """``v8786_m`` is the one 4.2.1 operation the narrowing flags.
+
+        Its set holds ``qx2373``, which ``c0160`` offers, and
+        ``qx2160`` ("Covered bonds"), which it does not -- so that
+        member can never match.
+        """
+        expression = (
+            "with {tC_14.00, default: null, interval: false}: if ( "
+            "({c0160} in { [eba_qFI:qx2160], [eba_qFI:qx2373] } "
+            "and {c0110} != [eba_qRP:qx2020] ) ) then "
+            "( {c0051} = [eba_qST:qx2031] ) endif"
+        )
+
+        warnings = _domain_warnings(semantic, expression)
+
+        (warning,) = [w for w in warnings if "[eba_qFI:qx2160]" in w]
+        assert "which composes qTU" in warning
+        assert "this member of the set never matches" in warning
+        # ``qx2373`` is one of the 18, so it is not reported.
+        assert not any("[eba_qFI:qx2373]" in w for w in warnings)
+
+    def test_a_column_with_no_header_subcategory_keeps_the_domain(
+        self, semantic
+    ):
+        """``{tF_40.01, c0095}`` is on ``qSR``, which composes nothing.
+
+        Nothing to narrow, and the message stays the domain one.
+        """
+        expression = "{tF_40.01, c0095} = [eba_PL:x72]"
+
+        (warning,) = _domain_warnings(semantic, expression)
+
+        assert "takes items from domain qSR" in warning
 
 
 class TestComponentKinds:

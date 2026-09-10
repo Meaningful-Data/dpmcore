@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import date
-from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import create_engine
@@ -39,7 +38,6 @@ from dpmcore.orm.rendering import (
 )
 from dpmcore.orm.variables import Variable, VariableVersion
 from dpmcore.server.app import create_app
-from dpmcore.services.structure import StructureService
 
 # ------------------------------------------------------------------ #
 # Seed model
@@ -69,6 +67,8 @@ from dpmcore.services.structure import StructureService
 # EQUITY_TYPE, where SHARE is filed. SHARE therefore has no
 # ItemCategory row in ASSET_TYPE itself and only resolves once the
 # composition is alive — silent at 3.3, listed from 3.4 (#359).
+# EQUITY_TYPE and SHARE's ItemCategory row are both alive at 3.3, so
+# nothing but the composition window keeps SHARE out there.
 # ------------------------------------------------------------------ #
 
 
@@ -257,7 +257,10 @@ def seeded_engine(engine):
                 is_enumerated=True,
                 is_active=True,
                 is_external_ref_data=False,
-                created_release_id=2,
+                # Alive from 3.3, like SHARE's ItemCategory row below:
+                # the composition window is then the *only* reason SHARE
+                # is absent at 3.3, which is what the test checks.
+                created_release_id=1,
                 owner_id=1,
             ),
         ]
@@ -673,6 +676,37 @@ class TestFactVariableEnumeration:
             "SHARE": "EQUITY_TYPE(SHARE)",
         }
 
+    def test_each_item_names_the_category_filing_it(self, client):
+        """The enumeration's own categoryCode is the parent domain, so a
+        member's signature does not start with it — the item has to say
+        where it is filed (#359).
+        """
+        resp = client.get("/api/v1/structure/table/EBA/F_01.01/3.4")
+        enum = resp.json()["data"]["tables"][0]["factVariables"][0][
+            "enumeration"
+        ]
+
+        assert enum["categoryCode"] == "ASSET_TYPE"
+        assert {i["code"]: i["categoryCode"] for i in enum["items"]} == {
+            "BOND": "ASSET_TYPE",
+            "DEPOSIT": "ASSET_TYPE",
+            "SHARE": "EQUITY_TYPE",
+        }
+        assert {i["code"]: i["categoryId"] for i in enum["items"]} == {
+            "BOND": 60,
+            "DEPOSIT": 60,
+            "SHARE": 61,
+        }
+
+    def test_the_signature_prefix_matches_the_items_own_category(self, client):
+        resp = client.get("/api/v1/structure/table/EBA/F_01.01/3.4")
+        items = resp.json()["data"]["tables"][0]["factVariables"][0][
+            "enumeration"
+        ]["items"]
+
+        for item in items:
+            assert item["signature"].startswith(f"{item['categoryCode']}(")
+
     def test_release_wildcard_uses_per_version_window(self, client):
         """Each TableVersion in the response carries the enumeration
         active at its own start_release (not a single shared window).
@@ -749,14 +783,3 @@ class TestEmptyDatabase:
     def test_empty_returns_204(self, empty_client):
         resp = empty_client.get("/api/v1/structure/table/EBA/F_01.01/3.4")
         assert resp.status_code == 204
-
-
-class TestSuperCategoryExpansion:
-    def test_no_categories_does_not_query(self):
-        """Nothing to expand must not cost a query (#359)."""
-        service = StructureService(MagicMock())
-
-        members = service._load_supercategory_members(set(), release_id=None)
-
-        assert members == {}
-        service.session.query.assert_not_called()

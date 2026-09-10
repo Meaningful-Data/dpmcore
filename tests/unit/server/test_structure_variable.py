@@ -474,17 +474,17 @@ class TestQueryBudget:
         body = resp.json()
         # All three variables match at 4.0.
         assert len(body["data"]["variables"]) == 3
-        # Budget breakdown:
-        #   4 release-resolution queries (filter_by_release internals);
+        # Budget breakdown (13 as of #359):
+        #   3 release-resolution queries (filter_by_release internals);
         #   1 variable main, 1 property names, 1 key signatures,
         #   4 subcategory enumeration sub-queries
         #     (SCV+SC+Cat / SCI+Item / SuperCategoryComposition /
         #      ItemCategory),
         #   1 owner lookup.
         # The super-category lookup is one query plus its release
-        # window, fixed however many subcategories are resolved (#359).
-        # ≤16 leaves headroom for incidental changes.
-        assert counter.count <= 16, (
+        # window, fixed however many subcategories are resolved.
+        # ≤15 leaves headroom for incidental changes.
+        assert counter.count <= 15, (
             f"variable path issued {counter.count} queries — "
             f"likely an N+1 regression."
         )

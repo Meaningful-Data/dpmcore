@@ -9,6 +9,7 @@ legacy ``session.query()`` API for compatibility.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -22,7 +23,10 @@ import pandas as pd
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import aliased
 
-from dpmcore.dpm_xl.utils.filters import filter_by_release
+from dpmcore.dpm_xl.utils.filters import (
+    filter_by_release,
+    release_window_conditions,
+)
 from dpmcore.dpm_xl.utils.range_resolution import (
     build_axis_order_map,
     build_axis_value_map,
@@ -34,6 +38,7 @@ from dpmcore.orm.glossary import (
     ItemCategory,
     Property,
     PropertyCategory,
+    SubCategoryItem,
     SupercategoryComposition,
 )
 from dpmcore.orm.infrastructure import (
@@ -69,6 +74,7 @@ from dpmcore.orm.rendering import (
     TableVersionCell,
     TableVersionHeader,
 )
+from dpmcore.orm.supercategories import load_supercategory_member_codes
 from dpmcore.orm.variables import (
     KeyComposition,
     Variable,
@@ -206,13 +212,40 @@ def _filter_elements(
 # ------------------------------------------------------------------ #
 
 
+@dataclass(frozen=True)
+class PropertyDomains:
+    """The categories a component built on a property takes items from.
+
+    ``own`` is the category the property is typed on (a set, because the
+    link is release-versioned). ``members`` is what a *super-category*
+    among them adds: the categories composing it, which is where
+    ``ItemCategory`` actually files most of its value set.
+
+    The two are kept apart rather than unioned because they carry
+    different confidence. An item in ``own`` is unconditionally a value
+    the component can take; an item in ``members`` is only known to be in
+    the super-category's *overall* value set, and a header subcategory
+    may narrow which of them a given column actually offers.
+    """
+
+    own: frozenset[str]
+    members: frozenset[str]
+
+    @property
+    def codes(self) -> frozenset[str]:
+        """Every category the component may take items from."""
+        return self.own | self.members
+
+
 def _enumerated_domains(
     session: "Session",
     model: Any,
     key_col: Any,
     keys: Sequence[Any],
     release_id: int | None,
-) -> dict[Any, set[str]]:
+    *,
+    with_members: bool = False,
+) -> tuple[dict[Any, set[str]], dict[Any, set[str]]]:
     """Map the keys of a category link table to enumerated category codes.
 
     ``ItemCategory`` and ``PropertyCategory`` are the same shape: a
@@ -227,92 +260,99 @@ def _enumerated_domains(
         key_col: Column of *model* the result is keyed on.
         keys: Values of *key_col* to resolve.
         release_id: Release the link is resolved at.
+        with_members: Also resolve, in the same statement, the categories
+            composing each linked category when it is a *super-category*.
+            An outer join, so a key whose category composes nothing is
+            still returned; the window on the composition lives in the
+            ``ON`` clause, where it cannot narrow that outer join back to
+            an inner one.
 
     Returns:
-        ``{key: {category_code, ...}}``, omitting keys with no enumerated
-        category open at ``release_id``.
+        ``({key: {category_code, ...}}, {key: {member_code, ...}})``,
+        each omitting keys with nothing to report. The second mapping is
+        always empty unless *with_members*, and covers one level of
+        composition -- :func:`load_supercategory_member_codes` completes
+        the closure for the rare nested case.
     """
+    # Both windows come from one release load: the link's own, and --
+    # when members are wanted -- the composition's, which has to sit in
+    # the join's ON clause so the outer join stays outer.
+    windows = [(model.start_release_id, model.end_release_id)]
+    if with_members:
+        windows.append(
+            (
+                SupercategoryComposition.start_release_id,
+                SupercategoryComposition.end_release_id,
+            )
+        )
+    conditions = release_window_conditions(session, windows, release_id)
+
     query = (
         session.query(
             key_col.label("DomainKey"),
             Category.code.label("CategoryCode"),
         )
         .join(Category, Category.category_id == model.category_id)
-        .filter(key_col.in_(list(keys)))
         .filter(Category.is_enumerated == True)  # noqa: E712
         .filter(Category.code.isnot(None))
+        .filter(conditions[0])
     )
-    query = filter_by_release(
-        query,
-        start_col=model.start_release_id,
-        end_col=model.end_release_id,
-        release_id=release_id,
-        active_only_fallback=True,
-    )
+    if with_members:
+        query = _add_member_columns(query, conditions[1])
     domains: dict[Any, set[str]] = {}
-    for row in query.distinct().all():
+    members: dict[Any, set[str]] = {}
+    for row in chunked_in(query, key_col, keys):
         domains.setdefault(row.DomainKey, set()).add(row.CategoryCode)
-    return domains
+        if with_members and row.MemberCode is not None:
+            members.setdefault(row.DomainKey, set()).add(row.MemberCode)
+    return domains, members
 
 
-def _supercategory_members(
+def _add_member_columns(
+    query: "Query[Any]",
+    composition_window: Any,
+) -> "Query[Any]":
+    """Outer-join the composing categories of a super-category domain."""
+    member = aliased(Category)
+    return (
+        query.outerjoin(
+            SupercategoryComposition,
+            and_(
+                SupercategoryComposition.supercategory_id
+                == Category.category_id,
+                composition_window,
+            ),
+        )
+        .outerjoin(
+            member,
+            and_(
+                member.category_id == SupercategoryComposition.category_id,
+                member.is_enumerated == True,  # noqa: E712
+                member.code.isnot(None),
+            ),
+        )
+        .add_columns(member.code.label("MemberCode"))
+    )
+
+
+def _nested_members(
     session: "Session",
-    codes: Collection[str],
+    members: dict[Any, set[str]],
     release_id: int | None,
 ) -> dict[str, set[str]]:
-    """Map super-category codes to the codes of the categories in them.
+    """Expand members that are themselves super-categories.
 
-    A super-category (``SuperCategoryComposition``) is a domain whose
-    value set is the union of the value sets of the categories composing
-    it: EBA's ``qTU`` ("qAI, qFI, qSR & qTA") holds one item of its own
-    and draws the rest from those four. ``ItemCategory`` records the item
-    only under the category that owns it, so a component typed on the
-    super-category has to be judged against the members as well.
-
-    Args:
-        session: SQLAlchemy session.
-        codes: Category codes to expand; non-super-categories yield no
-            entry.
-        release_id: Release the composition is resolved at.
-
-    Returns:
-        ``{supercategory_code: {member_code, ...}}``, omitting codes that
-        compose nothing at ``release_id``.
+    The single-statement join in :func:`_enumerated_domains` reaches one
+    level. This completes the closure -- and issues no query at all when
+    nothing composed anything, which is every property typed on an
+    ordinary category.
     """
+    codes = {code for values in members.values() for code in values}
     if not codes:
         return {}
-    supercategory = aliased(Category)
-    member = aliased(Category)
-    query = (
-        session.query(
-            supercategory.code.label("SupercategoryCode"),
-            member.code.label("MemberCode"),
-        )
-        .select_from(SupercategoryComposition)
-        .join(
-            supercategory,
-            supercategory.category_id
-            == SupercategoryComposition.supercategory_id,
-        )
-        .join(
-            member,
-            member.category_id == SupercategoryComposition.category_id,
-        )
-        .filter(supercategory.code.in_(list(codes)))
-        .filter(member.is_enumerated == True)  # noqa: E712
-        .filter(member.code.isnot(None))
+    return load_supercategory_member_codes(
+        session, codes, release_id=release_id
     )
-    query = filter_by_release(
-        query,
-        start_col=SupercategoryComposition.start_release_id,
-        end_col=SupercategoryComposition.end_release_id,
-        release_id=release_id,
-        active_only_fallback=True,
-    )
-    members: dict[str, set[str]] = {}
-    for row in query.distinct().all():
-        members.setdefault(row.SupercategoryCode, set()).add(row.MemberCode)
-    return members
 
 
 # ------------------------------------------------------------------ #
@@ -456,13 +496,14 @@ class ItemCategoryQuery:
         """
         if not items:
             return {}
-        return _enumerated_domains(
+        domains, _members = _enumerated_domains(
             session,
             ItemCategory,
             ItemCategory.signature,
             items,
             release_id,
         )
+        return domains
 
 
 # ------------------------------------------------------------------ #
@@ -478,8 +519,8 @@ class PropertyCategoryQuery:
         session: "Session",
         property_ids: Sequence[int],
         release_id: int | None = None,
-    ) -> dict[int, set[str]]:
-        """Map properties to the code(s) of the categories they are typed on.
+    ) -> dict[int, PropertyDomains]:
+        """Map properties to the categories they are typed on.
 
         A property's category is the domain of every component built on it:
         the items that component may take. Only enumerated categories are
@@ -487,11 +528,17 @@ class PropertyCategoryQuery:
         resolves to no domain at all. Like ``ItemCategory``, the link is
         release-versioned, hence the set-valued result.
 
-        A category that is a *super-category* is returned together with the
-        categories composing it: the component takes items from any of them,
-        while ``ItemCategory`` files each item under the one category that
-        owns it. The dictionary nests super-categories no deeper than one
-        level, so the members are not expanded again.
+        A category that is a *super-category* also contributes the
+        categories composing it: the component takes items from any of
+        them, while ``ItemCategory`` files each item under the one
+        category that owns it. Both halves are reported separately --
+        see :class:`PropertyDomains` -- because a caller that can pin the
+        component's value set down more precisely needs to know which of
+        the two it is looking at.
+
+        The composition is resolved in the same statement as the domain,
+        so a property on an ordinary category costs no extra query; only
+        the rare nested super-category needs a second round trip.
 
         Args:
             session: SQLAlchemy session.
@@ -499,29 +546,162 @@ class PropertyCategoryQuery:
             release_id: Release the link is resolved at.
 
         Returns:
-            ``{property_id: {category_code, ...}}``, omitting properties with
+            ``{property_id: PropertyDomains}``, omitting properties with
             no category open at ``release_id``.
         """
         if not property_ids:
             return {}
-        domains = _enumerated_domains(
+        own, members = _enumerated_domains(
             session,
             PropertyCategory,
             PropertyCategory.property_id,
             property_ids,
             release_id,
+            with_members=True,
         )
-        members = _supercategory_members(
-            session,
-            {code for codes in domains.values() for code in codes},
-            release_id,
-        )
+        nested = _nested_members(session, members, release_id)
         return {
-            int(key): codes.union(
-                *(members.get(code, set()) for code in codes)
+            int(key): PropertyDomains(
+                own=frozenset(codes),
+                members=frozenset(
+                    members.get(key, set()).union(
+                        *(
+                            nested.get(code, set())
+                            for code in members.get(key, set())
+                        )
+                    )
+                    if members.get(key)
+                    else ()
+                ),
             )
-            for key, codes in domains.items()
+            for key, codes in own.items()
         }
+
+
+# ------------------------------------------------------------------ #
+# SubCategory queries
+# ------------------------------------------------------------------ #
+
+
+class SubCategoryQuery:
+    """Query helpers around the header subcategory of a data point.
+
+    A ``Category`` is the widest thing a component may take values from.
+    Where a table header names a ``SubCategoryVersion``, the dictionary
+    says exactly which of those items *that column* offers -- 18 of
+    ``qTU``'s 927, say. Only about 4% of header versions carry one, so
+    this is a refinement, never the primary resolution.
+    """
+
+    @staticmethod
+    def get_cell_subcategory_vids(
+        session: "Session",
+        cells: Sequence[tuple[int, int]],
+        release_id: int | None = None,
+    ) -> dict[tuple[int, int, int], int]:
+        """Map cells to the subcategory their own header pins down.
+
+        Only a header whose ``property_id`` is the one the caller is
+        asking about counts: a cell is bounded by up to three headers,
+        and a subcategory on the row says nothing about the value set of
+        a column's property.
+
+        Args:
+            session: SQLAlchemy session.
+            cells: ``(table_vid, cell_id)`` pairs to resolve.
+            release_id: Release the header version is resolved at.
+
+        Returns:
+            ``{(table_vid, cell_id, property_id): subcategory_vid}``,
+            omitting cells whose headers name no subcategory.
+        """
+        if not cells:
+            return {}
+        query = (
+            session.query(
+                TableVersionCell.table_vid.label("TableVid"),
+                TableVersionCell.cell_id.label("CellId"),
+                HeaderVersion.property_id.label("PropertyId"),
+                HeaderVersion.subcategory_vid.label("SubcategoryVid"),
+            )
+            .join(Cell, Cell.cell_id == TableVersionCell.cell_id)
+            .join(
+                TableVersionHeader,
+                and_(
+                    TableVersionHeader.table_vid == TableVersionCell.table_vid,
+                    or_(
+                        TableVersionHeader.header_id == Cell.column_id,
+                        TableVersionHeader.header_id == Cell.row_id,
+                        TableVersionHeader.header_id == Cell.sheet_id,
+                    ),
+                ),
+            )
+            .join(
+                HeaderVersion,
+                HeaderVersion.header_vid == TableVersionHeader.header_vid,
+            )
+            .filter(HeaderVersion.subcategory_vid.isnot(None))
+            .filter(HeaderVersion.property_id.isnot(None))
+        )
+        table_vids = {table_vid for table_vid, _cell_id in cells}
+        query = query.filter(TableVersionCell.table_vid.in_(table_vids))
+        wanted = set(cells)
+        found: dict[tuple[int, int, int], int] = {}
+        for row in chunked_in(
+            query,
+            TableVersionCell.cell_id,
+            {cell_id for _table_vid, cell_id in cells},
+        ):
+            if (row.TableVid, row.CellId) not in wanted:
+                continue
+            found[(row.TableVid, row.CellId, row.PropertyId)] = (
+                row.SubcategoryVid
+            )
+        return found
+
+    @staticmethod
+    def get_subcategory_signatures(
+        session: "Session",
+        subcategory_vids: Sequence[int],
+        release_id: int | None = None,
+    ) -> dict[int, set[str]]:
+        """Map subcategory versions to the item signatures they list.
+
+        Args:
+            session: SQLAlchemy session.
+            subcategory_vids: SubCategoryVersion IDs to resolve.
+            release_id: Release the item codes are resolved at -- an
+                item with no ``ItemCategory`` row open there has no
+                signature at that release and is left out.
+
+        Returns:
+            ``{subcategory_vid: {signature, ...}}``.
+        """
+        if not subcategory_vids:
+            return {}
+        query = (
+            session.query(
+                SubCategoryItem.subcategory_vid.label("SubcategoryVid"),
+                ItemCategory.signature.label("Signature"),
+            )
+            .join(
+                ItemCategory, ItemCategory.item_id == SubCategoryItem.item_id
+            )
+            .filter(ItemCategory.signature.isnot(None))
+        )
+        query = filter_by_release(
+            query,
+            start_col=ItemCategory.start_release_id,
+            end_col=ItemCategory.end_release_id,
+            release_id=release_id,
+            active_only_fallback=True,
+        )
+        signatures: dict[int, set[str]] = {}
+        for row in chunked_in(
+            query, SubCategoryItem.subcategory_vid, subcategory_vids
+        ):
+            signatures.setdefault(row.SubcategoryVid, set()).add(row.Signature)
+        return signatures
 
 
 # ------------------------------------------------------------------ #
