@@ -196,24 +196,48 @@ def _load_member_codes(
     session: Session,
     item_ids: set[int],
     domain_category_ids: set[int],
-) -> dict[int, str]:
-    """Load MemberCode for member items.
+) -> dict[tuple[int, int], str]:
+    """Load MemberCode for member items, per domain.
 
-    MemberCode = ItemCategory.Code where CategoryID matches the domain.
+    MemberCode = ItemCategory.Code where CategoryID matches the domain
+    the dimension is typed on — or, when that domain is a
+    *super-category*, one of the categories composing it, which is
+    where ``ItemCategory`` actually files the member (#359).
 
-    Returns {item_id: member_code}.
+    Keyed by ``(item_id, domain_category_id)`` rather than by item
+    alone: the export spans many domains at once, and the same item can
+    be filed in two of them, so a per-item key silently hands one
+    domain's code to another domain's member.
+
+    Returns {(item_id, domain_category_id): member_code}.
     """
     if not item_ids or not domain_category_ids:
         return {}
 
     from dpmcore.orm.glossary import ItemCategory
+    from dpmcore.orm.supercategories import (
+        domain_search_order,
+        load_supercategory_members,
+    )
 
-    # Match the domain in Python rather than via a second ``IN (...)`` so
-    # the chunked statement binds only the item-id batch (plus the
-    # release filter) and never approaches SQL Server's 2,100-parameter
-    # cap, however many domains the export spans. ``category_id`` is
-    # already selected, so this is the same predicate moved off SQL.
-    domain = set(domain_category_ids)
+    members_by_domain = load_supercategory_members(
+        session, domain_category_ids, release_id=None
+    )
+    # Which domains a filing category can answer for: itself, plus every
+    # super-category that composes it.
+    domains_by_filing: dict[int, set[int]] = {
+        domain: {domain} for domain in domain_category_ids
+    }
+    for domain, members in members_by_domain.items():
+        for member in members:
+            domains_by_filing.setdefault(member, set()).add(domain)
+
+    # Match the filing category in Python rather than via a second
+    # ``IN (...)`` so the chunked statement binds only the item-id batch
+    # (plus the release filter) and never approaches SQL Server's
+    # 2,100-parameter cap, however many domains the export spans.
+    # ``category_id`` is already selected, so this is the same predicate
+    # moved off SQL.
     base = (
         session.query(
             ItemCategory.item_id,
@@ -221,18 +245,34 @@ def _load_member_codes(
             ItemCategory.category_id,
         )
         .filter(ItemCategory.end_release_id.is_(None))
-        # When an item has several in-domain rows the dict's last write
-        # wins, so order to make that winner deterministic (highest
-        # ``(category_id, code)``). This holds under chunking because
-        # each item_id is queried in exactly one batch (the chunk column
-        # is item_id): all of an item's rows land in that one batch's
-        # ordered result, so the ORDER BY puts the item's highest row
-        # last. Cross-batch order is irrelevant since no item spans
-        # batches.
+        # Two open rows for one item in the same category (successive
+        # start releases) resolve to the lowest code, deterministically.
+        # This holds under chunking because each item_id is queried in
+        # exactly one batch (the chunk column is item_id), so all of an
+        # item's rows land in that one ordered result.
         .order_by(ItemCategory.category_id, ItemCategory.code)
     )
-    rows = chunked_in(base, ItemCategory.item_id, item_ids)
-    return {r[0]: r[1] for r in rows if r[1] and r[2] in domain}
+    filed_by_item: dict[int, dict[int, str]] = {}
+    for item_id, code, category_id in chunked_in(
+        base, ItemCategory.item_id, item_ids
+    ):
+        if code:
+            filed_by_item.setdefault(item_id, {}).setdefault(category_id, code)
+
+    codes: dict[tuple[int, int], str] = {}
+    for item_id, filed in filed_by_item.items():
+        candidates = {
+            domain
+            for category_id in filed
+            for domain in domains_by_filing.get(category_id, ())
+        }
+        for domain in candidates:
+            for category_id in domain_search_order(domain, members_by_domain):
+                code = filed.get(category_id)
+                if code is not None:
+                    codes[(item_id, domain)] = code
+                    break
+    return codes
 
 
 # ------------------------------------------------------------------ #
@@ -323,7 +363,11 @@ def load_categorisations(
             dimension_code=dim_codes.get(row[1], ""),
             domain_code=row[5] or "",
             member_label=row[4] or "",
-            member_code=member_codes.get(row[3], "") if row[3] else "",
+            member_code=(
+                member_codes.get((row[3], row[7]), "")
+                if row[3] and row[7]
+                else ""
+            ),
             data_type_code=row[6] or "",
         )
         result.setdefault(ctx_id, []).append(dm)
@@ -477,7 +521,11 @@ def load_dp_categorisations(
             dimension_code=dim_codes.get(row[1], ""),
             domain_code=row[5] or "",
             member_label=row[3] or "" if not row[4] else row[4],
-            member_code=member_codes.get(row[3], "") if row[3] else "",
+            member_code=(
+                member_codes.get((row[3], row[7]), "")
+                if row[3] and row[7]
+                else ""
+            ),
             data_type_code=row[6] or "",
         )
         result.setdefault(vvid, []).append(dm)
