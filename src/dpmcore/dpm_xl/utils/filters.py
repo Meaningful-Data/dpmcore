@@ -13,7 +13,7 @@ non-versioned working releases — without parsing the code.
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 from sqlalchemy import Date, and_, cast, or_
 
@@ -21,7 +21,7 @@ from dpmcore.orm.release_sort_order import (
     compute_sort_order,
     load_release_sort_orders,
     release_ids_for_sort_order,
-    resolve_sort_order,
+    sort_order_from,
 )
 
 if TYPE_CHECKING:
@@ -184,19 +184,97 @@ def filter_by_release(
     if release_id is None:
         return filter_active_only(query, end_col)
 
-    # Order releases by date. resolve_sort_order already handles
-    # non-chronological types like "Playground". This block only compares
-    # the sort order it returns. An unknown release_id raises.
-    target_sort_order = resolve_sort_order(session, release_id)
+    return query.filter(
+        release_window_condition(
+            session,
+            start_col=start_col,
+            end_col=end_col,
+            release_id=release_id,
+        )
+    )
+
+
+def release_window_condition(
+    session: "Session",
+    start_col: Any,
+    end_col: Any,
+    release_id: Optional[int] = None,
+) -> Any:
+    """Return the release-window predicate as a standalone expression.
+
+    Same rule as :func:`filter_by_release`, handed back as a boolean
+    expression instead of being applied to a query, so it can go into
+    a join's ``ON`` clause — where a ``WHERE`` predicate would silently
+    turn an outer join into an inner one.
+
+    Args:
+        session: Open SQLAlchemy session (needed to load the release
+            dates the ordering is derived from).
+        start_col: Column for start release ID (FK to ``Release``).
+        end_col: Column for end release ID (FK to ``Release``).
+        release_id: Release ID to filter for. ``None`` yields the
+            "currently active" predicate :func:`filter_active_only`
+            applies.
+
+    Returns:
+        SQLAlchemy boolean expression.
+
+    Raises:
+        ValueError: If ``release_id`` does not correspond to a known
+            ``Release`` row.
+    """
+    (condition,) = release_window_conditions(
+        session, [(start_col, end_col)], release_id
+    )
+    return condition
+
+
+def release_window_conditions(
+    session: "Session",
+    windows: Sequence[Tuple[Any, Any]],
+    release_id: Optional[int] = None,
+) -> List[Any]:
+    """One predicate per ``(start_col, end_col)``, from one release load.
+
+    A statement that windows several tables at once — a domain link and
+    the composition of the category it points at, say — would otherwise
+    reload the release ordering for each. The ordering is the same for
+    all of them, so it is loaded once and every predicate is built from
+    it.
+
+    Args:
+        session: Open SQLAlchemy session.
+        windows: The ``(start_col, end_col)`` pairs to build predicates
+            for, in order.
+        release_id: Release ID to filter for; ``None`` yields the
+            "currently active" predicate for each window.
+
+    Returns:
+        One SQLAlchemy boolean expression per entry of *windows*.
+
+    Raises:
+        ValueError: If ``release_id`` does not correspond to a known
+            ``Release`` row.
+    """
     sort_orders = load_release_sort_orders(session)
-    start_ids = release_ids_for_sort_order(sort_orders, le=target_sort_order)
-    end_ids = release_ids_for_sort_order(sort_orders, gt=target_sort_order)
     # A row ending at an "always latest" release (undated or
     # non-chronological) is still open even when queried at that release.
     perpetual_ids = release_ids_for_sort_order(
         sort_orders, ge=compute_sort_order(None, None)
     )
-    return query.filter(
+    if release_id is None:
+        return [
+            or_(end_col.is_(None), end_col.in_(perpetual_ids))
+            for _start_col, end_col in windows
+        ]
+
+    # Order releases by date. compute_sort_order already handles
+    # non-chronological types like "Playground"; this only compares the
+    # order it produced. An unknown release_id raises.
+    target_sort_order = sort_order_from(sort_orders, release_id)
+    start_ids = release_ids_for_sort_order(sort_orders, le=target_sort_order)
+    end_ids = release_ids_for_sort_order(sort_orders, gt=target_sort_order)
+    return [
         and_(
             start_col.in_(start_ids),
             or_(
@@ -205,7 +283,8 @@ def filter_by_release(
                 end_col.in_(perpetual_ids),
             ),
         )
-    )
+        for start_col, end_col in windows
+    ]
 
 
 def filter_active_only(query: Any, end_col: Any) -> Any:

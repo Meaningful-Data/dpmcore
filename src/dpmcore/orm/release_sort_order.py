@@ -96,6 +96,33 @@ def load_release_sort_orders(
     return {rid: compute_sort_order(d, t) for rid, d, t in rows}
 
 
+def sort_order_from(
+    sort_orders: Dict[int, int], release_id: int, *, role: str = "release"
+) -> int:
+    """Return ``release_id``'s sort order from a preloaded mapping.
+
+    The mapping form of :func:`resolve_sort_order`, for callers that
+    have already loaded it and would otherwise pay a second query to
+    resolve one release they know is in there.
+
+    Args:
+        sort_orders: Mapping from :func:`load_release_sort_orders`.
+        release_id: Numeric FK of the release to look up.
+        role: Short label identifying the release's role in the error
+            message, as in :func:`resolve_sort_order`.
+
+    Raises:
+        ValueError: If ``release_id`` is absent from the mapping.
+    """
+    sort_order = sort_orders.get(release_id)
+    if sort_order is None:
+        raise ValueError(
+            f"{role} {release_id} has no sort_order — "
+            "no Release row matches that ID."
+        )
+    return sort_order
+
+
 def resolve_sort_order(
     session: "Session", release_id: int, *, role: str = "release"
 ) -> int:
