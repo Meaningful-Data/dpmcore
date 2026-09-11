@@ -14,6 +14,7 @@ MigrationService``.
 
 from dpmcore.loaders.migration import MigrationService
 from dpmcore.services.ast_generator import ASTGeneratorService
+from dpmcore.services.calculations_graph import CalculationsGraphService
 from dpmcore.services.data_dictionary import DataDictionaryService
 from dpmcore.services.dpm_xl import DpmXlService
 from dpmcore.services.ecb_validations_import import EcbValidationsImportService
@@ -36,6 +37,7 @@ __all__ = [
     "ExplorerService",
     "HierarchyService",
     "DpmXlService",
+    "CalculationsGraphService",
     "MigrationService",
     "StructureService",
     "ExportCsvService",
