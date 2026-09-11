@@ -11,6 +11,7 @@ from typing import Any, Optional
 from dpmcore.services.layout_exporter.models import (
     CellData,
     DimensionMember,
+    Enumeration,
     LayoutHeader,
     TableLayout,
 )
@@ -62,7 +63,10 @@ def build_layout_headers(
             parent_first=bool(tvh.parent_first)
             if tvh.parent_first is not None
             else True,
+            property_id=hv.property_id,
+            context_id=hv.context_id,
             categorisations=cats,
+            subcategory_vid=hv.subcategory_vid,
             subcategory_code=sc_code,
             subcategory_description=sc_desc,
             subcategory_cat_code=sc_cat,
@@ -200,6 +204,144 @@ def build_cells(
         cells[(row_id, col_id, sheet_id)] = cd
 
     return cells
+
+
+def derive_missing_cell_data(
+    cells: dict[tuple[Optional[int], int, Optional[int]], CellData],
+    headers: list[LayoutHeader],
+    property_info: dict[int, tuple[str, str]],
+    table_categorisations: Optional[list[DimensionMember]] = None,
+) -> int:
+    """Fill in cells whose variable has not been generated yet.
+
+    A table under construction has cells before it has variables. The
+    datapoint each cell is meant to hold is still known: its property
+    and dimensions are those of the headers bounding it plus the
+    table's own. Both are written on the cell, which is flagged
+    ``is_derived`` so the workbook can show it as pending.
+
+    An axis narrows the ones outside it, so where the same property or
+    dimension is set more than once the innermost assignment wins:
+    column over row, row over sheet, sheet over the table.
+
+    Excluded and void cells are left alone: nothing is reportable
+    there, and they already render as such.
+
+    Returns the number of cells that were completed.
+    """
+    by_id = {h.header_id: h for h in headers}
+    table_cats = table_categorisations or []
+    derived = 0
+
+    for cd in cells.values():
+        if cd.variable_vid or cd.is_excluded or cd.is_void:
+            continue
+
+        # Least specific first, so that the merge below keeps the
+        # innermost member of a dimension set on several axes.
+        bounding = [
+            by_id[header_id]
+            for header_id in (
+                cd.sheet_header_id,
+                cd.row_header_id,
+                cd.col_header_id,
+            )
+            if header_id is not None and header_id in by_id
+        ]
+
+        property_id = next(
+            (h.property_id for h in reversed(bounding) if h.property_id),
+            None,
+        )
+        if property_id is not None and property_id in property_info:
+            data_type, property_name = property_info[property_id]
+            cd.data_type_code = data_type
+            cd.domain_label = property_name
+
+        cd.dp_categorisations = _merge_categorisations(
+            table_cats,
+            *(h.categorisations for h in bounding),
+        )
+        cd.is_derived = True
+        derived += 1
+
+    return derived
+
+
+def _merge_categorisations(
+    *groups: list[DimensionMember],
+) -> list[DimensionMember]:
+    """Merge dimensional assignments, one per dimension.
+
+    A cell's dimensions are spread over the headers bounding it and
+    the table itself. The later groups are the more specific ones
+    (table, then sheet, row and column), so a dimension assigned twice
+    keeps its last, most specific member.
+    """
+    merged: dict[int, DimensionMember] = {}
+    for group in groups:
+        for dm in group:
+            merged[dm.property_id] = dm
+    return list(merged.values())
+
+
+def resolve_enumeration_sources(
+    cells: dict[tuple[Optional[int], int, Optional[int]], CellData],
+    headers: list[LayoutHeader],
+) -> set[int]:
+    """Point every enumerated cell at the hierarchy that restricts it.
+
+    An enumerated variable carries no value list of its own: the
+    allowed values come from the SubCategoryVersion of the header that
+    bounds the cell — exactly one of its column, row or sheet header
+    carries one, in every reportable cell of the published dictionary.
+    Should a second one ever appear, the innermost wins (column over
+    row, row over sheet), the precedence
+    :func:`derive_missing_cell_data` follows. Key columns of open
+    tables use their own header's hierarchy.
+
+    ``subcategory_vid`` is written on each enumerated cell in place;
+    the returned set is the hierarchies to load.
+    """
+    by_header: dict[int, Optional[int]] = {
+        h.header_id: h.subcategory_vid for h in headers
+    }
+    needed: set[int] = set()
+
+    for cd in cells.values():
+        if cd.data_type_code != "e":
+            continue
+        for header_id in (
+            cd.col_header_id,
+            cd.row_header_id,
+            cd.sheet_header_id,
+        ):
+            svid = by_header.get(header_id) if header_id else None
+            if svid:
+                cd.subcategory_vid = svid
+                needed.add(svid)
+                break
+
+    for h in headers:
+        if h.is_key and h.key_data_type_code == "e" and h.subcategory_vid:
+            needed.add(h.subcategory_vid)
+
+    return needed
+
+
+def attach_enumerations(
+    cells: dict[tuple[Optional[int], int, Optional[int]], CellData],
+    headers: list[LayoutHeader],
+    enumerations: dict[int, Enumeration],
+) -> None:
+    """Attach loaded enumerations to the cells and key columns."""
+    for cd in cells.values():
+        if cd.subcategory_vid:
+            cd.enumeration = enumerations.get(cd.subcategory_vid)
+
+    for h in headers:
+        if h.is_key and h.key_data_type_code == "e" and h.subcategory_vid:
+            h.key_enumeration = enumerations.get(h.subcategory_vid)
 
 
 def build_table_layout(

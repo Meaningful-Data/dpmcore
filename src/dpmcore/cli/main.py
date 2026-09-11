@@ -1032,6 +1032,15 @@ def validate(database: str, as_json: bool) -> None:
 )
 @click.option("--no-annotate", is_flag=True, help="Disable annotations.")
 @click.option("--no-comments", is_flag=True, help="Disable cell comments.")
+@click.option(
+    "--derive-missing-variables/--no-derive-missing-variables",
+    default=True,
+    show_default=True,
+    help=(
+        "For cells whose variable has not been generated yet, derive "
+        "the property and dimensions from the table structure."
+    ),
+)
 def export_layout(
     database: str,
     module_code: str | None,
@@ -1040,6 +1049,7 @@ def export_layout(
     output_path: str | None,
     no_annotate: bool,
     no_comments: bool,
+    derive_missing_variables: bool,
 ) -> None:
     """Export annotated table layouts to Excel."""
     if not module_code and not table_codes:
@@ -1052,6 +1062,7 @@ def export_layout(
         annotate=not no_annotate,
         add_cell_comments=not no_comments,
         add_header_comments=not no_comments,
+        derive_missing_variables=derive_missing_variables,
     )
 
     with connect(database) as db:

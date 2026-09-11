@@ -8,11 +8,15 @@ from pathlib import Path
 import pytest
 from _helpers import (  # noqa: E402  (sys.path injected via conftest)
     add_cell,
+    add_context_composition,
     add_header,
+    add_item_category,
     add_subcategory,
+    add_subcategory_item,
     add_table,
     add_variable_version,
     build_basic_module_with_table,
+    make_member,
     make_module,
     make_property,
     seed_data_types,
@@ -22,6 +26,15 @@ from _helpers import (  # noqa: E402  (sys.path injected via conftest)
 )
 from openpyxl import load_workbook
 
+from dpmcore.orm.glossary import ItemCategory
+from dpmcore.orm.packaging import ModuleVersion, ModuleVersionComposition
+from dpmcore.orm.rendering import (
+    Header,
+    HeaderVersion,
+    TableVersion,
+    TableVersionCell,
+)
+from dpmcore.services.layout_exporter.models import ExportConfig
 from dpmcore.services.layout_exporter.service import (
     LayoutExporterService,
     _fix_xlsx_timestamps,
@@ -578,3 +591,455 @@ def test_fix_xlsx_timestamps_no_op_when_no_marker(tmp_path):
     raw = path.read_bytes()
     _fix_xlsx_timestamps(path)
     assert path.read_bytes() == raw
+
+
+def _build_enumerated_table(memory_session):
+    """One enumerated cell whose column header carries the hierarchy."""
+    seed_releases(memory_session)
+    seed_data_types(memory_session)
+    seed_property_category(memory_session)
+    seed_domain_category(memory_session, 30, "DOM")
+
+    make_module(memory_session, module_id=1, module_vid=10, code="MOD1")
+    add_table(
+        memory_session,
+        table_id=100,
+        table_vid=1000,
+        code="T_ENUM",
+        name="Enumerated Table",
+        module_vid=10,
+    )
+
+    add_subcategory(
+        memory_session,
+        subcategory_id=1,
+        subcategory_vid=11,
+        category_id=30,
+        code="SC1",
+        name="Type of identifier",
+    )
+    make_member(
+        memory_session,
+        item_id=201,
+        name="LEI code type",
+        domain_category_id=30,
+        code="m1",
+        signature="eba_DOM:m1",
+    )
+    make_member(
+        memory_session,
+        item_id=202,
+        name="MFI code",
+        domain_category_id=30,
+        code="m2",
+        signature="eba_DOM:m2",
+    )
+    add_subcategory_item(
+        memory_session, subcategory_vid=11, item_id=201, order=1
+    )
+    add_subcategory_item(
+        memory_session, subcategory_vid=11, item_id=202, order=2
+    )
+
+    make_property(
+        memory_session,
+        property_id=200,
+        name="Type of code",
+        data_type_id=2,  # 'e'
+        dim_code="qCO",
+        domain_category_id=30,
+    )
+    add_variable_version(
+        memory_session,
+        variable_id=400,
+        variable_vid=4000,
+        code="VE",
+        property_id=200,
+    )
+    add_header(
+        memory_session,
+        table_vid=1000,
+        table_id=100,
+        header_id=1,
+        header_vid=11,
+        direction="x",
+        code="010",
+        label="Col",
+        subcategory_vid=11,
+    )
+    add_header(
+        memory_session,
+        table_vid=1000,
+        table_id=100,
+        header_id=2,
+        header_vid=12,
+        direction="y",
+        code="010",
+        label="Row",
+    )
+    add_cell(
+        memory_session,
+        cell_id=1,
+        table_id=100,
+        table_vid=1000,
+        column_id=1,
+        row_id=2,
+        variable_vid=4000,
+    )
+    memory_session.commit()
+
+
+def test_build_layout_attaches_possible_values_to_enumerated_cells(
+    memory_session,
+):
+    _build_enumerated_table(memory_session)
+
+    layout = LayoutExporterService(memory_session).build_layout("T_ENUM")
+
+    cell = layout.cells[(2, 1, None)]
+    assert cell.subcategory_vid == 11
+    assert cell.enumeration is not None
+    assert cell.enumeration.code == "SC1"
+    assert [v.code for v in cell.enumeration.values] == ["m1", "m2"]
+
+
+def test_export_writes_possible_values_as_a_cell_comment(
+    memory_session, tmp_path
+):
+    _build_enumerated_table(memory_session)
+
+    out = LayoutExporterService(memory_session).export_tables(
+        ["T_ENUM"],
+        output_path=str(tmp_path / "enum.xlsx"),
+    )
+
+    ws = load_workbook(out)["T_ENUM"]
+    comments = [
+        c.comment.text
+        for row in ws.iter_rows()
+        for c in row
+        if c.comment and "Possible values" in c.comment.text
+    ]
+    assert len(comments) == 1
+    assert "Possible values - (SC1) Type of identifier [2]:" in comments[0]
+    assert "  (eba_DOM:m1) LEI code type" in comments[0]
+    assert "  (eba_DOM:m2) MFI code" in comments[0]
+
+
+def test_export_reads_codes_in_the_module_version_window(
+    memory_session, tmp_path
+):
+    """A workbook shows the codes in force while its module ran.
+
+    Member m1 is recoded at release 2.0, and module MOD1 has two
+    versions either side of that: each must report its own code.
+    """
+    _build_enumerated_table(memory_session)
+    # Close the seeded module version at 2.0 and add the next one,
+    # composing the same table.
+    memory_session.query(ModuleVersion).filter(
+        ModuleVersion.module_vid == 10,
+    ).update({"end_release_id": 2})
+    memory_session.add(
+        ModuleVersion(
+            module_vid=20,
+            module_id=1,
+            code="MOD1",
+            start_release_id=2,
+        ),
+    )
+    memory_session.add(
+        ModuleVersionComposition(
+            module_vid=20,
+            table_vid=1000,
+            table_id=100,
+            order=1,
+        ),
+    )
+    # m1 is recoded to new1 at release 2.0.
+    memory_session.query(ItemCategory).filter(
+        ItemCategory.item_id == 201,
+    ).update({"end_release_id": 2})
+    add_item_category(
+        memory_session,
+        item_id=201,
+        domain_category_id=30,
+        code="new1",
+        signature="eba_DOM:new1",
+        start_release_id=2,
+    )
+    memory_session.commit()
+
+    svc = LayoutExporterService(memory_session)
+
+    def exported_values(release_code):
+        out = svc.export_module(
+            "MOD1",
+            release_code,
+            output_path=str(tmp_path / f"{release_code}.xlsx"),
+        )
+        ws = load_workbook(out)["T_ENUM"]
+        return next(
+            c.comment.text
+            for row in ws.iter_rows()
+            for c in row
+            if c.comment and "Possible values" in c.comment.text
+        )
+
+    assert "(eba_DOM:m1) LEI code type" in exported_values("1.0")
+    assert "(eba_DOM:new1) LEI code type" in exported_values("2.0")
+
+
+def test_build_layout_reads_codes_in_the_table_version_window(memory_session):
+    """Outside a module, the table version's own window is used."""
+    _build_enumerated_table(memory_session)
+    # The table version ran until 2.0; m1 was recoded at 2.0, which is
+    # after that version was retired, so the old code must stand.
+    memory_session.query(TableVersion).filter(
+        TableVersion.table_vid == 1000,
+    ).update({"end_release_id": 2})
+    memory_session.query(ItemCategory).filter(
+        ItemCategory.item_id == 201,
+    ).update({"end_release_id": 2})
+    add_item_category(
+        memory_session,
+        item_id=201,
+        domain_category_id=30,
+        code="new1",
+        signature="eba_DOM:new1",
+        start_release_id=2,
+    )
+    memory_session.commit()
+
+    layout = LayoutExporterService(memory_session).build_layout(
+        "T_ENUM",
+        "1.0",
+    )
+    values = layout.cells[(2, 1, None)].enumeration.values
+    assert values[0].signature == "eba_DOM:m1"
+
+
+def test_build_layout_populates_key_fields_on_open_sheet_headers(
+    memory_session,
+):
+    """An open-sheet table keys its sheets off the Z header's variable."""
+    seed_releases(memory_session)
+    seed_data_types(memory_session)
+    seed_property_category(memory_session)
+    seed_domain_category(memory_session, 30, "DOM")
+
+    make_module(memory_session, module_id=1, module_vid=10, code="MOD1")
+    add_table(
+        memory_session,
+        table_id=100,
+        table_vid=1000,
+        code="T_OPENZ",
+        name="Open Sheet Table",
+        module_vid=10,
+    )
+    add_subcategory(
+        memory_session,
+        subcategory_id=1,
+        subcategory_vid=11,
+        category_id=30,
+        code="SC1",
+        name="Exposure classes",
+    )
+    make_member(
+        memory_session,
+        item_id=201,
+        name="Central governments",
+        domain_category_id=30,
+        code="m1",
+        signature="eba_DOM:m1",
+    )
+    add_subcategory_item(
+        memory_session, subcategory_vid=11, item_id=201, order=1
+    )
+    make_property(
+        memory_session,
+        property_id=200,
+        name="Exposure class",
+        data_type_id=2,  # 'e'
+        dim_code="qEC",
+        domain_category_id=30,
+    )
+    add_variable_version(
+        memory_session,
+        variable_id=400,
+        variable_vid=4000,
+        code="VZ",
+        property_id=200,
+    )
+    add_header(
+        memory_session,
+        table_vid=1000,
+        table_id=100,
+        header_id=1,
+        header_vid=11,
+        direction="z",
+        code="0010",
+        label="Exposure class",
+        is_key=True,
+        key_variable_vid=4000,
+        subcategory_vid=11,
+    )
+    add_header(
+        memory_session,
+        table_vid=1000,
+        table_id=100,
+        header_id=2,
+        header_vid=12,
+        direction="x",
+        code="0010",
+        label="Col",
+    )
+    add_header(
+        memory_session,
+        table_vid=1000,
+        table_id=100,
+        header_id=3,
+        header_vid=13,
+        direction="y",
+        code="0010",
+        label="Row",
+    )
+    memory_session.commit()
+
+    layout = LayoutExporterService(memory_session).build_layout("T_OPENZ")
+
+    sheet = layout.sheets[0]
+    assert sheet.key_variable_id == 400
+    assert sheet.key_data_type_code == "e"
+    assert sheet.key_property_name == "Exposure class"
+    assert sheet.key_enumeration is not None
+    assert [v.signature for v in sheet.key_enumeration.values] == [
+        "eba_DOM:m1",
+    ]
+
+
+def _clear_variables(memory_session):
+    """Strip every generated variable, as in a table under construction."""
+    memory_session.query(TableVersionCell).update({"variable_vid": None})
+    memory_session.query(HeaderVersion).update({"key_variable_vid": None})
+    memory_session.commit()
+
+
+def test_build_layout_derives_cells_that_have_no_variable(memory_session):
+    """A cell without a variable still knows its property and dimensions."""
+    _build_enumerated_table(memory_session)
+    # The column header names the metric, the row header a dimension:
+    # between them they describe the datapoint the cell will hold.
+    memory_session.query(HeaderVersion).filter(
+        HeaderVersion.header_vid == 11,
+    ).update({"property_id": 200})
+    make_property(
+        memory_session,
+        property_id=210,
+        name="Portfolio",
+        dim_code="qPO",
+        domain_category_id=30,
+    )
+    make_member(
+        memory_session,
+        item_id=203,
+        name="Trading book",
+        domain_category_id=30,
+        code="m3",
+        signature="eba_DOM:m3",
+    )
+    add_context_composition(
+        memory_session,
+        context_id=50,
+        property_id=210,
+        item_id=203,
+    )
+    memory_session.query(HeaderVersion).filter(
+        HeaderVersion.header_vid == 12,
+    ).update({"context_id": 50})
+    _clear_variables(memory_session)
+
+    layout = LayoutExporterService(memory_session).build_layout("T_ENUM")
+
+    cd = layout.cells[(2, 1, None)]
+    assert cd.variable_vid is None
+    assert cd.is_derived is True
+    # The column header names the property, so the cell is still known
+    # to be enumerated over its hierarchy.
+    assert cd.data_type_code == "e"
+    assert cd.domain_label == "Type of code"
+    # The row's dimension and, as the Main Property, the metric the
+    # column names.
+    assert [dm.member_label for dm in cd.dp_categorisations] == [
+        "Trading book",
+        "Type of code",
+    ]
+    assert cd.enumeration is not None
+    assert [v.signature for v in cd.enumeration.values] == [
+        "eba_DOM:m1",
+        "eba_DOM:m2",
+    ]
+
+
+def test_build_layout_leaves_cells_alone_when_derivation_is_off(
+    memory_session,
+):
+    _build_enumerated_table(memory_session)
+    _clear_variables(memory_session)
+
+    layout = LayoutExporterService(memory_session).build_layout(
+        "T_ENUM",
+        config=ExportConfig(derive_missing_variables=False),
+    )
+
+    cd = layout.cells[(2, 1, None)]
+    assert cd.is_derived is False
+    assert cd.data_type_code == ""
+    assert cd.enumeration is None
+
+
+def test_build_layout_derives_key_headers_without_a_key_variable(
+    memory_session,
+):
+    """A key column stays a key, with its property and values."""
+    _build_enumerated_table(memory_session)
+    memory_session.query(Header).filter(Header.header_id == 1).update(
+        {"is_key": True},
+    )
+    memory_session.query(HeaderVersion).filter(
+        HeaderVersion.header_vid == 11,
+    ).update({"property_id": 200})
+    _clear_variables(memory_session)
+
+    layout = LayoutExporterService(memory_session).build_layout("T_ENUM")
+
+    key = layout.columns[0]
+    assert key.is_key is True
+    assert key.key_variable_id is None
+    assert key.key_data_type_code == "e"
+    assert key.key_property_name == "Type of code"
+    assert key.key_enumeration is not None
+    assert key.key_categorisations != []
+
+
+def test_export_marks_cells_without_a_variable(memory_session, tmp_path):
+    _build_enumerated_table(memory_session)
+    _clear_variables(memory_session)
+
+    out = LayoutExporterService(memory_session).export_tables(
+        ["T_ENUM"],
+        output_path=str(tmp_path / "pending.xlsx"),
+    )
+
+    wb = load_workbook(out)
+    cell = next(
+        c
+        for row in wb["T_ENUM"].iter_rows()
+        for c in row
+        if c.comment and "No variable generated" in c.comment.text
+    )
+    assert cell.fill.start_color.rgb == "00FDE9D9"
+    assert wb["Index"].cell(row=3, column=4).value == (
+        "Cells without a variable"
+    )
+    assert wb["Index"].cell(row=4, column=4).value == 1

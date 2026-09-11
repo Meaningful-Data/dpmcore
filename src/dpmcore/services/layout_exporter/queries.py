@@ -9,11 +9,25 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Optional
 
-from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from dpmcore.orm.query_utils import chunked_in
-from dpmcore.services.layout_exporter.models import DimensionMember
+from dpmcore.orm.release_sort_order import (
+    compute_sort_order,
+    load_release_sort_orders,
+)
+from dpmcore.services.layout_exporter.models import (
+    DimensionMember,
+    Enumeration,
+    EnumValue,
+    ReleaseWindow,
+)
+
+# Sort-order bounds for an open-ended release window. ``_LATEST`` is the
+# sentinel an undated (working) release carries, so a window ending at
+# one is as open as a window with no end at all.
+_EARLIEST = -1
+_LATEST = compute_sort_order(None, None)
 
 if TYPE_CHECKING:
     pass
@@ -25,6 +39,13 @@ def load_module_table_versions(
     release_code: Optional[str] = None,
 ) -> list[Any]:
     """Load all TableVersions for a given module version code.
+
+    The tables are the composition of the single module version the
+    export reads, resolved by :func:`load_module_version`. Where more
+    than one version of the code is open at the release — a draft
+    started in a working release alongside the adopted one — the union
+    of their compositions would mix tables that were never reportable
+    together and would render a table composed by both of them twice.
 
     The ``release_code`` filter is a *range* query (any module version
     whose validity window covers the resolved release), consistent
@@ -42,14 +63,12 @@ def load_module_table_versions(
     Returns:
         TableVersion ORM objects ordered by module composition order.
     """
-    from dpmcore.dpm_xl.utils.filters import (
-        filter_by_release,
-        resolve_release_id,
-    )
-    from dpmcore.orm.packaging import ModuleVersion, ModuleVersionComposition
+    from dpmcore.orm.packaging import ModuleVersionComposition
     from dpmcore.orm.rendering import TableVersion
 
-    release_id = resolve_release_id(session, release_code=release_code)
+    module_version = load_module_version(session, module_code, release_code)
+    if module_version is None:
+        return []
 
     q = (
         session.query(TableVersion)
@@ -57,12 +76,46 @@ def load_module_table_versions(
             ModuleVersionComposition,
             ModuleVersionComposition.table_vid == TableVersion.table_vid,
         )
-        .join(
-            ModuleVersion,
-            ModuleVersion.module_vid == ModuleVersionComposition.module_vid,
+        .filter(
+            ModuleVersionComposition.module_vid == module_version.module_vid,
         )
-        .filter(ModuleVersion.code == module_code)
+        .order_by(ModuleVersionComposition.order)
     )
+    return q.all()
+
+
+def load_module_version(
+    session: Session,
+    module_code: str,
+    release_code: Optional[str] = None,
+) -> Optional[Any]:
+    """Load the ModuleVersion the export reads: tables and window.
+
+    Should more than one version of the code be open at the release —
+    a draft started in a working release alongside the adopted one —
+    the latest-starting one wins, so the export shows the module as it
+    is being edited. This is the opposite of
+    ``ModelQueries._resolve_current_table_vids``, which keeps the
+    adopted version on purpose: a DPM-XL scope must not resolve
+    against content that was never released, while this exporter is
+    aimed at the dictionary under construction (it fills in the cells
+    whose variables have not been generated yet). Ties break on
+    ``module_vid`` so the choice stays deterministic.
+
+    Args:
+        session: SQLAlchemy session.
+        module_code: Module version code (e.g. ``"FINREP9"``).
+        release_code: Optional release code.
+    """
+    from dpmcore.dpm_xl.utils.filters import (
+        filter_by_release,
+        resolve_release_id,
+    )
+    from dpmcore.orm.packaging import ModuleVersion
+
+    release_id = resolve_release_id(session, release_code=release_code)
+
+    q = session.query(ModuleVersion).filter(ModuleVersion.code == module_code)
     q = filter_by_release(
         q,
         start_col=ModuleVersion.start_release_id,
@@ -71,8 +124,17 @@ def load_module_table_versions(
         active_only_fallback=True,
     )
 
-    q = q.order_by(ModuleVersionComposition.order)
-    return q.all()
+    versions = q.all()
+    if len(versions) <= 1:
+        return versions[0] if versions else None
+    sort_orders = load_release_sort_orders(session)
+    return max(
+        versions,
+        key=lambda mv: (
+            sort_orders.get(mv.start_release_id, _EARLIEST),
+            mv.module_vid,
+        ),
+    )
 
 
 def load_table_version(
@@ -160,18 +222,85 @@ def load_cells(
 
 
 # ------------------------------------------------------------------ #
-# Code lookups
+# Release-windowed code lookups
 # ------------------------------------------------------------------ #
+
+
+def _pick_in_window(
+    rows: list[tuple[Any, int, Optional[int], Any]],
+    sort_orders: dict[int, int],
+    window: ReleaseWindow,
+) -> dict[Any, Any]:
+    """Choose one version of each versioned row for a release window.
+
+    ``rows`` are ``(key, start_release_id, end_release_id, payload)``
+    tuples — ItemCategory and PropertyCategory rows, which carry a code
+    that can change from one release to the next.
+
+    Of the versions whose start release falls inside the window, the
+    latest one wins: a member recoded halfway through a module
+    version's life is reported under its new code. When no version
+    starts inside the window, the one in force when the window opened
+    is used. Versions that had already ended by then, and versions that
+    only start after the window closes, are ignored.
+
+    Releases are ordered by date, not by ID (see
+    :mod:`dpmcore.orm.release_sort_order`); ties on the "latest"
+    sentinel break by release ID so the choice stays deterministic.
+
+    Returns {key: payload}.
+    """
+    window_start = (
+        sort_orders.get(window.start_release_id, _EARLIEST)
+        if window.start_release_id is not None
+        else _EARLIEST
+    )
+    # Release windows are half-open: a version ending at release R is
+    # already gone at R. ``None`` is an open end — no upper bound at all,
+    # so a version starting at an undated working release still counts.
+    window_end = (
+        sort_orders.get(window.end_release_id)
+        if window.end_release_id is not None
+        else None
+    )
+    # A window ending at an undated (working) release is as open as one
+    # with no end at all: rows introduced *in* that release carry the
+    # same "latest" sentinel as its start, so an upper bound here would
+    # exclude them from the very release the window reaches. This is the
+    # same exception ``filter_by_release`` makes via its perpetual IDs.
+    if window_end == _LATEST:
+        window_end = None
+
+    best: dict[Any, tuple[int, int]] = {}
+    chosen: dict[Any, Any] = {}
+    for key, start_id, end_id, payload in rows:
+        start = sort_orders.get(start_id)
+        if start is None:
+            continue
+        if window_end is not None and start >= window_end:
+            continue
+        if (
+            end_id is not None
+            and sort_orders.get(end_id, _LATEST) <= window_start
+        ):
+            continue
+        rank = (start, start_id)
+        if key in best and best[key] >= rank:
+            continue
+        best[key] = rank
+        chosen[key] = payload
+    return chosen
 
 
 def _load_dimension_codes(
     session: Session,
     property_ids: set[int],
+    window: ReleaseWindow,
 ) -> dict[int, str]:
     """Load DimensionCode for properties.
 
     DimensionCode = ItemCategory.Code where Item IS the Property
-    and Category.Code = '_PR'.
+    and Category.Code = '_PR', read at *window*.
 
     Returns {property_id: dimension_code}.
     """
@@ -181,23 +310,31 @@ def _load_dimension_codes(
     from dpmcore.orm.glossary import Category, ItemCategory
 
     base = (
-        session.query(ItemCategory.item_id, ItemCategory.code)
-        .join(Category, Category.category_id == ItemCategory.category_id)
-        .filter(
-            Category.code == "_PR",
-            ItemCategory.end_release_id.is_(None),
+        session.query(
+            ItemCategory.item_id,
+            ItemCategory.start_release_id,
+            ItemCategory.end_release_id,
+            ItemCategory.code,
         )
+        .join(Category, Category.category_id == ItemCategory.category_id)
+        .filter(Category.code == "_PR")
     )
     rows = chunked_in(base, ItemCategory.item_id, property_ids)
-    return {r[0]: r[1] for r in rows if r[1]}
+    picked = _pick_in_window(
+        [(r[0], r[1], r[2], r[3]) for r in rows],
+        load_release_sort_orders(session),
+        window,
+    )
+    return {item_id: code for item_id, code in picked.items() if code}
 
 
 def _load_member_codes(
     session: Session,
     item_ids: set[int],
     domain_category_ids: set[int],
+    window: ReleaseWindow,
 ) -> dict[tuple[int, int], str]:
-    """Load MemberCode for member items, per domain.
+    """Load MemberCode for member items, per domain, read at *window*.
 
     MemberCode = ItemCategory.Code where CategoryID matches the domain
     the dimension is typed on — or, when that domain is a
@@ -214,7 +351,6 @@ def _load_member_codes(
     if not item_ids or not domain_category_ids:
         return {}
 
-    from dpmcore.orm.glossary import ItemCategory
     from dpmcore.orm.supercategories import (
         domain_search_order,
         load_supercategory_members,
@@ -232,32 +368,12 @@ def _load_member_codes(
         for member in members:
             domains_by_filing.setdefault(member, set()).add(domain)
 
-    # Match the filing category in Python rather than via a second
-    # ``IN (...)`` so the chunked statement binds only the item-id batch
-    # (plus the release filter) and never approaches SQL Server's
-    # 2,100-parameter cap, however many domains the export spans.
-    # ``category_id`` is already selected, so this is the same predicate
-    # moved off SQL.
-    base = (
-        session.query(
-            ItemCategory.item_id,
-            ItemCategory.code,
-            ItemCategory.category_id,
-        )
-        .filter(ItemCategory.end_release_id.is_(None))
-        # Two open rows for one item in the same category (successive
-        # start releases) resolve to the lowest code, deterministically.
-        # This holds under chunking because each item_id is queried in
-        # exactly one batch (the chunk column is item_id), so all of an
-        # item's rows land in that one ordered result.
-        .order_by(ItemCategory.category_id, ItemCategory.code)
+    filed_by_item = _load_filed_codes(
+        session,
+        item_ids,
+        set(domains_by_filing),
+        window,
     )
-    filed_by_item: dict[int, dict[int, str]] = {}
-    for item_id, code, category_id in chunked_in(
-        base, ItemCategory.item_id, item_ids
-    ):
-        if code:
-            filed_by_item.setdefault(item_id, {}).setdefault(category_id, code)
 
     codes: dict[tuple[int, int], str] = {}
     for item_id, filed in filed_by_item.items():
@@ -275,6 +391,83 @@ def _load_member_codes(
     return codes
 
 
+def _load_filed_codes(
+    session: Session,
+    item_ids: set[int],
+    filing_category_ids: set[int],
+    window: ReleaseWindow,
+) -> dict[int, dict[int, str]]:
+    """Read each item's code in every category it is filed in.
+
+    One version of each ``(item, category)`` pair survives — the one in
+    force at *window* — so an item recoded during the exported version's
+    life is reported under the code it carries there.
+
+    Returns {item_id: {category_id: code}}.
+    """
+    from dpmcore.orm.glossary import ItemCategory
+
+    # Match the filing category in Python rather than via a second
+    # ``IN (...)`` so the chunked statement binds only the item-id batch
+    # and never approaches SQL Server's 2,100-parameter cap, however
+    # many domains the export spans. ``category_id`` is already
+    # selected, so this is the same predicate moved off SQL.
+    base = session.query(
+        ItemCategory.item_id,
+        ItemCategory.category_id,
+        ItemCategory.start_release_id,
+        ItemCategory.end_release_id,
+        ItemCategory.code,
+    )
+    rows = [
+        r
+        for r in chunked_in(base, ItemCategory.item_id, item_ids)
+        if r[1] in filing_category_ids
+    ]
+    picked = _pick_in_window(
+        [((r[0], r[1]), r[2], r[3], r[4]) for r in rows],
+        load_release_sort_orders(session),
+        window,
+    )
+    filed: dict[int, dict[int, str]] = {}
+    for (item_id, category_id), code in picked.items():
+        if code:
+            filed.setdefault(item_id, {})[category_id] = code
+    return filed
+
+
+def _load_property_categories(
+    session: Session,
+    property_ids: set[int],
+    window: ReleaseWindow,
+) -> dict[int, tuple[int, str]]:
+    """Load the domain each property belongs to, read at *window*.
+
+    Returns {property_id: (category_id, category_code)}.
+    """
+    if not property_ids:
+        return {}
+
+    from dpmcore.orm.glossary import Category, PropertyCategory
+
+    base = session.query(
+        PropertyCategory.property_id,
+        PropertyCategory.start_release_id,
+        PropertyCategory.end_release_id,
+        PropertyCategory.category_id,
+        Category.code,
+    ).outerjoin(
+        Category,
+        Category.category_id == PropertyCategory.category_id,
+    )
+    rows = chunked_in(base, PropertyCategory.property_id, property_ids)
+    return _pick_in_window(
+        [(r[0], r[1], r[2], (r[3], r[4] or "")) for r in rows],
+        load_release_sort_orders(session),
+        window,
+    )
+
+
 # ------------------------------------------------------------------ #
 # Categorisation loading
 # ------------------------------------------------------------------ #
@@ -283,8 +476,12 @@ def _load_member_codes(
 def load_categorisations(
     session: Session,
     context_ids: set[int],
+    window: ReleaseWindow,
 ) -> dict[int, list[DimensionMember]]:
     """Batch-load dimensional categorisations for a set of context IDs.
+
+    Codes are read at *window* — the release window of the version
+    being exported.
 
     Returns {context_id: [DimensionMember, ...]}.
     """
@@ -294,11 +491,9 @@ def load_categorisations(
     from sqlalchemy.orm import aliased
 
     from dpmcore.orm.glossary import (
-        Category,
         ContextComposition,
         Item,
         Property,
-        PropertyCategory,
     )
     from dpmcore.orm.infrastructure import DataType
 
@@ -312,9 +507,7 @@ def load_categorisations(
             DimItem.name,  # dimension label
             ContextComposition.item_id,  # member item id
             MemberItem.name,  # member label
-            Category.code,  # domain code
             DataType.code,  # data type code
-            PropertyCategory.category_id,  # domain category id
         )
         .join(DimItem, DimItem.item_id == ContextComposition.property_id)
         .outerjoin(
@@ -325,17 +518,6 @@ def load_categorisations(
             Property,
             Property.property_id == ContextComposition.property_id,
         )
-        .outerjoin(
-            PropertyCategory,
-            and_(
-                PropertyCategory.property_id == ContextComposition.property_id,
-                PropertyCategory.end_release_id.is_(None),
-            ),
-        )
-        .outerjoin(
-            Category,
-            Category.category_id == PropertyCategory.category_id,
-        )
         .outerjoin(DataType, DataType.data_type_id == Property.data_type_id)
     )
     rows = chunked_in(base, ContextComposition.context_id, context_ids)
@@ -343,32 +525,41 @@ def load_categorisations(
     # Collect IDs for code lookups
     prop_ids: set[int] = set()
     member_item_ids: set[int] = set()
-    domain_cat_ids: set[int] = set()
     for row in rows:
         prop_ids.add(row[1])
         if row[3]:
             member_item_ids.add(row[3])
-        if row[7]:
-            domain_cat_ids.add(row[7])
 
-    dim_codes = _load_dimension_codes(session, prop_ids)
-    member_codes = _load_member_codes(session, member_item_ids, domain_cat_ids)
+    domains = _load_property_categories(session, prop_ids, window)
+    # ``PropertyCategory.category_id`` is nullable, and so is
+    # ``ItemCategory.category_id``: letting ``None`` into the domain
+    # set would make ``_load_member_codes`` match uncategorised rows
+    # and file their codes under a domain no lookup below can name.
+    domain_cat_ids = {cat_id for cat_id, _code in domains.values() if cat_id}
+    dim_codes = _load_dimension_codes(session, prop_ids, window)
+    member_codes = _load_member_codes(
+        session,
+        member_item_ids,
+        domain_cat_ids,
+        window,
+    )
 
     result: dict[int, list[DimensionMember]] = {}
     for row in rows:
         ctx_id = row[0]
+        cat_id, domain_code = domains.get(row[1], (0, ""))
         dm = DimensionMember(
             property_id=row[1],
             dimension_label=row[2] or "",
             dimension_code=dim_codes.get(row[1], ""),
-            domain_code=row[5] or "",
+            domain_code=domain_code,
             member_label=row[4] or "",
             member_code=(
-                member_codes.get((row[3], row[7]), "")
-                if row[3] and row[7]
+                member_codes.get((row[3], cat_id), "")
+                if row[3] and cat_id
                 else ""
             ),
-            data_type_code=row[6] or "",
+            data_type_code=row[5] or "",
         )
         result.setdefault(ctx_id, []).append(dm)
 
@@ -378,56 +569,48 @@ def load_categorisations(
 def load_property_as_categorisation(
     session: Session,
     property_ids: set[int],
+    window: ReleaseWindow,
 ) -> dict[int, DimensionMember]:
     """Load categorisation info for headers that use property_id directly.
 
     Some headers (typically columns) reference a property_id instead of
     a context_id. The property IS the member (e.g., 'Carrying amount').
+    Codes are read at *window*.
     """
     if not property_ids:
         return {}
 
-    from dpmcore.orm.glossary import Category, Item, Property, PropertyCategory
+    from dpmcore.orm.glossary import Item, Property
     from dpmcore.orm.infrastructure import DataType
 
     base = (
         session.query(
             Item.item_id,
             Item.name,  # member label (e.g., "Carrying amount")
-            Category.code,  # domain code
             DataType.code,  # data type code
         )
         .join(Property, Property.property_id == Item.item_id)
-        .outerjoin(
-            PropertyCategory,
-            and_(
-                PropertyCategory.property_id == Property.property_id,
-                PropertyCategory.end_release_id.is_(None),
-            ),
-        )
-        .outerjoin(
-            Category,
-            Category.category_id == PropertyCategory.category_id,
-        )
         .outerjoin(DataType, DataType.data_type_id == Property.data_type_id)
     )
     rows = chunked_in(base, Item.item_id, property_ids)
 
+    domains = _load_property_categories(session, property_ids, window)
     # Load member codes: for "Main Property", the property itself
     # IS the member, so its code in category '_PR' is the
     # member_code (e.g., qCCB)
-    dim_codes = _load_dimension_codes(session, property_ids)
+    dim_codes = _load_dimension_codes(session, property_ids, window)
 
     result: dict[int, DimensionMember] = {}
     for row in rows:
+        _cat_id, domain_code = domains.get(row[0], (0, ""))
         result[row[0]] = DimensionMember(
             property_id=row[0],
             dimension_label="Main Property",
             dimension_code="ATY",
-            domain_code=row[2] or "",
+            domain_code=domain_code,
             member_label=row[1] or "",
             member_code=dim_codes.get(row[0], ""),
-            data_type_code=row[3] or "",
+            data_type_code=row[2] or "",
         )
 
     return result
@@ -436,8 +619,11 @@ def load_property_as_categorisation(
 def load_dp_categorisations(
     session: Session,
     variable_vids: set[int],
+    window: ReleaseWindow,
 ) -> dict[int, list[DimensionMember]]:
     """Load dimensional categorisations for data point variables.
+
+    Codes are read at *window*.
 
     Returns {variable_vid: [DimensionMember, ...]}.
     """
@@ -447,11 +633,9 @@ def load_dp_categorisations(
     from sqlalchemy.orm import aliased
 
     from dpmcore.orm.glossary import (
-        Category,
         ContextComposition,
         Item,
         Property,
-        PropertyCategory,
     )
     from dpmcore.orm.infrastructure import DataType
     from dpmcore.orm.variables import VariableVersion
@@ -466,9 +650,7 @@ def load_dp_categorisations(
             DimItem.name,  # dimension label
             ContextComposition.item_id,  # member item id
             MemberItem.name,  # member label
-            Category.code,  # domain code
             DataType.code,  # data type code
-            PropertyCategory.category_id,  # domain category id
         )
         .join(
             ContextComposition,
@@ -483,17 +665,6 @@ def load_dp_categorisations(
             Property,
             Property.property_id == ContextComposition.property_id,
         )
-        .outerjoin(
-            PropertyCategory,
-            and_(
-                PropertyCategory.property_id == ContextComposition.property_id,
-                PropertyCategory.end_release_id.is_(None),
-            ),
-        )
-        .outerjoin(
-            Category,
-            Category.category_id == PropertyCategory.category_id,
-        )
         .outerjoin(DataType, DataType.data_type_id == Property.data_type_id)
     )
     rows = chunked_in(base, VariableVersion.variable_vid, variable_vids)
@@ -501,32 +672,41 @@ def load_dp_categorisations(
     # Collect IDs for code lookups
     prop_ids: set[int] = set()
     member_item_ids: set[int] = set()
-    domain_cat_ids: set[int] = set()
     for row in rows:
         prop_ids.add(row[1])
         if row[3]:
             member_item_ids.add(row[3])
-        if row[7]:
-            domain_cat_ids.add(row[7])
 
-    dim_codes = _load_dimension_codes(session, prop_ids)
-    member_codes = _load_member_codes(session, member_item_ids, domain_cat_ids)
+    domains = _load_property_categories(session, prop_ids, window)
+    # ``PropertyCategory.category_id`` is nullable, and so is
+    # ``ItemCategory.category_id``: letting ``None`` into the domain
+    # set would make ``_load_member_codes`` match uncategorised rows
+    # and file their codes under a domain no lookup below can name.
+    domain_cat_ids = {cat_id for cat_id, _code in domains.values() if cat_id}
+    dim_codes = _load_dimension_codes(session, prop_ids, window)
+    member_codes = _load_member_codes(
+        session,
+        member_item_ids,
+        domain_cat_ids,
+        window,
+    )
 
     result: dict[int, list[DimensionMember]] = {}
     for row in rows:
         vvid = row[0]
+        cat_id, domain_code = domains.get(row[1], (0, ""))
         dm = DimensionMember(
             property_id=row[1],
             dimension_label=row[2] or "",
             dimension_code=dim_codes.get(row[1], ""),
-            domain_code=row[5] or "",
+            domain_code=domain_code,
             member_label=row[3] or "" if not row[4] else row[4],
             member_code=(
-                member_codes.get((row[3], row[7]), "")
-                if row[3] and row[7]
+                member_codes.get((row[3], cat_id), "")
+                if row[3] and cat_id
                 else ""
             ),
-            data_type_code=row[6] or "",
+            data_type_code=row[5] or "",
         )
         result.setdefault(vvid, []).append(dm)
 
@@ -587,6 +767,37 @@ def load_key_variable_property_ids(
     return {r[0]: r[1] for r in rows if r[1]}
 
 
+def load_property_info(
+    session: Session,
+    property_ids: set[int],
+) -> dict[int, tuple[str, str]]:
+    """Load data type code and name for a set of properties.
+
+    The variable-free counterpart of :func:`load_variable_info`: a cell
+    whose variable has not been generated yet still knows its property
+    through the header bounding it.
+
+    Returns {property_id: (data_type_code, property_name)}.
+    """
+    if not property_ids:
+        return {}
+
+    from dpmcore.orm.glossary import Item, Property
+    from dpmcore.orm.infrastructure import DataType
+
+    base = (
+        session.query(
+            Property.property_id,
+            DataType.code,
+            Item.name,
+        )
+        .outerjoin(DataType, DataType.data_type_id == Property.data_type_id)
+        .outerjoin(Item, Item.item_id == Property.property_id)
+    )
+    rows = chunked_in(base, Property.property_id, property_ids)
+    return {r[0]: (r[1] or "", r[2] or "") for r in rows}
+
+
 def load_variable_info(
     session: Session,
     variable_vids: set[int],
@@ -619,3 +830,144 @@ def load_variable_info(
     )
     rows = chunked_in(base, VariableVersion.variable_vid, variable_vids)
     return {r[0]: (r[1], r[2] or "", r[3] or "") for r in rows}
+
+
+def load_enumerations(
+    session: Session,
+    subcategory_vids: set[int],
+    window: ReleaseWindow,
+) -> dict[int, Enumeration]:
+    """Load the allowed values of a set of SubCategoryVersions.
+
+    A SubCategoryVersion is the hierarchy that restricts which members
+    of a domain may be reported: for an enumerated variable it *is* the
+    list of possible values. Items are returned in hierarchy order,
+    each with the depth of its position in the parent/child tree.
+
+    A member's code and signature are versioned: the same item is
+    ``eba_CU:x7`` up to release 4.2 and ``eba_CU:qx2015`` from 4.2 on.
+    They are therefore read at *window* and not from the
+    currently-active row. Items with no ``ItemCategory`` row in the
+    parent category there are dropped: they carry no code in it.
+
+    Args:
+        session: SQLAlchemy session.
+        subcategory_vids: Hierarchies to load.
+        window: Release window of the version being exported.
+
+    Returns {subcategory_vid: Enumeration}.
+    """
+    if not subcategory_vids:
+        return {}
+
+    from dpmcore.orm.glossary import (
+        Category,
+        Item,
+        ItemCategory,
+        SubCategory,
+        SubCategoryItem,
+        SubCategoryVersion,
+    )
+
+    info_base = (
+        session.query(
+            SubCategoryVersion.subcategory_vid,
+            SubCategory.code,
+            SubCategory.name,
+            Category.category_id,
+            Category.code,
+        )
+        .join(
+            SubCategory,
+            SubCategory.subcategory_id == SubCategoryVersion.subcategory_id,
+        )
+        .join(Category, Category.category_id == SubCategory.category_id)
+    )
+    info_rows = chunked_in(
+        info_base,
+        SubCategoryVersion.subcategory_vid,
+        subcategory_vids,
+    )
+    if not info_rows:
+        return {}
+
+    # SubCategoryItem rows in hierarchy order. The ORDER BY survives
+    # chunking because each subcategory_vid falls entirely within one
+    # chunk (the chunk column is subcategory_vid).
+    item_base = (
+        session.query(
+            SubCategoryItem.subcategory_vid,
+            SubCategoryItem.item_id,
+            SubCategoryItem.parent_item_id,
+            Item.name,
+        )
+        .join(Item, Item.item_id == SubCategoryItem.item_id)
+        .order_by(SubCategoryItem.subcategory_vid, SubCategoryItem.order)
+    )
+    item_rows = chunked_in(
+        item_base,
+        SubCategoryItem.subcategory_vid,
+        subcategory_vids,
+    )
+
+    # Item codes are per (item, parent category): load the categories
+    # of the requested hierarchies and match in Python, so the chunked
+    # statement binds only one id list.
+    category_ids = {row[3] for row in info_rows if row[3]}
+    item_ids = {row[1] for row in item_rows}
+    code_base = session.query(
+        ItemCategory.item_id,
+        ItemCategory.category_id,
+        ItemCategory.start_release_id,
+        ItemCategory.end_release_id,
+        ItemCategory.code,
+        ItemCategory.signature,
+    )
+    code_rows = [
+        r
+        for r in chunked_in(code_base, ItemCategory.item_id, item_ids)
+        if r[1] in category_ids
+    ]
+    codes: dict[tuple[int, int], tuple[str, str]] = _pick_in_window(
+        [
+            ((r[0], r[1]), r[2], r[3], (r[4] or "", r[5] or ""))
+            for r in code_rows
+        ],
+        load_release_sort_orders(session),
+        window,
+    )
+
+    result: dict[int, Enumeration] = {
+        row[0]: Enumeration(
+            subcategory_vid=row[0],
+            code=row[1] or "",
+            name=row[2] or "",
+            category_code=row[4] or "",
+        )
+        for row in info_rows
+    }
+    cat_by_svid: dict[int, int] = {row[0]: row[3] for row in info_rows}
+
+    # Depth comes from the parent chain; parents always precede their
+    # children in hierarchy order, so a single pass suffices.
+    depths: dict[tuple[int, int], int] = {}
+    for svid, item_id, parent_item_id, name in item_rows:
+        depth = (
+            depths.get((svid, parent_item_id), -1) + 1 if parent_item_id else 0
+        )
+        depths[(svid, item_id)] = depth
+        enum = result.get(svid)
+        entry = codes.get((item_id, cat_by_svid.get(svid, 0)))
+        if enum is None or entry is None:
+            continue
+        code, signature = entry
+        enum.values.append(
+            EnumValue(
+                code=code,
+                label=name or "",
+                depth=depth,
+                signature=signature,
+            ),
+        )
+
+    return result

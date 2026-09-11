@@ -19,6 +19,7 @@ from dpmcore.orm.glossary import (
     Property,
     PropertyCategory,
     SubCategory,
+    SubCategoryItem,
     SubCategoryVersion,
 )
 from dpmcore.orm.infrastructure import DataType, Release
@@ -111,6 +112,7 @@ def make_member(
     name: str,
     domain_category_id: int,
     code: str,
+    signature: str | None = None,
 ) -> None:
     """Add an Item-as-member belonging to a domain category."""
     session.add(Item(item_id=item_id, name=name))
@@ -120,6 +122,7 @@ def make_member(
             start_release_id=1,
             category_id=domain_category_id,
             code=code,
+            signature=signature,
         ),
     )
 
@@ -330,6 +333,48 @@ def add_subcategory(
             subcategory_vid=subcategory_vid,
             subcategory_id=subcategory_id,
             start_release_id=1,
+        ),
+    )
+
+
+def add_item_category(
+    session: Session,
+    *,
+    item_id: int,
+    domain_category_id: int,
+    code: str,
+    signature: str,
+    start_release_id: int,
+    end_release_id: int | None = None,
+) -> None:
+    """Add one release window of an existing member's code/signature."""
+    session.add(
+        ItemCategory(
+            item_id=item_id,
+            start_release_id=start_release_id,
+            end_release_id=end_release_id,
+            category_id=domain_category_id,
+            code=code,
+            signature=signature,
+        ),
+    )
+
+
+def add_subcategory_item(
+    session: Session,
+    *,
+    subcategory_vid: int,
+    item_id: int,
+    order: int,
+    parent_item_id: int | None = None,
+) -> None:
+    """Place an existing member item inside a hierarchy."""
+    session.add(
+        SubCategoryItem(
+            subcategory_vid=subcategory_vid,
+            item_id=item_id,
+            order=order,
+            parent_item_id=parent_item_id,
         ),
     )
 

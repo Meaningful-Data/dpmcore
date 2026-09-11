@@ -21,6 +21,8 @@ from dpmcore.services.layout_exporter.excel_writer import (
 from dpmcore.services.layout_exporter.models import (
     CellData,
     DimensionMember,
+    Enumeration,
+    EnumValue,
     ExportConfig,
     LayoutHeader,
     TableLayout,
@@ -1124,3 +1126,487 @@ def test_open_row_void_cell_is_darker():
 
     cell = _data_cell_of_row(ws, "Open Rows")
     assert cell.fill.start_color.rgb == "00595959"
+
+
+# --------------------------------------------------------------------------- #
+# Possible values of enumerated cells
+# --------------------------------------------------------------------------- #
+
+
+def _enum(values=None, code="SC1", name="Type of identifier"):
+    return Enumeration(
+        subcategory_vid=7,
+        code=code,
+        name=name,
+        category_code="qCO",
+        values=values
+        if values is not None
+        else [
+            EnumValue(
+                code="x1", label="LEI code type", signature="eba_qCO:x1"
+            ),
+            EnumValue(
+                code="x2",
+                label="MFI code",
+                depth=1,
+                signature="eba_qCO:x2",
+            ),
+        ],
+    )
+
+
+def test_format_enumeration_lists_values_with_domain_codes():
+    text = ew._format_enumeration(_enum())
+    assert text.splitlines() == [
+        "Possible values - (SC1) Type of identifier [2]:",
+        "  (eba_qCO:x1) LEI code type",
+        "    (eba_qCO:x2) MFI code",
+    ]
+
+
+def test_format_enumeration_falls_back_to_domain_and_code():
+    """A member imported without a signature still gets an address."""
+    values = [EnumValue(code="x1", label="No signature")]
+    text = ew._format_enumeration(_enum(values=values))
+    assert text.splitlines()[1] == "  (qCO:x1) No signature"
+
+
+def test_cell_tooltip_lists_the_possible_values():
+    cell_data = CellData(
+        row_header_id=1,
+        col_header_id=10,
+        sheet_header_id=None,
+        variable_vid=800,
+        variable_id=800,
+        data_type_code="e",
+        enumeration=_enum(),
+    )
+    text = ew._cell_tooltip(cell_data, [])
+    assert "Possible values - (SC1) Type of identifier [2]:" in text
+    assert "  (eba_qCO:x1) LEI code type" in text
+
+
+def test_cell_tooltip_without_enumeration_is_unchanged():
+    cell_data = CellData(
+        row_header_id=1,
+        col_header_id=10,
+        sheet_header_id=None,
+        variable_vid=800,
+        variable_id=800,
+        data_type_code="m",
+    )
+    assert "Possible values" not in ew._cell_tooltip(cell_data, [])
+
+
+def test_key_cell_tooltip_lists_the_possible_values():
+    header = _h(
+        1,
+        is_key=True,
+        key_vid=500,
+        key_var_id=500,
+        key_dt="e",
+        key_pname="Type of code",
+    )
+    header.key_enumeration = _enum()
+    text = ew._key_cell_tooltip(header)
+    assert "VariableID = 500" in text
+    assert "Property = Type of code" in text
+    assert "  (eba_qCO:x1) LEI code type" in text
+
+
+def test_fit_tooltip_truncates_on_a_line_boundary():
+    """Excel refuses a comment over 32,767 characters."""
+    values = [EnumValue(code=f"x{i}", label="A" * 40) for i in range(2000)]
+    text = ew._format_enumeration(_enum(values=values))
+    assert len(text) > ew._MAX_TOOLTIP_CHARS
+
+    fitted = ew._fit_tooltip(text)
+    assert len(fitted) <= ew._MAX_TOOLTIP_CHARS
+    assert fitted.splitlines()[-1].startswith("... and ")
+    assert fitted.splitlines()[-2].endswith("A" * 40)
+
+
+def test_fit_tooltip_reserves_room_for_its_own_marker():
+    """The truncation marker counts against the cap too.
+
+    150-char lines divide 30,000 exactly, so the budget runs out on a
+    line boundary and an unreserved marker has nowhere to go. That
+    overshoot would also make a second pass truncate an already-fitted
+    tooltip a second time.
+    """
+    text = "\n".join(["A" * 149] * 3000)
+    assert len(text) > ew._MAX_TOOLTIP_CHARS
+
+    fitted = ew._fit_tooltip(text)
+    assert len(fitted) <= ew._MAX_TOOLTIP_CHARS
+    assert fitted.splitlines()[-1].startswith("... and ")
+    # Fitting is idempotent: no second "... and N more lines".
+    assert ew._fit_tooltip(fitted) == fitted
+
+
+def test_fit_tooltip_cuts_a_line_that_is_longer_than_the_budget():
+    """A first line over the cap must not leave only the marker."""
+    text = "A" * (ew._MAX_TOOLTIP_CHARS + 10) + "\nB" + "\nC"
+
+    fitted = ew._fit_tooltip(text)
+
+    assert len(fitted) <= ew._MAX_TOOLTIP_CHARS
+    assert fitted.startswith("A" * 100)
+    assert fitted.splitlines()[-1] == "... and 2 more lines"
+
+
+def test_fit_tooltip_cuts_a_single_line_without_a_marker():
+    """Nothing is hidden when the over-long line is the only one."""
+    fitted = ew._fit_tooltip("A" * (ew._MAX_TOOLTIP_CHARS + 10))
+
+    assert len(fitted) <= ew._MAX_TOOLTIP_CHARS
+    assert set(fitted) == {"A"}
+
+
+def test_fit_tooltip_leaves_short_text_alone():
+    assert ew._fit_tooltip("a\nb") == "a\nb"
+
+
+def test_comment_fits_text_assembled_from_already_fitted_parts():
+    """Only the concatenation can breach Excel's limit.
+
+    A header comment joins a categorisation block with a key tooltip
+    that was fitted on its own, so the fit has to happen in
+    ``_comment`` rather than in each caller.
+    """
+    values = [EnumValue(code=f"x{i}", label="A" * 40) for i in range(3000)]
+    key_part = ew._fit_tooltip(ew._format_enumeration(_enum(values=values)))
+    combined = "B" * 5000 + "\n\n" + key_part
+    assert len(combined) > ew._MAX_TOOLTIP_CHARS
+
+    assert len(ew._comment(combined).text) <= ew._MAX_TOOLTIP_CHARS
+
+
+def test_comment_box_grows_with_the_text_up_to_a_maximum():
+    short = ew._comment("one line")
+    tall = ew._comment("\n".join("line" for _ in range(20)))
+    huge = ew._comment("\n".join("line" for _ in range(500)))
+    assert short.height == ew._COMMENT_MIN_HEIGHT
+    assert ew._COMMENT_MIN_HEIGHT < tall.height < ew._COMMENT_MAX_HEIGHT
+    assert huge.height == ew._COMMENT_MAX_HEIGHT
+
+
+def _open_row_key_layout(enumeration=None):
+    """Open-row table whose single column is an enumerated key column."""
+    key = _h(
+        10,
+        direction="x",
+        code="0010",
+        label="Key",
+        is_key=True,
+        key_vid=500,
+        key_var_id=500,
+        key_dt="e",
+        key_pname="Type of code",
+    )
+    key.key_enumeration = enumeration
+    return TableLayout(
+        table_vid=1,
+        table_code="T",
+        table_name="T",
+        columns=[key],
+        is_open_row=True,
+    )
+
+
+def test_open_row_key_cell_gets_a_comment_with_the_possible_values():
+    layout = _open_row_key_layout(_enum())
+    wb = ExcelLayoutWriter([layout], ExportConfig()).write()
+
+    cell = _only_data_cell(wb["T"], "500")
+    assert "VariableID = 500" in cell.comment.text
+    assert "  (eba_qCO:x1) LEI code type" in cell.comment.text
+
+
+def test_open_row_key_cell_comments_disabled():
+    cfg = ExportConfig(add_cell_comments=False)
+    wb = ExcelLayoutWriter([_open_row_key_layout(_enum())], cfg).write()
+
+    assert _only_data_cell(wb["T"], "500").comment is None
+
+
+def _open_sheet_layout(enumeration=None, cats=None):
+    """Open-sheet table: the Z header keys the sheets off a variable."""
+    sheet = _h(
+        20,
+        direction="z",
+        code="0010",
+        label="Exposure class",
+        is_key=True,
+        key_vid=500,
+        key_var_id=500,
+        key_dt="e",
+        key_pname="Exposure class",
+        cats=cats,
+        sub_code="EC2",
+        sub_cat="qEC",
+        sub_desc="Subcategory 2",
+    )
+    sheet.key_enumeration = enumeration
+    return _empty_layout(
+        rows=[_h(1, direction="y", code="0010", label="Row")],
+        columns=[_h(10, direction="x", code="0010", label="Col")],
+        sheets=[sheet],
+    )
+
+
+def _sheet_label_comment(wb):
+    return next(
+        c.comment
+        for row in wb["T"].iter_rows()
+        for c in row
+        if isinstance(c.value, str) and c.value.startswith("Sheet per ")
+    )
+
+
+def test_open_sheet_key_header_lists_the_possible_values():
+    """An open-sheet table has no key cell: the Z header carries them."""
+    wb = ExcelLayoutWriter(
+        [_open_sheet_layout(_enum())], ExportConfig()
+    ).write()
+
+    text = _sheet_label_comment(wb).text
+    assert "VariableID = 500" in text
+    assert "  (eba_qCO:x1) LEI code type" in text
+
+
+def test_open_sheet_key_header_keeps_its_categorisations():
+    """The dimension tooltip stays, with the values appended after it."""
+    wb = ExcelLayoutWriter(
+        [_open_sheet_layout(_enum(), cats=[_dm(label="Main Property")])],
+        ExportConfig(),
+    ).write()
+
+    text = _sheet_label_comment(wb).text
+    assert text.startswith("Main Property  =  M")
+    assert "Possible values" in text
+
+
+def test_sheet_header_comments_disabled():
+    cfg = ExportConfig(add_header_comments=False)
+    wb = ExcelLayoutWriter([_open_sheet_layout(_enum())], cfg).write()
+
+    assert _sheet_label_comment(wb) is None
+
+
+# --------------------------------------------------------------------------- #
+# Cells whose variable has not been generated yet
+# --------------------------------------------------------------------------- #
+
+
+def _pending_cell(**kwargs):
+    return CellData(
+        row_header_id=1,
+        col_header_id=10,
+        sheet_header_id=None,
+        variable_vid=None,
+        **kwargs,
+    )
+
+
+def _pending_layout(**kwargs):
+    return _empty_layout(
+        rows=[_h(1, direction="y", code="0010", label="Row")],
+        columns=[_h(10, direction="x", code="0010", label="Col")],
+        cells={(1, 10, None): _pending_cell(**kwargs)},
+    )
+
+
+def test_cell_content_omits_the_id_when_there_is_no_variable():
+    cell_data = _pending_cell(
+        is_derived=True, data_type_code="m", sign="positive"
+    )
+    assert ew._cell_content(cell_data) == "€£$\npositive"
+
+
+def test_cell_content_of_an_unresolved_cell_is_empty():
+    assert ew._cell_content(_pending_cell()) == ""
+
+
+def test_pending_cell_is_filled_and_annotated():
+    wb = ExcelLayoutWriter(
+        [_pending_layout(is_derived=True, data_type_code="p")],
+        ExportConfig(),
+    ).write()
+
+    cell = wb["T"].cell(row=7, column=4)
+    assert cell.value == "%"
+    assert cell.fill.start_color.rgb == "00FDE9D9"
+    assert cell.comment.text.startswith(
+        "No variable generated for this cell yet."
+    )
+    assert "derived from the table structure" in cell.comment.text
+
+
+def test_pending_cell_without_derivation_says_only_what_it_knows():
+    wb = ExcelLayoutWriter([_pending_layout()], ExportConfig()).write()
+
+    cell = wb["T"].cell(row=7, column=4)
+    assert cell.value is None
+    assert cell.fill.start_color.rgb == "00FDE9D9"
+    assert "derived from the table structure" not in cell.comment.text
+
+
+def test_pending_cell_lists_the_possible_values():
+    """A derived enumerated cell documents its values like any other."""
+    wb = ExcelLayoutWriter(
+        [
+            _pending_layout(
+                is_derived=True,
+                data_type_code="e",
+                domain_label="Type of identifier",
+                enumeration=_enum(),
+            )
+        ],
+        ExportConfig(),
+    ).write()
+
+    cell = wb["T"].cell(row=7, column=4)
+    assert cell.value == "[Type of identifier]"
+    assert "  (eba_qCO:x1) LEI code type" in cell.comment.text
+
+
+def test_open_row_key_cell_without_its_variable_stays_a_key():
+    """A key column is a key whether or not its variable exists yet."""
+    layout = _open_row_key_layout(_enum())
+    key = layout.columns[0]
+    key.key_variable_vid = None
+    key.key_variable_id = None
+
+    wb = ExcelLayoutWriter([layout], ExportConfig()).write()
+
+    cell = next(
+        c
+        for row in wb["T"].iter_rows()
+        for c in row
+        if isinstance(c.value, str) and c.value.startswith("[Type of code")
+    )
+    assert cell.fill.start_color.rgb == "00C4D79B"
+    assert cell.value == "[Type of code]\n<Type of code>"
+    assert "No variable generated" in cell.comment.text
+    assert "  (eba_qCO:x1) LEI code type" in cell.comment.text
+
+
+def test_index_counts_the_cells_without_a_variable():
+    layouts = [
+        _pending_layout(is_derived=True, data_type_code="m"),
+        _empty_layout(
+            rows=[_h(1, direction="y", code="0010", label="Row")],
+            columns=[_h(10, direction="x", code="0010", label="Col")],
+            cells={
+                (1, 10, None): CellData(
+                    row_header_id=1,
+                    col_header_id=10,
+                    sheet_header_id=None,
+                    variable_vid=700,
+                ),
+            },
+        ),
+    ]
+    wb = ExcelLayoutWriter(layouts, ExportConfig()).write()
+
+    index = wb["Index"]
+    assert index.cell(row=3, column=4).value == "Cells without a variable"
+    assert index.cell(row=4, column=4).value == 1
+    assert index.cell(row=5, column=4).value == 0
+
+
+def test_index_counts_a_key_sheet_without_its_variable():
+    """An open-sheet table keys its sheets off the Z header."""
+    layout = _empty_layout(
+        rows=[_h(1, direction="y", code="0010", label="Row")],
+        columns=[_h(10, direction="x", code="0010", label="Col")],
+        sheets=[
+            _h(
+                20,
+                direction="z",
+                code="S1",
+                label="Sheet per code",
+                is_key=True,
+            ),
+        ],
+        cells={
+            (1, 10, None): CellData(
+                row_header_id=1,
+                col_header_id=10,
+                sheet_header_id=None,
+                variable_vid=700,
+            ),
+        },
+    )
+
+    wb = ExcelLayoutWriter([layout], ExportConfig()).write()
+
+    index = wb["Index"]
+    assert index.cell(row=3, column=4).value == "Cells without a variable"
+    assert index.cell(row=4, column=4).value == 1
+
+
+def test_index_counts_a_key_column_without_its_variable():
+    """A key cell has no cell entry, so the count reads its header."""
+    layout = _open_row_key_layout()
+    layout.columns[0].key_variable_vid = None
+    layout.columns[0].key_variable_id = None
+
+    wb = ExcelLayoutWriter([layout], ExportConfig()).write()
+
+    index = wb["Index"]
+    assert index.cell(row=3, column=4).value == "Cells without a variable"
+    assert index.cell(row=4, column=4).value == 1
+
+
+def test_index_counts_the_cells_of_each_sheet_separately():
+    """Sheets of a Z-split table share a layout but not their count."""
+    layout = _empty_layout(
+        rows=[_h(1, direction="y", code="0010", label="Row")],
+        columns=[_h(10, direction="x", code="0010", label="Col")],
+        sheets=[
+            _h(20, direction="z", code="S1", label="Sheet 1"),
+            _h(21, direction="z", code="S2", label="Sheet 2"),
+        ],
+        cells={
+            (1, 10, 20): CellData(
+                row_header_id=1,
+                col_header_id=10,
+                sheet_header_id=20,
+                variable_vid=None,
+            ),
+            (1, 10, 21): CellData(
+                row_header_id=1,
+                col_header_id=10,
+                sheet_header_id=21,
+                variable_vid=700,
+            ),
+        },
+    )
+    wb = ExcelLayoutWriter([layout], ExportConfig()).write()
+
+    index = wb["Index"]
+    assert index.cell(row=3, column=5).value == "Cells without a variable"
+    assert index.cell(row=4, column=4).value == "Sheet 1"
+    assert index.cell(row=4, column=5).value == 1
+    assert index.cell(row=5, column=4).value == "Sheet 2"
+    assert index.cell(row=5, column=5).value == 0
+
+
+def test_index_omits_the_count_for_a_complete_dictionary():
+    layout = _empty_layout(
+        rows=[_h(1, direction="y", code="0010", label="Row")],
+        columns=[_h(10, direction="x", code="0010", label="Col")],
+        cells={
+            (1, 10, None): CellData(
+                row_header_id=1,
+                col_header_id=10,
+                sheet_header_id=None,
+                variable_vid=700,
+            ),
+        },
+    )
+    wb = ExcelLayoutWriter([layout], ExportConfig()).write()
+
+    assert wb["Index"].cell(row=3, column=4).value is None
