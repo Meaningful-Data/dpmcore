@@ -13,6 +13,7 @@ from dpmcore.dpm_xl.symbols import (
     Structure,
 )
 from dpmcore.dpm_xl.types.scalar import Date, Integer, Mixed, Number, String
+from dpmcore.dpm_xl.utils.serialization import ASTToJSONVisitor
 from dpmcore.dpm_xl.utils.tokens import STANDARD
 from dpmcore.errors import SemanticError
 from dpmcore.services.syntax import SyntaxService
@@ -67,6 +68,20 @@ def test_constructor_tojson_serializable():
     assert "day" in result
 
 
+def test_serializer_produces_date_constructor_dict():
+    """The live serialization path (``serialize_ast`` / ``ASTToJSONVisitor``),
+    not just the unused ``toJSON()`` method, must carry ``year``/``month``/
+    ``day`` — this is what a Producer actually emits.
+    """
+    ast = SyntaxService().parse("date(2025, 12, 31)")
+    result = ASTToJSONVisitor().visit(ast)
+    node = result["children"][0]
+    assert node["class_name"] == "DateConstructorOp"
+    assert "year" in node
+    assert "month" in node
+    assert "day" in node
+
+
 def test_constructor_node_op_is_date():
     """``op`` is set at construction (like ``UnaryOp``) so raw-AST
     consumers — e.g. ``_resolve_root_operator_id`` — see the operator symbol
@@ -76,7 +91,8 @@ def test_constructor_node_op_is_date():
     node = ast.children[0]
     assert isinstance(node, DateConstructorOp)
     assert node.op == "date"
-    assert node.toJSON()["op"] == "date"
+    result = ASTToJSONVisitor().visit(ast)
+    assert result["children"][0]["op"] == "date"
 
 
 # Operator validation: any combination of Scalar and Recordset operands is allowed
