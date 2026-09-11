@@ -109,6 +109,12 @@ def load_supercategory_compositions(
     window instead, so the composition opening or closing shows up as a
     version boundary like any other change.
 
+    Nesting is followed like it is by :func:`load_supercategory_members`,
+    but the windows are *not* collapsed: the result is the composition
+    graph reachable from *category_ids*, keyed by super-category, so a
+    nested member that is only reachable while both links are open is
+    the caller's own intersection to make, release by release.
+
     Members are filtered the same way as everywhere else: an
     enumerated category carrying a code.
 
@@ -117,11 +123,30 @@ def load_supercategory_compositions(
         category_ids: Super-category IDs to load compositions for.
 
     Returns:
-        ``{supercategory_id: [SupercategoryComposition, ...]}``, omitting
+        ``{supercategory_id: [SupercategoryComposition, ...]}`` for every
+        super-category reachable from *category_ids*, omitting
         categories that compose nothing at any release.
     """
-    if not category_ids:
-        return {}
+    compositions: Dict[int, List[SupercategoryComposition]] = {}
+    pending = set(category_ids)
+    asked: Set[int] = set()
+    while pending:
+        asked |= pending
+        next_level: Set[int] = set()
+        for row in _composition_rows(session, pending):
+            compositions.setdefault(row.supercategory_id, []).append(row)
+            next_level.add(row.category_id)
+        # A member reached twice is queried once, so a cycle in the
+        # data terminates instead of looping.
+        pending = next_level - asked
+    return compositions
+
+
+def _composition_rows(
+    session: "Session",
+    supercategory_ids: Collection[int],
+) -> List[SupercategoryComposition]:
+    """Composition rows of *supercategory_ids*, one level, all windows."""
     member = aliased(Category)
     query = (
         session.query(SupercategoryComposition)
@@ -132,13 +157,9 @@ def load_supercategory_compositions(
         .filter(member.is_enumerated == True)  # noqa: E712
         .filter(member.code.isnot(None))
     )
-    rows = chunked_in(
-        query, SupercategoryComposition.supercategory_id, category_ids
+    return chunked_in(
+        query, SupercategoryComposition.supercategory_id, supercategory_ids
     )
-    compositions: Dict[int, List[SupercategoryComposition]] = {}
-    for row in rows:
-        compositions.setdefault(row.supercategory_id, []).append(row)
-    return compositions
 
 
 def domain_search_order(

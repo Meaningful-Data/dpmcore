@@ -415,10 +415,16 @@ class StructureService:
         changes the item set exactly like an ItemCategory row does
         (#359).
 
+        The compositions come back as the whole reachable graph, so a
+        super-category composing another one contributes that one's
+        members too; which links are open is decided per release by
+        :meth:`_alive_composed_members`.
+
         Returns:
             (ics_by_cat, items_by_id, compositions_by_cat) —
             ItemCategory rows grouped by category_id, Item rows keyed by
-            item_id, and each super-category's composition rows.
+            item_id, and the composition rows of every super-category
+            reached.
         """
         compositions_by_cat = load_supercategory_compositions(
             self.session, cat_ids
@@ -451,27 +457,52 @@ class StructureService:
 
         return dict(ics_by_cat), items_by_id, compositions_by_cat
 
+    def _alive_composed_members(
+        self,
+        compositions_by_cat: Dict[int, List[SupercategoryComposition]],
+        category_id: int,
+        release_id: int,
+    ) -> set[int]:
+        """Categories whose items belong to *category_id* at a release.
+
+        Walks the composition graph, so a super-category composing
+        another one also draws that one's members. Every link on the
+        way has to be open at *release_id*: a closed composition cuts
+        off everything behind it. A category already reached is not
+        walked twice, so a cycle in the data terminates.
+        """
+        reached: set[int] = {category_id}
+        frontier = [category_id]
+        while frontier:
+            for c in compositions_by_cat.get(frontier.pop(), []):
+                if c.category_id in reached:
+                    continue
+                if not self._window_alive(
+                    c.start_release_id, c.end_release_id, release_id
+                ):
+                    continue
+                reached.add(c.category_id)
+                frontier.append(c.category_id)
+        return reached - {category_id}
+
     def _alive_item_categories(
         self,
         ics_by_cat: Dict[int, List[ItemCategory]],
         category_id: int,
-        compositions: List[SupercategoryComposition],
+        compositions_by_cat: Dict[int, List[SupercategoryComposition]],
         release_id: int,
     ) -> List[ItemCategory]:
         """ItemCategory rows making up a domain's value set at a release.
 
         The category's own rows, then those of every category composing
-        it whose composition is open at *release_id*. An item filed in
-        two of them is named by the first — see
+        it — directly or through another super-category — whose
+        compositions are open at *release_id*. An item filed in two of
+        them is named by the first — see
         :func:`~dpmcore.orm.supercategories.domain_search_order`.
         """
-        alive_members = {
-            c.category_id
-            for c in compositions
-            if self._window_alive(
-                c.start_release_id, c.end_release_id, release_id
-            )
-        }
+        alive_members = self._alive_composed_members(
+            compositions_by_cat, category_id, release_id
+        )
         seen: set[int] = set()
         alive: List[ItemCategory] = []
         for cat_id in domain_search_order(
@@ -493,7 +524,7 @@ class StructureService:
         category: Category,
         releases: List[Release],
         ics_by_cat: Dict[int, List[ItemCategory]],
-        compositions: List[SupercategoryComposition],
+        compositions_by_cat: Dict[int, List[SupercategoryComposition]],
         items_by_id: Dict[int, Item],
         detail: str,
         owner_acronym: Optional[str],
@@ -525,7 +556,7 @@ class StructureService:
             alive_ics = self._alive_item_categories(
                 ics_by_cat,
                 category.category_id,
-                compositions,
+                compositions_by_cat,
                 rel.release_id,
             )
 
@@ -611,7 +642,7 @@ class StructureService:
                 cat,
                 releases,
                 ics_by_cat,
-                compositions_by_cat.get(cat.category_id, []),
+                compositions_by_cat,
                 items_by_id,
                 detail,
                 owner_acronym,

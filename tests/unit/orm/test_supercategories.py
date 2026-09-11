@@ -215,6 +215,32 @@ class TestCompositions:
     def test_a_plain_category_has_no_entry(self, session):
         assert load_supercategory_compositions(session, {PLAIN}) == {}
 
+    def test_nesting_is_loaded_too(self, session):
+        """OUTER composes SUPER, so SUPER's own rows are needed as well.
+
+        The windows stay separate — the caller decides, release by
+        release, whether both links are open.
+        """
+        compositions = load_supercategory_compositions(session, {OUTER})
+
+        assert {c.category_id for c in compositions[OUTER]} == {SUPER}
+        assert {c.category_id for c in compositions[SUPER]} == {ALPHA, BETA}
+
+    def test_a_cycle_terminates(self, session):
+        session.add(
+            SupercategoryComposition(
+                supercategory_id=ALPHA,
+                category_id=SUPER,
+                start_release_id=1,
+                end_release_id=None,
+            )
+        )
+        session.commit()
+
+        compositions = load_supercategory_compositions(session, {SUPER})
+
+        assert {c.category_id for c in compositions[ALPHA]} == {SUPER}
+
     def test_nothing_to_load_costs_no_query(self):
         from unittest.mock import MagicMock
 
