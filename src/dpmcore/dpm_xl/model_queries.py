@@ -13,6 +13,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Collection,
     Hashable,
     Sequence,
 )
@@ -24,12 +25,15 @@ from sqlalchemy.orm import aliased
 from dpmcore.dpm_xl.utils.filters import filter_by_release
 from dpmcore.dpm_xl.utils.range_resolution import (
     build_axis_order_map,
+    build_axis_value_map,
     resolve_range_codes,
 )
 from dpmcore.orm.glossary import (
+    Category,
     Item,
     ItemCategory,
     Property,
+    PropertyCategory,
 )
 from dpmcore.orm.infrastructure import (
     DataType,
@@ -50,6 +54,7 @@ from dpmcore.orm.packaging import (
 )
 from dpmcore.orm.query_utils import chunked_in
 from dpmcore.orm.release_sort_order import (
+    compute_sort_order,
     load_release_sort_orders,
     release_ids_for_sort_order,
     resolve_sort_order,
@@ -57,6 +62,8 @@ from dpmcore.orm.release_sort_order import (
 from dpmcore.orm.rendering import (
     Cell,
     HeaderVersion,
+    TableGroup,
+    TableGroupComposition,
     TableVersion,
     TableVersionCell,
     TableVersionHeader,
@@ -194,6 +201,60 @@ def _filter_elements(
 
 
 # ------------------------------------------------------------------ #
+# Category-link domain resolution
+# ------------------------------------------------------------------ #
+
+
+def _enumerated_domains(
+    session: "Session",
+    model: Any,
+    key_col: Any,
+    keys: Sequence[Any],
+    release_id: int | None,
+) -> dict[Any, set[str]]:
+    """Map the keys of a category link table to enumerated category codes.
+
+    ``ItemCategory`` and ``PropertyCategory`` are the same shape: a
+    release-versioned link to ``Category``. Only enumerated categories are
+    returned -- a non-enumerated one (dates, identifiers, free text) is not
+    a value set. Both links are release-versioned, hence the set-valued
+    result.
+
+    Args:
+        session: SQLAlchemy session.
+        model: Link model holding ``category_id`` and the release columns.
+        key_col: Column of *model* the result is keyed on.
+        keys: Values of *key_col* to resolve.
+        release_id: Release the link is resolved at.
+
+    Returns:
+        ``{key: {category_code, ...}}``, omitting keys with no enumerated
+        category open at ``release_id``.
+    """
+    query = (
+        session.query(
+            key_col.label("DomainKey"),
+            Category.code.label("CategoryCode"),
+        )
+        .join(Category, Category.category_id == model.category_id)
+        .filter(key_col.in_(list(keys)))
+        .filter(Category.is_enumerated == True)  # noqa: E712
+        .filter(Category.code.isnot(None))
+    )
+    query = filter_by_release(
+        query,
+        start_col=model.start_release_id,
+        end_col=model.end_release_id,
+        release_id=release_id,
+        active_only_fallback=True,
+    )
+    domains: dict[Any, set[str]] = {}
+    for row in query.distinct().all():
+        domains.setdefault(row.DomainKey, set()).add(row.CategoryCode)
+    return domains
+
+
+# ------------------------------------------------------------------ #
 # ItemCategory queries
 # ------------------------------------------------------------------ #
 
@@ -225,14 +286,11 @@ class ItemCategoryQuery:
         if items:
             query = query.filter(ItemCategory.signature.in_(items))
         if release_id is not None:
-            query = query.filter(
-                and_(
-                    ItemCategory.start_release_id <= release_id,
-                    or_(
-                        ItemCategory.end_release_id > release_id,
-                        ItemCategory.end_release_id.is_(None),
-                    ),
-                )
+            query = filter_by_release(
+                query,
+                start_col=ItemCategory.start_release_id,
+                end_col=ItemCategory.end_release_id,
+                release_id=release_id,
             )
         else:
             query = query.filter(ItemCategory.end_release_id.is_(None))
@@ -312,6 +370,82 @@ class ItemCategoryQuery:
         )
         return [r.item_id for r in rows]
 
+    @staticmethod
+    def get_item_domains(
+        session: "Session",
+        items: Sequence[str],
+        release_id: int | None = None,
+    ) -> dict[str, set[str]]:
+        """Map item signatures to the code(s) of the categories holding them.
+
+        The category is the item's *domain*: the set of values a component
+        typed on that category may take. Only enumerated categories are
+        returned -- a non-enumerated one (dates, identifiers, free text) is
+        not a value set. An item is normally in exactly one category per
+        release, but the mapping is release-versioned, so the value is a set.
+
+        Args:
+            session: SQLAlchemy session.
+            items: Item signatures to resolve.
+            release_id: Release the membership is resolved at.
+
+        Returns:
+            ``{signature: {category_code, ...}}``, omitting signatures with
+            no category open at ``release_id``.
+        """
+        if not items:
+            return {}
+        return _enumerated_domains(
+            session,
+            ItemCategory,
+            ItemCategory.signature,
+            items,
+            release_id,
+        )
+
+
+# ------------------------------------------------------------------ #
+# PropertyCategory queries
+# ------------------------------------------------------------------ #
+
+
+class PropertyCategoryQuery:
+    """Query helpers around the PropertyCategory model."""
+
+    @staticmethod
+    def get_property_domains(
+        session: "Session",
+        property_ids: Sequence[int],
+        release_id: int | None = None,
+    ) -> dict[int, set[str]]:
+        """Map properties to the code(s) of the categories they are typed on.
+
+        A property's category is the domain of every component built on it:
+        the items that component may take. Only enumerated categories are
+        returned, so a property that holds dates, identifiers or free text
+        resolves to no domain at all. Like ``ItemCategory``, the link is
+        release-versioned, hence the set-valued result.
+
+        Args:
+            session: SQLAlchemy session.
+            property_ids: Property IDs to resolve.
+            release_id: Release the link is resolved at.
+
+        Returns:
+            ``{property_id: {category_code, ...}}``, omitting properties with
+            no category open at ``release_id``.
+        """
+        if not property_ids:
+            return {}
+        domains = _enumerated_domains(
+            session,
+            PropertyCategory,
+            PropertyCategory.property_id,
+            property_ids,
+            release_id,
+        )
+        return {int(key): codes for key, codes in domains.items()}
+
 
 # ------------------------------------------------------------------ #
 # VariableVersion queries
@@ -341,14 +475,11 @@ class VariableVersionQuery:
             VariableVersion.code == variable_code
         )
         if release_id is not None:
-            query = query.filter(
-                and_(
-                    VariableVersion.start_release_id <= release_id,
-                    or_(
-                        VariableVersion.end_release_id > release_id,
-                        VariableVersion.end_release_id.is_(None),
-                    ),
-                )
+            query = filter_by_release(
+                query,
+                start_col=VariableVersion.start_release_id,
+                end_col=VariableVersion.end_release_id,
+                release_id=release_id,
             )
         else:
             query = query.filter(VariableVersion.end_release_id.is_(None))
@@ -389,16 +520,12 @@ class VariableVersionQuery:
                 _is_filing_indicator(),
             )
         )
-        if release_id is not None:
-            query = query.filter(
-                and_(
-                    VariableVersion.start_release_id <= release_id,
-                    or_(
-                        VariableVersion.end_release_id > release_id,
-                        VariableVersion.end_release_id.is_(None),
-                    ),
-                )
-            )
+        query = filter_by_release(
+            query,
+            start_col=VariableVersion.start_release_id,
+            end_col=VariableVersion.end_release_id,
+            release_id=release_id,
+        )
         return query.first()
 
     @staticmethod
@@ -420,16 +547,12 @@ class VariableVersionQuery:
         query = session.query(VariableVersion.variable_id).filter(
             VariableVersion.code == value
         )
-        if release_id is not None:
-            query = query.filter(
-                and_(
-                    VariableVersion.start_release_id <= release_id,
-                    or_(
-                        VariableVersion.end_release_id > release_id,
-                        VariableVersion.end_release_id.is_(None),
-                    ),
-                )
-            )
+        query = filter_by_release(
+            query,
+            start_col=VariableVersion.start_release_id,
+            end_col=VariableVersion.end_release_id,
+            release_id=release_id,
+        )
         rows = query.all()
         if not rows:
             return None
@@ -461,14 +584,11 @@ class VariableVersionQuery:
             VariableVersion.variable_vid,
         ).filter(VariableVersion.code.in_(codes))
         if release_id is not None:
-            query = query.filter(
-                and_(
-                    VariableVersion.start_release_id <= release_id,
-                    or_(
-                        VariableVersion.end_release_id > release_id,
-                        VariableVersion.end_release_id.is_(None),
-                    ),
-                )
+            query = filter_by_release(
+                query,
+                start_col=VariableVersion.start_release_id,
+                end_col=VariableVersion.end_release_id,
+                release_id=release_id,
             )
         rows = query.all()
         resolved: dict[str, dict[str, int]] = {}
@@ -507,16 +627,12 @@ class VariableVersionQuery:
             )
             .filter(_is_filing_indicator())
         )
-        if release_id is not None:
-            query = query.filter(
-                and_(
-                    VariableVersion.start_release_id <= release_id,
-                    or_(
-                        VariableVersion.end_release_id > release_id,
-                        VariableVersion.end_release_id.is_(None),
-                    ),
-                )
-            )
+        query = filter_by_release(
+            query,
+            start_col=VariableVersion.start_release_id,
+            end_col=VariableVersion.end_release_id,
+            release_id=release_id,
+        )
         return query.all()
 
 
@@ -560,14 +676,11 @@ class OperationQuery:
             .filter(Operation.code.in_(operation_codes))
         )
         if release_id is not None:
-            query = query.filter(
-                and_(
-                    OperationVersion.start_release_id <= release_id,
-                    or_(
-                        OperationVersion.end_release_id > release_id,
-                        OperationVersion.end_release_id.is_(None),
-                    ),
-                )
+            query = filter_by_release(
+                query,
+                start_col=OperationVersion.start_release_id,
+                end_col=OperationVersion.end_release_id,
+                release_id=release_id,
             )
         results = query.all()
         cols = [
@@ -607,17 +720,185 @@ class TableVersionQuery:
         query = session.query(TableVersion).filter(
             TableVersion.code == table_code
         )
-        if release_id is not None:
-            query = query.filter(
-                and_(
-                    TableVersion.start_release_id <= release_id,
-                    or_(
-                        TableVersion.end_release_id > release_id,
-                        TableVersion.end_release_id.is_(None),
-                    ),
-                )
-            )
+        query = filter_by_release(
+            query,
+            start_col=TableVersion.start_release_id,
+            end_col=TableVersion.end_release_id,
+            release_id=release_id,
+        )
         return query.first() is not None
+
+    @staticmethod
+    def get_abstract_table_codes(
+        session: "Session",
+        table_codes: Sequence[str],
+        release_id: int | None,
+    ) -> dict[str, str]:
+        """Map each table code to its abstract-table code.
+
+        ``abstract_table_id`` is a FK to the abstract ``Table``, not a
+        specific version. Falls back to the table's own code if it has
+        none, or none open at ``release_id``.
+
+        Args:
+            session: SQLAlchemy session.
+            table_codes: Table version codes to resolve.
+            release_id: Release filter, applied to both the requested
+                tables and their abstract tables independently.
+
+        Returns:
+            ``{table_code: abstract_table_code}``, one entry per code in
+            ``table_codes`` that actually resolves to a table version.
+        """
+        if not table_codes:
+            return {}
+        rows = filter_by_release(
+            session.query(
+                TableVersion.code,
+                TableVersion.abstract_table_id,
+            ).filter(TableVersion.code.in_(list(table_codes))),
+            TableVersion.start_release_id,
+            TableVersion.end_release_id,
+            release_id,
+        ).all()
+        abstract_table_ids = {
+            abstract_table_id
+            for _code, abstract_table_id in rows
+            if abstract_table_id is not None
+        }
+        abstract_code_by_table_id: dict[int, str] = {}
+        if abstract_table_ids:
+            abstract_code_by_table_id = dict(
+                filter_by_release(
+                    session.query(
+                        TableVersion.table_id, TableVersion.code
+                    ).filter(TableVersion.table_id.in_(abstract_table_ids)),
+                    TableVersion.start_release_id,
+                    TableVersion.end_release_id,
+                    release_id,
+                ).all()
+            )
+        return {
+            code: abstract_code_by_table_id.get(abstract_table_id, code)
+            for code, abstract_table_id in rows
+        }
+
+    @staticmethod
+    def get_concrete_table_codes(
+        session: "Session",
+        codes: Sequence[str],
+        release_id: int | None,
+    ) -> dict[str, set[str]]:
+        """Expand each code to itself plus any concrete tables under it.
+
+        Module composition only links concrete tables, so an abstract
+        code needs its concrete children to find any module.
+
+        Args:
+            session: SQLAlchemy session.
+            codes: Table codes to expand.
+            release_id: Release filter, applied independently to the
+                requested codes and their concrete children.
+
+        Returns:
+            ``{code: {code, *concrete_children}}``, one entry per code.
+        """
+        if not codes:
+            return {}
+        table_id_by_code = dict(
+            filter_by_release(
+                session.query(TableVersion.code, TableVersion.table_id).filter(
+                    TableVersion.code.in_(list(codes))
+                ),
+                TableVersion.start_release_id,
+                TableVersion.end_release_id,
+                release_id,
+            ).all()
+        )
+        table_ids = {
+            tid for tid in table_id_by_code.values() if tid is not None
+        }
+        children_by_table_id: dict[int, set[str]] = {}
+        if table_ids:
+            for abstract_table_id, child_code in filter_by_release(
+                session.query(
+                    TableVersion.abstract_table_id, TableVersion.code
+                ).filter(TableVersion.abstract_table_id.in_(table_ids)),
+                TableVersion.start_release_id,
+                TableVersion.end_release_id,
+                release_id,
+            ).all():
+                children_by_table_id.setdefault(abstract_table_id, set()).add(
+                    child_code
+                )
+        result: dict[str, set[str]] = {}
+        for code in codes:
+            table_id = table_id_by_code.get(code)
+            children = (
+                children_by_table_id.get(table_id, set())
+                if table_id is not None
+                else set()
+            )
+            result[code] = {code} | children
+        return result
+
+
+class TableGroupQuery:
+    """Query helpers around the TableGroup/TableGroupComposition models."""
+
+    @staticmethod
+    def get_member_table_codes(
+        session: "Session",
+        group_code: str,
+        release_id: int | None,
+    ) -> set[str]:
+        """Return the table-version codes belonging to a table group.
+
+        Args:
+            session: SQLAlchemy session.
+            group_code: The table group's code.
+            release_id: Release filter.
+
+        Returns:
+            The set of member table-version codes at that release.
+        """
+        group_ids = [
+            gid
+            for (gid,) in filter_by_release(
+                session.query(TableGroup.table_group_id).filter(
+                    TableGroup.code == group_code
+                ),
+                start_col=TableGroup.start_release_id,
+                end_col=TableGroup.end_release_id,
+                release_id=release_id,
+            ).all()
+        ]
+        if not group_ids:
+            return set()
+
+        table_ids = [
+            tid
+            for (tid,) in filter_by_release(
+                session.query(TableGroupComposition.table_id).filter(
+                    TableGroupComposition.table_group_id.in_(group_ids)
+                ),
+                start_col=TableGroupComposition.start_release_id,
+                end_col=TableGroupComposition.end_release_id,
+                release_id=release_id,
+            ).all()
+        ]
+        if not table_ids:
+            return set()
+
+        codes = filter_by_release(
+            session.query(TableVersion.code).filter(
+                TableVersion.table_id.in_(table_ids)
+            ),
+            start_col=TableVersion.start_release_id,
+            end_col=TableVersion.end_release_id,
+            release_id=release_id,
+        ).all()
+        return {code for (code,) in codes if code is not None}
 
 
 # ------------------------------------------------------------------ #
@@ -866,6 +1147,25 @@ def _vids_filter(vids: Sequence[int]) -> Callable[[Any], Any]:
     return apply
 
 
+def _resolve_covering(
+    build_query: Callable[[Callable[[Any], Any]], Any],
+    materialize: Callable[[Any], list[Any]],
+    cols: list[str],
+    release_id: int | None,
+) -> pd.DataFrame:
+    """Release-filtered module versions, ghosts included as-is.
+
+    A ghost is still a real module version covering the release window;
+    it only lacks a distinct reporting period, which matters for scope
+    resolution (see :func:`_resolve_with_ghost_fallback`) but not for a
+    plain "does this belong to a live module version" check.
+    """
+    return pd.DataFrame(
+        materialize(build_query(_release_filter(release_id))),
+        columns=cols,
+    )
+
+
 def _resolve_with_ghost_fallback(
     session: "Session",
     build_query: Callable[[Callable[[Any], Any]], Any],
@@ -899,10 +1199,7 @@ def _resolve_with_ghost_fallback(
         DataFrame of resolved module versions, ghosts replaced by their
         prior non-collapsed fallback where one exists.
     """
-    covering = pd.DataFrame(
-        materialize(build_query(_release_filter(release_id))),
-        columns=cols,
-    )
+    covering = _resolve_covering(build_query, materialize, cols, release_id)
     # Without a target release there is no "prior" to fall back to;
     # keep the historical behaviour of simply dropping ghosts.
     if release_id is None or covering.empty:
@@ -1029,6 +1326,7 @@ class ModuleVersionQuery:
         session: "Session",
         table_codes: Sequence[str],
         release_id: int | None = None,
+        include_ghosts: bool = False,
     ) -> pd.DataFrame:
         """Query modules by table codes.
 
@@ -1036,6 +1334,10 @@ class ModuleVersionQuery:
             session: SQLAlchemy session.
             table_codes: List of table codes.
             release_id: Optional release filter.
+            include_ghosts: When True, skip the ghost-fallback
+                substitution and return the raw release-covering rows,
+                ghosts included. Leave False for scope computation,
+                where a ghost has no reporting period of its own.
 
         Returns:
             DataFrame with module version info.
@@ -1085,6 +1387,10 @@ class ModuleVersionQuery:
         def materialize(query: Any) -> list[Any]:
             return chunked_in(query, TableVersion.code, table_codes)
 
+        if include_ghosts:
+            return _resolve_covering(
+                build_query, materialize, cols, release_id
+            )
         return _resolve_with_ghost_fallback(
             session, build_query, materialize, cols, release_id
         )
@@ -1094,6 +1400,7 @@ class ModuleVersionQuery:
         session: "Session",
         precondition_items: Sequence[str],
         release_id: int | None = None,
+        include_ghosts: bool = False,
     ) -> pd.DataFrame:
         """Query modules for precondition items.
 
@@ -1101,6 +1408,10 @@ class ModuleVersionQuery:
             session: SQLAlchemy session.
             precondition_items: Filing indicator codes.
             release_id: Optional release filter.
+            include_ghosts: When True, skip the ghost-fallback
+                substitution and return the raw release-covering rows,
+                ghosts included. Leave False for scope computation,
+                where a ghost has no reporting period of its own.
 
         Returns:
             DataFrame with module version info.
@@ -1155,9 +1466,44 @@ class ModuleVersionQuery:
         def materialize(query: Any) -> list[Any]:
             return query.all()
 
+        if include_ghosts:
+            return _resolve_covering(
+                build_query, materialize, cols, release_id
+            )
         return _resolve_with_ghost_fallback(
             session, build_query, materialize, cols, release_id
         )
+
+    @staticmethod
+    def get_filing_indicator_codes(
+        session: "Session",
+        codes: Collection[str],
+    ) -> set[str]:
+        """Return the subset of ``codes`` that are filing-indicator variables.
+
+        Only filing-indicator preconditions constrain an operation's module
+        scope. Precondition variables that are *not* filing indicators (for
+        example a business-model attribute compared against a set of values,
+        ``{vBM} in {'G-SIB', ...}``) are value conditions, not scoping
+        conditions, and must not force module resolution or fail scope
+        calculation. This helper lets scope calculation tell the two apart,
+        so a genuinely-missing filing indicator still errors while a value
+        condition is simply ignored.
+        """
+        if not codes:
+            return set()
+        rows = (
+            session.query(VariableVersion.code)
+            .join(
+                Variable,
+                VariableVersion.variable_id == Variable.variable_id,
+            )
+            .filter(VariableVersion.code.in_(list(codes)))
+            .filter(_is_filing_indicator())
+            .distinct()
+            .all()
+        )
+        return {row[0] for row in rows}
 
     @staticmethod
     def get_module_version_by_vid(
@@ -1308,7 +1654,7 @@ class ViewDatapointsQuery:
                 TableVersionCell,
                 and_(
                     TableVersionCell.table_vid == TableVersion.table_vid,
-                    TableVersionCell.is_void.is_(False),
+                    TableVersionCell.is_void == False,  # noqa: E712
                 ),
             )
             .outerjoin(
@@ -1406,6 +1752,48 @@ class ViewDatapointsQuery:
         }
         return query, aliases
 
+    @staticmethod
+    def _resolve_current_table_vids(
+        session: "Session", table: str, release_id: int | None
+    ) -> list[int]:
+        """Resolve the ``TableVersion.table_vid`` value(s) of ``table`` open at ``release_id``.
+
+        At the perpetual release, an adopted version and one just started
+        there can both compare as "open now". When both are present, only
+        the adopted one(s) are kept.
+
+        Args:
+            session: SQLAlchemy session.
+            table: Table version code.
+            release_id: Release filter; ``None`` resolves to whichever
+                version(s) are currently open.
+
+        Returns:
+            The matching ``table_vid`` values (empty when ``table`` has none
+            open at ``release_id``).
+        """
+        query = session.query(
+            TableVersion.table_vid, TableVersion.start_release_id
+        ).filter(TableVersion.code == table)
+        query = filter_by_release(
+            query,
+            start_col=TableVersion.start_release_id,
+            end_col=TableVersion.end_release_id,
+            release_id=release_id,
+            active_only_fallback=True,
+        )
+        rows = query.all()
+        if len(rows) <= 1:
+            return [row.table_vid for row in rows]
+        sort_orders = load_release_sort_orders(session)
+        perpetual = compute_sort_order(None, None)
+        adopted = [
+            row.table_vid
+            for row in rows
+            if sort_orders.get(row.start_release_id, perpetual) < perpetual
+        ]
+        return adopted or [row.table_vid for row in rows]
+
     @classmethod
     def get_axis_orders(
         cls,
@@ -1454,9 +1842,12 @@ class ViewDatapointsQuery:
         ).distinct()
 
         query = query.filter(TableVersion.code == table)
-        if release_id is None:
-            query = query.filter(TableVersion.end_release_id.is_(None))
-        else:
+        query = query.filter(
+            TableVersion.table_vid.in_(
+                cls._resolve_current_table_vids(session, table, release_id)
+            )
+        )
+        if release_id is not None:
             query = filter_by_release(
                 query,
                 start_col=ModuleVersion.start_release_id,
@@ -1554,6 +1945,7 @@ class ViewDatapointsQuery:
             aliases["tvh_col"].order.label("column_order"),
             aliases["tvh_sheet"].order.label("sheet_order"),
             VariableVersion.variable_id.label("variable_id"),
+            VariableVersion.property_id.label("property_id"),
             DataType.code.label("data_type"),
             TableVersion.table_vid.label("table_vid"),
             TableVersionCell.cell_id.label("cell_id"),
@@ -1562,9 +1954,11 @@ class ViewDatapointsQuery:
         )
 
         query = query.filter(TableVersion.code == table)
-
-        if release_id is None:
-            query = query.filter(TableVersion.end_release_id.is_(None))
+        query = query.filter(
+            TableVersion.table_vid.in_(
+                cls._resolve_current_table_vids(session, table, release_id)
+            )
+        )
 
         # Range endpoints are resolved against the stored display order, not
         # the code text; ``get_axis_orders`` supplies the per-axis map (or
@@ -1682,6 +2076,11 @@ class ViewDatapointsQuery:
                 end_col=ModuleVersion.end_release_id,
                 release_id=release_id,
             )
+            query = query.filter(
+                TableVersion.table_vid.in_(
+                    cls._resolve_current_table_vids(session, table, release_id)
+                )
+            )
 
         return read_sql_with_connection(query.statement, session)
 
@@ -1691,13 +2090,16 @@ def _build_axis_order_map(
 ) -> dict[str, int] | None:
     """Build ``{code: order}`` for one axis from a code/order frame.
 
-    Thin ``DataFrame`` adapter over
-    :func:`~dpmcore.dpm_xl.utils.range_resolution.build_axis_order_map`:
-    returns ``None`` when the axis is not fully ordered — the order column is
-    absent, some present code lacks an order, or a code carries two different
-    orders — so the caller falls back to string comparison for that whole axis.
+    Prefers each code's own numeric value over its stored display order,
+    since some tables show a code out of numeric sequence. Returns ``None`` when neither is
+    usable, so the caller falls back to string comparison for that whole axis.
     """
-    if code_col not in data.columns or order_col not in data.columns:
+    if code_col not in data.columns:
+        return None
+    value_map = build_axis_value_map(data[code_col])
+    if value_map:
+        return value_map
+    if order_col not in data.columns:
         return None
     return build_axis_order_map(data[code_col], data[order_col])
 

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from copy import deepcopy
+from typing import TypeGuard
+
 from dpmcore.dpm_xl.ast.nodes import (
     AST,
     BinOp,
@@ -7,6 +10,9 @@ from dpmcore.dpm_xl.ast.nodes import (
     Dimension,
     ParExpr,
     Scalar,
+    SubOp,
+    VarID,
+    WhereClauseOp,
 )
 from dpmcore.dpm_xl.ast.template import ASTTemplate
 from dpmcore.dpm_xl.utils import tokens
@@ -19,6 +25,69 @@ class WhereClauseChecker(ASTTemplate):
 
     def visit_Dimension(self, node: Dimension) -> None:
         self.key_components.append(node.dimension_code)
+
+
+# Attributes of ``AST`` that point back up the tree rather than down into a
+# child. The visitor passes populate them; at construction time they are all
+# ``None``, but the graft must not follow them regardless.
+_BACK_REFERENCES = frozenset({"parent", "prev"})
+
+
+def graft_where_onto_selections(node: AST, condition: AST) -> AST:
+    """Apply the ``where`` block of a ``with`` clause to the body selections.
+
+    §3.2.5: the clause applies to every operand arising from a selection
+    operator inside the body. §3.2.6: a ``where`` or ``sub`` written on an
+    operand overrides it for that operand -- fully, even when the inner
+    clause names different properties. Grafting therefore desugars
+
+        with {tX}[where A = 1]: {c0010} = {c0020}
+
+    into the AST of the equivalent explicit form
+
+        with {tX}: {c0010}[where A = 1] = {c0020}[where A = 1]
+
+    which every downstream pass already knows how to validate, scope and
+    serialise. The wrapper goes directly around the selection, inside any
+    ``get``/``rename``, so the condition still names the components the
+    operand had before those clauses reshaped it.
+
+    Args:
+        node: A node of the ``with`` body. Rewritten in place.
+        condition: The condition of the ``with``-level ``where`` block.
+
+    Returns:
+        ``node``, or the ``WhereClauseOp`` that now wraps it.
+    """
+    if isinstance(node, VarID):
+        # Each selection needs its own copy: the passes downstream annotate
+        # condition nodes in place (property_id, parent, argument, num), so a
+        # shared subtree would have every selection overwrite the last one's.
+        return WhereClauseOp(operand=node, condition=deepcopy(condition))
+    if isinstance(node, (WhereClauseOp, SubOp)):
+        return node
+    # ``vars`` rather than a per-class child list: the node types differ too
+    # much (left/right, operand, children, args, then_expr, ...) for an
+    # explicit table to stay correct as the grammar grows. Snapshot the items
+    # so the setattr below cannot disturb the iteration, and skip the
+    # back-references, which would turn the walk into a cycle.
+    for name, value in list(vars(node).items()):
+        if name in _BACK_REFERENCES:
+            continue
+        if isinstance(value, AST):
+            setattr(node, name, graft_where_onto_selections(value, condition))
+        elif isinstance(value, list):
+            setattr(
+                node,
+                name,
+                [
+                    graft_where_onto_selections(item, condition)
+                    if isinstance(item, AST)
+                    else item
+                    for item in value
+                ],
+            )
+    return node
 
 
 def _equality_value(node: AST) -> str | None:
@@ -42,6 +111,18 @@ def _equality_value(node: AST) -> str | None:
     return None
 
 
+def _is_key_dimension(node: AST) -> TypeGuard[Dimension]:
+    """Whether ``node`` references a component a join can be keyed on.
+
+    Args:
+        node: One side of an ``=`` condition.
+
+    Returns:
+        ``True`` for a ``Dimension`` other than the Fact Component.
+    """
+    return isinstance(node, Dimension) and node.dimension_code != tokens.FACT
+
+
 def _equality_pin(node: BinOp) -> tuple[str, str] | None:
     """Return ``(dimension_code, value)`` for a ``dimension = value`` node.
 
@@ -49,17 +130,21 @@ def _equality_pin(node: BinOp) -> tuple[str, str] | None:
     when the equality is not between exactly one ``Dimension`` and one
     literal value (e.g. ``value = value`` or ``dimension = dimension``).
 
+    The Fact Component ("f") never yields a pin: pins exist only to spot an
+    inner join that can never match, and the join is over *Key Components*.
+    Two operands filtering on different fact values are perfectly joinable.
+
     Args:
         node: An ``=`` ``BinOp`` from a where condition.
 
     Returns:
         The pinned dimension code and value, or ``None``.
     """
-    if isinstance(node.left, Dimension):
+    if _is_key_dimension(node.left):
         value = _equality_value(node.right)
         if value is not None:
             return node.left.dimension_code, value
-    if isinstance(node.right, Dimension):
+    if _is_key_dimension(node.right):
         value = _equality_value(node.left)
         if value is not None:
             return node.right.dimension_code, value

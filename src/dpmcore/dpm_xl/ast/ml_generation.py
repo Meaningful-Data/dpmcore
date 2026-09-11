@@ -24,7 +24,6 @@ from dpmcore.dpm_xl.ast.nodes import (
     ParExpr,
     PersistentAssignment,
     PreconditionItem,
-    RankOp,
     RenameNode,
     RenameOp,
     Scalar,
@@ -49,7 +48,9 @@ from dpmcore.dpm_xl.model_queries import (
     ItemCategoryQuery,
     OperatorQuery,
     VariableVersionQuery,
+    ViewDatapointsQuery,
 )
+from dpmcore.dpm_xl.utils import tokens
 from dpmcore.dpm_xl.utils.data_handlers import filter_all_data, generate_xyz
 from dpmcore.dpm_xl.utils.scopes_calculator import OperationScopeService
 from dpmcore.errors import SemanticError
@@ -57,6 +58,7 @@ from dpmcore.orm.operations import (
     OperandReference,
     OperandReferenceLocation,
     OperationNode,
+    OperationVersion,
 )
 
 
@@ -189,7 +191,7 @@ class MLGeneration(ASTTemplate):
         interval = bool(interval_attr) if interval_attr is not None else False
         fallback_value = gather_element(node, "default")
 
-        if isinstance(fallback_value, Constant):
+        if hasattr(fallback_value, "value"):
             fallback_value = fallback_value.value
 
         if fallback_value is not None and isinstance(fallback_value, str):
@@ -259,17 +261,58 @@ class MLGeneration(ASTTemplate):
         self.session_queries.close()
 
     def visit_PersistentAssignment(self, node: PersistentAssignment) -> None:
-
+        # node.left is the target cell, not an operand: never visited, so it
+        # never becomes a leaf (matches TemporaryAssignment below).
         operation_node = self.create_operation_node(node)
 
-        node.left.argument = "left"
         node.right.argument = "right"
-
-        node.left.parent = operation_node
         node.right.parent = operation_node
 
-        self.visit(node.left)
         self.visit(node.right)
+
+        self._set_output_variable(node.left)
+
+    def _set_output_variable(self, target: Any) -> None:
+        # Scripting mode must not dirty a real OperationVersion row
+        if self.is_scripting or self.op_version_id is None:
+            return
+        variable_id = self._resolve_output_variable_id(target)
+        if variable_id is None:
+            return
+        operation_version = self.session.get(
+            OperationVersion, self.op_version_id
+        )
+        if operation_version is not None:
+            operation_version.output_variable_id = variable_id
+
+    def _resolve_output_variable_id(self, target: Any) -> int | None:
+        variable_code = gather_element(target, "variable")
+        if variable_code is not None:
+            variable_id_result = VariableVersionQuery.get_variable_id(
+                self.session, variable_code, self.release_id
+            )
+            return variable_id_result[0] if variable_id_result else None
+        table = gather_element(target, "table")
+        if table is None:
+            return None
+        # The target is never visited during semantic analysis, so it's
+        # never in self.data. Resolve it straight from the DB instead
+        cell_data = ViewDatapointsQuery.get_table_data(
+            self.session,
+            table,
+            gather_element(target, "rows"),
+            gather_element(target, "cols"),
+            gather_element(target, "sheets"),
+            self.release_id,
+        )
+        # >1 result never happens in practice; left unresolved, not guessed.
+        if len(cell_data) != 1:
+            return None
+        variable_id = cell_data.iloc[0]["variable_id"]
+        # Grey cells come back as NaN, upcasting the column to float64
+        if pd.isna(variable_id):
+            return None
+        return int(variable_id)
 
     def visit_TemporaryAssignment(self, node: TemporaryAssignment) -> None:
         self.visit(node.right)
@@ -343,9 +386,6 @@ class MLGeneration(ASTTemplate):
             node.grouping_clause.parent = operand_node
             node.grouping_clause.argument = "grouping_clause"
             self.visit(node.grouping_clause)
-
-    def visit_RankOp(self, node: RankOp) -> None:
-        self.visit(node.operand)
 
     def visit_GroupingClause(self, node: GroupingClause) -> None:
         gc_node = self.create_operation_node(node)
@@ -727,6 +767,14 @@ class MLGeneration(ASTTemplate):
         self.create_operation_node(node, is_leaf=True)
 
     def visit_Dimension(self, node: Dimension) -> None:
+        # The Fact Component is not a Property, so there is no property to
+        # reference: store the component name on the node itself, the way
+        # literal arguments are stored.
+        if node.dimension_code == tokens.FACT:
+            node.scalar = tokens.FACT
+            self.create_operation_node(node, is_leaf=True)
+            return
+
         node.source_reference = "property"
         op_node = self.create_operation_node(node, is_leaf=True)
         property_row = ItemCategoryQuery.get_property_from_code(
@@ -749,7 +797,7 @@ class MLGeneration(ASTTemplate):
         op_node = self.create_operation_node(node, is_leaf=True)
 
         for child in node.children:
-            if not isinstance(child, Scalar):
+            if not hasattr(child, "item"):
                 continue
             item_id = ItemCategoryQuery.get_item_category_id_from_signature(
                 signature=child.item, session=self.session_queries

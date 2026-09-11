@@ -20,7 +20,6 @@ from dpmcore.dpm_xl.ast.nodes import (
     PersistentAssignment,
     PreconditionItem,
     PropertyReference,
-    RankOp,
     RenameOp,
     Scalar,
     Set,
@@ -85,9 +84,6 @@ class ASTTemplate(NodeVisitor):
         self.visit(node.operand)
         if node.grouping_clause:
             self.visit(node.grouping_clause)
-
-    def visit_RankOp(self, node: RankOp) -> None:
-        self.visit(node.operand)
 
     def visit_GroupingClause(self, node: GroupingClause) -> None:
         pass

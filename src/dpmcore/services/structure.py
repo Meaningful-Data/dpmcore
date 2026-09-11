@@ -14,7 +14,7 @@ from typing import (
     cast,
 )
 
-from sqlalchemy import case, func, or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload
 
 from dpmcore.orm.glossary import (
@@ -189,13 +189,15 @@ class StructureService:
         if self._releases_cache is None:
             releases = self.session.query(Release).all()
             self._sort_orders_cache = {
-                r.release_id: compute_sort_order(r.date) for r in releases
+                r.release_id: compute_sort_order(r.date, r.type)
+                for r in releases
             }
             sort_orders = self._sort_orders_cache
             releases.sort(
                 key=lambda r: (
                     sort_orders[r.release_id] is not None,
                     sort_orders[r.release_id] or 0,
+                    r.release_id,
                 )
             )
             self._releases_cache = releases
@@ -288,21 +290,20 @@ class StructureService:
         # Count before pagination/limiting
         total = q.count()
 
-        # Latest first: an undated (unpublished) working release ranks as
-        # the latest, then dated releases descending. The explicit
-        # NULL-first CASE keeps this uniform across backends (SQLite and
-        # SQL Server otherwise sort NULLs last in DESC).
-        q = q.order_by(
-            case((Release.date.is_(None), 1), else_=0).desc(),
-            Release.date.desc(),
+        # Latest first via compute_sort_order
+        rows = sorted(
+            q.all(),
+            key=lambda r: (compute_sort_order(r.date, r.type), r.release_id),
+            reverse=True,
         )
 
         if latest or latest_stable:
-            q = q.limit(1)
+            rows = rows[:1]
+        elif limit is None:
+            rows = rows[offset:]
         else:
-            q = q.offset(offset).limit(limit)
+            rows = rows[offset : offset + max(limit, 0)]
 
-        rows = q.all()
         return [_release_to_dict(r, detail) for r in rows], total
 
     def get_release_by_code(
@@ -2283,7 +2284,7 @@ class StructureService:
                 ItemCategory.code,
             )
             .join(Item, Item.item_id == ItemCategory.item_id)
-            .filter(Item.is_property.is_(True))
+            .filter(Item.is_property == True)  # noqa: E712
         )
         rows = chunked_in(base, ItemCategory.item_id, property_ids)
         out: Dict[int, List[Tuple[int, Optional[int], str]]] = defaultdict(
@@ -2459,7 +2460,7 @@ class StructureService:
             .outerjoin(
                 DataType, DataType.data_type_id == Property.data_type_id
             )
-            .filter(Item.is_property.is_(True))
+            .filter(Item.is_property == True)  # noqa: E712
         )
 
         owners = None if params.is_owner_wildcard else params.owners
@@ -2593,7 +2594,7 @@ class StructureService:
                 Category,
                 Category.category_id == PropertyCategory.category_id,
             )
-            .filter(Category.is_enumerated.is_(True))
+            .filter(Category.is_enumerated == True)  # noqa: E712
         )
         pc_q = filter_by_release(
             pc_q,

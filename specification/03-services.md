@@ -588,7 +588,9 @@ class LayoutExporterService(BaseService):
         """Export all tables in a module to a single workbook.
 
         The workbook contains an Index sheet with hyperlinks, followed
-        by one sheet per table in alphabetical order.
+        by one worksheet per table in alphabetical order — or one
+        worksheet per Z-axis sheet for tables whose cells are
+        sheet-scoped.
         """
         ...
 
@@ -669,6 +671,25 @@ sort_key = parent_sort_key + order + trailing_separator
 
 Where `trailing_separator` is `.` if the header appears before its children,
 or `:` if it appears after (`:` > `.` in ASCII, so the parent sorts last).
+
+### 8.3 Z-axis sheets
+
+Cells of a table with a Z axis are keyed by the sheet they belong to, so such
+a table is rendered as one worksheet per Z sheet, named
+`<table code> (<sheet code>)`. Tables whose cells carry no sheet get a single
+worksheet on which every Z header is annotated as fixed context.
+
+### 8.4 Greyed cells
+
+Excluded cells are filled mid-grey. Void cells are excluded too, so they get a
+darker grey to stay distinguishable from the merely non-reportable ones.
+
+### 8.5 Signs and identities
+
+Only the sign stored on the cell is rendered: a cell with no sign in DPM
+Studio shows no sign in the export. Cells whose data point is reported by
+more than one cell of the workbook — identities — are highlighted in yellow,
+and their comment lists the other locations.
 
 ## 9. Migration Service
 
@@ -820,7 +841,7 @@ It is not part of the public API but is documented here for completeness.
 
 ### 10.1 Grammar & Parser
 
-- **ANTLR4 grammar**: `dpm_xl.g4` defines the DPM-XL language syntax
+- **ANTLR4 grammar**: `dpm_xlLexer.g4` and `dpm_xlParser.g4` define the DPM-XL language syntax
 - **Generated parser**: Auto-generated lexer, parser, and listener from the grammar
 - **ANTLR version**: 4.9.2 (specific version required)
 
@@ -859,7 +880,7 @@ conversions (e.g., Integer + Decimal → Decimal).
 | Boolean | `AND`, `OR`, `NOT` |
 | Conditional | `IF-THEN-ELSE` |
 | Aggregate | `SUM`, `AVG`, `MIN`, `MAX`, `COUNT` |
-| Clause | `WHERE`, `FILTER`, `RENAME`, `SUB` |
+| Clause | `WHERE`, `GET`, `FILTER`, `RENAME`, `SUB` |
 | String | String manipulation operators |
 | Time | `TIMESHIFT` and temporal operators |
 
@@ -877,6 +898,54 @@ Component (abstract)
 
 Structure (component set with unique keys + single fact)
 ```
+
+Which components a clause operator may target:
+
+| Operator | DPM Key | Standard Key (`r`/`c`/`s`) | Fact (`f`) | Attribute |
+|----------|---------|----------------------------|------------|-----------|
+| `WHERE`  | yes     | no                         | yes        | yes       |
+| `GET`    | yes     | no                         | no         | yes       |
+| `RENAME` | yes     | no                         | no         | yes       |
+| `SUB`    | yes     | no                         | no         | no        |
+
+`WHERE` filters on the fact value and leaves the structure untouched, so it
+accepts the Fact Component; projecting onto it (`GET`), renaming it or
+substituting it stays invalid (`4-5-0-1`). `GET` re-types the result Fact
+Component to the data type of the selected component. Attribute Components
+are accepted structurally but no selection currently produces any.
+
+Every Structure has exactly one Fact Component, so a `WHERE` condition naming
+only the Fact Component needs no open key: it applies to a selection on a
+table that declares none, and so contributes no DPM Key Components of its
+own. The selection must still be a recordset: on a single datapoint — one
+whose only key components are the implicit globals `refPeriod`, `entityID`
+and `baseCurrency` — the condition is rejected with `4-5-2-3`.
+
+#### The `where` block of a `with` clause
+
+`dpm_xlParser.g4`, rule `expressionWithoutAssignment`:
+
+```antlr
+    | WITH partialSelection
+    (SQUARE_BRACKET_LEFT WHERE expression SQUARE_BRACKET_RIGHT)?
+    COLON expression                                                            #exprWithSelection
+```
+
+The optional block applies to every selection in the body, except a selection
+carrying its own `WHERE` or `SUB`, which overrides it in full — including when
+the inner clause names other components. Filtering precedes `GET` and `RENAME`
+on the same selection, so the condition names components as the selection
+declares them. These two are equivalent:
+
+```
+with {tX}[where qEEA = [eba_qAE:qx2023]]: {c0250} + {c0260} >= 0
+with {tX}: {c0250}[where qEEA = [eba_qAE:qx2023]]
+         + {c0260}[where qEEA = [eba_qAE:qx2023]] >= 0
+```
+
+Each selection is checked against the condition on its own: one whose table
+does not carry a referenced component raises `2-8`, and a component with no
+dictionary row raises `1-5`.
 
 ### 10.6 Semantic Analyzer
 

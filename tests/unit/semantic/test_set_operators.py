@@ -425,3 +425,148 @@ def test_notequal_scalar_set_and_recordset_rejected_both_directions():
     with pytest.raises(SemanticError) as exc2:
         NotEqual.validate(rs, ss)
     assert exc2.value.code == "3-3"
+
+
+# ---------------------------------------------------------------------------
+# Issue #293: set equality against the empty set literal must not raise
+# a spurious "Implicit promotion between <T> and Item" warning.
+#
+# ``visit_Set`` gives the empty set literal ``{}`` a placeholder ``Item``
+# type — no elements to infer from. For union/intersect/setdiff/symdiff
+# that placeholder is already filtered out of the homogeneity check
+# (``_visit_set_operands``). ``=`` / ``!=`` between two ScalarSets used
+# to forward the placeholder to ``binary_implicit_type_promotion``,
+# clashing with the other operand's real type. The canonical pattern
+# ``setdiff(A, B) = {}`` (used across BdI DORA validations) therefore
+# emitted a false-positive warning even though the expression is valid
+# per §13.7 set equality.
+# ---------------------------------------------------------------------------
+
+
+def _implicit_promotion_warnings(expression: str) -> list[str]:
+    from dpmcore.dpm_xl.warning_collector import collect_warnings
+    from dpmcore.services.syntax import SyntaxService
+
+    ast = SyntaxService().parse(expression)
+    with collect_warnings() as collector:
+        _analyzer().visit(ast)
+    return [w for w in collector.get_warnings() if "Implicit promotion" in w]
+
+
+def test_set_equality_setdiff_empty_rhs_does_not_warn():
+    """``setdiff(strings) = {}`` must not raise implicit-promotion warning."""
+    assert (
+        _implicit_promotion_warnings('setdiff({"a", "b"}, {"c"}) = {}') == []
+    )
+
+
+def test_set_equality_empty_lhs_setdiff_rhs_does_not_warn():
+    """Operand order is irrelevant — ``{} = setdiff(...)`` also OK."""
+    assert (
+        _implicit_promotion_warnings('{} = setdiff({"a", "b"}, {"c"})') == []
+    )
+
+
+def test_set_inequality_setdiff_empty_rhs_does_not_warn():
+    assert (
+        _implicit_promotion_warnings('setdiff({"a", "b"}, {"c"}) != {}') == []
+    )
+
+
+def test_set_equality_empty_and_empty_still_returns_boolean_scalar():
+    """``{} = {}`` stays valid (returns Boolean Scalar, no warning)."""
+    from dpmcore.services.syntax import SyntaxService
+
+    ast = SyntaxService().parse("{} = {}")
+    result = _analyzer().visit(ast)
+    assert isinstance(result, Scalar)
+    assert str(result.type) == "Boolean"
+    assert _implicit_promotion_warnings("{} = {}") == []
+
+
+def test_set_equality_string_set_and_empty_does_not_warn():
+    """Non-set-operator literal on the LHS — placeholder propagation must
+    still kick in.
+    """
+    assert _implicit_promotion_warnings('{"a", "b"} = {}') == []
+
+
+def test_set_equality_mismatched_real_types_still_warns():
+    """The fix must only bypass promotion for the empty-set placeholder;
+    two typed sets with mismatched element types must still emit the
+    implicit-promotion warning like any other binary op.
+    """
+    # Integer vs String — real type mismatch, not the placeholder.
+    warnings = _implicit_promotion_warnings('{1, 2} = {"a"}')
+    assert any("Integer" in w and "String" in w for w in warnings), (
+        f"expected Integer/String promotion warning, got {warnings!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Follow-up on #293 (PR #294 review by @andres-sole): the placeholder
+# propagation was too narrow — it only covered ``ScalarSet = ScalarSet``.
+# Two additional cases still leaked the ``Implicit promotion between
+# <T> and Item`` warning:
+#   * ``5 in {}`` (Scalar ``in`` empty ScalarSet) — a legitimate shape.
+#   * ``5 = {}`` (Scalar ``=`` empty ScalarSet) — semantically invalid,
+#     but the warning was recorded *before* the delayed 3-3 rejection,
+#     so callers still observed a stale warning next to the error.
+# ---------------------------------------------------------------------------
+
+
+def test_in_scalar_empty_set_does_not_warn():
+    """``5 in {}`` is well-formed (§13 ``in`` accepts a ScalarSet RHS);
+    the empty set placeholder must not trigger a promotion warning.
+    """
+    assert _implicit_promotion_warnings("5 in {}") == []
+
+
+def test_in_scalar_empty_set_still_returns_boolean_scalar():
+    from dpmcore.services.syntax import SyntaxService
+
+    ast = SyntaxService().parse("5 in {}")
+    result = _analyzer().visit(ast)
+    assert isinstance(result, Scalar)
+    assert str(result.type) == "Boolean"
+
+
+def test_singleton_empty_string_set_is_not_the_empty_placeholder():
+    """``{""}`` (a set with one empty-string element) renders with the
+    same ``origin`` string as the empty set literal ``{}``, but is
+    genuinely typed as ``String``. The placeholder-detection must use
+    both ``origin == "{}"`` *and* the ``Item`` type marker so that
+    ``{""} = {1, 2}`` still surfaces the real ``String``/``Integer``
+    mismatch, and ``{""} = {}`` does *not* fabricate a spurious
+    ``String``/``Item`` warning against the placeholder.
+    """
+    # Real mismatch — must warn.
+    real = _implicit_promotion_warnings('{""} = {1, 2}')
+    assert any("String" in w and "Integer" in w for w in real), (
+        f"expected String/Integer promotion warning on real mismatch, "
+        f"got {real!r}"
+    )
+    # Typed String vs the placeholder — must not warn (either order).
+    assert _implicit_promotion_warnings('{""} = {}') == []
+    assert _implicit_promotion_warnings('{} = {""}') == []
+
+
+def test_equal_scalar_empty_set_rejects_without_stale_warning():
+    """``5 = {}`` is semantically invalid — set equality requires a
+    ScalarSet on both sides. The 3-3 rejection must fire *without* first
+    recording an implicit-promotion warning against the placeholder.
+    """
+    from dpmcore.errors import SemanticError
+    from dpmcore.services.syntax import SyntaxService
+
+    ast = SyntaxService().parse("5 = {}")
+    from dpmcore.dpm_xl.warning_collector import collect_warnings
+
+    with collect_warnings() as collector:
+        with pytest.raises(SemanticError) as exc:
+            _analyzer().visit(ast)
+    assert exc.value.code == "3-3"
+    ghosts = [w for w in collector.get_warnings() if "Implicit promotion" in w]
+    assert ghosts == [], (
+        f"3-3 rejection must not leave a stale promotion warning; got {ghosts!r}"
+    )

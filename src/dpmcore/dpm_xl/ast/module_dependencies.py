@@ -24,6 +24,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     WhereClauseOp,
     WithExpression,
 )
+from dpmcore.dpm_xl.ast.operands import NON_KEY_COMPONENT_CODES
 from dpmcore.dpm_xl.ast.template import ASTTemplate
 from dpmcore.dpm_xl.ast.where_clause import WhereClauseChecker
 from dpmcore.dpm_xl.model_queries import (
@@ -195,6 +196,10 @@ class ModuleDependencies(ASTTemplate, ABC):
             self.full_operands[full_name] = final_list
 
     def visit_Dimension(self, node: Dimension) -> None:
+        # The Fact Component has no dictionary row, so it contributes no
+        # dependency and must not be looked up (see NON_KEY_COMPONENT_CODES).
+        if node.dimension_code in NON_KEY_COMPONENT_CODES:
+            return
         if node.dimension_code not in self.dimension_codes:
             self.dimension_codes.append(node.dimension_code)
             if not ItemCategoryQuery.get_property_from_code(

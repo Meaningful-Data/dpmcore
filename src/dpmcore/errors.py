@@ -241,6 +241,11 @@ centralised_messages: Dict[str, str] = {
         " structure or condition must be a subset"
         " of selection."
     ),
+    "4-5-2-3": (
+        "For where operator, a condition on the fact"
+        " component requires recordset {recordset} to"
+        " have at least one key component."
+    ),
     # -- Sub
     "4-5-3-1": (
         "For sub operator, property code"
@@ -260,15 +265,24 @@ centralised_messages: Dict[str, str] = {
     ),
     # -- if then else
     "4-6-1-1": ("Error for the condition in if then else operator"),
+    "4-6-1-2": (
+        "For if then else operator, the condition and the then and else"
+        " branches have to be a recordset or a scalar,"
+        " {operand} is neither."
+    ),
     "4-6-1-3": (
-        "For if then else operator, then and else"
-        " have to be both recordset or both scalars,"
-        " if the condition is a scalar."
+        "For if then else operator, then and else have to result in the"
+        " same key components once joined with the condition"
+        " (both recordset or both scalars, if the condition is a scalar)."
     ),
     # -- nvl
     "4-6-2-1": (
         "Invalid input structures for Nvl operator,"
         " right op has to be scalar too."
+    ),
+    "4-6-2-2": (
+        "For nvl operator, both operands have to be"
+        " a recordset or a scalar, {operand} is neither."
     ),
     # -- filter
     "4-6-3-1": (
@@ -287,6 +301,10 @@ centralised_messages: Dict[str, str] = {
     "4-7-4": (
         "For time_shift operator,"
         " shift_number must evaluate to an integer scalar"
+    ),
+    "4-7-5": (
+        "For time_shift operator, shift_number must be an integer"
+        " literal to declare the shifted operand's reference period"
     ),
     # - String Operators
     "4-8-1": (
@@ -341,6 +359,23 @@ centralised_messages: Dict[str, str] = {
         " to use Property Constraint."
     ),
     "7-2": ("Found a Variable Reference, please check expression"),
+    # Precondition-operation
+    "7-3": (
+        "Precondition related to this operation does not belong to"
+        " any draft module. Precondition variable ID:"
+        " {precondition_variable_ids}."
+    ),
+    "7-4": (
+        "Precondition related to this operation has different"
+        " tables. Precondition tables: {precondition_tables},"
+        " operation abstract tables: {operation_tables}."
+    ),
+    "7-5": (
+        "Precondition related to this operation has variables on"
+        " other modules. Precondition modules:"
+        " {precondition_modules}, operation modules:"
+        " {operation_modules}."
+    ),
 }
 
 

@@ -11,6 +11,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from dpmcore import errors
+
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -25,7 +27,6 @@ def _patch_orm(monkeypatch):
         "dpmcore.orm.rendering": MagicMock(),
         "dpmcore.orm.variables": MagicMock(),
         "dpmcore.orm.glossary": MagicMock(),
-        "dpmcore.errors": MagicMock(),
         "dpmcore.loaders": MagicMock(),
         "dpmcore.loaders.migration": MagicMock(),
         "dpmcore.dpm_xl.model_queries": MagicMock(),
@@ -199,6 +200,69 @@ class TestExtractReferencedTables:
 
 
 # ------------------------------------------------------------------ #
+# _extract_operand_datapoints (#251)
+# ------------------------------------------------------------------ #
+
+
+class TestExtractOperandDatapoints:
+    def test_collects_datapoints_with_types_across_modules(self):
+        """Both sides of a cross-module rule are collected (#251)."""
+        _, Cls, _ = _bare_svc()
+        ast = {
+            "class_name": "BinOp",
+            "op": "<=",
+            "left": {
+                "class_name": "VarID",
+                "table": "C_01.00",
+                "data": [{"datapoint": 32673, "data_type": "m"}],
+            },
+            "right": {
+                "class_name": "VarID",
+                "table": "F_01.03",
+                "data": [{"datapoint": 56987, "data_type": "m"}],
+            },
+        }
+        assert Cls._extract_operand_datapoints(ast) == {
+            "32673": "m",
+            "56987": "m",
+        }
+
+    def test_collects_every_datapoint_of_a_multi_cell_operand(self):
+        _, Cls, _ = _bare_svc()
+        ast = {
+            "class_name": "VarID",
+            "table": "C_04.00",
+            "data": [
+                {"datapoint": 1, "data_type": "i"},
+                {"datapoint": 2, "data_type": "e"},
+            ],
+        }
+        assert Cls._extract_operand_datapoints(ast) == {"1": "i", "2": "e"}
+
+    def test_missing_type_falls_back_to_empty_string(self):
+        _, Cls, _ = _bare_svc()
+        ast = {"class_name": "VarID", "data": [{"datapoint": 9}]}
+        assert Cls._extract_operand_datapoints(ast) == {"9": ""}
+
+    def test_entries_without_datapoint_are_skipped(self):
+        _, Cls, _ = _bare_svc()
+        ast = {
+            "class_name": "VarID",
+            "data": [{"data_type": "m"}, {"datapoint": None}, "junk"],
+        }
+        assert Cls._extract_operand_datapoints(ast) == {}
+
+    def test_ignores_non_varid_nodes(self):
+        _, Cls, _ = _bare_svc()
+        ast = {
+            "class_name": "Constant",
+            "value": 0,
+            "data": [{"datapoint": 5}],
+        }
+        assert Cls._extract_operand_datapoints(ast) == {}
+
+
+# ------------------------------------------------------------------ #
 # _build_module_info / _build_release_info / _build_dates
 # ------------------------------------------------------------------ #
 
@@ -281,6 +345,17 @@ class TestBuildOperationEntry:
 # ------------------------------------------------------------------ #
 # _build_preconditions_block
 # ------------------------------------------------------------------ #
+
+
+def _stub_variable_query(monkeypatch, resolved):
+    """Point ``VariableVersionQuery`` at a fixed code → vid mapping."""
+    fake_query = MagicMock()
+    fake_query.get_variable_vids_by_codes.return_value = resolved
+    monkeypatch.setitem(
+        sys.modules,
+        "dpmcore.dpm_xl.model_queries",
+        SimpleNamespace(VariableVersionQuery=fake_query),
+    )
 
 
 class TestBuildPreconditionsBlock:
@@ -466,6 +541,77 @@ class TestBuildPreconditionsBlock:
         assert entry["code"] == "p_110"
         assert entry["version_id"] == 110
 
+    def test_emitted_operations_trims_dangling_codes(self, monkeypatch):
+        """#355: only operations the script emits may be gated."""
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        _stub_variable_query(
+            monkeypatch, {"C_01.00": {"variable_id": 11, "variable_vid": 110}}
+        )
+
+        preconds, vars_ = svc._build_preconditions_block(
+            [("{v_C_01.00}", ["v1", "v2", "v3"])],
+            release_id=None,
+            emitted_operations={"v1", "v3"},
+        )
+        assert preconds["p_110"]["affected_operations"] == ["v1", "v3"]
+        assert vars_ == {"110": "b"}
+
+    def test_precondition_gating_nothing_emitted_is_dropped(self, monkeypatch):
+        """A gate left with no operation drops, variables included."""
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        _stub_variable_query(
+            monkeypatch, {"C_01.00": {"variable_id": 11, "variable_vid": 110}}
+        )
+
+        preconds, vars_ = svc._build_preconditions_block(
+            [("{v_C_01.00}", ["v1"])],
+            release_id=None,
+            emitted_operations={"v2"},
+        )
+        assert preconds == {}
+        assert vars_ == {}
+
+    def test_dropped_gate_does_not_take_a_shared_variable_with_it(
+        self, monkeypatch
+    ):
+        """A variable a surviving gate also uses stays declared."""
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        _stub_variable_query(
+            monkeypatch,
+            {
+                "A": {"variable_id": 1, "variable_vid": 10},
+                "B": {"variable_id": 2, "variable_vid": 20},
+            },
+        )
+
+        preconds, vars_ = svc._build_preconditions_block(
+            [
+                ("{v_A}", ["v1"]),
+                ("{v_A} and {v_B}", ["v2"]),
+            ],
+            release_id=None,
+            emitted_operations={"v1"},
+        )
+        assert list(preconds) == ["p_10"]
+        # 20 belonged to the dropped compound gate only; 10 is shared.
+        assert vars_ == {"10": "b"}
+
+    def test_no_emitted_operations_filter_keeps_every_code(self, monkeypatch):
+        """Omitting the filter leaves the harvested list untouched."""
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        _stub_variable_query(
+            monkeypatch, {"C_01.00": {"variable_id": 11, "variable_vid": 110}}
+        )
+
+        preconds, _vars = svc._build_preconditions_block(
+            [("{v_C_01.00}", ["v1", "v2"])], release_id=None
+        )
+        assert preconds["p_110"]["affected_operations"] == ["v1", "v2"]
+
 
 # ------------------------------------------------------------------ #
 # _resolve_root_operator_id
@@ -574,6 +720,43 @@ class TestResolveRootOperatorId:
         )
         assert Cls._resolve_root_operator_id(with_expr, MagicMock()) == 30
 
+    def test_parexpr_root_resolves_to_paren_operator(self, monkeypatch):
+        # A ParExpr root has no 'op' attribute; when the whole expression
+        # body is wrapped in parentheses the operator IS the paren itself,
+        # not the operator inside — mirroring pydpm's OperatorID 37 for
+        # the "()" symbol. Regression guard for the previous walk that
+        # descended into ParExpr.expression and returned the inner op.
+        _, Cls, _ = _bare_svc()
+        ParExpr = type("ParExpr", (), {})
+        node = ParExpr()
+        node.op = None
+        inner = type("BinOp", (), {})()
+        inner.op = ">="  # would have been picked before the fix
+        node.expression = inner
+
+        WithExpression = type("WithExpression", (), {})
+        with_expr = WithExpression()
+        with_expr.expression = node
+
+        class FakeOperatorQuery:
+            @staticmethod
+            def get_operators(session):  # noqa: ARG004
+                import pandas as pd
+
+                return pd.DataFrame(
+                    [
+                        {"Symbol": "()", "OperatorID": 37},
+                        {"Symbol": ">=", "OperatorID": 15},
+                    ]
+                )
+
+        monkeypatch.setitem(
+            sys.modules,
+            "dpmcore.dpm_xl.model_queries",
+            SimpleNamespace(OperatorQuery=FakeOperatorQuery),
+        )
+        assert Cls._resolve_root_operator_id(with_expr, MagicMock()) == 37
+
     def test_unresolvable_root_raises(self, monkeypatch):
         _, Cls, _ = _bare_svc()
         # No 'op' attribute anywhere.
@@ -646,8 +829,9 @@ class TestLatestReleaseInWindow:
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
         mv = SimpleNamespace(start_release_id=42, end_release_id=None)
-        # resolve_sort_order issues session.query(Release.date).filter(
-        # Release.release_id == ...).first(); no matching Release row
+        # resolve_sort_order issues session.query(Release.date,
+        # Release.type).filter(Release.release_id == ...).first(); no
+        # matching Release row
         # (first() returns None) has no sort order, so the helper raises.
         # An undated release, by contrast, resolves to the latest sentinel.
         svc.session.query.return_value.filter.return_value.first.return_value = (  # noqa: E501
@@ -665,7 +849,7 @@ class TestLatestReleaseInWindow:
         # Two resolve_sort_order calls: first returns a dated release,
         # second finds no Release row so the end-bound resolver raises.
         svc.session.query.return_value.filter.return_value.first.side_effect = [  # noqa: E501
-            (date(2024, 1, 1),),
+            (date(2024, 1, 1), None),
             None,
         ]
         with pytest.raises(
@@ -693,11 +877,11 @@ class TestBuildDependencyInfo:
         )
 
     def test_none_when_primary_missing(self):
-        svc, _, _ = _bare_svc()
+        svc, _, mod = _bare_svc()
         svc._scope_calc = _scope_calc_mock()
         assert (
             svc._build_dependency_info(
-                scope_pairs=[(("e",), MagicMock(), {})],
+                scope_pairs=[(("e",), MagicMock(), {}, mod._OperandRefs())],
                 primary_module_vid=None,
                 release_id=None,
             )
@@ -715,7 +899,7 @@ class TestBuildDependencyInfo:
         )
 
     def test_aggregates_and_dedupes_intra(self):
-        svc, _, _ = _bare_svc()
+        svc, _, mod = _bare_svc()
         svc._scope_calc = _scope_calc_mock(
             detect_return={
                 "intra_instance_validations": ["v1"],
@@ -724,8 +908,8 @@ class TestBuildDependencyInfo:
             }
         )
         scope_pairs = [
-            (("e1", "v1"), MagicMock(), {}),
-            (("e2", "v1"), MagicMock(), {}),
+            (("e1", "v1"), MagicMock(), {}, mod._OperandRefs()),
+            (("e2", "v1"), MagicMock(), {}, mod._OperandRefs()),
         ]
         out = svc._build_dependency_info(
             scope_pairs=scope_pairs,
@@ -751,27 +935,38 @@ class TestMergeDepModules:
         )
         assert "http://a" in existing
 
-    def test_existing_uri_merges_tables_without_overwriting(self):
+    def test_existing_uri_unions_repeated_table_variables(self):
+        """Two operations referencing different cells of the same
+        dependency table must both end up declared (#250).
+        """
         _, Cls, _ = _bare_svc()
         existing = {
             "http://a": {
-                "tables": {"T1": {"variables": {}, "open_keys": {}}},
+                "tables": {
+                    "T1": {"variables": {"v1": "x"}, "open_keys": {"qA": "e"}}
+                },
                 "variables": {"v1": "x"},
             }
         }
         new = {
             "http://a": {
                 "tables": {
-                    "T1": {"variables": {"NEW": "y"}, "open_keys": {}},
-                    "T2": {"variables": {}, "open_keys": {}},
+                    "T1": {"variables": {"v2": "y"}, "open_keys": {"qA": "e"}},
+                    "T2": {"variables": {"v3": "z"}, "open_keys": {}},
                 },
-                "variables": {"v2": "y"},
+                "variables": {"v2": "y", "v3": "z"},
             }
         }
         Cls._merge_dep_modules(existing, new)
-        assert existing["http://a"]["tables"]["T1"]["variables"] == {}
+        t1 = existing["http://a"]["tables"]["T1"]
+        assert t1["variables"] == {"v1": "x", "v2": "y"}
+        assert t1["open_keys"] == {"qA": "e"}
         assert "T2" in existing["http://a"]["tables"]
-        assert existing["http://a"]["variables"] == {"v1": "x", "v2": "y"}
+        assert existing["http://a"]["variables"] == {
+            "v1": "x",
+            "v2": "y",
+            "v3": "z",
+        }
 
 
 # ------------------------------------------------------------------ #
@@ -797,6 +992,18 @@ class _FakeVarID:
 _FakeVarID.__name__ = "VarID"
 
 
+class _FakeBinOp:
+    """Two-operand node the AST template walks into generically."""
+
+    def __init__(self, left, right):
+        self.op = "and"
+        self.left = left
+        self.right = right
+
+
+_FakeBinOp.__name__ = "BinOp"
+
+
 class TestExtractTimeShifts:
     def test_empty_returns_empty(self):
         _, Cls, _ = _bare_svc()
@@ -808,15 +1015,34 @@ class TestExtractTimeShifts:
 
         sn = Constant(type_="Integer", value=1)
         node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_01"))
-        assert Cls._extract_time_shifts(node) == {"T_01": "T-1Q"}
+        assert Cls._extract_time_shifts(node) == {"T_01": ["T-1Q"]}
 
-    def test_negative_unary_shift_produces_T_minus(self):
+    def test_negative_unary_shift_produces_T_plus(self):
+        """The declared period inverts the shift: ``-2`` needs ``T+2Y``."""
         _, Cls, _ = _bare_svc()
         from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
 
         sn = UnaryOp(op="-", operand=Constant(type_="Integer", value=2))
         node = _FakeTimeShiftOp("Y", sn, _FakeVarID(table="T_02"))
-        assert Cls._extract_time_shifts(node) == {"T_02": "T-2Y"}
+        assert Cls._extract_time_shifts(node) == {"T_02": ["T+2Y"]}
+
+    def test_negated_non_literal_shift_is_rejected(self):
+        """A negated non-literal shift names no resolvable period."""
+        _, Cls, _ = _bare_svc()
+        from dpmcore.dpm_xl.ast.nodes import BinOp, Constant, UnaryOp
+
+        sn = UnaryOp(
+            op="-",
+            operand=BinOp(
+                op="*",
+                left=Constant(type_="Integer", value=2),
+                right=Constant(type_="Integer", value=2),
+            ),
+        )
+        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_04"))
+        with pytest.raises(errors.SemanticError) as exc:
+            Cls._extract_time_shifts(node)
+        assert exc.value.code == "4-7-5"
 
     def test_var_without_table_ignored(self):
         _, Cls, _ = _bare_svc()
@@ -826,7 +1052,10 @@ class TestExtractTimeShifts:
         node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table=None))
         assert Cls._extract_time_shifts(node) == {}
 
-    def test_complex_expression_ast_node_shift(self):
+    def test_non_literal_shift_is_rejected(self):
+        """``2 * 2`` used to render as ``T-nQ``, which resolves to no
+        instance; the operation is now skipped instead (#326).
+        """
         _, Cls, _ = _bare_svc()
         from dpmcore.dpm_xl.ast.nodes import BinOp, Constant
 
@@ -836,8 +1065,110 @@ class TestExtractTimeShifts:
             right=Constant(type_="Integer", value=12),
         )
         node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_03"))
-        result = Cls._extract_time_shifts(node)
-        assert result == {"T_03": "T-nQ"}
+        with pytest.raises(errors.SemanticError) as exc:
+            Cls._extract_time_shifts(node)
+        assert exc.value.code == "4-7-5"
+
+    def test_plain_reference_is_recorded_as_t(self):
+        """An unshifted table is recorded at ``T`` so a module read at
+        both the current and a shifted instance stays visible.
+        """
+        _, Cls, _ = _bare_svc()
+
+        assert Cls._extract_time_shifts(_FakeVarID(table="T_05")) == {
+            "T_05": ["T"]
+        }
+
+    def test_a_table_read_plain_and_shifted_keeps_both_periods(self):
+        _, Cls, _ = _bare_svc()
+        from dpmcore.dpm_xl.ast.nodes import Constant
+
+        sn = Constant(type_="Integer", value=1)
+        shifted = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_06"))
+        node = _FakeBinOp(_FakeVarID(table="T_06"), shifted)
+        assert Cls._extract_time_shifts(node) == {"T_06": ["T", "T-1Q"]}
+
+    def test_a_table_shifted_twice_keeps_both_periods(self):
+        _, Cls, _ = _bare_svc()
+        from dpmcore.dpm_xl.ast.nodes import Constant
+
+        node = _FakeBinOp(
+            _FakeTimeShiftOp(
+                "Q", Constant(type_="Integer", value=1), _FakeVarID("T_07")
+            ),
+            _FakeTimeShiftOp(
+                "Q", Constant(type_="Integer", value=4), _FakeVarID("T_07")
+            ),
+        )
+        assert Cls._extract_time_shifts(node) == {"T_07": ["T-1Q", "T-4Q"]}
+
+    def test_the_shift_does_not_leak_past_the_operand(self):
+        """A plain table read after a shifted one stays at ``T``."""
+        _, Cls, _ = _bare_svc()
+        from dpmcore.dpm_xl.ast.nodes import Constant
+
+        node = _FakeBinOp(
+            _FakeTimeShiftOp(
+                "Q", Constant(type_="Integer", value=1), _FakeVarID("T_08")
+            ),
+            _FakeVarID(table="T_09"),
+        )
+        assert Cls._extract_time_shifts(node) == {
+            "T_08": ["T-1Q"],
+            "T_09": ["T"],
+        }
+
+    def test_a_zero_shift_is_no_shift(self):
+        _, Cls, _ = _bare_svc()
+        from dpmcore.dpm_xl.ast.nodes import Constant
+
+        sn = Constant(type_="Integer", value=0)
+        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_10"))
+        assert Cls._extract_time_shifts(node) == {"T_10": ["T"]}
+
+    def test_unary_plus_shift_keeps_its_size(self):
+        """``+1`` is a UnaryOp, not a bare Constant: it still means 1."""
+        _, Cls, _ = _bare_svc()
+        from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
+
+        sn = UnaryOp(op="+", operand=Constant(type_="Integer", value=1))
+        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_11"))
+        assert Cls._extract_time_shifts(node) == {"T_11": ["T-1Q"]}
+
+    def test_parenthesised_shift_is_unwrapped(self):
+        """``( -1 )`` parses as a ParExpr around the unary minus."""
+        _, Cls, _ = _bare_svc()
+        from dpmcore.dpm_xl.ast.nodes import Constant, ParExpr, UnaryOp
+
+        sn = ParExpr(
+            expression=UnaryOp(
+                op="-", operand=Constant(type_="Integer", value=1)
+            )
+        )
+        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_12"))
+        assert Cls._extract_time_shifts(node) == {"T_12": ["T+1Q"]}
+
+    def test_negative_constant_renders_a_single_sign(self):
+        """``(-1)`` is lexed as a negative Constant, not a unary minus."""
+        _, Cls, _ = _bare_svc()
+        from dpmcore.dpm_xl.ast.nodes import Constant
+
+        sn = Constant(type_="Integer", value=-1)
+        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_13"))
+        assert Cls._extract_time_shifts(node) == {"T_13": ["T+1Q"]}
+
+    def test_double_negation_shift_is_positive(self):
+        _, Cls, _ = _bare_svc()
+        from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
+
+        sn = UnaryOp(
+            op="-",
+            operand=UnaryOp(
+                op="-", operand=Constant(type_="Integer", value=1)
+            ),
+        )
+        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_14"))
+        assert Cls._extract_time_shifts(node) == {"T_14": ["T-1Q"]}
 
     def test_exception_returns_empty(self):
         _, Cls, _ = _bare_svc()
@@ -1036,6 +1367,104 @@ class TestScript:
         assert out["failed_operations"] == {
             "v1": "Grey cells {F_32.03.a, r0040, c0010} were found."
         }
+
+    def test_non_literal_shift_skips_op_preserves_others(self, monkeypatch):
+        """#326: a shift whose period cannot be declared skips that op.
+
+        Emitting the old ``T-nQ`` sent the operation to an instance no
+        engine can resolve, and failing the whole module would drop the
+        operations that are fine.
+        """
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+        svc._semantic.ast = "AST"
+
+        calls = iter(["bad", "ok", "ok"])
+
+        def _extract(ast):
+            if next(calls) == "bad":
+                raise errors.SemanticError("4-7-5")
+            return {"C_01.00": ["T"]}
+
+        monkeypatch.setattr(
+            type(svc), "_extract_time_shifts", staticmethod(_extract)
+        )
+
+        out = svc.script(
+            expressions=[("e_bad", "v1"), ("e2", "v2"), ("e3", "v3")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+        assert out["success"] is True
+        ns = next(iter(out["enriched_ast"].values()))
+        # Skipped before any accumulation: no operation entry either.
+        assert "v1" not in ns["operations"]
+        assert {"v2", "v3"} <= set(ns["operations"])
+        assert list(out["failed_operations"]) == ["v1"]
+        assert "integer literal" in out["failed_operations"]["v1"]
+
+    def test_preconditions_only_gate_emitted_operations(self, monkeypatch):
+        """#355: a rejected operation may not stay listed in a gate.
+
+        Preconditions are harvested before the expressions they gate are
+        validated, so ``p_255`` used to ship gating four operations that
+        semantic validation had dropped into ``failed_operations``.
+        """
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+        _stub_variable_query(
+            monkeypatch,
+            {
+                "F_01.01": {"variable_id": 11, "variable_vid": 110},
+                "F_05.01": {"variable_id": 22, "variable_vid": 220},
+            },
+        )
+        svc._semantic.validate.side_effect = lambda expr, release_id=None: (
+            SimpleNamespace(
+                is_valid=False,
+                error_message=(
+                    "3-6: Invalid default type, default is a String but "
+                    "it has to be a Item."
+                ),
+            )
+            if expr == "e_bad"
+            else SimpleNamespace(
+                is_valid=True, error_message=None, parameters=()
+            )
+        )
+        svc._semantic.ast = "AST"
+
+        out = svc.script(
+            expressions=[("e_bad", "v0937_m"), ("e_ok", "v1000_m")],
+            module_code="MOD",
+            module_version="1.0",
+            preconditions=[
+                {
+                    "expression": "{v_F_01.01}",
+                    "affected_operations": ["v0937_m"],
+                    "code": "p_255",
+                },
+                {
+                    "expression": "{v_F_05.01}",
+                    "affected_operations": ["v0937_m", "v1000_m"],
+                    "code": "p_9",
+                },
+            ],
+        )
+        assert out["success"] is True
+        assert "v0937_m" in out["failed_operations"]
+        ns = next(iter(out["enriched_ast"].values()))
+        # p_255 gated the rejected operation alone: entry and the
+        # variable it alone declared both go.
+        assert list(ns["preconditions"]) == ["p_9"]
+        assert ns["preconditions"]["p_9"]["affected_operations"] == ["v1000_m"]
+        assert ns["precondition_variables"] == {"220": "b"}
 
     def test_scope_error_fails_generation(self, monkeypatch):
         """Regression for #122: a scope-calculation error must fail the

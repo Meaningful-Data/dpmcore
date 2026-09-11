@@ -35,7 +35,6 @@ from dpmcore.dpm_xl.ast.nodes import (
     ParExpr,
     PersistentAssignment,
     PropertyReference,
-    RankOp,
     RenameNode,
     RenameOp,
     Scalar,
@@ -59,6 +58,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     WindowClause,
     WithExpression,
 )
+from dpmcore.dpm_xl.ast.where_clause import graft_where_onto_selections
 from dpmcore.dpm_xl.grammar.generated.dpm_xlParser import dpm_xlParser
 from dpmcore.dpm_xl.grammar.generated.dpm_xlParserVisitor import (
     dpm_xlParserVisitor,
@@ -164,8 +164,22 @@ class ASTVisitor(dpm_xlParserVisitor):
         # so ctx_list[3] would land on the WHERE terminal rather than the
         # body.  ctx_list[-1] is correct in both cases.
         expression: AST = self._visit(ctx_list[-1])
+        # The optional [WHERE expression] block is inlined in the grammar
+        # rule rather than reached through a WhereExprContext, so it has no
+        # named accessor. It contributes the only other ``expression`` child,
+        # so two of them means the block is there and the first is its
+        # condition.
+        where_condition: AST | None = None
+        expressions = ctx.expression()
+        if len(expressions) == 2:
+            where_condition = self._visit(expressions[0])
+            expression = graft_where_onto_selections(
+                expression, where_condition
+            )
         return WithExpression(
-            partial_selection=partial_selection, expression=expression
+            partial_selection=partial_selection,
+            expression=expression,
+            where_condition=where_condition,
         )
 
     def visitPartialSelect(
@@ -280,8 +294,19 @@ class ASTVisitor(dpm_xlParserVisitor):
             analytic_clause=analytic_clause,
         )
 
-    def visitRankOp(self, ctx: dpm_xlParser.RankOpContext) -> RankOp:
+    def visitRankOp(self, ctx: dpm_xlParser.RankOpContext) -> AggregationOp:
+        """Build ``rank`` as an ``AggregationOp`` discriminated by ``op``.
+
+        ``rank`` is an alternative of the ``aggregateOperators`` grammar
+        rule, so it is an aggregation like the rest of the family rather
+        than a node class of its own. The grammar offers it no grouping
+        clause and makes the analytic clause mandatory; every later pass
+        -- semantic analysis, ML generation, serialization -- therefore
+        handles it through the ``AggregationOp`` path with no special
+        case.
+        """
         ctx_list = list(ctx.getChildren())
+        op = self._symbol_text(ctx_list[0])
         operand: AST | None = None
         analytic_clause: AnalyticClause | None = None
         for child in ctx_list:
@@ -291,13 +316,18 @@ class ASTVisitor(dpm_xlParserVisitor):
                 operand = self._visit(child)
         if operand is None:
             raise RuntimeError(
-                "RankOp requires an operand; parser produced none"
+                "rank requires an operand; parser produced none"
             )
         if analytic_clause is None:
             raise RuntimeError(
-                "RankOp requires an analytic clause; parser produced none"
+                "rank requires an analytic clause; parser produced none"
             )
-        return RankOp(operand=operand, analytic_clause=analytic_clause)
+        return AggregationOp(
+            op=op,
+            operand=operand,
+            grouping_clause=None,
+            analytic_clause=analytic_clause,
+        )
 
     def visitAnalyticClause(
         self, ctx: dpm_xlParser.AnalyticClauseContext

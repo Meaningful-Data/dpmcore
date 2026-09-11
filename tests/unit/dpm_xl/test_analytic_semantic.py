@@ -16,7 +16,7 @@ from dpmcore.dpm_xl.symbols import (
     RecordSet,
     Structure,
 )
-from dpmcore.dpm_xl.types.scalar import Integer, Number, String
+from dpmcore.dpm_xl.types.scalar import Integer, Mixed, Number, String
 from dpmcore.dpm_xl.utils.tokens import STANDARD
 from dpmcore.errors import SemanticError
 
@@ -131,6 +131,34 @@ class TestWindowClause:
         b = WindowBoundary("n_following", 5)
         assert b.bound_type == "n_following"
         assert b.n == 5
+
+
+class TestMixedFactGuard:
+    """The Mixed guard lives with the type promotion it protects.
+
+    It used to sit in ``SemanticAnalyzer.visit_AggregationOp``, which
+    ``rank`` reached through a visitor of its own and so never hit.
+    ``Rank`` overrides ``validate_analytic`` and does no promotion, so it
+    stays exempt by not inheriting the check rather than by a
+    node-class special case.
+    """
+
+    def test_promoting_aggregate_rejects_a_mixed_fact(self) -> None:
+        with pytest.raises(SemanticError) as exc_info:
+            Sum.validate_analytic(
+                _make_rs(fact_type=Mixed(), key_names=["r"]),
+                _analytic(order_by=["r"]),
+            )
+        assert exc_info.value.code == "4-4-0-3"
+        assert "sum(...)" in str(exc_info.value)
+
+    def test_rank_still_accepts_a_mixed_fact(self) -> None:
+        result = Rank.validate_analytic(
+            _make_rs(fact_type=Mixed(), key_names=["r"]),
+            _analytic(order_by=["r"]),
+        )
+        assert isinstance(result, RecordSet)
+        assert isinstance(result.get_fact_component().type, Integer)
 
 
 class TestRankValidate:

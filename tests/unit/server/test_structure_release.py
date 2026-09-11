@@ -316,3 +316,49 @@ class TestQueryReleasesUndatedIsLatest:
                 "4.2.1",
                 "4.2",
             ]
+
+
+class TestQueryReleasesDatedPlaygroundTypeIsLatest:
+    """A "playground"-typed release ranks latest despite a real date.
+
+    Mirrors ``TestQueryReleasesUndatedIsLatest`` for schemas where
+    ``Release.Date`` is ``NOT NULL`` (e.g. DPM Refit): the perpetual
+    working release cannot leave ``date`` empty, so it is marked via
+    ``type="playground"`` instead, typically with an early placeholder
+    date such as 1970-01-01. That date must not rank it as the oldest
+    release.
+    """
+
+    def test_dated_playground_type_is_latest(self, engine):
+        from dpmcore.services.structure import StructureService
+
+        with Session(engine) as session:
+            session.add_all(
+                [
+                    Release(release_id=1, code="4.2", date=date(2025, 10, 31)),
+                    Release(
+                        release_id=2, code="4.2.1", date=date(2026, 2, 15)
+                    ),
+                    Release(
+                        release_id=9999,
+                        code="Playground",
+                        date=date(1970, 1, 1),
+                        type="playground",
+                    ),
+                ]
+            )
+            session.commit()
+            svc = StructureService(session)
+
+            latest, _ = svc.query_releases(latest=True)
+            assert [r["code"] for r in latest] == ["Playground"]
+
+            all_rows, total = svc.query_releases()
+            assert total == 3
+            # Latest first: dated Playground (by type, not by its 1970
+            # date), then 4.2.1, then 4.2.
+            assert [r["code"] for r in all_rows] == [
+                "Playground",
+                "4.2.1",
+                "4.2",
+            ]

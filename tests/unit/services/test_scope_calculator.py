@@ -159,6 +159,275 @@ class TestCalculateFromExpression:
 
 
 # ------------------------------------------------------------------ #
+# precondition_expression (issue #279)
+# ------------------------------------------------------------------ #
+
+
+def _paired_svc(main_tables, gate_tables, gate_codes, scope_results):
+    """Build a service whose two OperandsChecking passes differ.
+
+    ``scope_results`` is consumed one entry per ``calculate_operation_scope``
+    call, so a test can make the combined and baseline runs disagree.
+    """
+    Svc, _ = _load_module()
+    mod = sys.modules["dpmcore.services.scope_calculator"]
+
+    def _oc(tables):
+        oc = MagicMock()
+        oc.tables = dict.fromkeys(tables, MagicMock())
+        oc.preconditions = False
+        return oc
+
+    mod.OperandsChecking.side_effect = [_oc(main_tables), _oc(gate_tables)]
+
+    scope_svc = MagicMock()
+    scope_svc.calculate_operation_scope.side_effect = [
+        (scopes, []) for scopes in scope_results
+    ]
+    mod.OperationScopeService.return_value = scope_svc
+    mod.OperationScopeService.reset_mock()
+
+    svc = Svc(MagicMock())
+    svc._syntax = MagicMock()
+    svc._syntax.parse.return_value = MagicMock()
+    svc._check_release_exists = MagicMock()
+    svc._check_tables_hosted = MagicMock()
+    mod.required_precondition_codes = MagicMock(return_value=gate_codes)
+    return svc, scope_svc, mod
+
+
+class TestPreconditionExpression:
+    """The gate's operands join the resolution by their matching channels."""
+
+    def test_gate_tables_union_into_table_codes(self):
+        svc, scope_svc, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=["T_B"],
+            gate_codes=[],
+            scope_results=[[_scope([2])], [_scope([1])]],
+        )
+        svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        combined = scope_svc.calculate_operation_scope.call_args_list[0]
+        assert combined.kwargs["table_codes"] == ["T_A", "T_B"]
+        # The baseline run sees the main expression's operands only.
+        baseline = scope_svc.calculate_operation_scope.call_args_list[1]
+        assert baseline.kwargs["table_codes"] == ["T_A"]
+
+    def test_gate_codes_union_into_precondition_items(self):
+        svc, scope_svc, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=[],
+            gate_codes=["FI_2"],
+            scope_results=[[_scope([2])], [_scope([1])]],
+        )
+        svc.calculate_from_expression(
+            expression="main",
+            precondition_items=["FI_1"],
+            precondition_expression="gate",
+        )
+        combined = scope_svc.calculate_operation_scope.call_args_list[0]
+        assert combined.kwargs["precondition_items"] == ["FI_1", "FI_2"]
+        assert combined.kwargs["table_codes"] == ["T_A"]
+
+    def test_gate_operands_are_deduped_against_the_main_expression(self):
+        svc, scope_svc, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=["T_A"],
+            gate_codes=["FI_1"],
+            scope_results=[[_scope([1])]],
+        )
+        result = svc.calculate_from_expression(
+            expression="main",
+            precondition_items=["FI_1"],
+            precondition_expression="gate",
+        )
+        # Nothing new: one call only, and no baseline to compare against.
+        assert scope_svc.calculate_operation_scope.call_count == 1
+        assert result.warning is None
+
+    def test_no_precondition_expression_runs_once_and_warns_nothing(self):
+        svc, scope_svc, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=[],
+            gate_codes=[],
+            scope_results=[[_scope([1])]],
+        )
+        result = svc.calculate_from_expression(expression="main")
+        assert scope_svc.calculate_operation_scope.call_count == 1
+        assert result.warning is None
+        assert result.error_source is None
+
+    def test_warns_when_the_scope_signature_changes(self):
+        svc, _, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=["T_B"],
+            gate_codes=[],
+            scope_results=[[_scope([1, 2])], [_scope([1])]],
+        )
+        result = svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        assert result.warning is not None
+        assert "[1] -> [1, 2]" in result.warning
+        assert "tables T_B" in result.warning
+
+    def test_no_warning_when_the_signature_is_unchanged(self):
+        # The gate adds an operand, so the baseline is computed — but the
+        # resolved scope is identical, so there is nothing to report.
+        svc, scope_svc, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=["T_B"],
+            gate_codes=[],
+            scope_results=[[_scope([1])], [_scope([1])]],
+        )
+        result = svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        assert scope_svc.calculate_operation_scope.call_count == 2
+        assert result.warning is None
+
+    def test_warns_on_re_partitioning_that_module_versions_alone_would_miss(
+        self,
+    ):
+        # Same module versions before and after, but regrouped: FINREP9 alone
+        # can no longer evaluate the pair. ``module_versions`` is identical, so
+        # only the per-scope signature catches this.
+        svc, _, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=["T_B"],
+            gate_codes=[],
+            scope_results=[
+                [_scope([1, 2]), _scope([2])],
+                [_scope([1]), _scope([2])],
+            ],
+        )
+        result = svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        assert result.warning is not None
+
+    def test_warns_when_the_gate_empties_the_scope(self):
+        svc, _, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=[],
+            gate_codes=["FI_1"],
+            scope_results=[[], [_scope([1])]],
+        )
+        result = svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        assert result.total_scopes == 0
+        assert not result.has_error
+        assert "not evaluable in any module version" in result.warning
+        assert "filing indicators FI_1" in result.warning
+
+    def test_gate_parse_failure_is_attributed_and_prefixed(self):
+        Svc, _ = _load_module()
+        mod = sys.modules["dpmcore.services.scope_calculator"]
+        oc = MagicMock()
+        oc.tables = {"T_A": MagicMock()}
+        oc.preconditions = False
+        mod.OperandsChecking.side_effect = [oc, RuntimeError("bad gate")]
+        svc = Svc(MagicMock())
+        svc._syntax = MagicMock()
+        svc._syntax.parse.return_value = MagicMock()
+        svc._check_release_exists = MagicMock()
+
+        result = svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        assert result.has_error
+        assert result.error_source == "precondition"
+        assert result.error_message == "Precondition: bad gate"
+
+    def test_main_expression_failure_is_not_prefixed(self):
+        Svc, _ = _load_module()
+        mod = sys.modules["dpmcore.services.scope_calculator"]
+        mod.OperandsChecking.side_effect = RuntimeError("bad main")
+        svc = Svc(MagicMock())
+        svc._syntax = MagicMock()
+        svc._syntax.parse.return_value = MagicMock()
+        svc._check_release_exists = MagicMock()
+
+        result = svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        assert result.has_error
+        assert result.error_source == "expression"
+        assert result.error_message == "bad main"
+
+    def test_combined_failure_blames_the_gate_only_if_the_main_resolves(self):
+        svc, scope_svc, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=["T_B"],
+            gate_codes=[],
+            scope_results=[],
+        )
+        # Combined run raises; the baseline retry succeeds.
+        scope_svc.calculate_operation_scope.side_effect = [
+            RuntimeError("no modules"),
+            ([_scope([1])], []),
+        ]
+        result = svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        assert result.error_source == "precondition"
+        assert result.error_message == "Precondition: no modules"
+
+    def test_combined_failure_blames_the_expression_if_it_also_fails_alone(
+        self,
+    ):
+        svc, scope_svc, _ = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=["T_B"],
+            gate_codes=[],
+            scope_results=[],
+        )
+        scope_svc.calculate_operation_scope.side_effect = RuntimeError("boom")
+        result = svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        assert result.error_source == "expression"
+        assert result.error_message == "boom"
+
+    def test_a_fresh_scope_service_is_built_per_run(self):
+        # OperationScopeService accumulates into self.operation_scopes and
+        # never clears it, so sharing one instance would double-count.
+        svc, _, mod = _paired_svc(
+            main_tables=["T_A"],
+            gate_tables=["T_B"],
+            gate_codes=[],
+            scope_results=[[_scope([1, 2])], [_scope([1])]],
+        )
+        svc.calculate_from_expression(
+            expression="main", precondition_expression="gate"
+        )
+        assert mod.OperationScopeService.call_count == 2
+
+
+class TestScopeSignature:
+    """The invariant the warning is computed from."""
+
+    def test_empty_scopes(self):
+        Svc, _ = _load_module()
+        assert Svc._scope_signature([]) == frozenset()
+
+    def test_groups_module_vids_per_scope(self):
+        Svc, _ = _load_module()
+        assert Svc._scope_signature([_scope([1]), _scope([2])]) == frozenset(
+            {frozenset({1}), frozenset({2})}
+        )
+
+    def test_distinguishes_re_partitioning(self):
+        Svc, _ = _load_module()
+        split = Svc._scope_signature([_scope([1]), _scope([2])])
+        merged = Svc._scope_signature([_scope([1, 2])])
+        assert split != merged
+
+
+# ------------------------------------------------------------------ #
 # _compute_cross_module
 # ------------------------------------------------------------------ #
 
@@ -372,6 +641,89 @@ class TestDetectAlternativeDependencies:
         )
         assert result == []
 
+    @staticmethod
+    def _assert_disjoint(result):
+        """No module URI appears in more than one group."""
+        seen: set = set()
+        for group in result:
+            assert not (seen & set(group)), "groups overlap"
+            seen |= set(group)
+
+    def test_three_interchangeable_modules_form_one_group(self):
+        """3+ interchangeable modules collapse to one disjoint group (#242).
+
+        A, B and C are each the sole external of the same operation and
+        never co-occur, so they are mutually interchangeable. This must
+        surface as the single group ``[[A, B, C]]``, not the overlapping
+        pairs ``[[A, B], [A, C], [B, C]]``.
+        """
+        svc, SR = self._make_svc(
+            {10: "http://uri/a", 20: "http://uri/b", 30: "http://uri/c"},
+        )
+        sr = SR(
+            scopes=[
+                _scope([1, 10]),
+                _scope([1, 20]),
+                _scope([1, 30]),
+            ],
+        )
+        result = svc.detect_alternative_dependencies(
+            scope_results=[sr], primary_module_vid=1
+        )
+        assert result == [
+            sorted(["http://uri/a", "http://uri/b", "http://uri/c"])
+        ]
+        self._assert_disjoint(result)
+
+    def test_disjoint_alternative_groups(self):
+        """Independent interchangeable sets stay as separate groups (#242)."""
+        svc, SR = self._make_svc(
+            {
+                10: "http://uri/a",
+                20: "http://uri/b",
+                30: "http://uri/c",
+                40: "http://uri/d",
+            },
+        )
+        # Two operations, each with its own pair of interchangeables; the
+        # two pairs never share an operation, so they must not merge.
+        sr1 = SR(scopes=[_scope([1, 10]), _scope([1, 20])])
+        sr2 = SR(scopes=[_scope([1, 30]), _scope([1, 40])])
+        result = svc.detect_alternative_dependencies(
+            scope_results=[sr1, sr2], primary_module_vid=1
+        )
+        assert result == [
+            sorted(["http://uri/a", "http://uri/b"]),
+            sorted(["http://uri/c", "http://uri/d"]),
+        ]
+        self._assert_disjoint(result)
+
+    def test_non_transitive_merges_into_one_group(self):
+        """Non-transitive alternatives merge via connected components (#242).
+
+        A-B and B-C are interchangeable, but A and C co-occur (so they are
+        conjunctive, not alternatives). Connected components keep the
+        result disjoint by merging all three into one group.
+        """
+        svc, SR = self._make_svc(
+            {10: "http://uri/a", 20: "http://uri/b", 30: "http://uri/c"},
+        )
+        sr = SR(
+            scopes=[
+                _scope([1, 10]),
+                _scope([1, 20]),
+                _scope([1, 30]),
+                _scope([1, 10, 30]),  # A and C required together.
+            ],
+        )
+        result = svc.detect_alternative_dependencies(
+            scope_results=[sr], primary_module_vid=1
+        )
+        assert result == [
+            sorted(["http://uri/a", "http://uri/b", "http://uri/c"])
+        ]
+        self._assert_disjoint(result)
+
 
 # ------------------------------------------------------------------ #
 # detect_cross_module_dependencies (Fix 2)
@@ -457,6 +809,26 @@ class TestDetectCrossModuleDependencies:
         sr = SR(
             scopes=[_scope([20, 30])],
             is_cross_module=True,
+        )
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+            operation_code="v1234",
+        )
+        assert info["intra_instance_validations"] == []
+        assert info["cross_instance_dependencies"] == []
+
+    def test_primary_in_no_single_module_scope_is_not_intra(self):
+        # Same as above but the result is not cross-module at all: the
+        # only scope is module 20 on its own. Module 10 hosts none of the
+        # referenced tables, so it is neither intra nor cross (#141).
+        # Keying the intra claim off ``not is_cross`` used to declare it
+        # intra here; #304 removes the redundant superset scopes that
+        # previously kept ``is_cross`` true and hid the hole.
+        svc, SR = self._make_svc()
+        sr = SR(
+            scopes=[_scope([20])],
+            is_cross_module=False,
         )
         info = svc.detect_cross_module_dependencies(
             scope_result=sr,
@@ -552,7 +924,7 @@ class TestDetectCrossModuleDependencies:
         info = svc.detect_cross_module_dependencies(
             scope_result=sr,
             primary_module_vid=10,
-            time_shifts={"C_01.00": "T-1Q"},
+            time_shifts={"C_01.00": ["T-1Q"]},
         )
         dep = info["cross_instance_dependencies"][0]
         assert dep["modules"][0]["ref_period"] == "T-1Q"
@@ -587,12 +959,18 @@ class TestDetectCrossModuleDependencies:
     def test_dependency_modules_in_output(self):
         """dependency_modules dict is populated."""
         svc, SR = self._make_svc()
-        svc._get_module_tables = lambda vid, release_id=None: {
-            "T_01": {
-                "variables": {"v1": "x"},
-                "open_keys": {},
+        # Distinct home/dep tables — the PR #276 shared-table exclusion
+        # would strip a fully overlapping ``T_01`` from the dep side.
+        svc._get_module_tables = lambda vid, release_id=None: (
+            {"HOME_T": {"variables": {"vh": "x"}, "open_keys": {}}}
+            if vid == 10
+            else {
+                "T_01": {
+                    "variables": {"v1": "x"},
+                    "open_keys": {},
+                }
             }
-        }
+        )
 
         mv = MagicMock()
         mv.module_vid = 20
@@ -616,17 +994,196 @@ class TestDetectCrossModuleDependencies:
         assert "T_01" in dm["http://uri/mod_20"]["tables"]
         assert dm["http://uri/mod_20"]["variables"] == {"v1": "x"}
 
+    def test_referenced_home_variables_declared(self):
+        """Regression for #251: a cross-validation's home-module operand
+        datapoints must appear in the dependency module's ``variables``
+        map, or the engine cannot build the home operand.
+        """
+        svc, SR = self._make_svc()
+        # Distinct home/dep tables — with the shared-table exclusion
+        # (PR #276) a full-overlap mock would drop the dep's F_01.03.
+        svc._get_module_tables = lambda vid, release_id=None: (
+            {"C_01.00": {"variables": {"32673": "m"}, "open_keys": {}}}
+            if vid == 10
+            else {
+                "F_01.03": {
+                    "variables": {"56987": "m"},
+                    "open_keys": {},
+                }
+            }
+        )
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [mv]
+
+        sr = SR(
+            scopes=[_scope([10, 20])],
+            is_cross_module=True,
+        )
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+            # {tC_01.00,...} <= {tF_01.03,...}: 32673 is the home operand.
+            referenced_variables={"32673": "m", "56987": "m"},
+        )
+        dep = info["dependency_modules"]["http://uri/mod_20"]
+        assert dep["variables"] == {"32673": "m", "56987": "m"}
+        # tables stay dependency-side only.
+        assert set(dep["tables"]) == {"F_01.03"}
+
+    def test_declares_only_referenced_tables_and_datapoints(self):
+        """Regression for #250: a dependency module is declared as the
+        subset the cross-rules reference, not whole.
+        """
+        svc, SR = self._make_svc()
+        # Distinct home/dep tables (see PR #276 shared-table exclusion).
+        svc._get_module_tables = lambda vid, release_id=None: (
+            {"G_01.00": {"variables": {"500": "m"}, "open_keys": {}}}
+            if vid == 10
+            else {
+                "F_22.02": {
+                    "variables": {"1": "m", "2": "m", "3": "m"},
+                    "open_keys": {"qAS": "e"},
+                },
+                # Referenced by no cross-rule: must not be declared.
+                "F_99.00": {"variables": {"9": "m"}, "open_keys": {}},
+            }
+        )
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [mv]
+
+        info = svc.detect_cross_module_dependencies(
+            scope_result=SR(scopes=[_scope([10, 20])], is_cross_module=True),
+            primary_module_vid=10,
+            referenced_tables={"G_01.00", "F_22.02"},
+            referenced_variables={"1": "m", "500": "m"},
+        )
+        dep = info["dependency_modules"]["http://uri/mod_20"]
+        assert set(dep["tables"]) == {"F_22.02"}
+        assert dep["tables"]["F_22.02"]["variables"] == {"1": "m"}
+        # open_keys survive the narrowing (#122).
+        assert dep["tables"]["F_22.02"]["open_keys"] == {"qAS": "e"}
+        # 500 is the home operand grafted in by #251.
+        assert dep["variables"] == {"1": "m", "500": "m"}
+
+    def test_whole_module_declared_when_no_refs_supplied(self):
+        """Callers passing no reference info keep the unnarrowed module."""
+        svc, SR = self._make_svc()
+        # Distinct home/dep tables (see PR #276 shared-table exclusion).
+        svc._get_module_tables = lambda vid, release_id=None: (
+            {"HOME_T": {"variables": {"vh": "m"}, "open_keys": {}}}
+            if vid == 10
+            else {
+                "F_22.02": {"variables": {"1": "m"}, "open_keys": {}},
+                "F_99.00": {"variables": {"9": "m"}, "open_keys": {}},
+            }
+        )
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [mv]
+
+        info = svc.detect_cross_module_dependencies(
+            scope_result=SR(scopes=[_scope([10, 20])], is_cross_module=True),
+            primary_module_vid=10,
+        )
+        dep = info["dependency_modules"]["http://uri/mod_20"]
+        assert set(dep["tables"]) == {"F_22.02", "F_99.00"}
+
+    def test_dependency_kept_whole_when_narrowing_empties_it(self):
+        """Narrowing must never drop a genuine cross-instance dependency:
+        if nothing matches, the module is declared unnarrowed.
+        """
+        svc, SR = self._make_svc()
+        # Distinct home/dep tables (see PR #276 shared-table exclusion).
+        svc._get_module_tables = lambda vid, release_id=None: (
+            {"G_01.00": {"variables": {"777": "m"}, "open_keys": {}}}
+            if vid == 10
+            else {
+                "F_22.02": {"variables": {"1": "m"}, "open_keys": {}},
+            }
+        )
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [mv]
+
+        info = svc.detect_cross_module_dependencies(
+            scope_result=SR(scopes=[_scope([10, 20])], is_cross_module=True),
+            primary_module_vid=10,
+            referenced_tables={"Z_00.00"},
+            referenced_variables={"777": "m"},
+        )
+        dep = info["dependency_modules"]["http://uri/mod_20"]
+        assert set(dep["tables"]) == {"F_22.02"}
+        assert dep["variables"] == {"1": "m", "777": "m"}
+
+    def test_module_definition_wins_over_referenced_type(self):
+        """A datapoint the dependency module defines keeps that type."""
+        svc, SR = self._make_svc()
+        # Distinct home/dep tables (see PR #276 shared-table exclusion).
+        svc._get_module_tables = lambda vid, release_id=None: (
+            {}
+            if vid == 10
+            else {"F_01.03": {"variables": {"56987": "m"}, "open_keys": {}}}
+        )
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [mv]
+
+        info = svc.detect_cross_module_dependencies(
+            scope_result=SR(scopes=[_scope([10, 20])], is_cross_module=True),
+            primary_module_vid=10,
+            referenced_variables={"56987": ""},
+        )
+        dep = info["dependency_modules"]["http://uri/mod_20"]
+        assert dep["variables"] == {"56987": "m"}
+
     def test_dependency_table_open_keys_propagate(self):
         """Regression for #122: a dependency module's table entries must
         keep their ``open_keys`` so the engine can join on them.
         """
         svc, SR = self._make_svc()
-        svc._get_module_tables = lambda vid, release_id=None: {
-            "C_06.02": {
-                "variables": {"5486578": "s"},
-                "open_keys": {"qEGS": "e", "qLGS": "s"},
+        # Distinct home/dep tables (see PR #276 shared-table exclusion).
+        svc._get_module_tables = lambda vid, release_id=None: (
+            {"HOME_T": {"variables": {"vh": "s"}, "open_keys": {}}}
+            if vid == 10
+            else {
+                "C_06.02": {
+                    "variables": {"5486578": "s"},
+                    "open_keys": {"qEGS": "e", "qLGS": "s"},
+                }
             }
-        }
+        )
 
         mv = MagicMock()
         mv.module_vid = 20

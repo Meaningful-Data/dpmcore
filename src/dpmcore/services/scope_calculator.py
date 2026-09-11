@@ -9,9 +9,11 @@ from typing import (
     Any,
     Dict,
     List,
+    Mapping,
     Optional,
     Set,
     Tuple,
+    Union,
 )
 
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
@@ -35,6 +37,7 @@ from dpmcore.orm.variables import Variable, VariableVersion
 from dpmcore.services._open_keys import (
     get_open_keys_for_tables as _get_open_keys_for_tables,
 )
+from dpmcore.services._precondition_codes import required_precondition_codes
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -45,7 +48,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ScopeResult:
-    """Outcome of a scope calculation."""
+    """Outcome of a scope calculation.
+
+    ``warning`` is only ever set when a ``precondition_expression`` changed the
+    computed scope. ``error_source`` names the half a failure belongs to and is
+    set whenever ``has_error`` is true. Neither changes ``error_message`` for a
+    call that passes no precondition expression.
+    """
 
     scopes: list[Any] = field(default_factory=list)
     total_scopes: int = 0
@@ -53,6 +62,10 @@ class ScopeResult:
     module_versions: List[int] = field(default_factory=list)
     has_error: bool = False
     error_message: Optional[str] = None
+    # Set when the precondition expression changes the computed scope.
+    warning: Optional[str] = None
+    # Which half a failure belongs to: "expression" or "precondition".
+    error_source: Optional[str] = None
 
 
 class ScopeCalculatorService:
@@ -69,6 +82,13 @@ class ScopeCalculatorService:
         """Build the service bound to ``session``."""
         self.session = session
         self._syntax = SyntaxService()
+        # ``(ModuleVersion, URI)`` per module VID, for the home module of
+        # a script. ``detect_cross_module_dependencies`` runs once per
+        # operation with a fixed ``primary_module_vid``, so resolving it
+        # inside repeats the same row fetch and URI resolution for every
+        # operation that shifts a home table. Both are keyed by VID
+        # alone and neither varies with the release being generated.
+        self._home_module_refs: Dict[int, Tuple[Any, Optional[str]]] = {}
 
     def _check_release_exists(self, release_id: Optional[int]) -> None:
         """Raise SemanticError if *release_id* does not exist."""
@@ -96,21 +116,195 @@ class ScopeCalculatorService:
             for s in scopes
         )
 
+    @staticmethod
+    def _scope_signature(scopes: list[Any]) -> frozenset[frozenset[int]]:
+        """Canonical identity of a scope set: the set of module-VID sets.
+
+        Comparing ``module_versions`` alone would miss a re-partitioning —
+        two intra-module scopes ``[[462], [513]]`` collapsing into one
+        cross-module scope ``[[462, 513]]`` lists the same module versions but
+        means something materially different. Comparing ``total_scopes`` alone
+        would miss a coincidental equal count. The set of module sets catches
+        module additions and removals, intra/cross re-grouping, splits, and the
+        empty case.
+        """
+        return frozenset(
+            frozenset(
+                c.module_vid
+                for c in getattr(s, "operation_scope_compositions", [])
+            )
+            for s in scopes
+        )
+
+    @staticmethod
+    def _module_vids(scopes: list[Any]) -> List[int]:
+        """Module VIDs across *scopes*, deduped in first-seen order."""
+        mvids: List[int] = []
+        for scope in scopes:
+            for comp in getattr(scope, "operation_scope_compositions", []):
+                if comp.module_vid not in mvids:
+                    mvids.append(comp.module_vid)
+        return mvids
+
+    def _result_from_scopes(self, scopes: list[Any]) -> ScopeResult:
+        """Project a computed scope list into a :class:`ScopeResult`."""
+        return ScopeResult(
+            scopes=scopes,
+            total_scopes=len(scopes),
+            is_cross_module=self._compute_cross_module(scopes),
+            module_versions=self._module_vids(scopes),
+        )
+
+    def _operand_tables(
+        self, expression: str, release_id: Optional[int]
+    ) -> tuple[Any, List[str]]:
+        """Parse *expression*, returning its AST and its table codes."""
+        ast = self._syntax.parse(expression)
+        oc = OperandsChecking(
+            session=self.session,
+            expression=expression,
+            ast=ast,
+            release_id=release_id,
+        )
+        return ast, (list(oc.tables.keys()) if oc.tables else [])
+
+    def _check_tables_hosted(
+        self, table_codes: List[str], release_id: Optional[int]
+    ) -> None:
+        """Raise ``1-13`` naming any table code no module version hosts.
+
+        ``OperationScopeService.extract_module_info`` only raises ``1-13`` when
+        *nothing* resolves, so an unhostable gate table is otherwise absorbed
+        by the main expression's own rows. It still inflates the operand count,
+        which usually empties the scope — but when the main expression resolves
+        to a single module-info row the resolver short-circuits before counting
+        operands at all, and the call would return a scope that cannot in fact
+        evaluate the pair. Checking the gate's codes on their own keeps that
+        case an error attributed to the gate rather than a silent wrong answer.
+        """
+        if not table_codes:
+            return
+        from dpmcore.dpm_xl.model_queries import ModuleVersionQuery
+
+        df = ModuleVersionQuery.get_from_table_codes(
+            session=self.session,
+            table_codes=table_codes,
+            release_id=release_id,
+        )
+        hosted = (
+            set(df["TableCode"].dropna().unique()) if not df.empty else set()
+        )
+        missing = [code for code in table_codes if code not in hosted]
+        if missing:
+            raise SemanticError("1-13", table_version_ids=missing)
+
+    def _run_scope(
+        self,
+        table_codes: List[str],
+        precondition_items: List[str],
+        release_id: Optional[int],
+    ) -> list[Any]:
+        """Resolve one scope set. A fresh service per call — it accumulates."""
+        scopes, _ = OperationScopeService(
+            session=self.session
+        ).calculate_operation_scope(
+            tables_vids=[],
+            precondition_items=precondition_items,
+            release_id=release_id,
+            table_codes=table_codes,
+        )
+        return scopes
+
+    @staticmethod
+    def _scope_change_warning(
+        baseline: list[Any],
+        combined: list[Any],
+        gate_tables: List[str],
+        gate_items: List[str],
+    ) -> str:
+        """Describe how the precondition moved the scope."""
+        before = sorted(ScopeCalculatorService._module_vids(baseline))
+        after = sorted(ScopeCalculatorService._module_vids(combined))
+        contributed = ", ".join(
+            part
+            for part in (
+                f"tables {', '.join(gate_tables)}" if gate_tables else "",
+                (
+                    f"filing indicators {', '.join(gate_items)}"
+                    if gate_items
+                    else ""
+                ),
+            )
+            if part
+        )
+        message = (
+            "Precondition expression changes the scope of the expression: "
+            f"module versions {before} -> {after} "
+            f"(scopes {len(baseline)} -> {len(combined)})."
+        )
+        if not combined:
+            message += (
+                " The pair is not evaluable in any module version:"
+                " no module reports every operand both halves need."
+            )
+        if contributed:
+            message += f" Precondition operands: {contributed}."
+        return message
+
     def calculate_from_expression(
         self,
         expression: str,
         release_id: Optional[int] = None,
         precondition_items: Optional[List[str]] = None,
         release_code: Optional[str] = None,
+        *,
+        precondition_expression: Optional[str] = None,
     ) -> ScopeResult:
-        """Calculate scopes for *expression*.
+        """Calculate scopes for *expression*, optionally gated.
 
         Parses the expression, runs OperandsChecking to extract table
         codes, then delegates to :class:`OperationScopeService`.
         ``precondition_items`` is the list of precondition variable
         codes that gate the validation; pass ``None`` or ``[]`` if
         the validation has no preconditions.
+
+        When ``precondition_expression`` is supplied, the gate's own operands
+        join the resolution by their matching channels — its table codes are
+        unioned into ``table_codes`` and its *mandatory* precondition variable
+        codes into ``precondition_items`` (unioned with any the caller passed).
+        The two are not interchangeable: only ``table_codes`` resolves through
+        ``get_from_table_codes``, and only ``precondition_items`` gets the
+        filing-indicator filter and the ``1-14`` check. Because a module hosts
+        an intra-module scope only when it supplies *every* operand, a gate
+        reaching outside the expression's own modules widens the scope to
+        cross-module, or empties it — which is the honest verdict, since the
+        pair is only evaluable where both halves resolve. That change is
+        reported in ``warning``, and a gate-attributable failure sets
+        ``error_source`` to ``"precondition"`` with a prefixed message.
+
+        The two channels treat a disjunctive gate differently, deliberately.
+        Variable codes are intersected across ``or`` branches, so an optional
+        filing indicator does not constrain scope. Table codes come from the
+        gate's ``OperandsChecking`` pass, which does not model boolean
+        structure, so every table the gate mentions is required even when only
+        one branch needs it. That errs toward reporting a wider scope rather
+        than missing a table the pair genuinely needs, and costs nothing on the
+        real dictionary, where no persisted precondition references a table.
+
+        Passing no ``precondition_expression`` costs nothing: no second scope
+        resolution, no warning, and byte-identical error messages.
+
+        Args:
+            expression: The DPM-XL expression to scope.
+            release_id: Optional release ID filter.
+            precondition_items: Filing-indicator codes gating the validation.
+            release_code: Optional release code (mutually exclusive
+                with ``release_id``).
+            precondition_expression: Optional DPM-XL gate expression.
+                Keyword-only, matching ``SemanticService.validate``, so the
+                pre-existing positional arguments keep their meaning.
         """
+        base_items = list(precondition_items or [])
         try:
             release_id = resolve_release_id(
                 self.session,
@@ -118,45 +312,98 @@ class ScopeCalculatorService:
                 release_code=release_code,
             )
             self._check_release_exists(release_id)
-            ast = self._syntax.parse(expression)
-            oc = OperandsChecking(
-                session=self.session,
-                expression=expression,
-                ast=ast,
-                release_id=release_id,
-            )
+            _, main_tables = self._operand_tables(expression, release_id)
+        except Exception as exc:
+            return self._failed(exc, None)
 
-            table_codes: list[str] = (
-                list(oc.tables.keys()) if oc.tables else []
-            )
+        if precondition_expression is None:
+            return self._scope_or_error(main_tables, base_items, release_id)
 
-            scope_svc = OperationScopeService(session=self.session)
-            scopes, _ = scope_svc.calculate_operation_scope(
-                tables_vids=[],
-                precondition_items=precondition_items or [],
-                release_id=release_id,
-                table_codes=table_codes,
+        try:
+            gate_ast, gate_tables = self._operand_tables(
+                precondition_expression, release_id
             )
+            self._check_tables_hosted(gate_tables, release_id)
+        except Exception as exc:
+            return self._failed(exc, "precondition")
+        gate_items = required_precondition_codes(gate_ast)
 
-            mvids: List[int] = []
-            for scope in scopes:
-                for comp in getattr(scope, "operation_scope_compositions", []):
-                    vid = comp.module_vid
-                    if vid not in mvids:
-                        mvids.append(vid)
+        table_codes = main_tables + [
+            t for t in gate_tables if t not in main_tables
+        ]
+        items = base_items + [i for i in gate_items if i not in base_items]
 
-            return ScopeResult(
-                scopes=scopes,
-                total_scopes=len(scopes),
-                is_cross_module=self._compute_cross_module(scopes),
-                module_versions=mvids,
+        # A gate that contributed no new operand cannot move the scope, so the
+        # baseline is provably identical and never computed.
+        if set(table_codes) == set(main_tables) and set(items) == set(
+            base_items
+        ):
+            return self._scope_or_error(main_tables, base_items, release_id)
+
+        try:
+            combined = self._run_scope(table_codes, items, release_id)
+        except Exception as exc:
+            # The gate is only to blame if the expression scopes cleanly
+            # without it — settled by retrying, not guessed at.
+            baseline_ok = self._resolves(main_tables, base_items, release_id)
+            return self._failed(exc, "precondition" if baseline_ok else None)
+
+        result = self._result_from_scopes(combined)
+        try:
+            baseline = self._run_scope(main_tables, base_items, release_id)
+        except Exception:
+            # The expression alone does not resolve but the pair does; treat
+            # the baseline as empty so the change is still reported.
+            baseline = []
+        if self._scope_signature(baseline) != self._scope_signature(combined):
+            result.warning = self._scope_change_warning(
+                baseline, combined, gate_tables, gate_items
             )
+        return result
 
-        except (SemanticError, Exception) as exc:
-            return ScopeResult(
-                has_error=True,
-                error_message=str(exc),
+    @staticmethod
+    def _failed(exc: Exception, source: Optional[str]) -> ScopeResult:
+        """Build a failing result, attributed to *source* when known.
+
+        ``source`` is ``None`` for a failure that is the expression's own (or
+        that no precondition was involved in), which keeps ``error_message``
+        byte-identical to what callers saw before this argument existed.
+        """
+        message = str(exc)
+        if source == "precondition":
+            message = f"Precondition: {message}"
+        return ScopeResult(
+            has_error=True,
+            error_message=message,
+            error_source="expression" if source is None else source,
+        )
+
+    def _scope_or_error(
+        self,
+        table_codes: List[str],
+        items: List[str],
+        release_id: Optional[int],
+    ) -> ScopeResult:
+        """Resolve one scope set into a result, or an unattributed failure."""
+        try:
+            return self._result_from_scopes(
+                self._run_scope(table_codes, items, release_id)
             )
+        except Exception as exc:
+            return self._failed(exc, None)
+
+    def _resolves(
+        self,
+        table_codes: List[str],
+        items: List[str],
+        release_id: Optional[int],
+    ) -> bool:
+        """True when these operands resolve without raising."""
+        try:
+            self._run_scope(table_codes, items, release_id)
+        except Exception:
+            return False
+        return True
 
     def calculate_from_tables(
         self,
@@ -234,9 +481,12 @@ class ScopeCalculatorService:
         primary_module_vid: int,
         operation_code: Optional[str] = None,
         release_id: Optional[int] = None,
-        time_shifts: Optional[Dict[str, str]] = None,
+        time_shifts: Optional[Mapping[str, Union[str, List[str]]]] = None,
         compute_alternative_deps: bool = True,
         release_code: Optional[str] = None,
+        referenced_variables: Optional[Dict[str, str]] = None,
+        referenced_tables: Optional[Set[str]] = None,
+        home_module_tables: Optional[Set[str]] = None,
     ) -> Dict[str, Any]:
         """Build dependency information for a scope result.
 
@@ -245,9 +495,13 @@ class ScopeCalculatorService:
             primary_module_vid: VID of the primary module.
             operation_code: Current operation code (if any).
             release_id: Optional release filter.
-            time_shifts: Optional mapping of table codes to
-                ref-period strings (e.g. ``{"C_01.00": "T-1Q"}``).
-                Tables not present default to ``"T"``.
+            time_shifts: Optional mapping of table codes to the
+                ref-period strings that table is read at (e.g.
+                ``{"C_01.00": ["T", "T-1Q"]}``). A table read at more
+                than one period needs one declared instance per period
+                (#326). A bare string is accepted as a single period, so
+                the pre-#326 ``{"C_01.00": "T-1Q"}`` shape still works.
+                Tables not present default to ``["T"]``.
             compute_alternative_deps: When True (default) the returned
                 ``alternative_dependencies`` is populated from this
                 single ``scope_result``. Aggregating callers that
@@ -256,6 +510,23 @@ class ScopeCalculatorService:
             release_code: Optional release code; resolved to
                 ``release_id`` via :class:`Release.code`. Mutually
                 exclusive with ``release_id``.
+            referenced_variables: Optional ``{datapoint: type_code}`` of
+                every operand datapoint the operation references, across
+                all modules it spans — home module included. Declared in
+                each dependency module's ``variables`` map (#251).
+            referenced_tables: Optional table codes the operation
+                references. Together with ``referenced_variables`` this
+                narrows each dependency module's declaration to the
+                subset the operation uses (#250); omit both to declare
+                the dependency modules whole.
+            home_module_tables: Optional pre-computed set of table codes
+                owned by the primary (home) module — the same set this
+                method would derive from :meth:`_get_module_tables`.
+                Callers that iterate this method with a fixed
+                ``primary_module_vid`` (per-op dependency detection
+                over a script's operations) should pass a single
+                pre-computed set to avoid re-running the per-table
+                variable/open-key fetch on every iteration.
 
         Returns a dict with:
         - ``intra_instance_validations``
@@ -273,7 +544,31 @@ class ScopeCalculatorService:
             "dependency_modules": {},
         }
         is_cross = scope_result.is_cross_module
-        ts = time_shifts or {}
+        # Normalised up front: a bare string left as-is would be
+        # iterated character by character downstream and manufacture
+        # periods like ``"-"`` and ``"1"`` out of ``"T-1Q"``.
+        ts = {
+            table: [periods] if isinstance(periods, str) else list(periods)
+            for table, periods in (time_shifts or {}).items()
+        }
+
+        # #325: a ``time_shift`` over a table of the reporting module
+        # needs another *instance of that same module*, so the operation
+        # is not intra-instance and the shifted instance has to be
+        # declared like any other cross-instance dependency — under the
+        # home module's own URI and the shift's reference period.
+        # Without this the shift is silently dropped: the engine resolves
+        # both operands against the current instance and the script fails.
+        home_periods = (
+            self._home_shift_ref_periods(
+                ts=ts,
+                primary_module_vid=primary_module_vid,
+                release_id=release_id,
+                home_module_tables=home_module_tables,
+            )
+            if not scope_result.has_error
+            else []
+        )
 
         # Issue #120: when the primary module can evaluate the operation
         # on its own (it appears as a single-module scope), prefer the
@@ -302,13 +597,38 @@ class ScopeCalculatorService:
                     release_id=release_id,
                     valid_module_uris=set(),
                 )
+            # A shifted home table turns the intra claim into a
+            # cross-instance dependency on the home module itself (#325).
+            # The primary still has to own a single-module scope: a module
+            # hosting none of the referenced tables is neither the
+            # intra-instance owner nor the shifted instance's reporter.
+            self_deps = (
+                self._build_home_instance_deps(
+                    periods=home_periods,
+                    primary_module_vid=primary_module_vid,
+                    operation_code=operation_code,
+                )
+                if primary_has_intra
+                else []
+            )
+            # The intra claim needs the primary to actually own a
+            # single-module scope. Keying it off ``not is_cross`` instead
+            # declared intra for a module that participates in no scope at
+            # all — it hosts none of the referenced tables (#141). That was
+            # masked while a redundant superset scope kept ``is_cross``
+            # true; dropping those scopes (#304) exposes it.
+            # ``not self_deps`` rather than ``not home_periods``: when the
+            # shifted instance cannot be declared (no resolvable URI) the
+            # operation keeps its intra classification instead of being
+            # dropped from the script's dependency block entirely.
             return {
                 **empty_result,
                 "intra_instance_validations": (
                     [operation_code]
-                    if operation_code and (not is_cross or primary_has_intra)
+                    if operation_code and primary_has_intra and not self_deps
                     else []
                 ),
+                "cross_instance_dependencies": self_deps,
                 "alternative_dependencies": alternative_deps,
             }
 
@@ -333,6 +653,25 @@ class ScopeCalculatorService:
         )
         mv_by_vid = {mv.module_vid: mv for mv in mv_rows}
 
+        # Tables owned by the primary (home) module — a dep module that
+        # also lists any of these is sharing a table with the home; the
+        # sharing belongs to the home declaration, not to the dep, so
+        # exclude them from dependency_modules[<dep>].tables. Without
+        # this, cross-module ops that touch a shared table declare it
+        # twice (once in home, once in every dep that also owns it).
+        # Caller-supplied ``home_module_tables`` avoids the per-op
+        # recompute when this method runs inside a loop with a fixed
+        # ``primary_module_vid`` (the query is a per-table variable/
+        # open-key fetch, not a code-only lookup).
+        if home_module_tables is None:
+            primary_tables = set(
+                self._get_module_tables(
+                    primary_module_vid, release_id=release_id
+                ).keys()
+            )
+        else:
+            primary_tables = home_module_tables
+
         for vid in sorted_vids:
             mv = mv_by_vid.get(vid)
             if not mv:
@@ -343,12 +682,27 @@ class ScopeCalculatorService:
                 release_id=release_id,
                 ts=ts,
                 operation_code=operation_code,
+                referenced_variables=referenced_variables,
+                referenced_tables=referenced_tables,
+                home_module_tables=primary_tables,
             )
             if entry is None:
                 continue
-            cross_dep, uri, dep_module = entry
-            cross_deps.append(cross_dep)
+            entry_deps, uri, dep_module = entry
+            cross_deps.extend(entry_deps)
             dep_modules[uri] = dep_module
+
+        # A cross-module operation can shift a home table too, and that
+        # shifted home instance is a dependency of its own (#325). It is
+        # appended after the external ones so their order — and the entry
+        # every existing caller reads first — stays unchanged.
+        cross_deps.extend(
+            self._build_home_instance_deps(
+                periods=home_periods,
+                primary_module_vid=primary_module_vid,
+                operation_code=operation_code,
+            )
+        )
 
         alternative_deps = (
             self.detect_alternative_dependencies(
@@ -368,20 +722,161 @@ class ScopeCalculatorService:
             "dependency_modules": dep_modules,
         }
 
+    def _home_shift_ref_periods(
+        self,
+        ts: Dict[str, List[str]],
+        primary_module_vid: int,
+        release_id: Optional[int],
+        home_module_tables: Optional[Set[str]] = None,
+    ) -> List[str]:
+        """Return the reference periods shifted *within* the home module.
+
+        ``ts`` maps table codes to the reference periods they are read
+        at. A table owned by the primary (home) module and read at a
+        period other than ``"T"`` means the operation reads another
+        instance of the reporting module itself (#325), which is a
+        cross-instance dependency the script has to declare — the
+        reference period never reached the output before, because it was
+        only ever read off a *dependency* module's tables.
+
+        One entry per distinct period, sorted for determinism: a single
+        operation shifting two home tables by different amounts needs
+        both instances, and the schema carries a period per declared
+        module rather than per table.
+        """
+        shifted = {
+            tcode: [rp for rp in periods if rp and rp != "T"]
+            for tcode, periods in ts.items()
+        }
+        shifted = {tcode: rps for tcode, rps in shifted.items() if rps}
+        if not shifted:
+            return []
+        # Only pay for the table lookup once a shift is actually present.
+        tables = home_module_tables
+        if tables is None:
+            tables = set(
+                self._get_module_tables(
+                    primary_module_vid, release_id=release_id
+                ).keys()
+            )
+        return sorted(
+            {
+                rp
+                for tcode, rps in shifted.items()
+                if tcode in tables
+                for rp in rps
+            }
+        )
+
+    def _build_home_instance_deps(
+        self,
+        periods: List[str],
+        primary_module_vid: int,
+        operation_code: Optional[str],
+    ) -> List[Dict[str, Any]]:
+        """Build the cross-instance entries for shifted home instances.
+
+        Each period yields one entry naming the home module's own URI —
+        the same URI the script is published under — so the engine knows
+        which instance to load for the shifted operand (#325). No
+        ``dependency_modules`` entry accompanies it: the home module's
+        tables and variables are already declared at the top level of
+        the script, and the shifted instance is the same module version.
+
+        The module version and its URI are memoised in
+        ``_home_module_refs``: the caller iterates this once per
+        operation with the same ``primary_module_vid``.
+        """
+        if not periods:
+            return []
+        cached = self._home_module_refs.get(primary_module_vid)
+        if cached is None:
+            mv = (
+                self.session.query(ModuleVersion)
+                .filter(ModuleVersion.module_vid == primary_module_vid)
+                .first()
+            )
+            cached = (
+                mv,
+                self._get_module_uri(module_vid=primary_module_vid, mv=mv),
+            )
+            self._home_module_refs[primary_module_vid] = cached
+        mv, uri = cached
+        if not uri:
+            return []
+        return [
+            self._cross_dep_entry(
+                uri=uri,
+                ref_period=period,
+                mv=mv,
+                operation_code=operation_code,
+            )
+            for period in periods
+        ]
+
+    @staticmethod
+    def _cross_dep_entry(
+        uri: str,
+        ref_period: str,
+        mv: Any,
+        operation_code: Optional[str],
+    ) -> Dict[str, Any]:
+        """Build one ``cross_instance_dependencies`` entry for *uri*.
+
+        The reference dates are the declared module version's own
+        window, and ``module_version`` is omitted when the row carries
+        no version number.
+        """
+        module_entry: Dict[str, Any] = {
+            "URI": uri,
+            "ref_period": ref_period,
+        }
+        version_number = getattr(mv, "version_number", None)
+        if version_number:
+            module_entry["module_version"] = version_number
+        from_date = getattr(mv, "from_reference_date", None)
+        to_date = getattr(mv, "to_reference_date", None)
+        return {
+            "modules": [module_entry],
+            "affected_operations": (
+                [operation_code] if operation_code else []
+            ),
+            "from_reference_date": (str(from_date) if from_date else ""),
+            "to_reference_date": (str(to_date) if to_date else ""),
+        }
+
     def _build_dependency_entry(
         self,
         vid: int,
         mv: Any,
         release_id: Optional[int],
-        ts: Dict[str, str],
+        ts: Dict[str, List[str]],
         operation_code: Optional[str],
-    ) -> Optional[Tuple[Dict[str, Any], str, Dict[str, Any]]]:
-        """Build a single (cross_dep, uri, dependency_module) triple.
+        referenced_variables: Optional[Dict[str, str]] = None,
+        referenced_tables: Optional[Set[str]] = None,
+        home_module_tables: Optional[Set[str]] = None,
+    ) -> Optional[Tuple[List[Dict[str, Any]], str, Dict[str, Any]]]:
+        """Build the (cross_deps, uri, dependency_module) triple for *vid*.
+
+        One ``cross_instance_dependencies`` entry per distinct reference
+        period the module is read at — the schema carries a period per
+        declared module, so a module needed at two instances has to be
+        declared twice (#326). ``dependency_modules`` stays keyed by URI
+        and carries the union of the tables, exactly as before: the
+        table and datapoint definitions do not vary by instance.
 
         Returns ``None`` when the module has no resolvable URI or
         when every one of its tables is variable-less (and therefore
         dropped, since the engine schema requires
         ``minProperties: 1`` on each table's variables map).
+
+        ``home_module_tables`` is the set of table codes owned by the
+        primary (home) module. Tables that appear in both the home and
+        the dependency (a shared table like ``I_05.00`` present in both
+        IF_CLASS2 and IF_CLASS3) belong to the home declaration and
+        must be excluded from ``dependency_modules[<dep>].tables`` —
+        otherwise the engine sees the same table declared on both sides
+        and downstream lookups can pick the wrong copy.
         """
         uri = self._get_module_uri(module_vid=vid, mv=mv)
         if not uri:
@@ -396,38 +891,121 @@ class ScopeCalculatorService:
         if not tables_dict:
             return None
 
-        ref_period = "T"
-        for tbl_code in tables_dict:
-            rp = ts.get(tbl_code)
-            if rp and rp != "T":
-                ref_period = rp
+        # The timeshift is a module-level property carried by the dependency
+        # module's tables. Compute it BEFORE narrowing: narrowing drops any
+        # table not referenced by the cross-rules, and a dropped table takes
+        # its timeshift with it — a module whose only timeshifted table is
+        # not referenced would otherwise fall back to ref_period T.
+        # Every period any of the module's tables is read at is kept:
+        # taking one dropped the others, so an operation reading two
+        # tables of the same module at different instances — or one
+        # table both plain and shifted — was declared against a single
+        # instance and evaluated against the wrong one (#326). Sorted so
+        # the output does not depend on visit order; ``"T"`` sorts first.
+        periods = sorted(
+            {
+                rp
+                for tbl_code in tables_dict
+                for rp in ts.get(tbl_code, ())
+                if rp
+            }
+        ) or ["T"]
 
-        module_entry: Dict[str, Any] = {
-            "URI": uri,
-            "ref_period": ref_period,
-        }
-        if mv.version_number:
-            module_entry["module_version"] = mv.version_number
+        # #250: declare only the tables and datapoints the cross-rules
+        # actually reference — a whole dependency module is 100+ tables and
+        # 10k+ variables, where native EBA scripts declare a handful.
+        narrowed = self._narrow_dependency_tables(
+            tables_dict, referenced_tables, referenced_variables
+        )
+        if narrowed:
+            tables_dict = narrowed
 
-        from_date = mv.from_reference_date
-        to_date = mv.to_reference_date
-        cross_dep = {
-            "modules": [module_entry],
-            "affected_operations": (
-                [operation_code] if operation_code else []
-            ),
-            "from_reference_date": (str(from_date) if from_date else ""),
-            "to_reference_date": (str(to_date) if to_date else ""),
+        # Drop tables the primary (home) module also declares — the shared
+        # ones belong to the home declaration; leaving them on the dep
+        # side is the duplicate-declaration bug this method exists to
+        # fix. Runs AFTER narrowing so a validation whose operand set is
+        # entirely inside a shared table still narrows correctly:
+        # excluding *before* narrowing would drop the operand's table
+        # first, narrowing would find no referenced table, and the
+        # narrowing fallback would reintroduce the shared table via the
+        # module-wide unnarrowed set. The exclusion is unconditional
+        # — even when it empties ``tables_dict``: the dep still surfaces
+        # in ``cross_instance_dependencies`` via its ``URI`` and the
+        # engine (#251) resolves cross-instance operands off
+        # ``referenced_variables`` when the caller supplies them.
+        if home_module_tables:
+            tables_dict = {
+                tcode: tdata
+                for tcode, tdata in tables_dict.items()
+                if tcode not in home_module_tables
+            }
+
+        cross_deps = [
+            self._cross_dep_entry(
+                uri=uri,
+                ref_period=period,
+                mv=mv,
+                operation_code=operation_code,
+            )
+            for period in periods
+        ]
+        variables: Dict[str, str] = {
+            k: v
+            for tbl in tables_dict.values()
+            for k, v in tbl.get("variables", {}).items()
         }
+        # #251: the engine resolves *every* operand of a cross-instance
+        # validation against this map — including operands owned by the
+        # home module. A referenced datapoint missing here leaves the
+        # engine unable to build that operand: a bare single-cell home
+        # operand fails with "Scalar can't be created for this data" and
+        # an aggregated one silently computes 0. The dependency module's
+        # own definition of a datapoint wins over the referencing AST's.
+        for var_id, type_code in sorted((referenced_variables or {}).items()):
+            variables.setdefault(var_id, type_code)
         dep_module = {
             "tables": tables_dict,
-            "variables": {
-                k: v
-                for tbl in tables_dict.values()
-                for k, v in tbl.get("variables", {}).items()
-            },
+            "variables": variables,
         }
-        return cross_dep, uri, dep_module
+        return cross_deps, uri, dep_module
+
+    @staticmethod
+    def _narrow_dependency_tables(
+        tables_dict: Dict[str, Any],
+        referenced_tables: Optional[Set[str]],
+        referenced_variables: Optional[Dict[str, str]],
+    ) -> Dict[str, Any]:
+        """Restrict a dependency module to its referenced tables/datapoints.
+
+        Returns ``{}`` when the caller supplied no reference information,
+        or when narrowing would leave nothing declarable. The caller then
+        keeps the unnarrowed module: over-declaring is wrong, but dropping
+        a genuine cross-instance dependency outright is worse.
+        """
+        if referenced_tables is None and referenced_variables is None:
+            return {}
+
+        narrowed: Dict[str, Any] = {}
+        for tcode, tdata in tables_dict.items():
+            if (
+                referenced_tables is not None
+                and tcode not in referenced_tables
+            ):
+                continue
+            variables = tdata.get("variables", {})
+            if referenced_variables is not None:
+                variables = {
+                    var_id: type_code
+                    for var_id, type_code in variables.items()
+                    if var_id in referenced_variables
+                }
+            # An empty variables map violates the engine schema's
+            # ``minProperties: 1``, so a table narrowed down to nothing is
+            # dropped rather than declared empty.
+            if not variables:
+                continue
+            narrowed[tcode] = {**tdata, "variables": variables}
+        return narrowed
 
     # ------------------------------------------------------------------ #
     # Alternative dependency detection (Fix 3)
@@ -441,7 +1019,7 @@ class ScopeCalculatorService:
         release_code: Optional[str] = None,
         valid_module_uris: Optional[Set[str]] = None,
     ) -> List[List[str]]:
-        """Detect pairs of external modules that are alternatives.
+        """Detect disjoint groups of interchangeable external modules.
 
         Two external modules are alternatives only when they are
         interchangeable dependencies of the *same* operation (#202):
@@ -450,6 +1028,10 @@ class ScopeCalculatorService:
         scope. Each ``ScopeResult`` is one operation, so candidate pairs
         are collected per scope result — being the sole external of two
         *different* operations does not make two modules alternatives.
+
+        Interchangeable pairs are then collapsed into disjoint groups so
+        that when three or more modules are mutually interchangeable they
+        surface as one group rather than every overlapping pair (#242).
 
         Args:
             scope_results: One entry per operation.
@@ -462,7 +1044,9 @@ class ScopeCalculatorService:
                 never name a module absent from ``dependency_modules``
                 (#202 dangling references).
 
-        Returns a list of ``[uri_a, uri_b]`` pairs (sorted).
+        Returns a list of disjoint groups; each group is a sorted list
+        of two or more interchangeable module URIs, and no module appears
+        in more than one group.
         """
         # Validate the release inputs (rejects an unknown code, or both
         # arguments at once). The resolved id is not threaded further:
@@ -495,7 +1079,11 @@ class ScopeCalculatorService:
                 if pair[0] in valid_module_uris
                 and pair[1] in valid_module_uris
             ]
-        return uri_pairs
+        # Interchangeable pairs overlap when 3+ modules are mutually
+        # interchangeable (A-B, A-C, B-C). Collapse them into the disjoint
+        # groups the consumer expects: one connected component == one
+        # dependency slot fillable by any module in it (#242).
+        return self._group_alternative_pairs(uri_pairs)
 
     @staticmethod
     def _collect_external_vid_sets(
@@ -550,6 +1138,38 @@ class ScopeCalculatorService:
                     for v2 in sorted_vids[i + 1 :]:
                         co_occurring.add((v1, v2))
         return co_occurring
+
+    @staticmethod
+    def _group_alternative_pairs(
+        uri_pairs: List[List[str]],
+    ) -> List[List[str]]:
+        """Collapse overlapping interchangeable pairs into disjoint groups.
+
+        Nodes are module URIs, edges are interchangeable pairs; each
+        connected component becomes one group. Guarantees the returned
+        groups share no module (disjoint), which is the shape the
+        consuming engine's dependency report expects (#242).
+        """
+        adjacency: Dict[str, Set[str]] = {}
+        for a, b in uri_pairs:
+            adjacency.setdefault(a, set()).add(b)
+            adjacency.setdefault(b, set()).add(a)
+
+        seen: Set[str] = set()
+        groups: List[List[str]] = []
+        for start in sorted(adjacency):
+            if start in seen:
+                continue
+            stack, component = [start], set()
+            while stack:
+                node = stack.pop()
+                if node in seen:
+                    continue
+                seen.add(node)
+                component.add(node)
+                stack.extend(adjacency[node] - seen)
+            groups.append(sorted(component))
+        return sorted(groups)
 
     def _map_pairs_to_uris(
         self,

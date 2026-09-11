@@ -63,7 +63,7 @@ class DataDictionaryService:
         """
         rows = self.session.query(Release).all()
         rows.sort(
-            key=lambda r: (compute_sort_order(r.date), r.release_id),
+            key=lambda r: (compute_sort_order(r.date, r.type), r.release_id),
             reverse=True,
         )
         return [r.to_dict() for r in rows]
@@ -98,7 +98,8 @@ class DataDictionaryService:
         if not rows:
             return None
         row = max(
-            rows, key=lambda r: (compute_sort_order(r.date), r.release_id)
+            rows,
+            key=lambda r: (compute_sort_order(r.date, r.type), r.release_id),
         )
         return row.to_dict()
 

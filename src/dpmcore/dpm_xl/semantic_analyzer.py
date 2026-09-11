@@ -2,9 +2,11 @@ from abc import ABC
 from typing import Any, cast
 
 import pandas as pd
+from sqlalchemy.orm import Session
 
 from dpmcore import errors
 from dpmcore.dpm_xl.ast.nodes import (
+    AST,
     AggregationOp,
     AnnualiseOp,
     BinOp,
@@ -23,7 +25,6 @@ from dpmcore.dpm_xl.ast.nodes import (
     PersistentAssignment,
     PreconditionItem,
     PropertyReference,
-    RankOp,
     RenameOp,
     Set,
     SetdiffOp,
@@ -49,6 +50,7 @@ from dpmcore.dpm_xl.ast.where_clause import (
     collect_where_equality_pins,
     merge_where_constraints,
 )
+from dpmcore.dpm_xl.model_queries import TableGroupQuery, ViewDatapointsQuery
 from dpmcore.dpm_xl.operators.clause import Sub as SubOperator
 from dpmcore.dpm_xl.symbols import (
     Component,
@@ -69,6 +71,7 @@ from dpmcore.dpm_xl.types.scalar import (
     Null,
     ScalarFactory,
     ScalarType,
+    String,
 )
 from dpmcore.dpm_xl.utils.data_handlers import filter_all_data
 from dpmcore.dpm_xl.utils.operands_mapping import set_operand_label
@@ -78,7 +81,6 @@ from dpmcore.dpm_xl.utils.operator_mapping import (
     CLAUSE_OP_MAPPING,
     COMPLEX_OP_MAPPING,
     CONDITIONAL_OP_MAPPING,
-    RANK_OP_MAPPING,
     STRING_OPERATORS,
     TIME_OPERATORS,
     UNARY_OP_MAPPING,
@@ -87,9 +89,11 @@ from dpmcore.dpm_xl.utils.tokens import (
     ANNUALISE,
     DATE,
     DPM,
+    FACT,
     FILTER,
     GET,
     IF,
+    ISNULL,
     RENAME,
     STANDARD,
     SUB,
@@ -113,6 +117,105 @@ _PARAMETER_SCALAR_TYPES: dict[str, str] = {
 }
 
 
+def _check_duplicate_persistent_assignments(
+    children: list[AST],
+    session: Session | None,
+    release_id: int | None,
+) -> None:
+    """Raise ``6-1`` when two statements assign the same ``{cellRef}``/``{varRef}``."""
+    seen_refs: set[str] = set()
+    seen_ids: list[VarID] = []
+    for child in children:
+        target = (
+            child.right if isinstance(child, TemporaryAssignment) else child
+        )
+        if not isinstance(target, PersistentAssignment):
+            continue
+        left = target.left
+        if isinstance(left, VarRef):
+            if left.variable in seen_refs:
+                raise errors.SemanticError("6-1", variable=left.variable)
+            seen_refs.add(left.variable)
+            continue
+        if not isinstance(left, VarID):
+            # assignmentTarget only ever produces a VarID or a VarRef
+            continue
+        if left.table is None and left.operation is None:
+            # No table/operation to identify this target by, never compare it.
+            continue
+
+        head = f"o{left.operation}" if left.operation else left.table
+        parts = [head]
+        if left.rows:
+            parts.append(", ".join(f"r{row}" for row in left.rows))
+        if left.cols:
+            parts.append(", ".join(f"c{col}" for col in left.cols))
+        if left.sheets:
+            parts.append(", ".join(f"s{sheet}" for sheet in left.sheets))
+        variable = ", ".join(part for part in parts if part)
+
+        for other in seen_ids:
+            if other.operation != left.operation:
+                continue
+            if other.is_table_group == left.is_table_group:
+                if other.table != left.table:
+                    continue
+                # A group has no member table to resolve rows/cols against, so it keeps the exact-match below
+                table = left.table if not left.is_table_group else None
+            elif session is not None and left.operation is None:
+                # Group vs. plain table: only comparable if the table is an actual member of the group
+                group_side, plain_side = (
+                    (other, left) if other.is_table_group else (left, other)
+                )
+                member_codes = TableGroupQuery.get_member_table_codes(
+                    session, cast(str, group_side.table), release_id
+                )
+                if plain_side.table not in member_codes:
+                    continue
+                table = plain_side.table
+            else:
+                continue
+
+            if session is not None and left.operation is None and table:
+                df_other = ViewDatapointsQuery.get_table_data(
+                    session,
+                    table,
+                    other.rows,
+                    other.cols,
+                    other.sheets,
+                    release_id,
+                )
+                df_left = ViewDatapointsQuery.get_table_data(
+                    session,
+                    table,
+                    left.rows,
+                    left.cols,
+                    left.sheets,
+                    release_id,
+                )
+                collides = (
+                    not df_other.empty
+                    and not df_left.empty
+                    and (
+                        not set(df_other["cell_code"]).isdisjoint(
+                            df_left["cell_code"]
+                        )
+                    )
+                )
+            else:
+                collides = (
+                    (frozenset(other.rows) if other.rows else None)
+                    == (frozenset(left.rows) if left.rows else None)
+                    and (frozenset(other.cols) if other.cols else None)
+                    == (frozenset(left.cols) if left.cols else None)
+                    and (frozenset(other.sheets) if other.sheets else None)
+                    == (frozenset(left.sheets) if left.sheets else None)
+                )
+            if collides:
+                raise errors.SemanticError("6-1", variable=variable)
+        seen_ids.append(left)
+
+
 class InputAnalyzer(ASTTemplate, ABC):
     def __init__(self, expression: str) -> None:
         super().__init__()
@@ -122,8 +225,20 @@ class InputAnalyzer(ASTTemplate, ABC):
         self.result: bool = False
         self._expression: str = expression  # For debugging purposes only
         self.preconditions: bool = False
+        # Only set by SemanticService.validate(); a bare InputAnalyzer (as
+        # constructed directly in unit tests) has neither, so the
+        # duplicate-assignment guard below falls back to exact-match
+        # comparison instead of resolving ranges/wildcards against the DB.
+        self.session: Session | None = None
+        self.release_id: int | None = None
 
         self.calculations_outputs: dict[str, Operand] = {}
+
+        # Operands of the clause operators currently being visited, innermost
+        # last. A ``Dimension`` naming the Fact Component ("f") has no
+        # dictionary entry and its data type is whatever the enclosing operand
+        # carries, so ``visit_Dimension`` reads the top of this stack.
+        self._clause_operands: list[RecordSet] = []
 
         # Implicit open keys that are always available without being declared
         # These are special dimensions that arise from the reporting context itself
@@ -134,6 +249,9 @@ class InputAnalyzer(ASTTemplate, ABC):
             "entityID": ScalarFactory().database_types_mapping(
                 "s"
             )(),  # string type
+            "baseCurrency": ScalarFactory().database_types_mapping(
+                "s"
+            )(),  # string type
         }
 
     # Start of visiting nodes.
@@ -141,6 +259,10 @@ class InputAnalyzer(ASTTemplate, ABC):
     def visit_Start(  # type: ignore[override]
         self, node: Start
     ) -> Operand | list[Operand]:
+
+        _check_duplicate_persistent_assignments(
+            node.children, self.session, self.release_id
+        )
 
         result: list[Operand] = []
         for child in node.children:
@@ -205,8 +327,10 @@ class InputAnalyzer(ASTTemplate, ABC):
     def visit_UnaryOp(  # type: ignore[override]
         self, node: UnaryOp
     ) -> Operand:
-        operand_symbol = self.visit(node.operand)
         op = cast(str, node.op)
+        if op == ISNULL:
+            self.__warn_if_isnull_has_non_null_default(node)
+        operand_symbol = self.visit(node.operand)
         if op in UNARY_OP_MAPPING:
             result = UNARY_OP_MAPPING[op].validate_types(operand_symbol)
         else:
@@ -263,10 +387,63 @@ class InputAnalyzer(ASTTemplate, ABC):
         # default on a Number cell (String → Number is an Explicit cast).
         # Null already promotes to every type; a Mixed cell has unknown type
         # (no dict entry, empty ``cell_implicities``) and accepts any default.
+        # String is the sink of the implicit-promotion table (every scalar
+        # promotes to String), which would let e.g. ``default:0`` land on a
+        # String cell — reject that explicitly; only String and Null defaults
+        # are meaningful on a String cell.
+        if isinstance(type_, String) and not isinstance(
+            default_type, (String, Null)
+        ):
+            raise errors.SemanticError(
+                "3-6", expected_type=type_, default_type=default_type
+            )
         if cell_implicities and not type_.is_included(default_implicities):
             raise errors.SemanticError(
                 "3-6", expected_type=type_, default_type=default_type
             )
+
+    @staticmethod
+    def __warn_if_isnull_has_non_null_default(node: UnaryOp) -> None:
+        """Emit a warning if ``isnull(x)``'s operand has a non-null default.
+
+        Such a call is tautologically false — the default guarantees the
+        operand is never null. Parentheses around the operand parse to a
+        ``ParExpr`` wrapper that carries no ``default`` attribute, so the
+        check would miss ``isnull((x))``; unwrap those first. Only VarID
+        and ParameterRef carry ``default:``; every other operand shape is
+        silently ignored. ``default:null`` materialises as
+        ``Constant(type_="Null")`` (see visitDefault in the AST
+        constructor) and stays warning-free.
+        """
+        inner: Any = node.operand
+        while isinstance(inner, ParExpr):
+            inner = inner.expression
+        default = getattr(inner, "default", None)
+        if default is None or getattr(default, "type", None) == "Null":
+            return
+        selection = InputAnalyzer.__isnull_operand_repr(inner)
+        add_semantic_warning(
+            f"isnull({selection}) is always false: operand has a "
+            f"non-null default (default:{getattr(default, 'value', '?')})"
+        )
+
+    @staticmethod
+    def __isnull_operand_repr(node: Any) -> str:
+        """Render the operand of an ``isnull(...)`` warning message.
+
+        Uses the same formatting as ``generate_operand_expression`` for
+        VarID (``{ tXXX, rY, cZ }``); falls back to the AST class name
+        for anything else, since the warning only fires when a default
+        was found (which limits us to VarID/ParameterRef in practice).
+        """
+        if isinstance(node, VarID):
+            from dpmcore.dpm_xl.utils.operands_mapping import (
+                generate_operand_expression,
+            )
+
+            return generate_operand_expression(node)
+        name = getattr(node, "name", None) or getattr(node, "label", None)
+        return str(name) if name else type(node).__name__
 
     def visit_VarID(  # type: ignore[override]
         self, node: VarID
@@ -465,8 +642,11 @@ class InputAnalyzer(ASTTemplate, ABC):
         op = cast(str, node.op)
 
         if node.analytic_clause is not None:
-            if isinstance(operand.get_fact_component().type, Mixed):
-                raise errors.SemanticError("4-4-0-3", origin=f"{op}(...)")
+            # The Mixed guard for this path lives in
+            # ``AggregateOperator.validate_analytic``, next to the type
+            # promotion it protects: ``rank`` overrides that method and
+            # does no promotion, so it stays exempt without a special
+            # case here.
             result = AGGR_OP_MAPPING[op].validate_analytic(
                 operand, node.analytic_clause
             )
@@ -487,25 +667,19 @@ class InputAnalyzer(ASTTemplate, ABC):
         )
         return cast(Operand, reducing_result)
 
-    def visit_RankOp(  # type: ignore[override]
-        self, node: RankOp
-    ) -> Operand:
-        operand = self.visit(node.operand)
-        if not isinstance(operand, RecordSet):
-            raise errors.SemanticError("4-4-0-1", op="rank")
-        if operand.has_only_global_components:
-            add_semantic_warning(
-                f"Performing an aggregation on recordset: {operand.name} which has only global key components"
-            )
-        op = cast(str, node.op)
-        result = RANK_OP_MAPPING[op].validate_analytic(
-            operand, node.analytic_clause
-        )
-        return cast(Operand, result)
-
     def visit_Dimension(  # type: ignore[override]
         self, node: Dimension
     ) -> Scalar:
+        # The Fact Component is not an open key: it is a component of the
+        # clause operand itself, and takes that operand's data type.
+        if node.dimension_code == FACT:
+            if not self._clause_operands:
+                raise errors.SemanticError(
+                    "4-5-0-1", recordset=self._expression
+                )
+            fact_type = self._clause_operands[-1].get_fact_component().type
+            return Scalar(type_=fact_type, name=None, origin=FACT)
+
         # Check if this is an implicit open key (refPeriod, entityID)
         if node.dimension_code in self.global_variables:
             gtype = self.global_variables[node.dimension_code]
@@ -749,7 +923,29 @@ class InputAnalyzer(ASTTemplate, ABC):
         if len(node.key_components) == 0:
             raise errors.SemanticError("4-5-2-1", recordset=operand.name)
 
-        condition = self.visit(node.condition)
+        # ``ClauseOperator.validate`` rejects non-recordset operands anyway;
+        # raising the same error here keeps the Fact Component resolvable in
+        # ``visit_Dimension`` (which needs the operand's structure) without
+        # having to cope with an operand that has none.
+        if not isinstance(operand, RecordSet):
+            raise errors.SemanticError("4-5-0-2", operator=WHERE)
+
+        # A condition on the Fact Component alone needs no open key, so it can
+        # filter a selection on a table that has none. It still needs several
+        # records to choose between: on a single datapoint -- a selection whose
+        # only key components are the implicit globals -- there is nothing to
+        # filter, and the clause would silently do nothing.
+        if (
+            set(node.key_components) == {FACT}
+            and operand.has_only_global_components
+        ):
+            raise errors.SemanticError("4-5-2-3", recordset=operand.name)
+
+        self._clause_operands.append(operand)
+        try:
+            condition = self.visit(node.condition)
+        finally:
+            self._clause_operands.pop()
         result = CLAUSE_OP_MAPPING[WHERE].validate(
             operand=operand,
             key_names=node.key_components,

@@ -37,15 +37,12 @@ class ASTToJSONVisitor(NodeVisitor):
         return result
 
     def visit_BinOp(self, node: Any) -> NodeDict:
-        """Visit BinOp nodes."""
-        # Handle match operations as MatchCharactersOp
-        if node.op == "match":
-            return {
-                "class_name": "MatchCharactersOp",
-                "operand": self.visit(node.left),
-                "pattern": self.visit(node.right),
-            }
+        """Visit BinOp nodes.
 
+        ``match`` is a regular binary operator on the wire: the engine
+        consumes it as a ``BinOp`` with ``op == "match"`` (operand on the
+        left, pattern on the right), not as a dedicated node class.
+        """
         return {
             "class_name": "BinOp",
             "op": node.op,
@@ -299,6 +296,12 @@ class ASTToJSONVisitor(NodeVisitor):
                     else sorted(context_sheets)
                 )
 
+                # A cell reference resolves to more than one data point
+                # when it spans an open axis (e.g. an open sheet). Each such
+                # data point needs a coordinate to be identified, regardless
+                # of its data type.
+                multiple_datapoints = len(data_records) > 1
+
                 # Transform the data to match expected JSON structure
                 transformed_data: list[dict[str, Any]] = []
                 for x_index, row_code in enumerate(rows, 1):
@@ -332,8 +335,13 @@ class ASTToJSONVisitor(NodeVisitor):
                         column_code = record.get("column_code", "")
                         sheet_code = record.get("sheet_code", "")
 
-                        # Add x/y/z coordinates for non-scalar types only
-                        if not is_scalar_type:
+                        # Add x/y/z coordinates for non-scalar types, and for
+                        # any cell that resolves to more than one data point:
+                        # a scalar cell spanning an open axis still needs a
+                        # coordinate per entry so the two data points can be
+                        # told apart. A single-entry scalar cell keeps no
+                        # coordinates (it is a positionless value).
+                        if not is_scalar_type or multiple_datapoints:
                             transformed_record["x"] = x_index
 
                             # Find y coordinate based on column position in context
@@ -415,6 +423,14 @@ class ASTToJSONVisitor(NodeVisitor):
                             common_coords.append(coord)
                         elif len(values) > 1:  # Coordinate varies
                             variable_coords.append(coord)
+
+                    # A variable resolving to more than one data point must
+                    # keep at least one coordinate so the engine can identify
+                    # each datum. If nothing varies across the entries, treat
+                    # no coordinate as "common" (prune none) rather than
+                    # stripping every entry down to zero coordinates.
+                    if multiple_datapoints and not variable_coords:
+                        common_coords = []
 
                     # For variable coordinates, add dimension codes to each entry
                     # Map coordinates to their dimension codes from original data
@@ -498,17 +514,6 @@ class ASTToJSONVisitor(NodeVisitor):
         result["analytic_clause"] = analytic_clause
         return result
 
-    def visit_RankOp(self, node: Any) -> NodeDict:
-        """Visit RankOp nodes."""
-        return {
-            "class_name": "RankOp",
-            "op": "rank",
-            "operand": self.visit(node.operand),
-            "analytic_clause": self._serialize_analytic_clause(
-                node.analytic_clause
-            ),
-        }
-
     def _serialize_analytic_clause(self, clause: Any) -> NodeDict:
         result: NodeDict = {
             "class_name": "AnalyticClause",
@@ -568,47 +573,58 @@ class ASTToJSONVisitor(NodeVisitor):
             "children": [self.visit(child) for child in node.children],
         }
 
+    def _visit_set_op(self, node: Any, operands: list[Any]) -> NodeDict:
+        """Emit a set operator under the shared ``SetOp`` class name.
+
+        The whole family shares one class name discriminated by ``op``,
+        with the operands in a single positional array: ``set_of``
+        carries one, ``union``/``intersect`` two or more, and
+        ``setdiff``/``symdiff`` exactly two in left-then-right order
+        (significant for ``setdiff``). The arity is fixed by the
+        grammar, so it needs no validating downstream.
+
+        Args:
+            node: The set operator AST node.
+            operands: Its operands, in emission order.
+
+        Returns:
+            dict: The serialized ``SetOp`` node.
+        """
+        return {
+            "class_name": "SetOp",
+            "op": node.op,
+            "operands": [self.visit(operand) for operand in operands],
+        }
+
     def visit_SetOfOp(self, node: Any) -> NodeDict:
         """Visit SetOfOp nodes (``set_of(recordset)``)."""
-        return {
-            "class_name": "SetOfOp",
-            "op": node.op,
-            "operand": self.visit(node.operand),
-        }
+        return self._visit_set_op(node, [node.operand])
 
     def visit_UnionSetOp(self, node: Any) -> NodeDict:
         """Visit UnionSetOp nodes (variadic ``union(...)``)."""
-        return {
-            "class_name": "UnionSetOp",
-            "op": node.op,
-            "operands": [self.visit(operand) for operand in node.operands],
-        }
-
-    def visit_IntersectSetOp(self, node: Any) -> NodeDict:
-        """Visit IntersectSetOp nodes (variadic ``intersect(...)``)."""
-        return {
-            "class_name": "IntersectSetOp",
-            "op": node.op,
-            "operands": [self.visit(operand) for operand in node.operands],
-        }
+        return self._visit_set_op(node, node.operands)
 
     def visit_SetdiffOp(self, node: Any) -> NodeDict:
         """Visit SetdiffOp nodes (``setdiff(left, right)``)."""
-        return {
-            "class_name": "SetdiffOp",
-            "op": node.op,
-            "left": self.visit(node.left),
-            "right": self.visit(node.right),
-        }
+        return self._visit_set_op(node, [node.left, node.right])
 
-    def visit_SymdiffOp(self, node: Any) -> NodeDict:
-        """Visit SymdiffOp nodes (``symdiff(left, right)``)."""
-        return {
-            "class_name": "SymdiffOp",
-            "op": node.op,
-            "left": self.visit(node.left),
-            "right": self.visit(node.right),
-        }
+    # ``intersect`` carries the same operand attribute and arity as
+    # ``union``, and ``symdiff`` the same as ``setdiff``. Dispatch is by
+    # method name, so an alias is the whole handler.
+    visit_IntersectSetOp = visit_UnionSetOp
+    visit_SymdiffOp = visit_SetdiffOp
+
+    # ``count`` is not a set operator — it returns the set's cardinality
+    # as a Scalar — and its dedicated grammar rule was dropped in MR !74,
+    # so ``count(...)`` now parses to an ``AggregationOp``. The legacy
+    # class survives only for externally built ASTs, so alias it to the
+    # ``AggregationOp`` handler: it carries ``op``/``operand`` and no
+    # grouping or analytic clause, which is exactly what that handler's
+    # ``hasattr`` checks already emit (both clauses null). Aliasing keeps
+    # the parser shape and the legacy shape from drifting apart, and
+    # stops ``generic_visit`` inventing a ``CountSetOp`` class name the
+    # consumer schema rejects.
+    visit_CountSetOp = visit_AggregationOp
 
     def visit_ParExpr(self, node: Any) -> NodeDict:
         """Visit ParExpr nodes."""

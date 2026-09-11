@@ -387,17 +387,27 @@ class WithExpression(AST):
     Example: {Table 1, row 1} + {Table 1, row 2} -> with {Table 1}: {row 1} + {row 2}
     :parameter partial_selection: Cell reference to be used
     :parameter expression: Expression after the double points to be modified by the partial selection
+    :parameter where_condition: Condition of the optional ``[where ...]`` block, or None. It is
+        already applied to every selection in ``expression``, so it is exposed for inspection only
+        and must not be visited -- see ``ast.where_clause.graft_where_onto_selections``.
     """
 
-    def __init__(self, partial_selection: "VarID", expression: AST) -> None:
+    def __init__(
+        self,
+        partial_selection: "VarID",
+        expression: AST,
+        where_condition: AST | None = None,
+    ) -> None:
         super().__init__()
         self.partial_selection: VarID = partial_selection
         self.expression: AST = expression
+        self.where_condition: AST | None = where_condition
 
     def __str__(self) -> str:
-        return "<AST(name='{name}', partial_selection={partial_selection}, expression={expression})>".format(
+        return "<AST(name='{name}', partial_selection={partial_selection}, where_condition={where_condition}, expression={expression})>".format(
             name=self.__class__.__name__,
             partial_selection=self.partial_selection,
+            where_condition=self.where_condition,
             expression=self.expression,
         )
 
@@ -407,6 +417,7 @@ class WithExpression(AST):
         return {
             "class_name": self.__class__.__name__,
             "partial_selection": self.partial_selection,
+            "where_condition": self.where_condition,
             "expression": self.expression,
         }
 
@@ -414,6 +425,11 @@ class WithExpression(AST):
 class AggregationOp(AST):
     """All aggregate operators are analysed using this AST Object. Check AGGR_OP_MAPPING on Utils/operator_mapping.py
     for the complete list.
+
+    ``rank`` included: it is an alternative of the ``aggregateOperators``
+    grammar rule, so it is discriminated by ``op`` like every sibling
+    rather than carrying a node class of its own. It never has a
+    ``grouping_clause`` and always has an ``analytic_clause``.
     """
 
     def __init__(
@@ -588,34 +604,6 @@ class AnalyticClause(AST):
             "partition_by": self.partition_by,
             "order_by": [item.toJSON() for item in self.order_by],
             "window": self.window.toJSON() if self.window else None,
-        }
-
-
-class RankOp(AST):
-    """rank(expression over(...)) operator node."""
-
-    def __init__(
-        self, operand: AST, analytic_clause: "AnalyticClause"
-    ) -> None:
-        super().__init__()
-        self.op = "rank"
-        self.operand: AST = operand
-        self.analytic_clause: AnalyticClause = analytic_clause
-
-    def __str__(self) -> str:
-        return (
-            f"<RankOp(operand={self.operand}, "
-            f"analytic_clause={self.analytic_clause})>"
-        )
-
-    __repr__ = __str__
-
-    def toJSON(self) -> dict[str, Any]:
-        return {
-            "class_name": self.__class__.__name__,
-            "op": self.op,
-            "operand": self.operand,
-            "analytic_clause": self.analytic_clause.toJSON(),
         }
 
 
@@ -1219,6 +1207,10 @@ class TemporaryIdentifier(AST):
         return {"class_name": self.__class__.__name__, "value": self.value}
 
 
+# The set-operator family below defines no ``toJSON``: the whole family is
+# serialized by ``ASTToJSONVisitor`` under a single ``SetOp`` class name with
+# the operands in one positional array, so the wire shape lives there and
+# nowhere else.
 class SetOfOp(AST):
     """AST node for set_of(expression), projects a Recordset's fact values to a ScalarSet."""
 
@@ -1233,13 +1225,6 @@ class SetOfOp(AST):
         )
 
     __repr__ = __str__
-
-    def toJSON(self) -> dict[str, Any]:
-        return {
-            "class_name": self.__class__.__name__,
-            "op": self.op,
-            "operand": self.operand,
-        }
 
 
 class UnionSetOp(AST):
@@ -1257,13 +1242,6 @@ class UnionSetOp(AST):
 
     __repr__ = __str__
 
-    def toJSON(self) -> dict[str, Any]:
-        return {
-            "class_name": self.__class__.__name__,
-            "op": self.op,
-            "operands": self.operands,
-        }
-
 
 class IntersectSetOp(AST):
     """AST node for intersect(s1, s2, …), variadic set intersection."""
@@ -1279,13 +1257,6 @@ class IntersectSetOp(AST):
         )
 
     __repr__ = __str__
-
-    def toJSON(self) -> dict[str, Any]:
-        return {
-            "class_name": self.__class__.__name__,
-            "op": self.op,
-            "operands": self.operands,
-        }
 
 
 class SetdiffOp(AST):
@@ -1307,14 +1278,6 @@ class SetdiffOp(AST):
 
     __repr__ = __str__
 
-    def toJSON(self) -> dict[str, Any]:
-        return {
-            "class_name": self.__class__.__name__,
-            "op": self.op,
-            "left": self.left,
-            "right": self.right,
-        }
-
 
 class SymdiffOp(AST):
     """AST node for symdiff(left, right), elements in exactly one of left or right."""
@@ -1335,14 +1298,6 @@ class SymdiffOp(AST):
 
     __repr__ = __str__
 
-    def toJSON(self) -> dict[str, Any]:
-        return {
-            "class_name": self.__class__.__name__,
-            "op": self.op,
-            "left": self.left,
-            "right": self.right,
-        }
-
 
 class CountSetOp(AST):
     """AST node for count(setExpression), cardinality of a ScalarSet."""
@@ -1358,13 +1313,6 @@ class CountSetOp(AST):
         )
 
     __repr__ = __str__
-
-    def toJSON(self) -> dict[str, Any]:
-        return {
-            "class_name": self.__class__.__name__,
-            "op": self.op,
-            "operand": self.operand,
-        }
 
 
 class ParameterRef(AST):

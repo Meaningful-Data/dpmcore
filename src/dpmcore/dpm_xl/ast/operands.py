@@ -42,6 +42,7 @@ from dpmcore.dpm_xl.model_queries import (
     ViewOpenKeysQuery,
 )
 from dpmcore.dpm_xl.types.scalar import Integer, Mixed, Number, ScalarFactory
+from dpmcore.dpm_xl.utils import tokens
 from dpmcore.dpm_xl.utils.data_handlers import filter_all_data
 from dpmcore.dpm_xl.utils.filters import filter_by_release
 from dpmcore.dpm_xl.utils.operands_mapping import (
@@ -66,10 +67,23 @@ operand_elements = ["table", "rows", "cols", "sheets", "default", "interval"]
 # These are special dimensions that arise from the reporting context itself
 # - refPeriod: The reference period of the report (date type "d")
 # - entityID: The identifier of the reporting entity (string type "s")
+# - baseCurrency: The reporting currency of the entity (string type "s")
 IMPLICIT_OPEN_KEYS = {
     "refPeriod": "d",  # date type
     "entityID": "s",  # string type
+    "baseCurrency": "s",  # string type
 }
+
+# Component names that a clause operator may legitimately mention but that are
+# *not* open keys, so they must never be looked up in the dictionary.
+# Currently only the Fact Component ("f"), which every Recordset carries and
+# whose data type is per-operand (resolved in
+# ``InputAnalyzer.visit_Dimension``). Deliberately kept apart from
+# ``IMPLICIT_OPEN_KEYS``: entries there are also injected as DPM key
+# components into every Recordset, which is exactly what the Fact must not
+# become. Whether a given clause operator accepts it is decided structurally,
+# by ``ClauseOperator.allow_fact`` in ``dpm_xl/operators/clause.py``.
+NON_KEY_COMPONENT_CODES = frozenset({tokens.FACT})
 
 
 _HEADERS_CACHE: Dict[
@@ -249,10 +263,11 @@ class OperandsChecking(ASTTemplate, ABC):
             and getattr(self.partial_selection, header) is not None
         ):
             return
-        # If ALL operands omit the header, the expression applies to every
-        # instance of that dimension ("apply to all" semantics) — valid.
-        # Only raise 1-20 when SOME operands specify the header and SOME don't.
-        if all(getattr(node, header) is None for node in self.operands[table]):
+        # Uniform omission is valid for rows/cols, but sheets
+        # has no broadcast semantics and must always be declared.
+        if header != "sheets" and all(
+            getattr(node, header) is None for node in self.operands[table]
+        ):
             return
         for node in self.operands[table]:
             if getattr(node, header) is None:
@@ -348,14 +363,19 @@ class OperandsChecking(ASTTemplate, ABC):
         if len(self.dimension_codes) == 0:
             return
 
-        # Separate implicit keys from database-backed keys
-        implicit_codes = [
-            code for code in self.dimension_codes if code in IMPLICIT_OPEN_KEYS
-        ]
-        database_codes = [
+        # The Fact Component is not an open key: it has no dictionary row, so
+        # looking it up would raise 1-5 before the clause operator ever gets a
+        # chance to accept it (``where``) or reject it (``get``/``rename``).
+        codes = [
             code
             for code in self.dimension_codes
-            if code not in IMPLICIT_OPEN_KEYS
+            if code not in NON_KEY_COMPONENT_CODES
+        ]
+
+        # Separate implicit keys from database-backed keys
+        implicit_codes = [code for code in codes if code in IMPLICIT_OPEN_KEYS]
+        database_codes = [
+            code for code in codes if code not in IMPLICIT_OPEN_KEYS
         ]
 
         # Query database only for non-implicit keys
@@ -424,16 +444,19 @@ class OperandsChecking(ASTTemplate, ABC):
         if len(self.getop_components) == 0:
             return
 
-        # Separate implicit keys from database-backed keys
-        implicit_codes = [
+        # ``[get f]`` stays invalid, but it is rejected structurally with
+        # 4-5-0-1 by ``ClauseOperator.validate``; skipping the lookup here only
+        # stops the misleading "open keys not found: ['f']" from pre-empting it.
+        codes = [
             code
             for code in self.getop_components
-            if code in IMPLICIT_OPEN_KEYS
+            if code not in NON_KEY_COMPONENT_CODES
         ]
+
+        # Separate implicit keys from database-backed keys
+        implicit_codes = [code for code in codes if code in IMPLICIT_OPEN_KEYS]
         database_codes = [
-            code
-            for code in self.getop_components
-            if code not in IMPLICIT_OPEN_KEYS
+            code for code in codes if code not in IMPLICIT_OPEN_KEYS
         ]
 
         # Query property_ids for GetOp components (same query as dimensions)
@@ -720,6 +743,8 @@ class OperandsChecking(ASTTemplate, ABC):
             raise errors.SemanticError(
                 "6-2", operation_code=node.operation_code
             )
+        if node.operation_code not in self.operations:
+            raise errors.SemanticError("1-8", operations=[node.operation_code])
 
     def visit_ParameterRef(self, node: ParameterRef) -> None:
         # Record the referenced parameter. No DB lookup: parameters are not DPM
@@ -737,20 +762,14 @@ class OperandsChecking(ASTTemplate, ABC):
         self.visit(node.right)
 
     def check_operations(self) -> None:
-        if len(self.operations):
-            df_operations = OperationQuery.get_operations_from_codes(
-                session=self.session,
-                operation_codes=self.operations,
-                release_id=self.release_id,
-            )
-            if len(df_operations.values) < len(self.operations):
-                not_found_operations = list(
-                    set(self.operations).difference(set(df_operations["Code"]))
-                )
-                raise errors.SemanticError(
-                    "1-8", operations=not_found_operations
-                )
-            self.operations_data = df_operations
+        # Enriches operations_data when names match real codes, never required
+        if not self.operations:
+            return
+        self.operations_data = OperationQuery.get_operations_from_codes(
+            session=self.session,
+            operation_codes=self.operations,
+            release_id=self.release_id,
+        )
 
 
 def extract_data_types(node: VarID, database_types: "pd.Series[Any]") -> None:

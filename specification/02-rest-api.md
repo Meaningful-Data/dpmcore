@@ -444,16 +444,18 @@ POST /api/v1/validate/semantic
 | `expression` | string | yes | DPM-XL expression to validate |
 | `release_id` | int \| null | no | Restrict lookup to a specific release (by database ID) |
 | `release_code` | string \| null | no | Restrict lookup to a specific release (by code, e.g. `"3.4"`) |
+| `precondition_expression` | string \| null | no | Full DPM-XL gate expression. Both halves are validated against the same release, and the gate is checked *as a gate*, so it must return a boolean (`2-1`) |
 
 **Response body:**
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `is_valid` | bool | `true` if the expression is semantically valid |
-| `error_message` | string \| null | Validation error description, or `null` on success |
-| `error_code` | string \| null | Machine-readable error code, or `null` on success |
+| `is_valid` | bool | `true` if the expression is semantically valid. When a `precondition_expression` was supplied this is the verdict for the **pair**: `false` if either half failed, since a row whose gate does not resolve is not evaluable |
+| `error_message` | string \| null | Validation error description, or `null` on success. Names every failure that occurred; the gate's is prefixed `"Precondition: "` |
+| `error_code` | string \| null | Machine-readable error code, or `null` on success. A single value: the expression's when it failed, otherwise the gate's |
 | `expression` | string | The expression that was evaluated |
-| `warning` | string \| null | Non-fatal warning (e.g. deprecated reference), or `null` |
+| `warning` | string \| null | Non-fatal warning (e.g. deprecated reference), or `null`. Merges both halves' warnings, the gate's under the same prefix |
+| `error_source` | string \| null | `"expression"`, `"precondition"` or `"both"` — which half a failure belongs to. `null` when `is_valid` is `true` |
 
 **Example:**
 
@@ -473,7 +475,32 @@ Content-Type: application/json
   "error_message": null,
   "error_code": null,
   "expression": "{tC_01.00, r0010, c0010} = 0",
-  "warning": null
+  "warning": null,
+  "error_source": null
+}
+```
+
+Gated by a precondition expression that does not resolve:
+
+```bash
+POST /api/v1/validate/semantic
+Content-Type: application/json
+
+{
+  "expression": "{tC_01.00, r0010, c0010} = 0",
+  "precondition_expression": "{v_NOT_A_TABLE}",
+  "release_id": 1
+}
+```
+
+```json
+{
+  "is_valid": false,
+  "error_message": "Precondition: ...",
+  "error_code": "1-2",
+  "expression": "{tC_01.00, r0010, c0010} = 0",
+  "warning": null,
+  "error_source": "precondition"
 }
 ```
 
@@ -589,7 +616,8 @@ POST /api/v1/scope
 | `expression` | string | yes | DPM-XL expression to analyse |
 | `release_id` | int \| null | no | Restrict lookup to a specific release (by database ID) |
 | `release_code` | string \| null | no | Restrict lookup to a specific release (by code, e.g. `"3.4"`) |
-| `precondition_items` | `[string]` \| null | no | List of precondition item codes to apply |
+| `precondition_items` | `[string]` \| null | no | List of filing-indicator variable codes to apply |
+| `precondition_expression` | string \| null | no | Full DPM-XL gate expression. Its own operands join the scope resolution: table references widen the table set, mandatory filing-indicator references widen the precondition set. A gate that fails to resolve fails the call with `error_source: "precondition"`. |
 
 **Response body:**
 
@@ -600,6 +628,8 @@ POST /api/v1/scope
 | `module_versions` | `[int]` | Database IDs of the module versions involved |
 | `has_error` | bool | `true` if scope calculation failed |
 | `error_message` | string \| null | Error description if `has_error` is `true`, otherwise `null` |
+| `warning` | string \| null | Set when a supplied `precondition_expression` changed the computed scope, naming the module versions before and after |
+| `error_source` | string \| null | `"expression"` or `"precondition"` — which half a failure belongs to. `null` unless `has_error` |
 
 **Example:**
 

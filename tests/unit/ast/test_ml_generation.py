@@ -9,9 +9,14 @@ import pytest
 
 from dpmcore.dpm_xl.ast.ml_generation import MLGeneration
 from dpmcore.dpm_xl.ast.nodes import (
+    AggregationOp,
+    AnalyticClause,
     Constant,
     CountSetOp,
+    Dimension,
     IntersectSetOp,
+    OrderItem,
+    Scalar,
     Set,
     SetdiffOp,
     SetOfOp,
@@ -20,6 +25,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     UnionSetOp,
     VarID,
 )
+from dpmcore.dpm_xl.utils.tokens import FACT
 from dpmcore.orm.operations import (
     OperandReference,
     OperandReferenceLocation,
@@ -108,6 +114,30 @@ def test_visit_set_of_op_no_longer_raises_and_walks_operand(ml_generation):
     assert ml_generation.create_operation_node.call_count == 1
     assert len(visited) == 1
     assert visited[0].argument == "operand"
+
+
+def test_visit_rank_creates_an_operation_node_and_links_its_operand(
+    ml_generation,
+):
+    """``rank`` is walked as an ``AggregationOp``, so it lands in the tree.
+
+    Its own visitor created no ``OperationNode`` and never set the
+    operand's ``parent``/``argument``, which stored the operand as a
+    root-level orphan and left nothing representing the operator itself.
+    """
+    node = AggregationOp(
+        op="rank",
+        operand=_int_constant(1),
+        grouping_clause=None,
+        analytic_clause=AnalyticClause(
+            partition_by=[], order_by=[OrderItem("r")], window=None
+        ),
+    )
+    visited = _visit_and_capture(ml_generation, "visit_AggregationOp", node)
+    assert ml_generation.create_operation_node.call_count == 1
+    assert len(visited) == 1
+    assert visited[0].argument == "operand"
+    assert visited[0].parent is node
 
 
 def test_visit_union_set_op_walks_every_operand(ml_generation):
@@ -252,3 +282,137 @@ def test_visit_var_id_builds_operand_reference_and_location_with_real_attributes
     assert op_ref.operand_reference == "variable"
     assert op_ref_loc.cell_id == 7
     assert op_ref_loc.table == "T1"
+
+
+def test_visit_dimension_on_the_fact_emits_a_leaf_without_operand_refs(
+    ml_generation,
+):
+    """The Fact Component is not a Property, so there is nothing to reference.
+
+    ``visit_Dimension`` normally resolves the code to a ``property_id`` and
+    adds an ``OperandReference``; the dictionary has no row for "f", so the
+    component name is stored on the node itself instead — the same mechanism
+    literal arguments use.
+    """
+    ml_generation.session = MagicMock()
+    node = Dimension(dimension_code=FACT)
+
+    ml_generation.visit_Dimension(node)
+
+    assert node.scalar == FACT
+    assert ml_generation.create_operation_node.call_count == 1
+    assert ml_generation.session.add.call_count == 0
+
+
+def test_visit_set_creates_an_operand_reference_per_item_child(
+    ml_generation, monkeypatch
+):
+    """``x in {[a],[b]}`` must emit one item ``OperandReference`` per element."""
+    ml_generation.session = MagicMock()
+    ml_generation.session_queries = MagicMock()
+    ml_generation.create_operation_node = MagicMock(
+        return_value=OperationNode()
+    )
+    monkeypatch.setattr(
+        "dpmcore.dpm_xl.ast.ml_generation.ItemCategoryQuery.get_item_category_id_from_signature",
+        lambda signature, session: [{"a": 1, "b": 2}[signature]],
+    )
+    node = Set(
+        children=[
+            Scalar(item="a", scalar_type="Item"),
+            Scalar(item="b", scalar_type="Item"),
+        ]
+    )
+
+    ml_generation.visit_Set(node)
+
+    added = [call.args[0] for call in ml_generation.session.add.call_args_list]
+    item_ids = sorted(
+        o.item_id for o in added if isinstance(o, OperandReference)
+    )
+    assert item_ids == [1, 2]
+
+
+def test_visit_set_creates_operand_references_for_children_from_another_ast_implementation(
+    ml_generation, monkeypatch
+):
+    """Regression test: ``visit_Set`` used to require dpmcore's own concrete
+    ``Scalar`` class via ``isinstance``, so a structurally identical ``Scalar``
+    from another parser silently produced zero ``OperandReference`` rows.
+    """
+
+    class Scalar:  # a different, unrelated "Scalar" class - not dpmcore's
+        def __init__(self, item, scalar_type):
+            self.item = item
+            self.scalar_type = scalar_type
+
+    ml_generation.session = MagicMock()
+    ml_generation.session_queries = MagicMock()
+    ml_generation.create_operation_node = MagicMock(
+        return_value=OperationNode()
+    )
+    monkeypatch.setattr(
+        "dpmcore.dpm_xl.ast.ml_generation.ItemCategoryQuery.get_item_category_id_from_signature",
+        lambda signature, session: [1],
+    )
+    node = Set(children=[Scalar(item="eba_MC:x1281", scalar_type="Item")])
+
+    ml_generation.visit_Set(node)
+
+    added = [call.args[0] for call in ml_generation.session.add.call_args_list]
+    op_refs = [o for o in added if isinstance(o, OperandReference)]
+    assert len(op_refs) == 1
+    assert op_refs[0].item_id == 1
+
+
+def test_create_operation_node_unwraps_a_constant_default(ml_generation):
+    """A ``default(...)`` fallback value must be unwrapped to its raw value."""
+    ml_generation.session = MagicMock()
+    ml_generation.op_version_id = 99
+    ml_generation.df_operators = pd.DataFrame(
+        columns=["Symbol", "OperatorID", "Name"]
+    )
+    ml_generation.df_arguments = pd.DataFrame(
+        columns=["Name", "OperatorID", "ArgumentID"]
+    )
+    node = Constant(type_="Integer", value=1)
+    node.default = Constant(type_="Integer", value=0)
+
+    result = MLGeneration.create_operation_node(ml_generation, node)
+
+    assert result.fallback_value == 0
+
+
+def test_create_operation_node_unwraps_a_default_from_another_ast_implementation(
+    ml_generation,
+):
+    """Regression test: ``create_operation_node`` used to require dpmcore's own
+    concrete ``Constant`` class via ``isinstance``, so a structurally identical
+    ``Constant`` from another parser was kept wrapped instead of unwrapped to
+    its raw value.
+    """
+
+    class Constant:  # a different, unrelated "Constant" class - not dpmcore's
+        def __init__(self, value):
+            self.value = value
+
+    ml_generation.session = MagicMock()
+    ml_generation.op_version_id = 99
+    ml_generation.df_operators = pd.DataFrame(
+        columns=["Symbol", "OperatorID", "Name"]
+    )
+    ml_generation.df_arguments = pd.DataFrame(
+        columns=["Name", "OperatorID", "ArgumentID"]
+    )
+    node = VarID(
+        table=None,
+        rows=None,
+        cols=None,
+        sheets=None,
+        interval=False,
+        default=Constant(value=0),
+    )
+
+    result = MLGeneration.create_operation_node(ml_generation, node)
+
+    assert result.fallback_value == 0

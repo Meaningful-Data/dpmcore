@@ -387,6 +387,94 @@ required; ``preconditions`` and ``severities`` are optional.
        --severity warning --release 4.2 \
        --database sqlite:///dpm.db --output ./script.json
 
+``dpmcore export-script``
+-------------------------
+
+Generate engine-ready DPM-XL validations scripts directly from the
+database, with no ``--expressions`` file. Unlike ``generate-script``, the
+active validations, preconditions and severities for each module version
+are discovered from ``OperationScope`` / ``OperationScopeComposition`` /
+``OperationVersion``.
+
+.. code-block:: text
+
+   dpmcore export-script (--module-code <code> | --all-modules)
+                          (--module-version <ver> | --all-versions | --release <code>)
+                          --database <url> [--output <path>]
+
+**Options:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Option
+     - Description
+   * - ``--module-code TEXT``
+     - Primary module code, e.g. ``COREP_Con``. Required unless
+       ``--all-modules`` is given.
+   * - ``--module-version TEXT``
+     - Primary module version, e.g. ``2.0.1``. Mutually exclusive with
+       ``--all-versions`` and ``--release``; one of the three is required.
+   * - ``--all-modules``
+     - Sweep every module in the database, instead of ``--module-code``.
+   * - ``--all-versions``
+     - Sweep every active version of the selected module(s), instead of
+       ``--module-version``. Mutually exclusive with ``--module-version``
+       and ``--release``.
+   * - ``--release TEXT``
+     - Release code, e.g. ``4.2``. Mutually exclusive with
+       ``--module-version`` and ``--all-versions``: on its own, resolves
+       each selected module to its single version active at this release.
+       One of ``--module-version``, ``--all-versions``, or ``--release``
+       is required.
+   * - ``--database TEXT``
+     - SQLAlchemy database URL. **(Required)**
+   * - ``--output PATH``
+     - Where to write the generated script(s). For a single
+       module/version target, a JSON file path (defaults to
+       ``<module_code>-<module_version>.json`` in the current directory).
+       When sweeping (``--all-modules``/``--all-versions``), a directory
+       to write one ``<module_code>-<version>.json`` file per target into
+       (defaults to the current directory).
+
+**Example — single target:**
+
+.. code-block:: bash
+
+   dpmcore export-script \
+       --module-code COREP_Con --module-version 2.0.1 \
+       --database sqlite:///dpm.db --output ./script.json
+
+**Examples — bulk export:**
+
+.. code-block:: bash
+
+   # Every version of every module
+   dpmcore export-script --all-modules --all-versions \
+       --database sqlite:///dpm.db --output ./scripts/
+
+   # Every version of one module
+   dpmcore export-script --module-code COREP_Con --all-versions \
+       --database sqlite:///dpm.db --output ./scripts/
+
+   # Every module, pinned to its version active at one release (no
+   # --all-versions: exactly one file per module)
+   dpmcore export-script --all-modules --release 4.2 \
+       --database sqlite:///dpm.db --output ./scripts/
+
+A target that fails to resolve is skipped with a warning instead of
+aborting the whole sweep; the command exits non-zero if any target
+failed.
+
+Validations the semantic pass rejects are not part of the script. The
+console reports how many were skipped next to how many were discovered,
+and lists the reason per validation; the full list is written to
+``failed_operations`` in the output JSON. A precondition left gating
+only rejected validations is dropped from the ``preconditions`` block
+rather than shipped with ``affected_operations`` the script does not
+contain.
+
 ``dpmcore export-layout``
 -------------------------
 
@@ -456,17 +544,25 @@ annotations, and categorisation tooltips.
 Each generated workbook contains:
 
 - An **Index** sheet with a hyperlinked table of contents
-- One sheet per table (alphabetically sorted), each with:
+- One sheet per table (alphabetically sorted) — or one sheet per
+  Z-axis sheet for tables whose cells are sheet-scoped, named
+  ``<table code> (<sheet code>)`` and listed individually in the
+  Index — each with:
 
   - Table title and optional sheet (Z-axis) header
   - Hierarchical column headers with merged cells
   - Row headers with indentation reflecting the hierarchy
-  - Data cells showing the ``variable_vid`` (data point ID);
-    excluded cells are greyed out
+  - Data cells showing the ``variable_id`` (data point ID), the data
+    type and the sign recorded on the cell (a cell with no sign shows
+    none); excluded cells are greyed out and void cells get a darker
+    grey
+  - Cells reporting a data point that is also reported elsewhere in the
+    workbook ("identities") highlighted in yellow, with the other
+    locations listed in the cell comment
   - Dimensional annotations below the grid (for column dimensions)
     and to the right (for row dimensions), colour-coded per dimension
-  - Excel comments on headers and cells showing dimensional
-    categorisations (``Dimension = Member``)
+  - Excel comments on headers and cells showing the variable IDs,
+    identities and dimensional categorisations (``Dimension = Member``)
   - Outline groups for expanding/collapsing hierarchical rows and columns
   - Frozen panes at the data-area origin
 
