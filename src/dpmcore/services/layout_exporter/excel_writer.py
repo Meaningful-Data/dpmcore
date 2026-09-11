@@ -161,7 +161,11 @@ class ExcelLayoutWriter:
                         title=title,
                         layout=layout,
                         sheet_label=sheet.label if sheet else "",
-                        pending=_count_pending_cells(layout, sheet_id),
+                        pending=_count_pending_cells(
+                            layout,
+                            sheet_id,
+                            active_sheets,
+                        ),
                     ),
                 )
 
@@ -1072,6 +1076,7 @@ def _build_identity_index(layouts: list[TableLayout]) -> dict[int, list[str]]:
 def _count_pending_cells(
     layout: TableLayout,
     sheet_id: Optional[int],
+    active_sheets: list[LayoutHeader],
 ) -> int:
     """Reportable cells of one worksheet that have no variable yet.
 
@@ -1082,7 +1087,8 @@ def _count_pending_cells(
 
     An open table draws one key cell per key column on every one of
     its worksheets, from the header rather than from a cell, and those
-    count as well.
+    count as well. So does the Z key header of an open-sheet table,
+    over ``active_sheets`` — the Z headers this worksheet annotates.
     """
     pending = sum(
         1
@@ -1101,6 +1107,14 @@ def _count_pending_cells(
             for ch in layout.columns
             if ch.is_key and not ch.is_abstract and not ch.key_variable_vid
         )
+    # An open-sheet table keys its sheets off the Z header's variable,
+    # which the worksheet flags as pending in the header's comment
+    # rather than in a cell of its own.
+    pending += sum(
+        1
+        for sh in active_sheets
+        if sh.is_key and not sh.is_abstract and not sh.key_variable_vid
+    )
     return pending
 
 
@@ -1214,7 +1228,15 @@ def _fit_tooltip(text: str) -> str:
     for index, line in enumerate(lines):
         used += len(line) + 1
         if used > budget:
-            kept.append(f"... and {len(lines) - index} more lines")
+            hidden = len(lines) - index
+            if not kept:
+                # A first line longer than the whole budget would leave
+                # the tooltip with nothing but the marker, so cut the
+                # line itself instead of dropping it.
+                kept.append(line[:budget])
+                hidden -= 1
+            if hidden:
+                kept.append(f"... and {hidden} more lines")
             break
         kept.append(line)
     return "\n".join(kept)

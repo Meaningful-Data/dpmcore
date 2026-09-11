@@ -1244,6 +1244,25 @@ def test_fit_tooltip_reserves_room_for_its_own_marker():
     assert ew._fit_tooltip(fitted) == fitted
 
 
+def test_fit_tooltip_cuts_a_line_that_is_longer_than_the_budget():
+    """A first line over the cap must not leave only the marker."""
+    text = "A" * (ew._MAX_TOOLTIP_CHARS + 10) + "\nB" + "\nC"
+
+    fitted = ew._fit_tooltip(text)
+
+    assert len(fitted) <= ew._MAX_TOOLTIP_CHARS
+    assert fitted.startswith("A" * 100)
+    assert fitted.splitlines()[-1] == "... and 2 more lines"
+
+
+def test_fit_tooltip_cuts_a_single_line_without_a_marker():
+    """Nothing is hidden when the over-long line is the only one."""
+    fitted = ew._fit_tooltip("A" * (ew._MAX_TOOLTIP_CHARS + 10))
+
+    assert len(fitted) <= ew._MAX_TOOLTIP_CHARS
+    assert set(fitted) == {"A"}
+
+
 def test_fit_tooltip_leaves_short_text_alone():
     assert ew._fit_tooltip("a\nb") == "a\nb"
 
@@ -1495,6 +1514,37 @@ def test_index_counts_the_cells_without_a_variable():
     assert index.cell(row=3, column=4).value == "Cells without a variable"
     assert index.cell(row=4, column=4).value == 1
     assert index.cell(row=5, column=4).value == 0
+
+
+def test_index_counts_a_key_sheet_without_its_variable():
+    """An open-sheet table keys its sheets off the Z header."""
+    layout = _empty_layout(
+        rows=[_h(1, direction="y", code="0010", label="Row")],
+        columns=[_h(10, direction="x", code="0010", label="Col")],
+        sheets=[
+            _h(
+                20,
+                direction="z",
+                code="S1",
+                label="Sheet per code",
+                is_key=True,
+            ),
+        ],
+        cells={
+            (1, 10, None): CellData(
+                row_header_id=1,
+                col_header_id=10,
+                sheet_header_id=None,
+                variable_vid=700,
+            ),
+        },
+    )
+
+    wb = ExcelLayoutWriter([layout], ExportConfig()).write()
+
+    index = wb["Index"]
+    assert index.cell(row=3, column=4).value == "Cells without a variable"
+    assert index.cell(row=4, column=4).value == 1
 
 
 def test_index_counts_a_key_column_without_its_variable():
