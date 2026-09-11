@@ -148,7 +148,10 @@ class ASTGeneratorService:
                 ``affected_operations`` (optional ``code`` and
                 ``version_id`` are also accepted). A precondition can
                 guard many validation codes; a validation may have no
-                precondition.
+                precondition. Codes that end up in
+                ``failed_operations`` are stripped from the emitted
+                ``affected_operations``, and a precondition left
+                gating nothing is dropped entirely.
             severity: Optional global default severity tag
                 (``"error"``, ``"warning"``, ``"info"``). Defaults to
                 ``"warning"``.
@@ -324,9 +327,14 @@ class ASTGeneratorService:
                 for prm_code, prm in sorted(referenced_parameters.items())
             }
 
+            # Filtered against ``operations``, not the harvested list:
+            # anything that landed in ``failed_operations`` must not be
+            # left gated by a precondition (#355).
             preconditions_block, precondition_variables_block = (
                 self._build_preconditions_block(
-                    preconditions or [], release_id=release_id
+                    preconditions or [],
+                    release_id=release_id,
+                    emitted_operations=set(operations),
                 )
             )
 
@@ -1205,6 +1213,7 @@ class ASTGeneratorService:
         self,
         preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
         release_id: Optional[int],
+        emitted_operations: Optional[Set[str]] = None,
     ) -> Tuple[Dict[str, Any], Dict[str, str]]:
         """Build the ``preconditions`` and ``precondition_variables`` blocks.
 
@@ -1214,6 +1223,19 @@ class ASTGeneratorService:
         ``PreconditionItem`` AST for single-variable preconditions or
         a left-folded ``BinOp(op="and")`` chain for compound ones.
         Codes that don't resolve are silently skipped (matches pydpm).
+
+        When *emitted_operations* is given, each entry's
+        ``affected_operations`` is intersected with it, and an entry
+        left gating nothing at all is dropped along with the
+        ``precondition_variables`` it alone would have contributed
+        (#355). Preconditions are harvested from the database before
+        the expressions they gate are semantically validated, so an
+        operation rejected into ``failed_operations`` would otherwise
+        stay listed here. That is not cosmetic: the engine reports the
+        ``affected_operations`` of every precondition that does not
+        hold as validations skipped, so a code absent from
+        ``operations`` gets reported as skipped without ever having
+        been part of the script.
         """
         from dpmcore.dpm_xl.model_queries import VariableVersionQuery
 
@@ -1222,6 +1244,50 @@ class ASTGeneratorService:
         if not preconditions or self.session is None:
             return preconditions_dict, precondition_variables
 
+        all_codes = self._collect_precondition_variable_codes(preconditions)
+        if not all_codes:
+            return preconditions_dict, precondition_variables
+
+        resolved = VariableVersionQuery.get_variable_vids_by_codes(
+            self.session, all_codes, release_id=release_id
+        )
+
+        for precond_spec in preconditions:
+            (
+                precond_expr,
+                validation_codes,
+                provided_code,
+                provided_version_id,
+            ) = self._unpack_precondition_spec(precond_spec)
+
+            if emitted_operations is not None:
+                validation_codes = [
+                    code
+                    for code in validation_codes
+                    if code in emitted_operations
+                ]
+                if not validation_codes:
+                    continue
+
+            var_infos = self._collect_precondition_var_infos(
+                precond_expr, resolved
+            )
+            if not var_infos:
+                continue
+            key, entry = self._build_precondition_entry(
+                var_infos, validation_codes, provided_code, provided_version_id
+            )
+            self._merge_precondition_entry(preconditions_dict, key, entry)
+            for info in var_infos:
+                precondition_variables[str(info["variable_vid"])] = "b"
+
+        return preconditions_dict, precondition_variables
+
+    @staticmethod
+    def _collect_precondition_variable_codes(
+        preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
+    ) -> List[str]:
+        """Return every ``{v_*}`` code referenced, in first-seen order."""
         all_codes: List[str] = []
         for precond_spec in preconditions:
             precond_expr = (
@@ -1235,35 +1301,26 @@ class ASTGeneratorService:
                 normalized = _normalize_variable_code(raw)
                 if normalized not in all_codes:
                     all_codes.append(normalized)
-        if not all_codes:
-            return preconditions_dict, precondition_variables
+        return all_codes
 
-        resolved = VariableVersionQuery.get_variable_vids_by_codes(
-            self.session, all_codes, release_id=release_id
-        )
+    @staticmethod
+    def _unpack_precondition_spec(
+        precond_spec: Union[Tuple[str, List[str]], Dict[str, Any]],
+    ) -> Tuple[str, List[str], Optional[str], Optional[int]]:
+        """Normalise one precondition spec to its four fields.
 
-        for precond_spec in preconditions:
-            if isinstance(precond_spec, dict):
-                precond_expr = precond_spec["expression"]
-                validation_codes = precond_spec["affected_operations"]
-                provided_code = precond_spec.get("code")
-                provided_version_id = precond_spec.get("version_id")
-            else:
-                precond_expr, validation_codes = precond_spec
-                provided_code = None
-                provided_version_id = None
-
-            var_infos = self._collect_precondition_var_infos(
-                precond_expr, resolved, precondition_variables
+        Accepts both the ``(expression, [validation_codes])`` tuple form
+        and the dict form, whose ``code``/``version_id`` are optional.
+        """
+        if isinstance(precond_spec, dict):
+            return (
+                precond_spec["expression"],
+                list(precond_spec["affected_operations"]),
+                precond_spec.get("code"),
+                precond_spec.get("version_id"),
             )
-            if not var_infos:
-                continue
-            key, entry = self._build_precondition_entry(
-                var_infos, validation_codes, provided_code, provided_version_id
-            )
-            self._merge_precondition_entry(preconditions_dict, key, entry)
-
-        return preconditions_dict, precondition_variables
+        precond_expr, validation_codes = precond_spec
+        return precond_expr, list(validation_codes), None, None
 
     @staticmethod
     def _merge_precondition_entry(
@@ -1291,12 +1348,12 @@ class ASTGeneratorService:
     def _collect_precondition_var_infos(
         precondition_expr: str,
         resolved: Dict[str, Dict[str, int]],
-        precondition_variables: Dict[str, str],
     ) -> List[Dict[str, int]]:
         """Resolve ``{v_*}`` codes in *precondition_expr* to var-info dicts.
 
-        Updates *precondition_variables* in-place with the resolved
-        ``{variable_vid: "b"}`` entries.
+        Registering the resolved vids in ``precondition_variables`` is
+        the caller's job: an entry dropped for gating nothing must not
+        leave its variables declared behind it.
         """
         var_infos: List[Dict[str, int]] = []
         raw_codes = [
@@ -1314,7 +1371,6 @@ class ASTGeneratorService:
                     "variable_vid": info["variable_vid"],
                 }
             )
-            precondition_variables[str(info["variable_vid"])] = "b"
         return var_infos
 
     @staticmethod
@@ -1527,11 +1583,9 @@ class ASTGeneratorService:
         """
         index: Dict[str, List[str]] = {}
         for precond_spec in preconditions:
-            if isinstance(precond_spec, dict):
-                precond_expr = precond_spec["expression"]
-                validation_codes = precond_spec["affected_operations"]
-            else:
-                precond_expr, validation_codes = precond_spec
+            precond_expr, validation_codes, _code, _vid = (
+                self._unpack_precondition_spec(precond_spec)
+            )
 
             try:
                 ast = self._syntax.parse(precond_expr)

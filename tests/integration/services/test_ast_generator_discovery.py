@@ -172,11 +172,15 @@ def test_discovers_active_validations(fixture_session):
     )
 
     assert result["success"] is True, result.get("error")
-    assert result["failed_operations"] == {}
+    # A validation the semantic pass rejects is legitimately absent from
+    # the script — the fixture DB carries the dictionary's ``default: ""``
+    # on item cells (#355) — but it must still be a real active code.
+    assert set(result["failed_operations"]) <= set(oracle)
 
     _, ns_block = next(iter(result["enriched_ast"].items()))
     operations = ns_block["operations"]
     assert operations, "script_for_module discovered no validations"
+    assert set(operations).isdisjoint(result["failed_operations"])
 
     # Every discovered code must be a real, active-scoped operation for this
     # module version (no bogus/unscoped code leaks through).
@@ -194,6 +198,43 @@ def test_discovers_active_validations(fixture_session):
         oracle_row = matching[0]
         if oracle_row.Severity:
             assert entry["severity"] == oracle_row.Severity.lower()
+
+
+def test_preconditions_only_gate_operations_in_the_script(fixture_session):
+    """#355: no precondition may name an operation the script omits.
+
+    Preconditions are harvested from the database before the expressions
+    they gate are semantically validated, so a validation rejected into
+    ``failed_operations`` used to stay listed in ``affected_operations``.
+    The engine reports the affected operations of every gate that does
+    not hold as validations skipped, so a dangling code gets reported as
+    skipped without ever having been part of the script.
+    """
+    result = ASTGeneratorService(fixture_session).script_for_module(
+        module_code=_MODULE_CODE,
+        module_version=_MODULE_VERSION,
+    )
+    assert result["success"] is True, result.get("error")
+    assert result["failed_operations"], (
+        f"no validation of {_MODULE_CODE} {_MODULE_VERSION} is rejected in "
+        "this fixture DB, so a filtered precondition block is "
+        "indistinguishable from an unfiltered one"
+    )
+
+    _, ns_block = next(iter(result["enriched_ast"].items()))
+    operations = ns_block["operations"]
+    for key, entry in ns_block["preconditions"].items():
+        assert entry["affected_operations"], (
+            f"{key} was emitted gating no operation at all"
+        )
+        dangling = [
+            code
+            for code in entry["affected_operations"]
+            if code not in operations
+        ]
+        assert not dangling, (
+            f"{key} gates operations that are not in the script: {dangling}"
+        )
 
 
 def test_discovered_preconditions_reference_affected_operations(
