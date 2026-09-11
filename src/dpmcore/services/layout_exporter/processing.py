@@ -293,9 +293,12 @@ def resolve_enumeration_sources(
 
     An enumerated variable carries no value list of its own: the
     allowed values come from the SubCategoryVersion of the header that
-    bounds the cell (in practice exactly one of its column, row or
-    sheet header carries one). Key columns of open tables use their
-    own header's hierarchy.
+    bounds the cell — exactly one of its column, row or sheet header
+    carries one, in every reportable cell of the published dictionary.
+    Should a second one ever appear, the innermost wins (column over
+    row, row over sheet), the precedence
+    :func:`derive_missing_cell_data` follows. Key columns of open
+    tables use their own header's hierarchy.
 
     ``subcategory_vid`` is written on each enumerated cell in place;
     the returned set is the hierarchies to load.
