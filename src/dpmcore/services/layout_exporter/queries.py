@@ -333,24 +333,85 @@ def _load_member_codes(
     item_ids: set[int],
     domain_category_ids: set[int],
     window: ReleaseWindow,
-) -> dict[int, str]:
-    """Load MemberCode for member items, read at *window*.
+) -> dict[tuple[int, int], str]:
+    """Load MemberCode for member items, per domain, read at *window*.
 
-    MemberCode = ItemCategory.Code where CategoryID matches the domain.
+    MemberCode = ItemCategory.Code where CategoryID matches the domain
+    the dimension is typed on — or, when that domain is a
+    *super-category*, one of the categories composing it, which is
+    where ``ItemCategory`` actually files the member (#359).
 
-    Returns {item_id: member_code}.
+    Keyed by ``(item_id, domain_category_id)`` rather than by item
+    alone: the export spans many domains at once, and the same item can
+    be filed in two of them, so a per-item key silently hands one
+    domain's code to another domain's member.
+
+    Returns {(item_id, domain_category_id): member_code}.
     """
     if not item_ids or not domain_category_ids:
         return {}
 
+    from dpmcore.orm.supercategories import (
+        domain_search_order,
+        load_supercategory_members,
+    )
+
+    members_by_domain = load_supercategory_members(
+        session, domain_category_ids, release_id=None
+    )
+    # Which domains a filing category can answer for: itself, plus every
+    # super-category that composes it.
+    domains_by_filing: dict[int, set[int]] = {
+        domain: {domain} for domain in domain_category_ids
+    }
+    for domain, members in members_by_domain.items():
+        for member in members:
+            domains_by_filing.setdefault(member, set()).add(domain)
+
+    filed_by_item = _load_filed_codes(
+        session,
+        item_ids,
+        set(domains_by_filing),
+        window,
+    )
+
+    codes: dict[tuple[int, int], str] = {}
+    for item_id, filed in filed_by_item.items():
+        candidates = {
+            domain
+            for category_id in filed
+            for domain in domains_by_filing.get(category_id, ())
+        }
+        for domain in candidates:
+            for category_id in domain_search_order(domain, members_by_domain):
+                code = filed.get(category_id)
+                if code is not None:
+                    codes[(item_id, domain)] = code
+                    break
+    return codes
+
+
+def _load_filed_codes(
+    session: Session,
+    item_ids: set[int],
+    filing_category_ids: set[int],
+    window: ReleaseWindow,
+) -> dict[int, dict[int, str]]:
+    """Read each item's code in every category it is filed in.
+
+    One version of each ``(item, category)`` pair survives — the one in
+    force at *window* — so an item recoded during the exported version's
+    life is reported under the code it carries there.
+
+    Returns {item_id: {category_id: code}}.
+    """
     from dpmcore.orm.glossary import ItemCategory
 
-    # Match the domain in Python rather than via a second ``IN (...)`` so
-    # the chunked statement binds only the item-id batch and never
-    # approaches SQL Server's 2,100-parameter cap, however many domains
-    # the export spans. ``category_id`` is already selected, so this is
-    # the same predicate moved off SQL.
-    domain = set(domain_category_ids)
+    # Match the filing category in Python rather than via a second
+    # ``IN (...)`` so the chunked statement binds only the item-id batch
+    # and never approaches SQL Server's 2,100-parameter cap, however
+    # many domains the export spans. ``category_id`` is already
+    # selected, so this is the same predicate moved off SQL.
     base = session.query(
         ItemCategory.item_id,
         ItemCategory.category_id,
@@ -361,21 +422,18 @@ def _load_member_codes(
     rows = [
         r
         for r in chunked_in(base, ItemCategory.item_id, item_ids)
-        if r[1] in domain
+        if r[1] in filing_category_ids
     ]
     picked = _pick_in_window(
         [((r[0], r[1]), r[2], r[3], r[4]) for r in rows],
         load_release_sort_orders(session),
         window,
     )
-    # An item can be a member of more than one of the domains in play.
-    # Now that each domain contributes one version, keep the same
-    # deterministic winner as before: the highest (category_id, code).
-    result: dict[int, str] = {}
-    for (item_id, _category_id), code in sorted(picked.items()):
+    filed: dict[int, dict[int, str]] = {}
+    for (item_id, category_id), code in picked.items():
         if code:
-            result[item_id] = code
-    return result
+            filed.setdefault(item_id, {})[category_id] = code
+    return filed
 
 
 def _load_property_categories(
@@ -476,7 +534,7 @@ def load_categorisations(
     # ``PropertyCategory.category_id`` is nullable, and so is
     # ``ItemCategory.category_id``: letting ``None`` into the domain
     # set would make ``_load_member_codes`` match uncategorised rows
-    # and then fail to sort its mixed ``(item_id, category_id)`` keys.
+    # and file their codes under a domain no lookup below can name.
     domain_cat_ids = {cat_id for cat_id, _code in domains.values() if cat_id}
     dim_codes = _load_dimension_codes(session, prop_ids, window)
     member_codes = _load_member_codes(
@@ -489,14 +547,18 @@ def load_categorisations(
     result: dict[int, list[DimensionMember]] = {}
     for row in rows:
         ctx_id = row[0]
-        _cat_id, domain_code = domains.get(row[1], (0, ""))
+        cat_id, domain_code = domains.get(row[1], (0, ""))
         dm = DimensionMember(
             property_id=row[1],
             dimension_label=row[2] or "",
             dimension_code=dim_codes.get(row[1], ""),
             domain_code=domain_code,
             member_label=row[4] or "",
-            member_code=member_codes.get(row[3], "") if row[3] else "",
+            member_code=(
+                member_codes.get((row[3], cat_id), "")
+                if row[3] and cat_id
+                else ""
+            ),
             data_type_code=row[5] or "",
         )
         result.setdefault(ctx_id, []).append(dm)
@@ -619,7 +681,7 @@ def load_dp_categorisations(
     # ``PropertyCategory.category_id`` is nullable, and so is
     # ``ItemCategory.category_id``: letting ``None`` into the domain
     # set would make ``_load_member_codes`` match uncategorised rows
-    # and then fail to sort its mixed ``(item_id, category_id)`` keys.
+    # and file their codes under a domain no lookup below can name.
     domain_cat_ids = {cat_id for cat_id, _code in domains.values() if cat_id}
     dim_codes = _load_dimension_codes(session, prop_ids, window)
     member_codes = _load_member_codes(
@@ -632,14 +694,18 @@ def load_dp_categorisations(
     result: dict[int, list[DimensionMember]] = {}
     for row in rows:
         vvid = row[0]
-        _cat_id, domain_code = domains.get(row[1], (0, ""))
+        cat_id, domain_code = domains.get(row[1], (0, ""))
         dm = DimensionMember(
             property_id=row[1],
             dimension_label=row[2] or "",
             dimension_code=dim_codes.get(row[1], ""),
             domain_code=domain_code,
             member_label=row[3] or "" if not row[4] else row[4],
-            member_code=member_codes.get(row[3], "") if row[3] else "",
+            member_code=(
+                member_codes.get((row[3], cat_id), "")
+                if row[3] and cat_id
+                else ""
+            ),
             data_type_code=row[5] or "",
         )
         result.setdefault(vvid, []).append(dm)

@@ -347,6 +347,17 @@ class TestBuildOperationEntry:
 # ------------------------------------------------------------------ #
 
 
+def _stub_variable_query(monkeypatch, resolved):
+    """Point ``VariableVersionQuery`` at a fixed code → vid mapping."""
+    fake_query = MagicMock()
+    fake_query.get_variable_vids_by_codes.return_value = resolved
+    monkeypatch.setitem(
+        sys.modules,
+        "dpmcore.dpm_xl.model_queries",
+        SimpleNamespace(VariableVersionQuery=fake_query),
+    )
+
+
 class TestBuildPreconditionsBlock:
     def test_empty_input_returns_empty(self):
         svc, _, _ = _bare_svc()
@@ -529,6 +540,77 @@ class TestBuildPreconditionsBlock:
         entry = preconds["p_110"]
         assert entry["code"] == "p_110"
         assert entry["version_id"] == 110
+
+    def test_emitted_operations_trims_dangling_codes(self, monkeypatch):
+        """#355: only operations the script emits may be gated."""
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        _stub_variable_query(
+            monkeypatch, {"C_01.00": {"variable_id": 11, "variable_vid": 110}}
+        )
+
+        preconds, vars_ = svc._build_preconditions_block(
+            [("{v_C_01.00}", ["v1", "v2", "v3"])],
+            release_id=None,
+            emitted_operations={"v1", "v3"},
+        )
+        assert preconds["p_110"]["affected_operations"] == ["v1", "v3"]
+        assert vars_ == {"110": "b"}
+
+    def test_precondition_gating_nothing_emitted_is_dropped(self, monkeypatch):
+        """A gate left with no operation drops, variables included."""
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        _stub_variable_query(
+            monkeypatch, {"C_01.00": {"variable_id": 11, "variable_vid": 110}}
+        )
+
+        preconds, vars_ = svc._build_preconditions_block(
+            [("{v_C_01.00}", ["v1"])],
+            release_id=None,
+            emitted_operations={"v2"},
+        )
+        assert preconds == {}
+        assert vars_ == {}
+
+    def test_dropped_gate_does_not_take_a_shared_variable_with_it(
+        self, monkeypatch
+    ):
+        """A variable a surviving gate also uses stays declared."""
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        _stub_variable_query(
+            monkeypatch,
+            {
+                "A": {"variable_id": 1, "variable_vid": 10},
+                "B": {"variable_id": 2, "variable_vid": 20},
+            },
+        )
+
+        preconds, vars_ = svc._build_preconditions_block(
+            [
+                ("{v_A}", ["v1"]),
+                ("{v_A} and {v_B}", ["v2"]),
+            ],
+            release_id=None,
+            emitted_operations={"v1"},
+        )
+        assert list(preconds) == ["p_10"]
+        # 20 belonged to the dropped compound gate only; 10 is shared.
+        assert vars_ == {"10": "b"}
+
+    def test_no_emitted_operations_filter_keeps_every_code(self, monkeypatch):
+        """Omitting the filter leaves the harvested list untouched."""
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        _stub_variable_query(
+            monkeypatch, {"C_01.00": {"variable_id": 11, "variable_vid": 110}}
+        )
+
+        preconds, _vars = svc._build_preconditions_block(
+            [("{v_C_01.00}", ["v1", "v2"])], release_id=None
+        )
+        assert preconds["p_110"]["affected_operations"] == ["v1", "v2"]
 
 
 # ------------------------------------------------------------------ #
@@ -1323,6 +1405,66 @@ class TestScript:
         assert {"v2", "v3"} <= set(ns["operations"])
         assert list(out["failed_operations"]) == ["v1"]
         assert "integer literal" in out["failed_operations"]["v1"]
+
+    def test_preconditions_only_gate_emitted_operations(self, monkeypatch):
+        """#355: a rejected operation may not stay listed in a gate.
+
+        Preconditions are harvested before the expressions they gate are
+        validated, so ``p_255`` used to ship gating four operations that
+        semantic validation had dropped into ``failed_operations``.
+        """
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+        _stub_variable_query(
+            monkeypatch,
+            {
+                "F_01.01": {"variable_id": 11, "variable_vid": 110},
+                "F_05.01": {"variable_id": 22, "variable_vid": 220},
+            },
+        )
+        svc._semantic.validate.side_effect = lambda expr, release_id=None: (
+            SimpleNamespace(
+                is_valid=False,
+                error_message=(
+                    "3-6: Invalid default type, default is a String but "
+                    "it has to be a Item."
+                ),
+            )
+            if expr == "e_bad"
+            else SimpleNamespace(
+                is_valid=True, error_message=None, parameters=()
+            )
+        )
+        svc._semantic.ast = "AST"
+
+        out = svc.script(
+            expressions=[("e_bad", "v0937_m"), ("e_ok", "v1000_m")],
+            module_code="MOD",
+            module_version="1.0",
+            preconditions=[
+                {
+                    "expression": "{v_F_01.01}",
+                    "affected_operations": ["v0937_m"],
+                    "code": "p_255",
+                },
+                {
+                    "expression": "{v_F_05.01}",
+                    "affected_operations": ["v0937_m", "v1000_m"],
+                    "code": "p_9",
+                },
+            ],
+        )
+        assert out["success"] is True
+        assert "v0937_m" in out["failed_operations"]
+        ns = next(iter(out["enriched_ast"].values()))
+        # p_255 gated the rejected operation alone: entry and the
+        # variable it alone declared both go.
+        assert list(ns["preconditions"]) == ["p_9"]
+        assert ns["preconditions"]["p_9"]["affected_operations"] == ["v1000_m"]
+        assert ns["precondition_variables"] == {"220": "b"}
 
     def test_scope_error_fails_generation(self, monkeypatch):
         """Regression for #122: a scope-calculation error must fail the

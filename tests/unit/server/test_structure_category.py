@@ -11,7 +11,12 @@ from sqlalchemy.pool import StaticPool
 
 import dpmcore.orm  # noqa: F401  — ensure all models are loaded
 from dpmcore.orm.base import Base
-from dpmcore.orm.glossary import Category, Item, ItemCategory
+from dpmcore.orm.glossary import (
+    Category,
+    Item,
+    ItemCategory,
+    SupercategoryComposition,
+)
 from dpmcore.orm.infrastructure import Concept, Organisation, Release
 from dpmcore.server.app import create_app
 
@@ -48,6 +53,8 @@ def seeded_engine(engine):
         "c-rel-3",
         "c-cat-1",
         "c-cat-2",
+        "c-cat-3",
+        "c-cat-4",
     ]:
         owner = 1 if guid != "c-rel-3" else None
         session.add(Concept(concept_guid=guid, owner_id=owner))
@@ -118,6 +125,55 @@ def seeded_engine(engine):
                 created_release_id=2,
                 owner_id=1,
             ),
+            # A super-category: it holds one item of its own and draws
+            # the rest of its value set from MC, which composes it from
+            # release 2 onward (#359).
+            Category(
+                category_id=3,
+                code="SUP",
+                name="Super Category",
+                description="A composed domain",
+                is_enumerated=True,
+                is_active=True,
+                is_external_ref_data=False,
+                ref_data_source=None,
+                row_guid="c-cat-3",
+                created_release_id=1,
+                owner_id=1,
+            ),
+            # A super-category composing another one: it holds no item
+            # of its own and draws its whole value set through SUP.
+            Category(
+                category_id=4,
+                code="NST",
+                name="Nested Super Category",
+                description="A domain composed of a composed domain",
+                is_enumerated=True,
+                is_active=True,
+                is_external_ref_data=False,
+                ref_data_source=None,
+                row_guid="c-cat-4",
+                created_release_id=1,
+                owner_id=1,
+            ),
+        ]
+    )
+    session.flush()
+
+    session.add_all(
+        [
+            SupercategoryComposition(
+                supercategory_id=3,
+                category_id=1,
+                start_release_id=2,
+                end_release_id=None,
+            ),
+            SupercategoryComposition(
+                supercategory_id=4,
+                category_id=3,
+                start_release_id=1,
+                end_release_id=None,
+            ),
         ]
     )
     session.flush()
@@ -143,6 +199,13 @@ def seeded_engine(engine):
                 item_id=12,
                 name="Item Gamma",
                 description="Third item (added in 3.4)",
+                is_property=False,
+                is_active=True,
+            ),
+            Item(
+                item_id=13,
+                name="Item Delta",
+                description="The super-category's own item",
                 is_property=False,
                 is_active=True,
             ),
@@ -193,6 +256,16 @@ def seeded_engine(engine):
                 signature="SC(SC_001)",
                 end_release_id=None,
             ),
+            # SUP's single own item; the rest come from MC.
+            ItemCategory(
+                item_id=13,
+                start_release_id=1,
+                category_id=3,
+                code="SUP_ALL",
+                is_default_item=True,
+                signature="SUP(SUP_ALL)",
+                end_release_id=None,
+            ),
         ]
     )
     session.commit()
@@ -224,7 +297,7 @@ class TestListAllCategories:
         body = resp.json()
         assert "categories" in body["data"]
         cats = body["data"]["categories"]
-        assert len(cats) == 2
+        assert len(cats) == 4
 
     def test_all_releases(self, client):
         """Explicit release=* returns virtual versions for all cats."""
@@ -232,9 +305,11 @@ class TestListAllCategories:
         assert resp.status_code == 200
         body = resp.json()
         cats = body["data"]["categories"]
-        # MC has 2 versions (items change at 3.4), SC has 1 version
-        assert len(cats) == 3
-        assert body["meta"]["totalCount"] == 3
+        # MC has 2 versions (items change at 3.4), SC has 1 version,
+        # SUP has 2 (its composition of MC opens at 3.4) and NST has 2
+        # (it inherits that change through SUP)
+        assert len(cats) == 7
+        assert body["meta"]["totalCount"] == 7
 
     def test_numeric_id_all_releases(self, client):
         """Numeric id with release=* returns all virtual versions."""
@@ -251,8 +326,8 @@ class TestFilterByOwner:
         resp = client.get("/api/v1/structure/category/EBA/*/*")
         assert resp.status_code == 200
         cats = resp.json()["data"]["categories"]
-        # MC(2 versions) + SC(1 version) = 3 entries with release=*
-        assert len(cats) == 3
+        # MC(2) + SC(1) + SUP(2) + NST(2) = 7 entries with release=*
+        assert len(cats) == 7
         assert all(c["owner"] == "EBA" for c in cats)
 
 
@@ -378,6 +453,82 @@ class TestItemFields:
         assert "isProperty" not in item
 
 
+class TestSuperCategories:
+    """A super-category's items are filed under what composes it.
+
+    ``SUP`` holds one item of its own (``SUP_ALL``) and composes ``MC``
+    from release 3.4 onward, so its value set grows when the
+    composition opens — with no ItemCategory row of its own changing
+    (#359).
+    """
+
+    def test_only_its_own_item_before_the_composition_opens(self, client):
+        resp = client.get("/api/v1/structure/category/EBA/SUP/3.3")
+        cat = resp.json()["data"]["categories"][0]
+
+        assert {i["code"] for i in cat["items"]} == {"SUP_ALL"}
+
+    def test_the_composed_categorys_items_join_it(self, client):
+        resp = client.get("/api/v1/structure/category/EBA/SUP/3.4")
+        cat = resp.json()["data"]["categories"][0]
+
+        # MC holds IC_001 and IC_003 at 3.4 (IC_002 ended at 3.3).
+        assert {i["code"] for i in cat["items"]} == {
+            "SUP_ALL",
+            "IC_001",
+            "IC_003",
+        }
+
+    def test_the_composition_opening_starts_a_new_version(self, client):
+        """The item set changes at 3.4, so a version boundary is due."""
+        resp = client.get("/api/v1/structure/category/*/SUP/*")
+        versions = resp.json()["data"]["categories"]
+
+        assert [v["release"] for v in versions] == ["3.3", "3.4"]
+
+    def test_the_composed_category_keeps_its_own_identity(self, client):
+        """Expanding SUP must not change what MC itself reports."""
+        resp = client.get("/api/v1/structure/category/EBA/MC/3.4")
+        cat = resp.json()["data"]["categories"][0]
+
+        assert {i["code"] for i in cat["items"]} == {"IC_001", "IC_003"}
+
+
+class TestNestedSuperCategories:
+    """A super-category composing another one takes the whole chain.
+
+    ``NST`` composes ``SUP`` from the start and holds nothing of its
+    own, so everything it reports arrives through ``SUP`` — including
+    ``MC``'s items, two links away, once that composition opens at 3.4.
+    The dictionary does not nest super-categories today, but nothing in
+    the schema forbids it and a missing second level would silently
+    drop items (#359).
+    """
+
+    def test_the_second_level_is_reached(self, client):
+        resp = client.get("/api/v1/structure/category/EBA/NST/3.4")
+        cat = resp.json()["data"]["categories"][0]
+
+        assert {i["code"] for i in cat["items"]} == {
+            "SUP_ALL",
+            "IC_001",
+            "IC_003",
+        }
+
+    def test_only_the_first_level_before_the_second_opens(self, client):
+        """At 3.3 SUP does not compose MC yet, so MC's items stay out."""
+        resp = client.get("/api/v1/structure/category/EBA/NST/3.3")
+        cat = resp.json()["data"]["categories"][0]
+
+        assert {i["code"] for i in cat["items"]} == {"SUP_ALL"}
+
+    def test_a_change_two_levels_down_starts_a_new_version(self, client):
+        resp = client.get("/api/v1/structure/category/*/NST/*")
+        versions = resp.json()["data"]["categories"]
+
+        assert [v["release"] for v in versions] == ["3.3", "3.4"]
+
+
 class TestEmptyResults:
     def test_empty_database_returns_204(self, empty_client):
         resp = empty_client.get("/api/v1/structure/category")
@@ -438,9 +589,9 @@ class TestVirtualVersioning:
         assert resp.status_code == 204
 
     def test_total_versions_all_categories(self, client):
-        """Total virtual versions: MC(2) + SC(1) = 3."""
+        """Total virtual versions: MC(2) + SC(1) + SUP(2) + NST(2) = 7."""
         resp = client.get("/api/v1/structure/category/*/*/*")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["meta"]["totalCount"] == 3
-        assert len(body["data"]["categories"]) == 3
+        assert body["meta"]["totalCount"] == 7
+        assert len(body["data"]["categories"]) == 7

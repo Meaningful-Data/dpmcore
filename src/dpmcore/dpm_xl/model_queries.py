@@ -9,12 +9,14 @@ legacy ``session.query()`` API for compatibility.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
     Collection,
     Hashable,
+    NamedTuple,
     Sequence,
 )
 
@@ -22,7 +24,10 @@ import pandas as pd
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import aliased
 
-from dpmcore.dpm_xl.utils.filters import filter_by_release
+from dpmcore.dpm_xl.utils.filters import (
+    filter_by_release,
+    release_window_conditions,
+)
 from dpmcore.dpm_xl.utils.range_resolution import (
     build_axis_order_map,
     build_axis_value_map,
@@ -34,6 +39,8 @@ from dpmcore.orm.glossary import (
     ItemCategory,
     Property,
     PropertyCategory,
+    SubCategoryItem,
+    SupercategoryComposition,
 )
 from dpmcore.orm.infrastructure import (
     DataType,
@@ -68,6 +75,7 @@ from dpmcore.orm.rendering import (
     TableVersionCell,
     TableVersionHeader,
 )
+from dpmcore.orm.supercategories import load_supercategory_member_codes
 from dpmcore.orm.variables import (
     KeyComposition,
     Variable,
@@ -205,13 +213,40 @@ def _filter_elements(
 # ------------------------------------------------------------------ #
 
 
+@dataclass(frozen=True)
+class PropertyDomains:
+    """The categories a component built on a property takes items from.
+
+    ``own`` is the category the property is typed on (a set, because the
+    link is release-versioned). ``members`` is what a *super-category*
+    among them adds: the categories composing it, which is where
+    ``ItemCategory`` actually files most of its value set.
+
+    The two are kept apart rather than unioned because they carry
+    different confidence. An item in ``own`` is unconditionally a value
+    the component can take; an item in ``members`` is only known to be in
+    the super-category's *overall* value set, and a header subcategory
+    may narrow which of them a given column actually offers.
+    """
+
+    own: frozenset[str]
+    members: frozenset[str]
+
+    @property
+    def codes(self) -> frozenset[str]:
+        """Every category the component may take items from."""
+        return self.own | self.members
+
+
 def _enumerated_domains(
     session: "Session",
     model: Any,
     key_col: Any,
     keys: Sequence[Any],
     release_id: int | None,
-) -> dict[Any, set[str]]:
+    *,
+    with_members: bool = False,
+) -> tuple[dict[Any, set[str]], dict[Any, set[str]]]:
     """Map the keys of a category link table to enumerated category codes.
 
     ``ItemCategory`` and ``PropertyCategory`` are the same shape: a
@@ -226,32 +261,99 @@ def _enumerated_domains(
         key_col: Column of *model* the result is keyed on.
         keys: Values of *key_col* to resolve.
         release_id: Release the link is resolved at.
+        with_members: Also resolve, in the same statement, the categories
+            composing each linked category when it is a *super-category*.
+            An outer join, so a key whose category composes nothing is
+            still returned; the window on the composition lives in the
+            ``ON`` clause, where it cannot narrow that outer join back to
+            an inner one.
 
     Returns:
-        ``{key: {category_code, ...}}``, omitting keys with no enumerated
-        category open at ``release_id``.
+        ``({key: {category_code, ...}}, {key: {member_code, ...}})``,
+        each omitting keys with nothing to report. The second mapping is
+        always empty unless *with_members*, and covers one level of
+        composition -- :func:`load_supercategory_member_codes` completes
+        the closure for the rare nested case.
     """
+    # Both windows come from one release load: the link's own, and --
+    # when members are wanted -- the composition's, which has to sit in
+    # the join's ON clause so the outer join stays outer.
+    windows = [(model.start_release_id, model.end_release_id)]
+    if with_members:
+        windows.append(
+            (
+                SupercategoryComposition.start_release_id,
+                SupercategoryComposition.end_release_id,
+            )
+        )
+    conditions = release_window_conditions(session, windows, release_id)
+
     query = (
         session.query(
             key_col.label("DomainKey"),
             Category.code.label("CategoryCode"),
         )
         .join(Category, Category.category_id == model.category_id)
-        .filter(key_col.in_(list(keys)))
         .filter(Category.is_enumerated == True)  # noqa: E712
         .filter(Category.code.isnot(None))
+        .filter(conditions[0])
     )
-    query = filter_by_release(
-        query,
-        start_col=model.start_release_id,
-        end_col=model.end_release_id,
-        release_id=release_id,
-        active_only_fallback=True,
-    )
+    if with_members:
+        query = _add_member_columns(query, conditions[1])
     domains: dict[Any, set[str]] = {}
-    for row in query.distinct().all():
+    members: dict[Any, set[str]] = {}
+    for row in chunked_in(query, key_col, keys):
         domains.setdefault(row.DomainKey, set()).add(row.CategoryCode)
-    return domains
+        if with_members and row.MemberCode is not None:
+            members.setdefault(row.DomainKey, set()).add(row.MemberCode)
+    return domains, members
+
+
+def _add_member_columns(
+    query: "Query[Any]",
+    composition_window: Any,
+) -> "Query[Any]":
+    """Outer-join the composing categories of a super-category domain."""
+    member = aliased(Category)
+    return (
+        query.outerjoin(
+            SupercategoryComposition,
+            and_(
+                SupercategoryComposition.supercategory_id
+                == Category.category_id,
+                composition_window,
+            ),
+        )
+        .outerjoin(
+            member,
+            and_(
+                member.category_id == SupercategoryComposition.category_id,
+                member.is_enumerated == True,  # noqa: E712
+                member.code.isnot(None),
+            ),
+        )
+        .add_columns(member.code.label("MemberCode"))
+    )
+
+
+def _nested_members(
+    session: "Session",
+    members: dict[Any, set[str]],
+    release_id: int | None,
+) -> dict[str, set[str]]:
+    """Expand members that are themselves super-categories.
+
+    The single-statement join in :func:`_enumerated_domains` reaches one
+    level. This completes the closure -- and issues no query at all when
+    nothing composed anything, which is every property typed on an
+    ordinary category.
+    """
+    codes = {code for values in members.values() for code in values}
+    if not codes:
+        return {}
+    return load_supercategory_member_codes(
+        session, codes, release_id=release_id
+    )
 
 
 # ------------------------------------------------------------------ #
@@ -395,13 +497,14 @@ class ItemCategoryQuery:
         """
         if not items:
             return {}
-        return _enumerated_domains(
+        domains, _members = _enumerated_domains(
             session,
             ItemCategory,
             ItemCategory.signature,
             items,
             release_id,
         )
+        return domains
 
 
 # ------------------------------------------------------------------ #
@@ -417,8 +520,8 @@ class PropertyCategoryQuery:
         session: "Session",
         property_ids: Sequence[int],
         release_id: int | None = None,
-    ) -> dict[int, set[str]]:
-        """Map properties to the code(s) of the categories they are typed on.
+    ) -> dict[int, PropertyDomains]:
+        """Map properties to the categories they are typed on.
 
         A property's category is the domain of every component built on it:
         the items that component may take. Only enumerated categories are
@@ -426,25 +529,180 @@ class PropertyCategoryQuery:
         resolves to no domain at all. Like ``ItemCategory``, the link is
         release-versioned, hence the set-valued result.
 
+        A category that is a *super-category* also contributes the
+        categories composing it: the component takes items from any of
+        them, while ``ItemCategory`` files each item under the one
+        category that owns it. Both halves are reported separately --
+        see :class:`PropertyDomains` -- because a caller that can pin the
+        component's value set down more precisely needs to know which of
+        the two it is looking at.
+
+        The composition is resolved in the same statement as the domain,
+        so a property on an ordinary category costs no extra query; only
+        the rare nested super-category needs a second round trip.
+
         Args:
             session: SQLAlchemy session.
             property_ids: Property IDs to resolve.
             release_id: Release the link is resolved at.
 
         Returns:
-            ``{property_id: {category_code, ...}}``, omitting properties with
+            ``{property_id: PropertyDomains}``, omitting properties with
             no category open at ``release_id``.
         """
         if not property_ids:
             return {}
-        domains = _enumerated_domains(
+        own, members = _enumerated_domains(
             session,
             PropertyCategory,
             PropertyCategory.property_id,
             property_ids,
             release_id,
+            with_members=True,
         )
-        return {int(key): codes for key, codes in domains.items()}
+        nested = _nested_members(session, members, release_id)
+        return {
+            int(key): PropertyDomains(
+                own=frozenset(codes),
+                members=frozenset(
+                    members.get(key, set()).union(
+                        *(
+                            nested.get(code, set())
+                            for code in members.get(key, set())
+                        )
+                    )
+                    if members.get(key)
+                    else ()
+                ),
+            )
+            for key, codes in own.items()
+        }
+
+
+# ------------------------------------------------------------------ #
+# SubCategory queries
+# ------------------------------------------------------------------ #
+
+
+class SubCategoryQuery:
+    """Query helpers around the header subcategory of a data point.
+
+    A ``Category`` is the widest thing a component may take values from.
+    Where a table header names a ``SubCategoryVersion``, the dictionary
+    says exactly which of those items *that column* offers -- 18 of
+    ``qTU``'s 927, say. Only about 4% of header versions carry one, so
+    this is a refinement, never the primary resolution.
+    """
+
+    @staticmethod
+    def get_cell_subcategory_vids(
+        session: "Session",
+        cells: Sequence[tuple[int, int]],
+        release_id: int | None = None,
+    ) -> dict[tuple[int, int, int], int]:
+        """Map cells to the subcategory their own header pins down.
+
+        Only a header whose ``property_id`` is the one the caller is
+        asking about counts: a cell is bounded by up to three headers,
+        and a subcategory on the row says nothing about the value set of
+        a column's property.
+
+        Args:
+            session: SQLAlchemy session.
+            cells: ``(table_vid, cell_id)`` pairs to resolve.
+            release_id: Release the header version is resolved at.
+
+        Returns:
+            ``{(table_vid, cell_id, property_id): subcategory_vid}``,
+            omitting cells whose headers name no subcategory.
+        """
+        if not cells:
+            return {}
+        query = (
+            session.query(
+                TableVersionCell.table_vid.label("TableVid"),
+                TableVersionCell.cell_id.label("CellId"),
+                HeaderVersion.property_id.label("PropertyId"),
+                HeaderVersion.subcategory_vid.label("SubcategoryVid"),
+            )
+            .join(Cell, Cell.cell_id == TableVersionCell.cell_id)
+            .join(
+                TableVersionHeader,
+                and_(
+                    TableVersionHeader.table_vid == TableVersionCell.table_vid,
+                    or_(
+                        TableVersionHeader.header_id == Cell.column_id,
+                        TableVersionHeader.header_id == Cell.row_id,
+                        TableVersionHeader.header_id == Cell.sheet_id,
+                    ),
+                ),
+            )
+            .join(
+                HeaderVersion,
+                HeaderVersion.header_vid == TableVersionHeader.header_vid,
+            )
+            .filter(HeaderVersion.subcategory_vid.isnot(None))
+            .filter(HeaderVersion.property_id.isnot(None))
+        )
+        table_vids = {table_vid for table_vid, _cell_id in cells}
+        query = query.filter(TableVersionCell.table_vid.in_(table_vids))
+        wanted = set(cells)
+        found: dict[tuple[int, int, int], int] = {}
+        for row in chunked_in(
+            query,
+            TableVersionCell.cell_id,
+            {cell_id for _table_vid, cell_id in cells},
+        ):
+            if (row.TableVid, row.CellId) not in wanted:
+                continue
+            found[(row.TableVid, row.CellId, row.PropertyId)] = (
+                row.SubcategoryVid
+            )
+        return found
+
+    @staticmethod
+    def get_subcategory_signatures(
+        session: "Session",
+        subcategory_vids: Sequence[int],
+        release_id: int | None = None,
+    ) -> dict[int, set[str]]:
+        """Map subcategory versions to the item signatures they list.
+
+        Args:
+            session: SQLAlchemy session.
+            subcategory_vids: SubCategoryVersion IDs to resolve.
+            release_id: Release the item codes are resolved at -- an
+                item with no ``ItemCategory`` row open there has no
+                signature at that release and is left out.
+
+        Returns:
+            ``{subcategory_vid: {signature, ...}}``.
+        """
+        if not subcategory_vids:
+            return {}
+        query = (
+            session.query(
+                SubCategoryItem.subcategory_vid.label("SubcategoryVid"),
+                ItemCategory.signature.label("Signature"),
+            )
+            .join(
+                ItemCategory, ItemCategory.item_id == SubCategoryItem.item_id
+            )
+            .filter(ItemCategory.signature.isnot(None))
+        )
+        query = filter_by_release(
+            query,
+            start_col=ItemCategory.start_release_id,
+            end_col=ItemCategory.end_release_id,
+            release_id=release_id,
+            active_only_fallback=True,
+        )
+        signatures: dict[int, set[str]] = {}
+        for row in chunked_in(
+            query, SubCategoryItem.subcategory_vid, subcategory_vids
+        ):
+            signatures.setdefault(row.SubcategoryVid, set()).add(row.Signature)
+        return signatures
 
 
 # ------------------------------------------------------------------ #
@@ -1238,6 +1496,168 @@ def _resolve_with_ghost_fallback(
     return pd.concat([non_ghost, fallback_rows], ignore_index=True)
 
 
+class _TableVersionScope(NamedTuple):
+    """The table version(s) of one table code effective at a release.
+
+    Attributes:
+        table_vids: ``TableVersion.table_vid`` values to read cells from.
+        fallback_module_vids: The module versions hosting ``table_vids``
+            when the ghost fallback fired, ``None`` when the plain release
+            window applies. A fallback version's release window ends
+            *before* the target release, so callers must narrow the
+            ``ModuleVersion`` join to these VIDs rather than applying
+            :func:`filter_by_release`, which would drop every row.
+    """
+
+    table_vids: list[int]
+    fallback_module_vids: list[int] | None = None
+
+
+def _is_collapsed_window(from_date: Any, to_date: Any) -> bool:
+    """Whether one version's reference-date window is collapsed (ghost).
+
+    Row-level mirror of :func:`_collapsed_mask`: collapsed only when both
+    reference dates are present and equal; an open-ended window is a
+    genuine range.
+    """
+    return (
+        from_date is not None and to_date is not None and from_date == to_date
+    )
+
+
+def _ghost_module_ids_for_table_vids(
+    session: "Session",
+    table_vids: Sequence[int],
+    release_id: int,
+) -> set[int] | None:
+    """Modules whose ghosts are the only versions hosting ``table_vids``.
+
+    Args:
+        session: SQLAlchemy session.
+        table_vids: Table versions open at ``release_id``.
+        release_id: Target release id.
+
+    Returns:
+        The module ids of those ghosts, or ``None`` as soon as a
+        non-ghost module version covering ``release_id`` hosts one of
+        ``table_vids`` (the table version is then genuinely live at the
+        release and needs no substitution). Also ``None`` when no module
+        version hosts them at all.
+
+        The decision is all-or-nothing over ``table_vids``: a live host
+        for *any* of them suppresses substitution for the whole set.
+        That only matters when one table code has several versions open
+        at once, which happens at the perpetual release alone (see
+        :meth:`ViewDatapointsQuery._resolve_table_version_scope`), and
+        deciding per version would also have to merge the live module
+        versions into ``_TableVersionScope.fallback_module_vids`` --
+        :meth:`ViewDatapointsQuery._filter_module_versions` replaces the
+        release filter with that list, so a live version left out of it
+        would lose its rows.
+    """
+    rows = (
+        filter_by_release(
+            session.query(
+                ModuleVersion.module_id,
+                ModuleVersion.from_reference_date,
+                ModuleVersion.to_reference_date,
+            )
+            .join(
+                ModuleVersionComposition,
+                ModuleVersion.module_vid
+                == ModuleVersionComposition.module_vid,
+            )
+            .filter(ModuleVersionComposition.table_vid.in_(list(table_vids))),
+            start_col=ModuleVersion.start_release_id,
+            end_col=ModuleVersion.end_release_id,
+            release_id=release_id,
+        )
+        .distinct()
+        .all()
+    )
+    ghost_module_ids: set[int] = set()
+    for module_id, from_date, to_date in rows:
+        if not _is_collapsed_window(from_date, to_date):
+            return None
+        if module_id is not None:
+            ghost_module_ids.add(module_id)
+    return ghost_module_ids or None
+
+
+def _apply_table_ghost_fallback(
+    session: "Session",
+    table: str,
+    table_vids: list[int],
+    release_id: int,
+) -> _TableVersionScope:
+    """Substitute a ghost-only table version with its fallback's (#356).
+
+    The table-version mirror of :func:`_resolve_with_ghost_fallback`: when
+    every module version hosting ``table_vids`` at ``release_id`` is a
+    ghost, the table's cells are read from the latest prior non-ghost
+    version of the same module instead, so datapoint resolution and module
+    resolution report the same module version. Without it the cells --
+    hence their variables, properties and domains -- come from a version
+    that has no reporting period of its own.
+
+    Kept separate from that helper rather than calling it: the caller
+    needs a scope (the effective ``table_vids`` *and* the module
+    versions the ``ModuleVersion`` join must be narrowed to), not the
+    operand rows the helper returns; a ghost with no fallback is kept
+    here instead of dropped, since dropping it would leave ``table``
+    unresolvable rather than merely unscoped; and the decision is made
+    once per table code rather than per module.
+
+    Substitution only: when there is nothing to fall back to (no prior
+    non-ghost version, or one that does not contain ``table``) the ghost's
+    table version is kept, since dropping it would make the table
+    unresolvable at that release.
+
+    Args:
+        session: SQLAlchemy session.
+        table: Table version code being resolved.
+        table_vids: The versions of ``table`` open at ``release_id``.
+        release_id: Target release id.
+
+    Returns:
+        The effective scope, ghost substituted where a fallback exists.
+    """
+    ghost_module_ids = _ghost_module_ids_for_table_vids(
+        session, table_vids, release_id
+    )
+    if ghost_module_ids is None:
+        return _TableVersionScope(table_vids)
+    fallback_vids = _latest_prior_non_collapsed_vids(
+        session, ghost_module_ids, release_id
+    )
+    if not fallback_vids:
+        return _TableVersionScope(table_vids)
+    rows = (
+        session.query(
+            ModuleVersionComposition.module_vid,
+            ModuleVersionComposition.table_vid,
+        )
+        .join(
+            TableVersion,
+            TableVersion.table_vid == ModuleVersionComposition.table_vid,
+        )
+        .filter(
+            ModuleVersionComposition.module_vid.in_(
+                list(fallback_vids.values())
+            ),
+            TableVersion.code == table,
+        )
+        .distinct()
+        .all()
+    )
+    if not rows:
+        return _TableVersionScope(table_vids)
+    return _TableVersionScope(
+        sorted({table_vid for _module_vid, table_vid in rows}),
+        sorted({module_vid for module_vid, _table_vid in rows}),
+    )
+
+
 class ModuleVersionQuery:
     """Query helpers around ModuleVersion."""
 
@@ -1752,25 +2172,32 @@ class ViewDatapointsQuery:
         }
         return query, aliases
 
-    @staticmethod
-    def _resolve_current_table_vids(
-        session: "Session", table: str, release_id: int | None
-    ) -> list[int]:
-        """Resolve the ``TableVersion.table_vid`` value(s) of ``table`` open at ``release_id``.
+    @classmethod
+    def _resolve_table_version_scope(
+        cls, session: "Session", table: str, release_id: int | None
+    ) -> _TableVersionScope:
+        """Resolve the table version(s) of ``table`` effective at ``release_id``.
 
         At the perpetual release, an adopted version and one just started
         there can both compare as "open now". When both are present, only
         the adopted one(s) are kept.
 
+        A version open at ``release_id`` only through a *ghost* module
+        version is then substituted with the one the ghost fallback
+        resolves to (see :func:`_apply_table_ghost_fallback`), so cells
+        resolve through the same module version module resolution reports.
+
         Args:
             session: SQLAlchemy session.
             table: Table version code.
             release_id: Release filter; ``None`` resolves to whichever
-                version(s) are currently open.
+                version(s) are currently open, and applies no ghost
+                fallback -- without a target release there is no "prior"
+                version to fall back to.
 
         Returns:
-            The matching ``table_vid`` values (empty when ``table`` has none
-            open at ``release_id``).
+            The effective scope; its ``table_vids`` are empty when
+            ``table`` has no version open at ``release_id``.
         """
         query = session.query(
             TableVersion.table_vid, TableVersion.start_release_id
@@ -1784,15 +2211,56 @@ class ViewDatapointsQuery:
         )
         rows = query.all()
         if len(rows) <= 1:
-            return [row.table_vid for row in rows]
-        sort_orders = load_release_sort_orders(session)
-        perpetual = compute_sort_order(None, None)
-        adopted = [
-            row.table_vid
-            for row in rows
-            if sort_orders.get(row.start_release_id, perpetual) < perpetual
-        ]
-        return adopted or [row.table_vid for row in rows]
+            table_vids = [row.table_vid for row in rows]
+        else:
+            sort_orders = load_release_sort_orders(session)
+            perpetual = compute_sort_order(None, None)
+            adopted = [
+                row.table_vid
+                for row in rows
+                if sort_orders.get(row.start_release_id, perpetual) < perpetual
+            ]
+            table_vids = adopted or [row.table_vid for row in rows]
+        if not table_vids or release_id is None:
+            return _TableVersionScope(table_vids)
+        return _apply_table_ghost_fallback(
+            session, table, table_vids, release_id
+        )
+
+    @staticmethod
+    def _filter_module_versions(
+        query: "Query[Any]",
+        scope: _TableVersionScope,
+        release_id: int | None,
+    ) -> "Query[Any]":
+        """Narrow the ``ModuleVersion`` join to the versions ``scope`` resolved.
+
+        Normally that is the plain release window. In the ghost-fallback
+        case the effective versions are the fallback's, whose release
+        window ends before ``release_id``, so filtering by release would
+        drop every row; the join is narrowed to their VIDs instead --
+        keeping the module-membership scoping the release filter provides.
+
+        Args:
+            query: Query joining ``ModuleVersion``.
+            scope: Scope from :meth:`_resolve_table_version_scope`.
+            release_id: Release filter; ``None`` leaves ``query`` as is.
+
+        Returns:
+            The narrowed query.
+        """
+        if scope.fallback_module_vids is not None:
+            return query.filter(
+                ModuleVersion.module_vid.in_(scope.fallback_module_vids)
+            )
+        if release_id is None:
+            return query
+        return filter_by_release(
+            query,
+            start_col=ModuleVersion.start_release_id,
+            end_col=ModuleVersion.end_release_id,
+            release_id=release_id,
+        )
 
     @classmethod
     def get_axis_orders(
@@ -1841,19 +2309,10 @@ class ViewDatapointsQuery:
             aliases["tvh_sheet"].order.label("sheet_order"),
         ).distinct()
 
+        scope = cls._resolve_table_version_scope(session, table, release_id)
         query = query.filter(TableVersion.code == table)
-        query = query.filter(
-            TableVersion.table_vid.in_(
-                cls._resolve_current_table_vids(session, table, release_id)
-            )
-        )
-        if release_id is not None:
-            query = filter_by_release(
-                query,
-                start_col=ModuleVersion.start_release_id,
-                end_col=ModuleVersion.end_release_id,
-                release_id=release_id,
-            )
+        query = query.filter(TableVersion.table_vid.in_(scope.table_vids))
+        query = cls._filter_module_versions(query, scope, release_id)
 
         data = read_sql_with_connection(query.statement, session)
 
@@ -1953,12 +2412,9 @@ class ViewDatapointsQuery:
             ModuleVersion.end_release_id.label("end_release_id"),
         )
 
+        scope = cls._resolve_table_version_scope(session, table, release_id)
         query = query.filter(TableVersion.code == table)
-        query = query.filter(
-            TableVersion.table_vid.in_(
-                cls._resolve_current_table_vids(session, table, release_id)
-            )
-        )
+        query = query.filter(TableVersion.table_vid.in_(scope.table_vids))
 
         # Range endpoints are resolved against the stored display order, not
         # the code text; ``get_axis_orders`` supplies the per-axis map (or
@@ -1986,13 +2442,7 @@ class ViewDatapointsQuery:
                 query, aliases["hvs"].code, sheets, axis_orders["sheets"]
             )
 
-        if release_id is not None:
-            query = filter_by_release(
-                query,
-                start_col=ModuleVersion.start_release_id,
-                end_col=ModuleVersion.end_release_id,
-                release_id=release_id,
-            )
+        query = cls._filter_module_versions(query, scope, release_id)
 
         data = read_sql_with_connection(query.statement, session)
 
@@ -2070,17 +2520,11 @@ class ViewDatapointsQuery:
                     query = query.filter(clause)
 
         if release_id:
-            query = filter_by_release(
-                query,
-                start_col=ModuleVersion.start_release_id,
-                end_col=ModuleVersion.end_release_id,
-                release_id=release_id,
+            scope = cls._resolve_table_version_scope(
+                session, table, release_id
             )
-            query = query.filter(
-                TableVersion.table_vid.in_(
-                    cls._resolve_current_table_vids(session, table, release_id)
-                )
-            )
+            query = cls._filter_module_versions(query, scope, release_id)
+            query = query.filter(TableVersion.table_vid.in_(scope.table_vids))
 
         return read_sql_with_connection(query.statement, session)
 

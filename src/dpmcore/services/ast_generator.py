@@ -148,7 +148,10 @@ class ASTGeneratorService:
                 ``affected_operations`` (optional ``code`` and
                 ``version_id`` are also accepted). A precondition can
                 guard many validation codes; a validation may have no
-                precondition.
+                precondition. Codes that end up in
+                ``failed_operations`` are stripped from the emitted
+                ``affected_operations``, and a precondition left
+                gating nothing is dropped entirely.
             severity: Optional global default severity tag
                 (``"error"``, ``"warning"``, ``"info"``). Defaults to
                 ``"warning"``.
@@ -324,9 +327,14 @@ class ASTGeneratorService:
                 for prm_code, prm in sorted(referenced_parameters.items())
             }
 
+            # Filtered against ``operations``, not the harvested list:
+            # anything that landed in ``failed_operations`` must not be
+            # left gated by a precondition (#355).
             preconditions_block, precondition_variables_block = (
                 self._build_preconditions_block(
-                    preconditions or [], release_id=release_id
+                    preconditions or [],
+                    release_id=release_id,
+                    emitted_operations=set(operations),
                 )
             )
 
@@ -392,6 +400,294 @@ class ASTGeneratorService:
                 "error": str(exc),
                 "failed_operations": {},
             }
+
+    def script_for_module(
+        self,
+        module_code: str,
+        module_version: str,
+        release: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Auto-discover a module version's active validations and script them.
+
+        No ``expressions``, ``preconditions`` or ``severities`` need to be
+        supplied — they are looked up from ``OperationScope`` /
+        ``OperationScopeComposition`` / ``OperationVersion`` for this module
+        version, then handed to :meth:`script`.
+
+        Args:
+            module_code: Code of the module (e.g. ``"COREP_Con"``).
+            module_version: Version of the module (e.g. ``"2.0.1"``).
+            release: Optional release code; resolved the same way as in
+                :meth:`script`.
+
+        Returns:
+            Same shape as :meth:`script`.
+        """
+        if self.session is None:
+            return {
+                "success": False,
+                "enriched_ast": None,
+                "error": "No database session — cannot generate script.",
+                "failed_operations": {},
+            }
+
+        try:
+            mv, release_row = self._resolve_release(
+                module_code, module_version, release
+            )
+            expressions, preconditions, severities = (
+                self._discover_module_validations(mv, release_row)
+            )
+        except ValueError as exc:
+            return {
+                "success": False,
+                "enriched_ast": None,
+                "error": str(exc),
+                "failed_operations": {},
+            }
+
+        return self.script(
+            expressions=expressions,
+            module_code=module_code,
+            module_version=module_version,
+            preconditions=preconditions or None,
+            severities=severities or None,
+            release=release_row.code,
+        )
+
+    def list_module_versions(
+        self,
+        module_code: Optional[str] = None,
+        release: Optional[str] = None,
+    ) -> List[Tuple[str, str]]:
+        """Enumerate ``(module_code, version_number)`` pairs to sweep.
+
+        Used by the CLI's ``--all-modules``/``--all-versions`` sweep to
+        discover targets for :meth:`script_for_module`.
+
+        Args:
+            module_code: Restrict to this module's versions. ``None``
+                enumerates every module in the database.
+            release: When given, only ``ModuleVersion`` rows whose window
+                contains this release (via :func:`filter_by_release`) are
+                returned.
+
+        Returns:
+            ``(module_code, version_number)`` pairs, ordered by
+            ``(code, start_release_id)``, excluding ghost/phantom
+            ``ModuleVersion`` rows (``from_reference_date ==
+            to_reference_date``, both non-null — the same test
+            :meth:`_walk_ghost_chain` uses).
+
+        Raises:
+            ValueError: If a database session is missing, or ``release``
+                doesn't match any ``Release.code``.
+        """
+        from sqlalchemy import or_
+
+        from dpmcore.dpm_xl.utils.filters import (
+            filter_by_release,
+            resolve_release_id,
+        )
+        from dpmcore.orm.packaging import ModuleVersion
+
+        if self.session is None:
+            raise ValueError("No database session — cannot list modules.")
+        session = self.session
+
+        query = session.query(
+            ModuleVersion.code, ModuleVersion.version_number
+        ).filter(
+            or_(
+                ModuleVersion.from_reference_date.is_(None),
+                ModuleVersion.to_reference_date.is_(None),
+                ModuleVersion.from_reference_date
+                != ModuleVersion.to_reference_date,
+            )
+        )
+        if module_code is not None:
+            query = query.filter(ModuleVersion.code == module_code)
+        if release is not None:
+            release_id = resolve_release_id(session, release_code=release)
+            query = filter_by_release(
+                query,
+                start_col=ModuleVersion.start_release_id,
+                end_col=ModuleVersion.end_release_id,
+                release_id=release_id,
+            )
+        query = query.order_by(
+            ModuleVersion.code, ModuleVersion.start_release_id
+        )
+
+        seen: set[Tuple[str, str]] = set()
+        pairs: List[Tuple[str, str]] = []
+        for code, version_number in query.all():
+            if code is None or version_number is None:
+                continue
+            pair = (code, version_number)
+            if pair not in seen:
+                seen.add(pair)
+                pairs.append(pair)
+        return pairs
+
+    def _discover_module_validations(
+        self,
+        mv: Any,
+        release_row: Any,
+    ) -> Tuple[
+        List[Tuple[str, str]],
+        List[Union[Tuple[str, List[str]], Dict[str, Any]]],
+        Dict[str, str],
+    ]:
+        """Look up the active ``(expression, code)`` pairs for a module.
+
+        Resolves the module version's active operations by joining
+        ``OperationVersion`` to ``OperationScope`` /
+        ``OperationScopeComposition``, filtered to this release using
+        dpmcore's point-release model (:func:`filter_by_release`, a window
+        containment check rather than a raw ``StartReleaseID``/
+        ``EndReleaseID`` overlap). This does not filter out operations
+        scoped exclusively to phantom module versions (see
+        :meth:`list_module_versions`'s docstring for what "phantom" means
+        here) — that guard only matters when sweeping every module in the
+        database, which this single-module lookup never does; revisit
+        alongside a future ``--all-modules`` sweep.
+
+        Returns:
+            ``(expressions, preconditions, severities)`` ready to pass to
+            :meth:`script`.
+        """
+        from sqlalchemy import or_
+
+        from dpmcore.dpm_xl.utils.filters import filter_by_release
+        from dpmcore.orm.operations import (
+            Operation,
+            OperationScope,
+            OperationScopeComposition,
+            OperationVersion,
+        )
+
+        session = self.session
+        if session is None:
+            raise ValueError("No database session — cannot generate script.")
+
+        query = (
+            session.query(
+                OperationVersion.operation_vid,
+                Operation.code,
+                OperationVersion.expression,
+                OperationScope.severity,
+                OperationVersion.precondition_operation_vid,
+            )
+            .join(
+                OperationScope,
+                OperationVersion.operation_vid == OperationScope.operation_vid,
+            )
+            .join(
+                OperationScopeComposition,
+                OperationScope.operation_scope_id
+                == OperationScopeComposition.operation_scope_id,
+            )
+            .join(
+                Operation,
+                OperationVersion.operation_id == Operation.operation_id,
+            )
+            .filter(OperationScopeComposition.module_vid == mv.module_vid)
+            # Access boolean convention: True is stored as -1, not 1.
+            .filter(OperationScope.is_active.in_([-1, 1, True]))
+            .filter(
+                or_(
+                    Operation.code.startswith("v"),
+                    Operation.code.startswith("e"),
+                )
+            )
+        )
+        query = filter_by_release(
+            query,
+            start_col=OperationVersion.start_release_id,
+            end_col=OperationVersion.end_release_id,
+            release_id=release_row.release_id,
+        )
+
+        # A code can match more than one OperationVersion row; keep the
+        # latest (highest OperationVID) per code.
+        _Row = Tuple[int, str, Optional[str], Optional[int]]
+        latest_by_code: Dict[str, _Row] = {}
+        for op_vid, code, expression, severity, prec_vid in query.all():
+            existing = latest_by_code.get(code)
+            if existing is None or op_vid > existing[0]:
+                latest_by_code[code] = (op_vid, expression, severity, prec_vid)
+
+        expressions: List[Tuple[str, str]] = []
+        severities: Dict[str, str] = {}
+        prec_vid_to_codes: Dict[int, List[str]] = {}
+        for code, (_, expression, severity, prec_vid) in sorted(
+            latest_by_code.items()
+        ):
+            expressions.append((expression, code))
+            if severity:
+                severities[code] = severity
+            if prec_vid is not None:
+                prec_vid_to_codes.setdefault(prec_vid, []).append(code)
+
+        preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]] = (
+            list(self._resolve_preconditions(prec_vid_to_codes))
+        )
+        return expressions, preconditions, severities
+
+    def _resolve_preconditions(
+        self, prec_vid_to_codes: Dict[int, List[str]]
+    ) -> List[Dict[str, Any]]:
+        """Resolve discovered ``PreconditionOperationVID``s into entries.
+
+        Note: :meth:`_build_preconditions_block` does not build a
+        precondition's AST structurally from the DB's stored
+        ``OperationNode`` graph, so it cannot express arbitrary DPM-XL
+        boolean expressions — it only recognises ``{v_<variable_code>}``
+        markers (or an ``and``-chain of them) in the expression text — see
+        its docstring and ``TestBuildPreconditionsBlock`` in
+        ``tests/unit/services/test_ast_generator.py``. A discovered
+        precondition whose stored ``Expression`` isn't in that form resolves
+        to no variables and is silently dropped, same as pydpm. This is a
+        pre-existing limitation of ``script()``'s precondition support, not
+        specific to auto-discovery.
+        """
+        if not prec_vid_to_codes:
+            return []
+
+        from dpmcore.orm.operations import Operation, OperationVersion
+
+        session = self.session
+        if session is None:
+            raise ValueError("No database session — cannot generate script.")
+
+        rows = (
+            session.query(
+                OperationVersion.operation_vid,
+                Operation.code,
+                OperationVersion.expression,
+            )
+            .join(
+                Operation,
+                OperationVersion.operation_id == Operation.operation_id,
+            )
+            .filter(
+                OperationVersion.operation_vid.in_(prec_vid_to_codes.keys())
+            )
+            .all()
+        )
+
+        preconditions: List[Dict[str, Any]] = []
+        for prec_vid, prec_code, prec_expression in rows:
+            preconditions.append(
+                {
+                    "expression": prec_expression,
+                    "affected_operations": sorted(prec_vid_to_codes[prec_vid]),
+                    "code": prec_code,
+                    "version_id": prec_vid,
+                }
+            )
+        return preconditions
 
     # ------------------------------------------------------------------ #
     # Resolution helpers
@@ -917,6 +1213,7 @@ class ASTGeneratorService:
         self,
         preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
         release_id: Optional[int],
+        emitted_operations: Optional[Set[str]] = None,
     ) -> Tuple[Dict[str, Any], Dict[str, str]]:
         """Build the ``preconditions`` and ``precondition_variables`` blocks.
 
@@ -926,6 +1223,19 @@ class ASTGeneratorService:
         ``PreconditionItem`` AST for single-variable preconditions or
         a left-folded ``BinOp(op="and")`` chain for compound ones.
         Codes that don't resolve are silently skipped (matches pydpm).
+
+        When *emitted_operations* is given, each entry's
+        ``affected_operations`` is intersected with it, and an entry
+        left gating nothing at all is dropped along with the
+        ``precondition_variables`` it alone would have contributed
+        (#355). Preconditions are harvested from the database before
+        the expressions they gate are semantically validated, so an
+        operation rejected into ``failed_operations`` would otherwise
+        stay listed here. That is not cosmetic: the engine reports the
+        ``affected_operations`` of every precondition that does not
+        hold as validations skipped, so a code absent from
+        ``operations`` gets reported as skipped without ever having
+        been part of the script.
         """
         from dpmcore.dpm_xl.model_queries import VariableVersionQuery
 
@@ -934,6 +1244,50 @@ class ASTGeneratorService:
         if not preconditions or self.session is None:
             return preconditions_dict, precondition_variables
 
+        all_codes = self._collect_precondition_variable_codes(preconditions)
+        if not all_codes:
+            return preconditions_dict, precondition_variables
+
+        resolved = VariableVersionQuery.get_variable_vids_by_codes(
+            self.session, all_codes, release_id=release_id
+        )
+
+        for precond_spec in preconditions:
+            (
+                precond_expr,
+                validation_codes,
+                provided_code,
+                provided_version_id,
+            ) = self._unpack_precondition_spec(precond_spec)
+
+            if emitted_operations is not None:
+                validation_codes = [
+                    code
+                    for code in validation_codes
+                    if code in emitted_operations
+                ]
+                if not validation_codes:
+                    continue
+
+            var_infos = self._collect_precondition_var_infos(
+                precond_expr, resolved
+            )
+            if not var_infos:
+                continue
+            key, entry = self._build_precondition_entry(
+                var_infos, validation_codes, provided_code, provided_version_id
+            )
+            self._merge_precondition_entry(preconditions_dict, key, entry)
+            for info in var_infos:
+                precondition_variables[str(info["variable_vid"])] = "b"
+
+        return preconditions_dict, precondition_variables
+
+    @staticmethod
+    def _collect_precondition_variable_codes(
+        preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
+    ) -> List[str]:
+        """Return every ``{v_*}`` code referenced, in first-seen order."""
         all_codes: List[str] = []
         for precond_spec in preconditions:
             precond_expr = (
@@ -947,35 +1301,26 @@ class ASTGeneratorService:
                 normalized = _normalize_variable_code(raw)
                 if normalized not in all_codes:
                     all_codes.append(normalized)
-        if not all_codes:
-            return preconditions_dict, precondition_variables
+        return all_codes
 
-        resolved = VariableVersionQuery.get_variable_vids_by_codes(
-            self.session, all_codes, release_id=release_id
-        )
+    @staticmethod
+    def _unpack_precondition_spec(
+        precond_spec: Union[Tuple[str, List[str]], Dict[str, Any]],
+    ) -> Tuple[str, List[str], Optional[str], Optional[int]]:
+        """Normalise one precondition spec to its four fields.
 
-        for precond_spec in preconditions:
-            if isinstance(precond_spec, dict):
-                precond_expr = precond_spec["expression"]
-                validation_codes = precond_spec["affected_operations"]
-                provided_code = precond_spec.get("code")
-                provided_version_id = precond_spec.get("version_id")
-            else:
-                precond_expr, validation_codes = precond_spec
-                provided_code = None
-                provided_version_id = None
-
-            var_infos = self._collect_precondition_var_infos(
-                precond_expr, resolved, precondition_variables
+        Accepts both the ``(expression, [validation_codes])`` tuple form
+        and the dict form, whose ``code``/``version_id`` are optional.
+        """
+        if isinstance(precond_spec, dict):
+            return (
+                precond_spec["expression"],
+                list(precond_spec["affected_operations"]),
+                precond_spec.get("code"),
+                precond_spec.get("version_id"),
             )
-            if not var_infos:
-                continue
-            key, entry = self._build_precondition_entry(
-                var_infos, validation_codes, provided_code, provided_version_id
-            )
-            self._merge_precondition_entry(preconditions_dict, key, entry)
-
-        return preconditions_dict, precondition_variables
+        precond_expr, validation_codes = precond_spec
+        return precond_expr, list(validation_codes), None, None
 
     @staticmethod
     def _merge_precondition_entry(
@@ -1003,12 +1348,12 @@ class ASTGeneratorService:
     def _collect_precondition_var_infos(
         precondition_expr: str,
         resolved: Dict[str, Dict[str, int]],
-        precondition_variables: Dict[str, str],
     ) -> List[Dict[str, int]]:
         """Resolve ``{v_*}`` codes in *precondition_expr* to var-info dicts.
 
-        Updates *precondition_variables* in-place with the resolved
-        ``{variable_vid: "b"}`` entries.
+        Registering the resolved vids in ``precondition_variables`` is
+        the caller's job: an entry dropped for gating nothing must not
+        leave its variables declared behind it.
         """
         var_infos: List[Dict[str, int]] = []
         raw_codes = [
@@ -1026,7 +1371,6 @@ class ASTGeneratorService:
                     "variable_vid": info["variable_vid"],
                 }
             )
-            precondition_variables[str(info["variable_vid"])] = "b"
         return var_infos
 
     @staticmethod
@@ -1239,11 +1583,9 @@ class ASTGeneratorService:
         """
         index: Dict[str, List[str]] = {}
         for precond_spec in preconditions:
-            if isinstance(precond_spec, dict):
-                precond_expr = precond_spec["expression"]
-                validation_codes = precond_spec["affected_operations"]
-            else:
-                precond_expr, validation_codes = precond_spec
+            precond_expr, validation_codes, _code, _vid = (
+                self._unpack_precondition_spec(precond_spec)
+            )
 
             try:
                 ast = self._syntax.parse(precond_expr)
