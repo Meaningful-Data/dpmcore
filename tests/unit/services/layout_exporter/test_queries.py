@@ -18,6 +18,8 @@ typed on the plain domain ``OTHER``. Item 700 is filed in
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -35,6 +37,8 @@ from dpmcore.orm.glossary import (
     PropertyCategory,
     SupercategoryComposition,
 )
+from dpmcore.orm.infrastructure import Release
+from dpmcore.services.layout_exporter.models import ReleaseWindow
 from dpmcore.services.layout_exporter.queries import (
     _load_member_codes,
     load_categorisations,
@@ -43,6 +47,11 @@ from dpmcore.services.layout_exporter.queries import (
 ASSET_TYPE, EQUITY_TYPE, OTHER, PR = 60, 61, 62, 1
 ATY, OTH = 50, 51
 SHARE_ITEM = 700
+
+# Codes are read at the exported version's release window. These tests
+# are about which category answers for a domain, not about versioning,
+# so they read at an unbounded window: the latest version of every code.
+OPEN = ReleaseWindow()
 
 
 @pytest.fixture
@@ -54,6 +63,10 @@ def session():
     )
     Base.metadata.create_all(engine)
     s = Session(bind=engine)
+    s.add_all(
+        Release(release_id=rid, code=f"{rid}.0", date=date(2020 + rid, 1, 1))
+        for rid in (1, 2, 3)
+    )
     s.add_all(
         Category(
             category_id=cid,
@@ -152,18 +165,20 @@ def session():
 class TestMemberCodes:
     def test_a_super_category_member_resolves(self, session):
         """SHARE is filed in EQUITY_TYPE, never in ASSET_TYPE (#359)."""
-        codes = _load_member_codes(session, {SHARE_ITEM}, {ASSET_TYPE})
+        codes = _load_member_codes(session, {SHARE_ITEM}, {ASSET_TYPE}, OPEN)
 
         assert codes == {(SHARE_ITEM, ASSET_TYPE): "SHARE"}
 
     def test_a_plain_domain_resolves_from_its_own_category(self, session):
-        codes = _load_member_codes(session, {SHARE_ITEM}, {OTHER})
+        codes = _load_member_codes(session, {SHARE_ITEM}, {OTHER}, OPEN)
 
         assert codes == {(SHARE_ITEM, OTHER): "OTHER_CODE"}
 
     def test_each_domain_gets_its_own_code(self, session):
         """A per-item key would hand one domain the other's code."""
-        codes = _load_member_codes(session, {SHARE_ITEM}, {ASSET_TYPE, OTHER})
+        codes = _load_member_codes(
+            session, {SHARE_ITEM}, {ASSET_TYPE, OTHER}, OPEN
+        )
 
         assert codes == {
             (SHARE_ITEM, ASSET_TYPE): "SHARE",
@@ -190,25 +205,39 @@ class TestMemberCodes:
         )
         session.commit()
 
-        codes = _load_member_codes(session, {SHARE_ITEM}, {ASSET_TYPE})
+        codes = _load_member_codes(session, {SHARE_ITEM}, {ASSET_TYPE}, OPEN)
 
         assert codes == {(SHARE_ITEM, ASSET_TYPE): "OWN"}
 
-    def test_a_closed_item_category_row_is_ignored(self, session):
+    def test_an_item_category_row_closed_before_the_window_is_ignored(
+        self, session
+    ):
+        """A row that had already ended when the window opened is gone.
+
+        Windows are half-open, so a row ending at release 2 is already
+        gone for a version reportable from release 2 on.
+        """
         session.query(ItemCategory).filter(
             ItemCategory.item_id == SHARE_ITEM,
             ItemCategory.category_id == EQUITY_TYPE,
         ).update({"end_release_id": 2})
         session.commit()
 
-        assert _load_member_codes(session, {SHARE_ITEM}, {ASSET_TYPE}) == {}
+        codes = _load_member_codes(
+            session,
+            {SHARE_ITEM},
+            {ASSET_TYPE},
+            ReleaseWindow(start_release_id=2),
+        )
+
+        assert codes == {}
 
     def test_no_items_costs_no_query(self):
         from unittest.mock import MagicMock
 
         session = MagicMock()
 
-        assert _load_member_codes(session, set(), {ASSET_TYPE}) == {}
+        assert _load_member_codes(session, set(), {ASSET_TYPE}, OPEN) == {}
         session.query.assert_not_called()
 
     def test_no_domains_costs_no_query(self):
@@ -216,13 +245,13 @@ class TestMemberCodes:
 
         session = MagicMock()
 
-        assert _load_member_codes(session, {SHARE_ITEM}, set()) == {}
+        assert _load_member_codes(session, {SHARE_ITEM}, set(), OPEN) == {}
         session.query.assert_not_called()
 
 
 class TestCategorisations:
     def test_each_dimension_reports_its_own_member_code(self, session):
-        members = load_categorisations(session, {900})
+        members = load_categorisations(session, {900}, OPEN)
 
         by_dimension = {m.dimension_code: m for m in members[900]}
         assert by_dimension["ATY"].member_code == "SHARE"
