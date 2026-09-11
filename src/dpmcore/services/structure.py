@@ -28,6 +28,7 @@ from dpmcore.orm.glossary import (
     SubCategory,
     SubCategoryItem,
     SubCategoryVersion,
+    SupercategoryComposition,
 )
 from dpmcore.orm.infrastructure import (
     Concept,
@@ -63,6 +64,11 @@ from dpmcore.orm.rendering import (
     TableVersion,
     TableVersionCell,
     TableVersionHeader,
+)
+from dpmcore.orm.supercategories import (
+    domain_search_order,
+    load_supercategory_compositions,
+    load_supercategory_members,
 )
 from dpmcore.orm.variables import CompoundKey, Variable, VariableVersion
 from dpmcore.server.params import StructureParams
@@ -214,7 +220,7 @@ class StructureService:
 
     def _window_alive(
         self,
-        start_release_id: int,
+        start_release_id: Optional[int],
         end_release_id: Optional[int],
         target_release_id: int,
     ) -> bool:
@@ -224,14 +230,18 @@ class StructureService:
         opaque ``release_id`` FK. The end bound is **inclusive** — the
         convention the category/context virtual-versioning walks have
         always used (this intentionally differs from
-        ``filter_by_release``'s exclusive end). Returns ``False`` only
-        for a release_id absent from the release set (orphan FK); an
-        undated release ranks as the latest.
+        ``filter_by_release``'s exclusive end). A missing start bound
+        means the row has always been open, mirroring the missing end
+        bound. Returns ``False`` only for a release_id absent from the
+        release set (orphan FK); an undated release ranks as the latest.
         """
         target_so = self._sort_order(target_release_id)
-        start_so = self._sort_order(start_release_id)
-        if target_so is None or start_so is None or start_so > target_so:
+        if target_so is None:
             return False
+        if start_release_id is not None:
+            start_so = self._sort_order(start_release_id)
+            if start_so is None or start_so > target_so:
+                return False
         if end_release_id is None:
             return True
         end_so = self._sort_order(end_release_id)
@@ -394,17 +404,38 @@ class StructureService:
     ) -> Tuple[
         Dict[int, List[ItemCategory]],
         Dict[int, Item],
+        Dict[int, List[SupercategoryComposition]],
     ]:
         """Bulk-load ItemCategory and Item rows for given categories.
 
+        A *super-category* files its value set under the categories
+        composing it, so those are loaded too and the compositions are
+        returned with their own release windows: versions are computed
+        per release in Python, and a composition opening or closing
+        changes the item set exactly like an ItemCategory row does
+        (#359).
+
+        The compositions come back as the whole reachable graph, so a
+        super-category composing another one contributes that one's
+        members too; which links are open is decided per release by
+        :meth:`_alive_composed_members`.
+
         Returns:
-            (ics_by_cat, items_by_id) — ItemCategory rows grouped by
-            category_id and Item rows keyed by item_id.
+            (ics_by_cat, items_by_id, compositions_by_cat) —
+            ItemCategory rows grouped by category_id, Item rows keyed by
+            item_id, and the composition rows of every super-category
+            reached.
         """
+        compositions_by_cat = load_supercategory_compositions(
+            self.session, cat_ids
+        )
+        lookup_cat_ids = set(cat_ids)
+        for compositions in compositions_by_cat.values():
+            lookup_cat_ids.update(c.category_id for c in compositions)
         ics = chunked_in(
             self.session.query(ItemCategory),
             ItemCategory.category_id,
-            cat_ids,
+            lookup_cat_ids,
         )
 
         ics_by_cat: Dict[int, List[ItemCategory]] = defaultdict(
@@ -424,13 +455,76 @@ class StructureService:
             )
             items_by_id = {i.item_id: i for i in items}
 
-        return dict(ics_by_cat), items_by_id
+        return dict(ics_by_cat), items_by_id, compositions_by_cat
+
+    def _alive_composed_members(
+        self,
+        compositions_by_cat: Dict[int, List[SupercategoryComposition]],
+        category_id: int,
+        release_id: int,
+    ) -> set[int]:
+        """Categories whose items belong to *category_id* at a release.
+
+        Walks the composition graph, so a super-category composing
+        another one also draws that one's members. Every link on the
+        way has to be open at *release_id*: a closed composition cuts
+        off everything behind it. A category already reached is not
+        walked twice, so a cycle in the data terminates.
+        """
+        reached: set[int] = {category_id}
+        frontier = [category_id]
+        while frontier:
+            for c in compositions_by_cat.get(frontier.pop(), []):
+                if c.category_id in reached:
+                    continue
+                if not self._window_alive(
+                    c.start_release_id, c.end_release_id, release_id
+                ):
+                    continue
+                reached.add(c.category_id)
+                frontier.append(c.category_id)
+        return reached - {category_id}
+
+    def _alive_item_categories(
+        self,
+        ics_by_cat: Dict[int, List[ItemCategory]],
+        category_id: int,
+        compositions_by_cat: Dict[int, List[SupercategoryComposition]],
+        release_id: int,
+    ) -> List[ItemCategory]:
+        """ItemCategory rows making up a domain's value set at a release.
+
+        The category's own rows, then those of every category composing
+        it — directly or through another super-category — whose
+        compositions are open at *release_id*. An item filed in two of
+        them is named by the first — see
+        :func:`~dpmcore.orm.supercategories.domain_search_order`.
+        """
+        alive_members = self._alive_composed_members(
+            compositions_by_cat, category_id, release_id
+        )
+        seen: set[int] = set()
+        alive: List[ItemCategory] = []
+        for cat_id in domain_search_order(
+            category_id, {category_id: alive_members}
+        ):
+            for ic in ics_by_cat.get(cat_id, []):
+                if ic.item_id in seen:
+                    continue
+                if not self._window_alive(
+                    ic.start_release_id, ic.end_release_id, release_id
+                ):
+                    continue
+                seen.add(ic.item_id)
+                alive.append(ic)
+        return alive
 
     def _compute_category_versions(
         self,
         category: Category,
         releases: List[Release],
-        ics: List[ItemCategory],
+        ics_by_cat: Dict[int, List[ItemCategory]],
+        compositions_by_cat: Dict[int, List[SupercategoryComposition]],
         items_by_id: Dict[int, Item],
         detail: str,
         owner_acronym: Optional[str],
@@ -438,7 +532,9 @@ class StructureService:
         """Compute virtual versions for a single category.
 
         A new version is emitted only when the set of alive items
-        (fingerprint) changes between consecutive releases.
+        (fingerprint) changes between consecutive releases — including
+        when that set changes because a super-category's composition
+        opened or closed.
 
         Returns:
             List of (release, category_dict) tuples — one per version.
@@ -457,13 +553,12 @@ class StructureService:
             ):
                 continue
 
-            alive_ics = [
-                ic
-                for ic in ics
-                if self._window_alive(
-                    ic.start_release_id, ic.end_release_id, rel.release_id
-                )
-            ]
+            alive_ics = self._alive_item_categories(
+                ics_by_cat,
+                category.category_id,
+                compositions_by_cat,
+                rel.release_id,
+            )
 
             fingerprint = frozenset(
                 (
@@ -531,6 +626,7 @@ class StructureService:
         cats: List[Category],
         releases: List[Release],
         ics_by_cat: Dict[int, List[ItemCategory]],
+        compositions_by_cat: Dict[int, List[SupercategoryComposition]],
         items_by_id: Dict[int, Item],
         detail: str,
         params: StructureParams,
@@ -542,11 +638,11 @@ class StructureService:
             owner_acronym = self._get_owner_acronym(
                 cat.owner_id,
             )
-            cat_ics = ics_by_cat.get(cat.category_id, [])
             versions = self._compute_category_versions(
                 cat,
                 releases,
-                cat_ics,
+                ics_by_cat,
+                compositions_by_cat,
                 items_by_id,
                 detail,
                 owner_acronym,
@@ -622,8 +718,8 @@ class StructureService:
 
         # Bulk load ItemCategory + Item data
         cat_ids = [c.category_id for c in cats]
-        ics_by_cat, items_by_id = self._bulk_load_category_data(
-            cat_ids,
+        ics_by_cat, items_by_id, compositions_by_cat = (
+            self._bulk_load_category_data(cat_ids)
         )
 
         # Compute virtual versions for each category
@@ -631,6 +727,7 @@ class StructureService:
             cats,
             releases,
             ics_by_cat,
+            compositions_by_cat,
             items_by_id,
             detail,
             params,
@@ -990,6 +1087,52 @@ class StructureService:
         rows = chunked_in(base, Item.item_id, property_ids)
         return {r[0]: r[1] for r in rows}
 
+    def _load_item_categories(
+        self,
+        item_ids: set[int],
+        category_ids: set[int],
+        *,
+        release_id: Optional[int],
+    ) -> Dict[Tuple[int, int], ItemCategory]:
+        """Load ``{(item_id, category_id): ItemCategory}`` at a release.
+
+        Chunked on ``item_id`` and filtered on the category in Python:
+        the caller already knows exactly which items it needs, while a
+        super-category's member domains hold hundreds it does not, so
+        binding the categories instead would load — and throw away —
+        the whole of each member domain.
+        """
+        if not item_ids or not category_ids:
+            return {}
+
+        from dpmcore.dpm_xl.utils.filters import filter_by_release
+
+        ic_q = filter_by_release(
+            self.session.query(ItemCategory),
+            start_col=ItemCategory.start_release_id,
+            end_col=ItemCategory.end_release_id,
+            release_id=release_id,
+            active_only_fallback=True,
+        )
+        return {
+            (ic.item_id, ic.category_id): ic
+            for ic in chunked_in(ic_q, ItemCategory.item_id, item_ids)
+            if ic.category_id in category_ids
+        }
+
+    def _load_category_codes(
+        self, category_ids: set[int]
+    ) -> Dict[int, Optional[str]]:
+        """Resolve ``{category_id: Category.code}``."""
+        if not category_ids:
+            return {}
+        rows = chunked_in(
+            self.session.query(Category.category_id, Category.code),
+            Category.category_id,
+            category_ids,
+        )
+        return {r[0]: r[1] for r in rows}
+
     def _load_subcategory_enumerations(
         self,
         subcategory_vids: set[int],
@@ -1005,11 +1148,15 @@ class StructureService:
         ``code``/``signature`` from the :class:`ItemCategory` rows
         valid at *release_id*. Items lacking an ItemCategory entry at
         the release are dropped (they have no code at that release).
+
+        When the parent Category is a *super-category* its items are
+        filed under the categories composing it, not under the
+        super-category itself, so those are searched too — see
+        :func:`_first_item_category` for which one names the item when
+        more than one holds it.
         """
         if not subcategory_vids:
             return {}
-
-        from dpmcore.dpm_xl.utils.filters import filter_by_release
 
         # SubCategoryVersion → SubCategory → parent Category.
         info_base = (
@@ -1046,33 +1193,48 @@ class StructureService:
             items_by_subcat[si.subcategory_vid].append((si, item))
 
         # ItemCategory at release window — gives code/signature per
-        # (item_id, parent_category_id).
+        # (item_id, category_id). A super-category parent contributes
+        # the categories composing it as well, since that is where its
+        # items are actually filed.
         parent_cat_ids = {
             cat.category_id for (_sv, _sc, cat) in subcat_info.values()
         }
-        item_codes: Dict[Tuple[int, int], ItemCategory] = {}
-        if parent_cat_ids:
-            ic_q = self.session.query(ItemCategory)
-            ic_q = filter_by_release(
-                ic_q,
-                start_col=ItemCategory.start_release_id,
-                end_col=ItemCategory.end_release_id,
-                release_id=release_id,
-                active_only_fallback=True,
-            )
-            for ic in chunked_in(
-                ic_q, ItemCategory.category_id, parent_cat_ids
-            ):
-                item_codes[(ic.item_id, ic.category_id)] = ic
+        members_by_parent = load_supercategory_members(
+            self.session, parent_cat_ids, release_id=release_id
+        )
+        lookup_cat_ids = set(parent_cat_ids)
+        for member_ids in members_by_parent.values():
+            lookup_cat_ids.update(member_ids)
+        wanted_item_ids = {
+            item.item_id
+            for rows in items_by_subcat.values()
+            for _si, item in rows
+        }
+        item_codes = self._load_item_categories(
+            wanted_item_ids, lookup_cat_ids, release_id=release_id
+        )
+        category_codes = {
+            cat.category_id: cat.code
+            for (_sv, _sc, cat) in subcat_info.values()
+        }
+        category_codes.update(
+            self._load_category_codes(lookup_cat_ids - set(category_codes))
+        )
 
         result: Dict[int, Dict[str, Any]] = {}
         for svid, (_sv, sc, cat) in subcat_info.items():
             items_payload: List[Dict[str, Any]] = []
+            search_cat_ids = domain_search_order(
+                cat.category_id, members_by_parent
+            )
             for si, item in items_by_subcat.get(svid, []):
-                ic = item_codes.get((item.item_id, cat.category_id))
+                ic = _first_item_category(
+                    item_codes, item.item_id, search_cat_ids
+                )
                 if ic is None:
                     # Item has no ItemCategory in the parent category
-                    # at this release — skip; no code to surface.
+                    # (nor, for a super-category, in its members) at
+                    # this release — skip; no code to surface.
                     continue
                 items_payload.append(
                     {
@@ -1081,6 +1243,15 @@ class StructureService:
                         "code": ic.code,
                         "signature": ic.signature,
                         "isDefaultItem": ic.is_default_item,
+                        # Which category files the item — the parent for
+                        # an ordinary domain, one of the composing
+                        # categories for a super-category, so a consumer
+                        # never has to guess the signature's prefix from
+                        # the enumeration's own ``categoryCode``.
+                        "categoryId": ic.category_id,
+                        "categoryCode": _category_code(
+                            category_codes, ic.category_id
+                        ),
                         "subcategoryLabel": si.label,
                         "order": si.order,
                     }
@@ -2581,7 +2752,12 @@ class StructureService:
         The enumeration members are that Category's
         :class:`ItemCategory` rows valid at the same release. Each
         member carries ``code`` + ``signature`` from its
-        ItemCategory entry.
+        ItemCategory entry, plus the category that files it.
+
+        A *super-category* files almost none of its value set under
+        itself — EBA's ``qTU`` holds 1 of its 927 items and the rest sit
+        under ``qAI``, ``qFI``, ``qSR`` and ``qTA`` — so the categories
+        composing it are enumerated too (#359).
         """
         if not property_ids:
             return {}
@@ -2618,6 +2794,12 @@ class StructureService:
         category_ids = {
             cat.category_id for cat in enum_category_by_property.values()
         }
+        members_by_parent = load_supercategory_members(
+            self.session, category_ids, release_id=release_id
+        )
+        lookup_cat_ids = set(category_ids)
+        for member_ids in members_by_parent.values():
+            lookup_cat_ids.update(member_ids)
         ic_q = self.session.query(ItemCategory, Item).join(
             Item, Item.item_id == ItemCategory.item_id
         )
@@ -2632,9 +2814,16 @@ class StructureService:
             defaultdict(list)
         )
         for ic, item in chunked_in(
-            ic_q, ItemCategory.category_id, category_ids
+            ic_q, ItemCategory.category_id, lookup_cat_ids
         ):
             items_by_category[ic.category_id].append((ic, item))
+        category_codes = {
+            cat.category_id: cat.code
+            for cat in enum_category_by_property.values()
+        }
+        category_codes.update(
+            self._load_category_codes(lookup_cat_ids - set(category_codes))
+        )
 
         result: Dict[int, Dict[str, Any]] = {}
         for property_id, cat in enum_category_by_property.items():
@@ -2649,8 +2838,17 @@ class StructureService:
                         "code": ic.code,
                         "signature": ic.signature,
                         "isDefaultItem": ic.is_default_item,
+                        "categoryId": ic.category_id,
+                        "categoryCode": _category_code(
+                            category_codes, ic.category_id
+                        ),
                     }
-                    for ic, item in items_by_category.get(cat.category_id, [])
+                    for ic, item in _domain_items(
+                        items_by_category,
+                        domain_search_order(
+                            cat.category_id, members_by_parent
+                        ),
+                    )
                 ],
             }
         return result
@@ -3139,6 +3337,55 @@ def _collect_subcategory_vids_per_variable(
                 out[tvc.variable_vid].add(matched.subcategory_vid)
 
     return out
+
+
+def _category_code(
+    category_codes: Dict[int, Optional[str]],
+    category_id: Optional[int],
+) -> Optional[str]:
+    """Code of the category filing an item, if it has one."""
+    if category_id is None:
+        return None
+    return category_codes.get(category_id)
+
+
+def _domain_items(
+    items_by_category: Dict[int, List[Tuple[ItemCategory, Item]]],
+    category_ids: List[int],
+) -> List[Tuple[ItemCategory, Item]]:
+    """Every item of a domain, own category first then its members.
+
+    An item filed in more than one of them appears once, named by the
+    first category in *category_ids* that holds it — the same rule
+    :func:`_first_item_category` applies.
+    """
+    seen: set[int] = set()
+    items: List[Tuple[ItemCategory, Item]] = []
+    for category_id in category_ids:
+        for ic, item in items_by_category.get(category_id, []):
+            if ic.item_id in seen:
+                continue
+            seen.add(ic.item_id)
+            items.append((ic, item))
+    return items
+
+
+def _first_item_category(
+    item_codes: Dict[Tuple[int, int], ItemCategory],
+    item_id: int,
+    category_ids: List[int],
+) -> Optional[ItemCategory]:
+    """Return the item's ItemCategory row in the first category holding it.
+
+    ``category_ids`` is searched in order — see
+    :func:`domain_search_order` — so an item several categories hold
+    resolves the same way every time.
+    """
+    for category_id in category_ids:
+        found = item_codes.get((item_id, category_id))
+        if found is not None:
+            return found
+    return None
 
 
 def _table_stub_to_dict(

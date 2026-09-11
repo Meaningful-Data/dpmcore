@@ -19,6 +19,7 @@ from dpmcore.orm.glossary import (
     SubCategory,
     SubCategoryItem,
     SubCategoryVersion,
+    SupercategoryComposition,
 )
 from dpmcore.orm.infrastructure import (
     Concept,
@@ -56,11 +57,18 @@ from dpmcore.server.app import create_app
 # inherit the row header's subcategory as their enumeration.
 #
 # Subcategory AT_SUB lives under category ASSET_TYPE and lists items
-# LOAN, BOND, DEPOSIT via SubCategoryItem rows. The release-aware
+# LOAN, BOND, DEPOSIT, SHARE via SubCategoryItem rows. The release-aware
 # filter on each item's parent ItemCategory then yields:
 #   - LOAN     valid at 3.3 only        (start=1, end=2)
 #   - BOND     valid at all releases    (start=1, end=None)
 #   - DEPOSIT  valid from 3.4 onward    (start=2, end=None)
+#
+# ASSET_TYPE is also a super-category: from 3.4 onward it composes
+# EQUITY_TYPE, where SHARE is filed. SHARE therefore has no
+# ItemCategory row in ASSET_TYPE itself and only resolves once the
+# composition is alive — silent at 3.3, listed from 3.4 (#359).
+# EQUITY_TYPE and SHARE's ItemCategory row are both alive at 3.3, so
+# nothing but the composition window keeps SHARE out there.
 # ------------------------------------------------------------------ #
 
 
@@ -227,18 +235,43 @@ def seeded_engine(engine):
     session.flush()
 
     # Enumerated parent category (must exist before the SubCategory
-    # FK below can resolve).
+    # FK below can resolve), plus the category it composes from 3.4 on.
+    session.add_all(
+        [
+            Category(
+                category_id=60,
+                code="ASSET_TYPE",
+                name="Asset type",
+                description="Domain of assets",
+                is_enumerated=True,
+                is_active=True,
+                is_external_ref_data=False,
+                created_release_id=1,
+                owner_id=1,
+            ),
+            Category(
+                category_id=61,
+                code="EQUITY_TYPE",
+                name="Equity type",
+                description="Domain of equity instruments",
+                is_enumerated=True,
+                is_active=True,
+                is_external_ref_data=False,
+                # Alive from 3.3, like SHARE's ItemCategory row below:
+                # the composition window is then the *only* reason SHARE
+                # is absent at 3.3, which is what the test checks.
+                created_release_id=1,
+                owner_id=1,
+            ),
+        ]
+    )
+    session.flush()
     session.add(
-        Category(
-            category_id=60,
-            code="ASSET_TYPE",
-            name="Asset type",
-            description="Domain of assets",
-            is_enumerated=True,
-            is_active=True,
-            is_external_ref_data=False,
-            created_release_id=1,
-            owner_id=1,
+        SupercategoryComposition(
+            supercategory_id=60,
+            category_id=61,
+            start_release_id=2,
+            end_release_id=None,
         )
     )
     session.flush()
@@ -324,6 +357,7 @@ def seeded_engine(engine):
                 is_property=False,
                 is_active=True,
             ),
+            Item(item_id=703, name="Share", is_property=False, is_active=True),
             # The Property is itself an Item (subtype) — needs an Item row.
             Item(
                 item_id=51,
@@ -363,16 +397,27 @@ def seeded_engine(engine):
                 signature="ASSET_TYPE(DEPOSIT)",
                 end_release_id=None,
             ),
+            # Filed in the composed category, never in ASSET_TYPE.
+            ItemCategory(
+                item_id=703,
+                start_release_id=1,
+                category_id=61,
+                code="SHARE",
+                is_default_item=False,
+                signature="EQUITY_TYPE(SHARE)",
+                end_release_id=None,
+            ),
         ]
     )
     session.flush()
 
-    # Items 700/701/702 become the SubCategoryVersion's members.
+    # Items 700/701/702/703 become the SubCategoryVersion's members.
     session.add_all(
         [
             SubCategoryItem(item_id=700, subcategory_vid=4441, order=1),
             SubCategoryItem(item_id=701, subcategory_vid=4441, order=2),
             SubCategoryItem(item_id=702, subcategory_vid=4441, order=3),
+            SubCategoryItem(item_id=703, subcategory_vid=4441, order=4),
         ]
     )
     session.flush()
@@ -605,7 +650,9 @@ class TestFactVariableEnumeration:
         codes = {
             i["code"] for i in t["factVariables"][0]["enumeration"]["items"]
         }
-        # LOAN ends at 3.4 → still valid at 3.3. DEPOSIT not yet alive.
+        # LOAN ends at 3.4 → still valid at 3.3. DEPOSIT not yet alive,
+        # and the ASSET_TYPE → EQUITY_TYPE composition that SHARE needs
+        # only opens at 3.4.
         assert codes == {"LOAN", "BOND"}
 
     def test_enumeration_items_at_3_4(self, client):
@@ -614,16 +661,51 @@ class TestFactVariableEnumeration:
         codes = {
             i["code"] for i in t["factVariables"][0]["enumeration"]["items"]
         }
-        # LOAN gone (end=2), DEPOSIT now alive.
-        assert codes == {"BOND", "DEPOSIT"}
+        # LOAN gone (end=2), DEPOSIT now alive, and SHARE reachable
+        # through the composed category.
+        assert codes == {"BOND", "DEPOSIT", "SHARE"}
 
     def test_enumeration_items_carry_signature(self, client):
         resp = client.get("/api/v1/structure/table/EBA/F_01.01/3.4")
         t = resp.json()["data"]["tables"][0]
         items = t["factVariables"][0]["enumeration"]["items"]
-        for it in items:
-            assert "signature" in it
-            assert it["signature"].startswith("ASSET_TYPE(")
+        assert {i["code"]: i["signature"] for i in items} == {
+            "BOND": "ASSET_TYPE(BOND)",
+            "DEPOSIT": "ASSET_TYPE(DEPOSIT)",
+            # Named by the category that files it, not by the parent.
+            "SHARE": "EQUITY_TYPE(SHARE)",
+        }
+
+    def test_each_item_names_the_category_filing_it(self, client):
+        """The enumeration's own categoryCode is the parent domain, so a
+        member's signature does not start with it — the item has to say
+        where it is filed (#359).
+        """
+        resp = client.get("/api/v1/structure/table/EBA/F_01.01/3.4")
+        enum = resp.json()["data"]["tables"][0]["factVariables"][0][
+            "enumeration"
+        ]
+
+        assert enum["categoryCode"] == "ASSET_TYPE"
+        assert {i["code"]: i["categoryCode"] for i in enum["items"]} == {
+            "BOND": "ASSET_TYPE",
+            "DEPOSIT": "ASSET_TYPE",
+            "SHARE": "EQUITY_TYPE",
+        }
+        assert {i["code"]: i["categoryId"] for i in enum["items"]} == {
+            "BOND": 60,
+            "DEPOSIT": 60,
+            "SHARE": 61,
+        }
+
+    def test_the_signature_prefix_matches_the_items_own_category(self, client):
+        resp = client.get("/api/v1/structure/table/EBA/F_01.01/3.4")
+        items = resp.json()["data"]["tables"][0]["factVariables"][0][
+            "enumeration"
+        ]["items"]
+
+        for item in items:
+            assert item["signature"].startswith(f"{item['categoryCode']}(")
 
     def test_release_wildcard_uses_per_version_window(self, client):
         """Each TableVersion in the response carries the enumeration
@@ -641,7 +723,7 @@ class TestFactVariableEnumeration:
             for i in by_vid[2000]["factVariables"][0]["enumeration"]["items"]
         }
         assert v1_codes == {"LOAN", "BOND"}
-        assert v2_codes == {"BOND", "DEPOSIT"}
+        assert v2_codes == {"BOND", "DEPOSIT", "SHARE"}
 
 
 class TestKeyVariables:

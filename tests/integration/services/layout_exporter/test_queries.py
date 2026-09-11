@@ -158,7 +158,7 @@ def test_load_member_codes_populated(memory_session):
     )
     memory_session.commit()
     out = queries._load_member_codes(memory_session, {500}, {20})
-    assert out == {500: "m1"}
+    assert out == {(500, 20): "m1"}
 
 
 def test_load_member_codes_out_of_domain_filtered(memory_session):
@@ -181,19 +181,19 @@ def test_load_member_codes_out_of_domain_filtered(memory_session):
     memory_session.commit()
     # 99 is not in the requested domain set, so 501 is filtered in Python.
     out = queries._load_member_codes(memory_session, {500, 501}, {20})
-    assert out == {500: "keep"}
+    assert out == {(500, 20): "keep"}
 
 
-def test_load_member_codes_multiple_domains_deterministic(memory_session):
-    """An item in several in-domain categories resolves deterministically.
+def test_load_member_codes_are_per_domain(memory_session):
+    """An item filed in two of the export's domains answers for each.
 
-    The highest ``(category_id, code)`` wins last-write-wins, regardless
-    of the backend's physical row order.
+    A per-item key would hand one domain the other's code; the result is
+    keyed by ``(item_id, domain_category_id)`` so each dimension gets
+    the code its own domain files (#359).
     """
     from dpmcore.orm.glossary import ItemCategory
 
     seed_releases(memory_session)
-    # One item categorised under two domains the export spans.
     make_member(
         memory_session,
         item_id=500,
@@ -212,7 +212,77 @@ def test_load_member_codes_multiple_domains_deterministic(memory_session):
     )
     memory_session.commit()
     out = queries._load_member_codes(memory_session, {500}, {20, 21})
-    assert out == {500: "bbb"}
+    assert out == {(500, 20): "aaa", (500, 21): "bbb"}
+
+
+def test_load_member_codes_reach_a_super_categorys_members(memory_session):
+    """A super-category files its value set under what composes it."""
+    from dpmcore.orm.glossary import Category, SupercategoryComposition
+
+    seed_releases(memory_session)
+    seed_domain_category(memory_session, 20, "SUPER")
+    # Only an enumerated member is a value set, so say so explicitly —
+    # seed_domain_category leaves the flag unset.
+    memory_session.add(
+        Category(
+            category_id=21, code="MEMBER", name="MEMBER", is_enumerated=True
+        )
+    )
+    make_member(
+        memory_session,
+        item_id=500,
+        name="FiledInTheMember",
+        domain_category_id=21,
+        code="m1",
+    )
+    memory_session.add(
+        SupercategoryComposition(supercategory_id=20, category_id=21)
+    )
+    memory_session.commit()
+
+    out = queries._load_member_codes(memory_session, {500}, {20})
+
+    assert out == {(500, 20): "m1"}
+
+
+def test_load_member_codes_prefer_the_domains_own_category(memory_session):
+    """Filed in both the super-category and a member: the domain wins."""
+    from dpmcore.orm.glossary import (
+        Category,
+        ItemCategory,
+        SupercategoryComposition,
+    )
+
+    seed_releases(memory_session)
+    seed_domain_category(memory_session, 20, "SUPER")
+    memory_session.add(
+        Category(
+            category_id=21, code="MEMBER", name="MEMBER", is_enumerated=True
+        )
+    )
+    make_member(
+        memory_session,
+        item_id=500,
+        name="FiledTwice",
+        domain_category_id=21,
+        code="from_member",
+    )
+    memory_session.add(
+        ItemCategory(
+            item_id=500,
+            start_release_id=2,
+            category_id=20,
+            code="from_domain",
+        )
+    )
+    memory_session.add(
+        SupercategoryComposition(supercategory_id=20, category_id=21)
+    )
+    memory_session.commit()
+
+    out = queries._load_member_codes(memory_session, {500}, {20})
+
+    assert out == {(500, 20): "from_domain"}
 
 
 # ---------------------------------------------------------------- #
