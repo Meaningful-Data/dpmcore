@@ -1286,6 +1286,17 @@ def _ghost_module_ids_for_table_vids(
         ``table_vids`` (the table version is then genuinely live at the
         release and needs no substitution). Also ``None`` when no module
         version hosts them at all.
+
+        The decision is all-or-nothing over ``table_vids``: a live host
+        for *any* of them suppresses substitution for the whole set.
+        That only matters when one table code has several versions open
+        at once, which happens at the perpetual release alone (see
+        :meth:`ViewDatapointsQuery._resolve_table_version_scope`), and
+        deciding per version would also have to merge the live module
+        versions into ``_TableVersionScope.fallback_module_vids`` --
+        :meth:`ViewDatapointsQuery._filter_module_versions` replaces the
+        release filter with that list, so a live version left out of it
+        would lose its rows.
     """
     rows = (
         filter_by_release(
@@ -1331,6 +1342,14 @@ def _apply_table_ghost_fallback(
     resolution report the same module version. Without it the cells --
     hence their variables, properties and domains -- come from a version
     that has no reporting period of its own.
+
+    Kept separate from that helper rather than calling it: the caller
+    needs a scope (the effective ``table_vids`` *and* the module
+    versions the ``ModuleVersion`` join must be narrowed to), not the
+    operand rows the helper returns; a ghost with no fallback is kept
+    here instead of dropped, since dropping it would leave ``table``
+    unresolvable rather than merely unscoped; and the decision is made
+    once per table code rather than per module.
 
     Substitution only: when there is nothing to fall back to (no prior
     non-ghost version, or one that does not contain ``table``) the ghost's
