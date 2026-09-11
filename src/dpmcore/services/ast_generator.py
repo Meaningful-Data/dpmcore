@@ -656,17 +656,22 @@ class ASTGeneratorService:
     ) -> List[Dict[str, Any]]:
         """Resolve discovered ``PreconditionOperationVID``s into entries.
 
-        Note: :meth:`_build_preconditions_block` does not build a
-        precondition's AST structurally from the DB's stored
-        ``OperationNode`` graph, so it cannot express arbitrary DPM-XL
-        boolean expressions — it only recognises ``{v_<variable_code>}``
-        markers (or an ``and``-chain of them) in the expression text — see
-        its docstring and ``TestBuildPreconditionsBlock`` in
-        ``tests/unit/services/test_ast_generator.py``. A discovered
-        precondition whose stored ``Expression`` isn't in that form resolves
-        to no variables and is silently dropped, same as pydpm. This is a
-        pre-existing limitation of ``script()``'s precondition support, not
-        specific to auto-discovery.
+        Note: :meth:`_build_preconditions_block` parses the stored
+        ``Expression`` and walks the resulting AST — it does not rebuild
+        the gate from the DB's ``OperationNode`` graph. What it can
+        express is therefore the engine's gate contract: filing-indicator
+        selections, run-time parameters and boolean literals combined
+        with ``and`` / ``or`` / ``xor`` / ``not`` (see its docstring and
+        ``TestBuildPreconditionsBlock`` in
+        ``tests/unit/services/test_ast_generator.py``). Two outcomes are
+        not the same and neither is specific to auto-discovery:
+
+        * a gate outside that contract is **not** silently dropped — the
+          operations it guards are reported in ``failed_operations`` and
+          left out of the script, because ungating them would change what
+          gets validated (#338);
+        * a gate whose ``{v_<variable_code>}`` codes do not resolve for
+          the release still drops silently, same as pydpm.
         """
         if not prec_vid_to_codes:
             return []

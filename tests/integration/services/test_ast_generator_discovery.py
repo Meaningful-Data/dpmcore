@@ -16,13 +16,18 @@ historical version dpmcore resolves to.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from sqlalchemy import text
 
-from dpmcore.services.ast_generator import (
-    _VAR_REF_PATTERN,
-    ASTGeneratorService,
-)
+from dpmcore.services.ast_generator import ASTGeneratorService
+
+# The filing-indicator marker, as it appears in a raw precondition
+# expression. The service itself no longer scans text for it (#338 parses
+# the gate and walks the AST instead); this is only the discovery filter
+# that picks the DB rows this test can assert an entry for.
+_VAR_REF_PATTERN = re.compile(r"\{v_?([^}]+)\}")
 
 # Also exercised by test_ast_generator_condexpr.py — known to have active,
 # type-checking validations in the fixture DB.
