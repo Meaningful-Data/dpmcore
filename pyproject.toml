@@ -31,7 +31,7 @@ dependencies = [
     # Floor is 1.4.50 to match the python3-sqlalchemy apt package on
     # Ubuntu 24.04 (Noble); the ORM is compatible with both 1.4 and 2.0
     # (see issue #104). 2.0 remains the canonical target for dev/wheel.
-    "sqlalchemy>=2.0.51,<3.0",
+    "sqlalchemy>=2.0.52,<3.0",
     # Runtime must match the ANTLR version used to generate the grammar
     # in src/dpmcore/dpm_xl/grammar/generated/. Regenerating with a newer
     # ANTLR is tracked separately.
@@ -57,7 +57,7 @@ sqlserver = ["pyodbc>=5.0"]
 # dpmcore + vtlengine can be co-installed without resolver conflicts.
 migration = ["pandas>=2.1.4,<3.0", "numpy>=2.2.0,<2.3"]
 data = ["pandas>=2.1.4,<3.0", "numpy>=2.2.0,<2.3"]
-cli = ["click>=8.4.2", "rich>=13.7"]
+cli = ["click>=8.5.0", "rich>=13.7"]
 export = ["openpyxl>=3.1"]
 all = [
     "fastapi>=0.141.1",
@@ -68,7 +68,7 @@ all = [
     "pyodbc>=5.0",
     "pandas>=2.1.4,<3.0",
     "numpy>=2.2.0,<2.3",
-    "click>=8.4.2",
+    "click>=8.5.0",
     "rich>=13.7",
     "openpyxl>=3.1",
 ]
@@ -80,8 +80,8 @@ dpmcore = "dpmcore.cli.main:main"
 packages = [{ include = "dpmcore", from = "src" }]
 
 [tool.poetry.group.dev.dependencies]
-coverage = ">=7.15.4,<8.0"
-ruff = ">=0.15.22"
+  coverage = ">=7.16.0,<8.0"
+  ruff = ">=0.16.2"
 mypy = ">=2.3.0"
 pytest = ">=9.1.1"
 pytest-asyncio = ">=0.24"
@@ -89,7 +89,7 @@ pytest-cov = ">=6.0"
 pyroma = ">=4.2"
 httpx = ">=0.28,<1.0"
 pytest-django = ">=4.13.0"
-django-stubs = ">=6.0.7"
+django-stubs = ">=6.0.9"
 pandas-stubs = ">=2.2.2,<3.0"
 # django and numpy are not imported by the dev tooling directly; they are
 # pinned here only to keep the resolver from picking a second version.
@@ -127,7 +127,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.ruff]
 line-length = 79
-exclude = ["src/dpmcore/dpm_xl/grammar/generated"]
+exclude = ["src/dpmcore/dpm_xl/grammar/generated", "*.md"]
 lint.select = [
     "ASYNC",
     "B",
