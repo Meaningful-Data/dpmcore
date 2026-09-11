@@ -426,6 +426,14 @@ annotations, and categorisation tooltips.
      - Disable dimensional annotations below and to the right of the grid.
    * - ``--no-comments``
      - Disable Excel comments (tooltips) on headers and data cells.
+   * - ``--derive-missing-variables`` /
+       ``--no-derive-missing-variables``
+     - In a dictionary under construction, some cells exist before
+       their variable has been generated. By default the export fills
+       those in from the table structure — the property and dimensions
+       of the headers bounding the cell — so the workbook shows the
+       data point the cell is meant to hold. Pass
+       ``--no-derive-missing-variables`` to leave them empty.
 
 **Examples:**
 
@@ -451,11 +459,22 @@ annotations, and categorisation tooltips.
        --no-comments \
        --output ae.xlsx
 
+   # Export a module under construction, showing only the cells whose
+   # variable already exists
+   dpmcore export-layout \
+       --database sqlite:///dpm.db \
+       --module AE \
+       --no-derive-missing-variables \
+       --output ae.xlsx
+
 **Output format:**
 
 Each generated workbook contains:
 
-- An **Index** sheet with a hyperlinked table of contents
+- An **Index** sheet with a hyperlinked table of contents, one row per
+  worksheet. When the export finds cells whose variable has not been
+  generated yet, it gains a **Cells without a variable** column
+  counting them for each worksheet
 - One sheet per table (alphabetically sorted) — or one sheet per
   Z-axis sheet for tables whose cells are sheet-scoped, named
   ``<table code> (<sheet code>)`` and listed individually in the
@@ -468,6 +487,17 @@ Each generated workbook contains:
     type and the sign recorded on the cell (a cell with no sign shows
     none); excluded cells are greyed out and void cells get a darker
     grey
+  - Data cells whose variable has not been generated yet shaded in
+    pale orange, and the key cells of an open table in that state
+    flagged in their comment; unless ``--no-derive-missing-variables``
+    was passed, both also show the property and dimensions derived
+    from the table structure
+  - The possible values of an enumerated cell listed in its comment:
+    every member of the hierarchy that restricts the cell, indented by
+    its position in it and shown as ``(signature) label``. The key
+    columns of an open table carry the same list. A hierarchy too long
+    for an Excel comment is cut short with an ``... and N more lines``
+    marker
   - Cells reporting a data point that is also reported elsewhere in the
     workbook ("identities") highlighted in yellow, with the other
     locations listed in the cell comment

@@ -476,7 +476,7 @@ dpmcore export-layout --database sqlite:///dpm.db \
     --tables F_01.01,F_01.02 --release 4.2 --output finrep_subset.xlsx
 ```
 
-Use ``--no-annotate`` or ``--no-comments`` to disable annotations/comments.
+Use ``--no-annotate`` or ``--no-comments`` to disable annotations/comments, and ``--no-derive-missing-variables`` to leave the cells whose variable has not been generated yet empty instead of filling them in from the table structure.
 
 **Unified facade:**
 
