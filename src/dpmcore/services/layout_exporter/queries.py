@@ -40,6 +40,13 @@ def load_module_table_versions(
 ) -> list[Any]:
     """Load all TableVersions for a given module version code.
 
+    The tables are the composition of the single module version the
+    export reads, resolved by :func:`load_module_version`. Where more
+    than one version of the code is open at the release — a draft
+    started in a working release alongside the adopted one — the union
+    of their compositions would mix tables that were never reportable
+    together and would render a table composed by both of them twice.
+
     The ``release_code`` filter is a *range* query (any module version
     whose validity window covers the resolved release), consistent
     with the rest of the codebase. When ``release_code`` is omitted,
@@ -56,14 +63,12 @@ def load_module_table_versions(
     Returns:
         TableVersion ORM objects ordered by module composition order.
     """
-    from dpmcore.dpm_xl.utils.filters import (
-        filter_by_release,
-        resolve_release_id,
-    )
-    from dpmcore.orm.packaging import ModuleVersion, ModuleVersionComposition
+    from dpmcore.orm.packaging import ModuleVersionComposition
     from dpmcore.orm.rendering import TableVersion
 
-    release_id = resolve_release_id(session, release_code=release_code)
+    module_version = load_module_version(session, module_code, release_code)
+    if module_version is None:
+        return []
 
     q = (
         session.query(TableVersion)
@@ -71,21 +76,11 @@ def load_module_table_versions(
             ModuleVersionComposition,
             ModuleVersionComposition.table_vid == TableVersion.table_vid,
         )
-        .join(
-            ModuleVersion,
-            ModuleVersion.module_vid == ModuleVersionComposition.module_vid,
+        .filter(
+            ModuleVersionComposition.module_vid == module_version.module_vid,
         )
-        .filter(ModuleVersion.code == module_code)
+        .order_by(ModuleVersionComposition.order)
     )
-    q = filter_by_release(
-        q,
-        start_col=ModuleVersion.start_release_id,
-        end_col=ModuleVersion.end_release_id,
-        release_id=release_id,
-        active_only_fallback=True,
-    )
-
-    q = q.order_by(ModuleVersionComposition.order)
     return q.all()
 
 
@@ -94,12 +89,18 @@ def load_module_version(
     module_code: str,
     release_code: Optional[str] = None,
 ) -> Optional[Any]:
-    """Load the ModuleVersion whose release window the export uses.
+    """Load the ModuleVersion the export reads: tables and window.
 
-    Selected with the same range query as
-    :func:`load_module_table_versions`. Should more than one module
-    version match, the latest-starting one wins, so the window is the
-    most recent context the tables were reported in.
+    Should more than one version of the code be open at the release —
+    a draft started in a working release alongside the adopted one —
+    the latest-starting one wins, so the export shows the module as it
+    is being edited. This is the opposite of
+    ``ModelQueries._resolve_current_table_vids``, which keeps the
+    adopted version on purpose: a DPM-XL scope must not resolve
+    against content that was never released, while this exporter is
+    aimed at the dictionary under construction (it fills in the cells
+    whose variables have not been generated yet). Ties break on
+    ``module_vid`` so the choice stays deterministic.
 
     Args:
         session: SQLAlchemy session.
@@ -124,8 +125,8 @@ def load_module_version(
     )
 
     versions = q.all()
-    if not versions:
-        return None
+    if len(versions) <= 1:
+        return versions[0] if versions else None
     sort_orders = load_release_sort_orders(session)
     return max(
         versions,

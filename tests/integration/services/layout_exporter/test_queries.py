@@ -24,6 +24,7 @@ from _helpers import (  # noqa: E402  (sys.path injected via conftest)
 
 from dpmcore.orm.glossary import Item, ItemCategory, PropertyCategory
 from dpmcore.orm.infrastructure import Release
+from dpmcore.orm.packaging import ModuleVersion
 from dpmcore.orm.release_sort_order import load_release_sort_orders
 from dpmcore.services.layout_exporter import queries
 from dpmcore.services.layout_exporter.models import ReleaseWindow
@@ -88,6 +89,63 @@ def test_load_module_table_versions_empty_for_unknown(memory_session):
         memory_session, "DOES_NOT_EXIST"
     )
     assert result == []
+
+
+def _module_with_a_draft(session) -> None:
+    """One module code open twice: adopted at 1.0, drafted in a WR.
+
+    A working release carries no date, so it ranks after every dated
+    one: both versions are open now, each composing its own table.
+    """
+    seed_releases(session)
+    session.add(Release(release_id=3, code="WR", date=None))
+    make_module(session, module_id=1, module_vid=10, code="MOD1")
+    session.add(
+        ModuleVersion(
+            module_vid=11,
+            module_id=1,
+            code="MOD1",
+            start_release_id=3,
+        ),
+    )
+    add_table(
+        session,
+        table_id=100,
+        table_vid=1000,
+        code="ADOPTED",
+        name="Adopted",
+        module_vid=10,
+    )
+    add_table(
+        session,
+        table_id=101,
+        table_vid=1001,
+        code="DRAFTED",
+        name="Drafted",
+        module_vid=11,
+    )
+    session.commit()
+
+
+def test_load_module_table_versions_reads_one_module_version(memory_session):
+    """Not the union of every open version's composition."""
+    _module_with_a_draft(memory_session)
+
+    result = queries.load_module_table_versions(memory_session, "MOD1")
+
+    assert [tv.code for tv in result] == ["DRAFTED"]
+
+
+def test_load_module_version_prefers_the_version_being_edited(
+    memory_session,
+):
+    """The export is aimed at the dictionary under construction."""
+    _module_with_a_draft(memory_session)
+
+    mv = queries.load_module_version(memory_session, "MOD1")
+
+    assert mv is not None
+    assert mv.module_vid == 11
 
 
 # ---------------------------------------------------------------- #
