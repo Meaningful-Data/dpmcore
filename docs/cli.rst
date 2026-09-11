@@ -467,6 +467,14 @@ A target that fails to resolve is skipped with a warning instead of
 aborting the whole sweep; the command exits non-zero if any target
 failed.
 
+Validations the semantic pass rejects are not part of the script. The
+console reports how many were skipped next to how many were discovered,
+and lists the reason per validation; the full list is written to
+``failed_operations`` in the output JSON. A precondition left gating
+only rejected validations is dropped from the ``preconditions`` block
+rather than shipped with ``affected_operations`` the script does not
+contain.
+
 ``dpmcore export-layout``
 -------------------------
 

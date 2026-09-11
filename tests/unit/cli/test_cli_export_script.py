@@ -161,6 +161,113 @@ class TestExportScriptSuccess:
         assert "no such option" in result.output.lower()
 
 
+class TestExportScriptSkippedReporting:
+    """#355: validations dropped for semantic errors must be reported.
+
+    They are written to ``failed_operations`` in the output file, but a
+    console line that only counts what made it into the script gave no
+    hint that anything was missing.
+    """
+
+    def _result_with_failures(self, failures):
+        result = _success_result()
+        result["failed_operations"] = failures
+        return result
+
+    def _run(self, runner, out, failures):
+        with patch(
+            "dpmcore.services.ast_generator.ASTGeneratorService"
+        ) as Svc:
+            Svc.return_value.script_for_module.return_value = (
+                self._result_with_failures(failures)
+            )
+            result = runner.invoke(
+                main,
+                [
+                    "export-script",
+                    "--module-code",
+                    "FINREP_Con",
+                    "--module-version",
+                    "2.0.1",
+                    "--database",
+                    "sqlite:///:memory:",
+                    "--output",
+                    str(out),
+                ],
+            )
+        return result, " ".join(result.output.split())
+
+    def test_counts_and_reasons_are_printed(self, runner, tmp_path):
+        result, output = self._run(
+            runner,
+            tmp_path / "script.json",
+            {
+                "v0937_m": "3-6: Invalid default type",
+                "v5372_m": "3-6: Invalid default type",
+            },
+        )
+        assert result.exit_code == 0, result.output
+        assert "2 validations discovered" in output
+        assert "2 skipped" in output
+        assert "v0937_m: 3-6: Invalid default type" in output
+        assert "v5372_m" in output
+
+    def test_zero_skipped_still_reported(self, runner, tmp_path):
+        result, output = self._run(runner, tmp_path / "script.json", {})
+        assert result.exit_code == 0, result.output
+        assert "0 skipped" in output
+        assert "validations skipped" not in output
+
+    def test_bracketed_reason_survives_rich_markup(self, runner, tmp_path):
+        """An item reference in the reason must not be eaten as markup."""
+        result, output = self._run(
+            runner,
+            tmp_path / "script.json",
+            {"v0937_m": "Invalid item [eba_AS:x2] found."},
+        )
+        assert result.exit_code == 0, result.output
+        assert "v0937_m: Invalid item [eba_AS:x2] found." in output
+
+    def test_long_list_is_truncated(self, runner, tmp_path):
+        failures = {
+            f"v{i:04d}_m": "3-6: Invalid default type" for i in range(13)
+        }
+        result, output = self._run(runner, tmp_path / "script.json", failures)
+        assert result.exit_code == 0, result.output
+        assert "13 skipped" in output
+        assert "and 3 more" in output
+
+    def test_sweep_totals_skipped_across_targets(self, runner, tmp_path):
+        out_dir = tmp_path / "out"
+        with patch(
+            "dpmcore.services.ast_generator.ASTGeneratorService"
+        ) as Svc:
+            Svc.return_value.list_module_versions.return_value = [
+                ("MOD_A", "1.0"),
+                ("MOD_B", "2.0"),
+            ]
+            Svc.return_value.script_for_module.return_value = (
+                self._result_with_failures({"v1": "3-6", "v2": "3-6"})
+            )
+            result = runner.invoke(
+                main,
+                [
+                    "export-script",
+                    "--all-modules",
+                    "--all-versions",
+                    "--database",
+                    "sqlite:///:memory:",
+                    "--output",
+                    str(out_dir),
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        output = " ".join(result.output.split())
+        assert "2 succeeded, 0 failed" in output
+        assert "4 validations skipped" in output
+
+
 class TestExportScriptFailure:
     def test_service_failure_exits_1(self, runner, tmp_path):
         out = tmp_path / "script.json"

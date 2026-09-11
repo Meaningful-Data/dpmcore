@@ -149,7 +149,10 @@ class ASTGeneratorService:
                 ``affected_operations`` (optional ``code`` and
                 ``version_id`` are also accepted). A precondition can
                 guard many validation codes; a validation may have no
-                precondition.
+                precondition. Codes that end up in
+                ``failed_operations`` are stripped from the emitted
+                ``affected_operations``, and a precondition left
+                gating nothing is dropped entirely.
             severity: Optional global default severity tag
                 (``"error"``, ``"warning"``, ``"info"``). Defaults to
                 ``"warning"``.
@@ -327,11 +330,15 @@ class ASTGeneratorService:
             for tbl in tables_block.values():
                 variables_block.update(tbl.get("variables", {}))
 
+            # ``emitted_operations`` is the script's own ``operations``,
+            # not the harvested list: anything that landed in
+            # ``failed_operations`` must not be left gated (#355).
             preconditions_block, precondition_variables_block = (
                 self._build_preconditions_block(
                     preconditions or [],
                     release_id=release_id,
                     referenced_parameters=referenced_parameters,
+                    emitted_operations=set(operations),
                 )
             )
 
@@ -1233,6 +1240,7 @@ class ASTGeneratorService:
         preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
         release_id: Optional[int],
         referenced_parameters: Optional[Dict[str, ParameterInfo]] = None,
+        emitted_operations: Optional[Set[str]] = None,
     ) -> Tuple[Dict[str, Any], Dict[str, str]]:
         """Build the ``preconditions`` and ``precondition_variables`` blocks.
 
@@ -1259,6 +1267,20 @@ class ASTGeneratorService:
         reports their operations in ``failed_operations`` instead of
         shipping a gate the engine cannot evaluate. Codes that don't
         resolve are still skipped silently (matches pydpm).
+
+        When *emitted_operations* is given, each entry's
+        ``affected_operations`` is intersected with it, and an entry
+        left gating nothing at all is dropped before it is walked, so
+        the ``precondition_variables`` it alone would have contributed
+        go with it (#355). Preconditions are harvested from the database
+        before the expressions they gate are semantically validated, so
+        an operation rejected into ``failed_operations`` — including one
+        rejected for the gate contract above — would otherwise stay
+        listed here. That is not cosmetic: the engine reports the
+        ``affected_operations`` of every precondition that does not hold
+        as validations skipped, so a code absent from ``operations``
+        gets reported as skipped without ever having been part of the
+        script.
         """
         from dpmcore.dpm_xl.model_queries import VariableVersionQuery
         from dpmcore.dpm_xl.utils.serialization import serialize_ast
@@ -1287,6 +1309,17 @@ class ASTGeneratorService:
             provided_code,
             provided_version_id,
         ) in parsed_gates:
+            if emitted_operations is not None:
+                validation_codes = [
+                    code
+                    for code in validation_codes
+                    if code in emitted_operations
+                ]
+                # Filtered before the walk, not after: dropping the gate
+                # here is what keeps the variables it alone would have
+                # declared out of ``precondition_variables`` (#355).
+                if not validation_codes:
+                    continue
             gate_ast = self._transform_precondition_ast(
                 ast, resolved, precondition_variables, serialize_ast
             )
