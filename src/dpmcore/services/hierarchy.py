@@ -649,6 +649,35 @@ class HierarchyService:
         match (by date-based sort order of ``start_release_id``)
         when several rows survive the filter.
         """
+        rows = self._table_version_candidates(table_code, release_id, date)
+        if not rows:
+            return None
+        picked = _most_recent_by_release(
+            self.session, rows, lambda row: row[1]
+        )
+        if picked is None:
+            return None
+        return picked[0]
+
+    def _table_version_candidates(
+        self,
+        table_code: str,
+        release_id: Optional[int],
+        date: Optional[str],
+    ) -> List[Any]:
+        """``(TableVersion, module-version start release)`` candidates.
+
+        On the release axis a table version reachable only through a
+        *ghost* module version (collapsed reference-date window) is
+        substituted with the prior non-ghost version's, so a release
+        answers with the same table version its reporting dates do
+        (issue #356). ``ModuleVersionQuery.get_from_table_codes`` is
+        where that rule lives.
+
+        It leaves out a module whose ghost has no prior non-ghost
+        version to fall back to; the raw join stays as the fallback so
+        the table still resolves there, from the ghost.
+        """
         q = (
             self.session.query(TableVersion, ModuleVersion.start_release_id)
             .join(
@@ -662,13 +691,34 @@ class HierarchyService:
             )
             .filter(TableVersion.code == table_code)
         )
-        q = _apply_module_filter(q, release_id, date)
-        rows = q.all()
-        if not rows:
-            return None
-        picked = _most_recent_by_release(
-            self.session, rows, lambda row: row[1]
+        rows: List[Any] = _apply_module_filter(q, release_id, date).all()
+        if release_id is None or not rows:
+            return rows
+
+        from dpmcore.dpm_xl.model_queries import ModuleVersionQuery
+
+        resolved = ModuleVersionQuery.get_from_table_codes(
+            self.session, [table_code], release_id
         )
-        if picked is None:
-            return None
-        return picked[0]
+        if resolved.empty:
+            return rows
+        # One candidate per resolved (table version, module version), as
+        # the raw join produces, so the most-recent tie-break is unchanged.
+        pairs = list(
+            zip(
+                resolved["variable_vid"].tolist(),
+                resolved["StartReleaseID"].tolist(),
+                strict=True,
+            )
+        )
+        table_version_by_vid: Dict[int, TableVersion] = {
+            table_version.table_vid: table_version
+            for table_version in self.session.query(TableVersion).filter(
+                TableVersion.table_vid.in_({vid for vid, _start in pairs})
+            )
+        }
+        return [
+            (table_version_by_vid[vid], start)
+            for vid, start in pairs
+            if vid in table_version_by_vid
+        ]
