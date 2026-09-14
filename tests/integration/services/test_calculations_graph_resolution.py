@@ -65,7 +65,7 @@ def _sel(table, row, col):
 
 
 def test_csv_resolution_exact_implicit_edge(fixture_session, cells):
-    table, ((rA, cA), (rB, cB), (rC, cC), _rest) = cells
+    table, ((rA, cA), (rB, cB), (rC, cC), _) = cells
     rows = [
         # 'w' writes cell A (reads cell B).
         ("w", f"{_sel(table, rA, cA)} <- {_sel(table, rB, cB)} + 1"),
