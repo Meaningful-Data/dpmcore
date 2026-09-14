@@ -657,7 +657,9 @@ A CSV with a ``Code,Expression`` header. Each row is one operation:
   ``<lhs selection> <- with {default:..., interval:...}: (<rhs expression>)``.
   The left-hand side selection is the operation's output; the right-hand side
   reads its inputs through selection operators ``{...}``. Because expressions
-  contain commas, quote the ``Expression`` field.
+  contain commas, quoting the ``Expression`` field is recommended; an
+  unquoted expression is still read in full — everything after the first
+  comma is taken as the expression.
 
 **Dependencies:**
 

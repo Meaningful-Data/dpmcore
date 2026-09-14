@@ -216,6 +216,25 @@ def test_read_csv_rows_ok(tmp_path):
     ]
 
 
+def test_read_csv_rows_unquoted_expression(tmp_path):
+    """An unquoted expression is rejoined, not truncated at the comma."""
+    path = tmp_path / "calc.csv"
+    path.write_text(
+        "Code,Expression\n"
+        "calc1,{tA, r1, c1} <- {tB, r1, c1}\n"
+        "calc2,{tC, r1, c1} <- {tA, r1, c1},\n"
+        "calc3\n",
+        encoding="utf-8",
+    )
+    assert _read_csv_rows(path) == [
+        ("calc1", "{tA, r1, c1} <- {tB, r1, c1}"),
+        # A trailing separator adds an empty field; it is dropped.
+        ("calc2", "{tC, r1, c1} <- {tA, r1, c1}"),
+        # A code with no expression column at all.
+        ("calc3", ""),
+    ]
+
+
 def test_read_csv_rows_bad_header(tmp_path):
     path = tmp_path / "calc.csv"
     path.write_text("Name,Expr\na,b\n", encoding="utf-8")
@@ -224,8 +243,6 @@ def test_read_csv_rows_bad_header(tmp_path):
 
 
 def test_load_assets_missing_raises(monkeypatch):
-    import dpmcore.services.calculations_graph.service as mod
-
     class _Boom:
         def __truediv__(self, _other):
             return self
@@ -233,7 +250,10 @@ def test_load_assets_missing_raises(monkeypatch):
         def read_text(self, *args, **kwargs):
             raise FileNotFoundError
 
-    monkeypatch.setattr(mod, "_assets_path", lambda: _Boom())
+    monkeypatch.setattr(
+        "dpmcore.services.calculations_graph.service._assets_path",
+        lambda: _Boom(),
+    )
     from dpmcore.errors import InternalError
 
     with pytest.raises(InternalError):

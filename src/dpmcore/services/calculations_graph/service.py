@@ -311,6 +311,22 @@ def _load_template() -> string.Template:
 # --------------------------------------------------------------------------- #
 
 
+def _expression_field(row: list[str]) -> str:
+    """Return the expression of a ``Code,Expression`` row.
+
+    Quoting the expression is the documented format, but DPM-XL
+    expressions are full of commas, so an unquoted one is split across
+    several fields. Everything after the code is therefore rejoined
+    rather than silently truncated at the first comma, which would leave
+    the expression to fail parsing for no visible reason. A quoted
+    expression arrives as a single field, so rejoining is a no-op for it.
+    """
+    fields = list(row[1:])
+    while fields and not fields[-1].strip():
+        fields.pop()
+    return ",".join(fields).strip()
+
+
 def _read_csv_rows(csv_path: Path) -> list[tuple[str, str]]:
     """Read ``Code,Expression`` rows, validating the header."""
     rows: list[tuple[str, str]] = []
@@ -325,9 +341,7 @@ def _read_csv_rows(csv_path: Path) -> list[tuple[str, str]]:
         for row in reader:
             if not row or not row[0].strip():
                 continue
-            code = row[0].strip()
-            expression = row[1].strip() if len(row) > 1 else ""
-            rows.append((code, expression))
+            rows.append((row[0].strip(), _expression_field(row)))
     return rows
 
 
