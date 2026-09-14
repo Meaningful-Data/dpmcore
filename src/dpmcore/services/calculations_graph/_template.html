@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${title}</title>
+<style>
+  :root { --bg:#0f1117; --panel:#1b1f2a; --border:#2c3242; --text:#e6e9ef;
+          --muted:#9aa3b2; --accent:#4f9cff; --root:#3ddc97; --edge:#5b6477; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; font-family:-apple-system,Segoe UI,Roboto,sans-serif;
+              background:var(--bg); color:var(--text); }
+  #app { display:flex; height:100vh; }
+  #cy { flex:1; height:100%; }
+  #side { width:420px; min-width:300px; max-width:50vw; background:var(--panel);
+          border-left:1px solid var(--border); display:flex; flex-direction:column; }
+  header { padding:14px 16px; border-bottom:1px solid var(--border); }
+  header h1 { font-size:15px; margin:0 0 6px; }
+  header .stats { font-size:12px; color:var(--muted); }
+  .controls { padding:10px 16px; border-bottom:1px solid var(--border);
+              display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .controls input { flex:1; min-width:120px; background:var(--bg); color:var(--text);
+                    border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:12px; }
+  .controls button { background:var(--bg); color:var(--text); border:1px solid var(--border);
+                     border-radius:6px; padding:6px 10px; font-size:12px; cursor:pointer; }
+  .controls button:hover { border-color:var(--accent); }
+  #detail { padding:16px; overflow:auto; flex:1; }
+  #detail .empty { color:var(--muted); font-size:13px; }
+  #detail h2 { font-size:14px; margin:0 0 4px; color:var(--accent); word-break:break-all; }
+  #detail .field { margin:14px 0 4px; font-size:11px; text-transform:uppercase;
+                   letter-spacing:.05em; color:var(--muted); }
+  #detail pre { background:var(--bg); border:1px solid var(--border); border-radius:6px;
+                padding:10px; font-size:12px; white-space:pre-wrap; word-break:break-word;
+                line-height:1.5; margin:0; }
+  .legend { font-size:11px; color:var(--muted); padding:8px 16px; border-top:1px solid var(--border); }
+  .legend span { display:inline-flex; align-items:center; gap:5px; margin-right:14px; }
+  .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="cy"></div>
+  <aside id="side">
+    <header>
+      <h1>${title}</h1>
+      <div class="stats">${n_nodes} operations &middot; ${n_edges} dependencies &middot; ${n_roots} roots (no inputs from other ops)</div>
+    </header>
+    <div class="controls">
+      <input id="search" type="text" placeholder="Filter by code...">
+      <button id="fit">Fit</button>
+      <button id="relayout">Re-layout</button>
+    </div>
+    <div id="detail"><div class="empty">Click a node to see its expression.</div></div>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--root)"></span>root</span>
+      <span><span class="dot" style="background:var(--accent)"></span>operation</span>
+    </div>
+  </aside>
+</div>
+
+<script>${cytoscape_js}</script>
+<script>${dagre_js}</script>
+<script>${dagre_ext_js}</script>
+<script>
+const ELEMENTS = ${elements};
+
+const cy = cytoscape({
+  container: document.getElementById('cy'),
+  elements: ELEMENTS,
+  wheelSensitivity: 0.2,
+  style: [
+    { selector: 'node', style: {
+        'background-color': '#4f9cff',
+        'label': 'data(label)', 'color': '#e6e9ef',
+        'font-size': 9, 'text-valign': 'center', 'text-halign': 'center',
+        'width': 'label', 'height': 18, 'shape': 'round-rectangle',
+        'padding': '6px', 'text-wrap': 'none', 'border-width': 1, 'border-color': '#2c3242'
+    } },
+    { selector: 'node[?isRoot]', style: { 'background-color': '#3ddc97', 'color':'#0f1117' } },
+    { selector: 'edge', style: {
+        'width': 1.4, 'line-color': '#5b6477', 'target-arrow-color': '#5b6477',
+        'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'arrow-scale': 0.8
+    } },
+    { selector: '.selected', style: { 'background-color': '#ffd166', 'color':'#0f1117', 'border-color':'#ffd166' } },
+    { selector: '.faded', style: { 'opacity': 0.12 } },
+    { selector: '.hl-in', style: { 'line-color':'#3ddc97', 'target-arrow-color':'#3ddc97', 'width':2.5 } },
+    { selector: '.hl-out', style: { 'line-color':'#ffd166', 'target-arrow-color':'#ffd166', 'width':2.5 } }
+  ]
+});
+
+// Mark roots (nodes with no incoming edge) for styling.
+cy.nodes().forEach(n => { if (n.indegree(false) === 0) n.data('isRoot', true); });
+
+function runLayout() {
+  const hasEdges = cy.edges().length > 0;
+  const layout = hasEdges
+    ? { name: 'dagre', rankDir: 'TB', nodeSep: 18, rankSep: 55, edgeSep: 8, animate: false }
+    : { name: 'grid', avoidOverlap: true, condense: true };
+  cy.layout(layout).run();
+}
+runLayout();
+
+const detail = document.getElementById('detail');
+function esc(s) { return (s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+function field(label, value) { return '<div class="field">' + label + '</div><pre>' + esc(value) + '</pre>'; }
+function showNode(n) {
+  const d = n.data();
+  // target/rhs are populated only when the expression was split into an
+  // lhs/rhs assignment (CSV / inline mode); engine-mode nodes carry just the
+  // raw expression, so the redundant fields are omitted.
+  let html = '<h2>' + esc(d.label) + '</h2>';
+  if (d.target) html += field('Target (output)', d.target);
+  html += field('Expression', d.expression);
+  if (d.rhs && d.rhs !== d.expression) html += field('Right-hand side', d.rhs);
+  detail.innerHTML = html;
+}
+
+function highlight(n) {
+  cy.elements().removeClass('selected faded hl-in hl-out');
+  const inc = n.incomers();
+  const out = n.outgoers();
+  const keep = n.union(inc).union(out);
+  cy.elements().not(keep).addClass('faded');
+  n.addClass('selected');
+  inc.edges().addClass('hl-in');
+  out.edges().addClass('hl-out');
+}
+
+cy.on('tap', 'node', e => { showNode(e.target); highlight(e.target); });
+cy.on('tap', e => { if (e.target === cy) {
+  cy.elements().removeClass('selected faded hl-in hl-out');
+  detail.innerHTML = '<div class="empty">Click a node to see its expression.</div>';
+} });
+
+document.getElementById('fit').onclick = () => cy.fit(undefined, 30);
+document.getElementById('relayout').onclick = runLayout;
+document.getElementById('search').addEventListener('input', e => {
+  const q = e.target.value.trim().toLowerCase();
+  cy.elements().removeClass('faded');
+  if (!q) return;
+  cy.nodes().forEach(n => {
+    if (!n.data('label').toLowerCase().includes(q)) n.addClass('faded');
+  });
+});
+</script>
+</body>
+</html>

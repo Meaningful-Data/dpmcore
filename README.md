@@ -240,6 +240,26 @@ three are pairwise mutually exclusive — a bare `--release` (no
 single version active at that release, instead of naming a version
 directly.
 
+**Calculations dependency graph:**
+
+Turn DPM-XL operations into a single self-contained HTML dependency graph —
+one node per operation, one arrow per dependency, roots highlighted,
+click-to-inspect, search and re-layout. The rendering libraries are embedded
+inline so the file opens offline. Dependencies are always resolved by the
+engine against the DPM dictionary — ranges and wildcards expand to exact
+cells — so `--database` is required in every mode. Three input sources:
+
+```bash
+# A Code,Expression CSV, resolved against the dictionary
+dpmcore generate-graph calculations_script.csv --database sqlite:///dpm.db -o graph.html
+
+# Inline expressions (no file needed)
+dpmcore generate-graph -e "calc1={tA, r1, c1} <- {tB, r1, c1}" --database sqlite:///dpm.db -o graph.html
+
+# The DPM dictionary directly (filter to keep the graph readable)
+dpmcore generate-graph --database sqlite:///dpm.db --table C_01.00 -o graph.html
+```
+
 **Data dictionary queries:**
 
 Release-aware methods accept `release_id` (integer ID) or
@@ -655,7 +675,8 @@ src/dpmcore/
 │   ├── meili_build.py     MeiliBuildService (end-to-end pipeline)
 │   ├── meili_json.py      MeiliJsonService (JSON generation)
 │   ├── database_update.py DatabaseUpdateService (atomic DB update)
-│   └── layout_exporter/   LayoutExporterService (tables → .xlsx)
+│   ├── layout_exporter/   LayoutExporterService (tables → .xlsx)
+│   └── calculations_graph/ CalculationsGraphService (engine-resolved HTML graph)
 ├── loaders/               data-loading (mutates the DB)
 │   └── migration.py       MigrationService (Access import)
 ├── server/                FastAPI REST app (optional, [server] extra)
