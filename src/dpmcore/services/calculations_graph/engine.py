@@ -17,9 +17,12 @@ are all inputs.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
-from dpmcore.dpm_xl.utils.filters import resolve_release_id
+from dpmcore.dpm_xl.utils.filters import (
+    filter_by_release,
+    resolve_release_id,
+)
 from dpmcore.errors import Invalid
 from dpmcore.orm.operations import (
     OperandReference,
@@ -55,8 +58,13 @@ def select_operations(
 ) -> dict[int, tuple[str, str]]:
     """Return ``{operation_vid: (code, expression)}`` after filters + dedup.
 
-    Operations are de-duplicated by ``code``, keeping the version with the
-    greatest start-release sort order (the latest).
+    The release window is applied by the shared
+    :func:`~dpmcore.dpm_xl.utils.filters.filter_by_release` helper, so it
+    follows the same half-open convention as every other query: a version
+    is alive while ``start <= target < end`` (an ``end`` equal to the
+    target release means the version was retired in it). Operations are
+    then de-duplicated by ``code``, keeping the version with the greatest
+    start-release sort order (the latest).
     """
     query = session.query(
         OperationVersion.operation_vid,
@@ -100,51 +108,31 @@ def select_operations(
             )
             .filter(OperandReferenceLocation.table == table_code)
         )
-    rows = [tuple(row) for row in query.all()]
     if release_code is not None:
-        rows = _filter_by_release(session, rows, release_code)
+        query = filter_by_release(
+            query,
+            start_col=OperationVersion.start_release_id,
+            end_col=OperationVersion.end_release_id,
+            release_id=_target_release_id(session, release_code),
+        )
+    rows = [tuple(row) for row in query.all()]
     return _dedupe_latest(session, rows)
 
 
-def _filter_by_release(
-    session: "Session", rows: list[tuple[Any, ...]], release_code: str
-) -> list[tuple[Any, ...]]:
-    """Keep rows whose release window contains *release_code*.
+def _target_release_id(session: "Session", release_code: str) -> int:
+    """Resolve *release_code* to its release id.
 
-    The window is inclusive of ``end_release_id``. Ordering comes from each
-    release's ``Release.date`` (the code is never parsed), so the target
-    release is resolved to its id and then to its date-derived sort order.
+    Raises:
+        Invalid: If the code matches no release.
     """
-    sort_orders = load_release_sort_orders(session)
     try:
-        target_release_id = resolve_release_id(
-            session, release_code=release_code
-        )
+        release_id = resolve_release_id(session, release_code=release_code)
     except ValueError as exc:
         raise Invalid(
             "Invalid release code",
             f"Unknown release code {release_code!r}.",
         ) from exc
-    target = (
-        sort_orders.get(target_release_id)
-        if target_release_id is not None
-        else None
-    )
-    if target is None:
-        raise Invalid(
-            "Invalid release code",
-            f"Release {release_code!r} has no ordering.",
-        )
-    kept: list[tuple[Any, ...]] = []
-    for row in rows:
-        start_so = sort_orders.get(row[3])
-        if start_so is None or start_so > target:
-            continue
-        end_so = sort_orders.get(row[4]) if row[4] is not None else None
-        if end_so is not None and end_so < target:
-            continue
-        kept.append(row)
-    return kept
+    return cast(int, release_id)
 
 
 def _dedupe_latest(

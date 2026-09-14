@@ -94,7 +94,8 @@ def session():
             operation_vid=5,
             operation_id=5,
             start_release_id=_R40,
-            end_release_id=_R40,
+            # Half-open window: alive at 4.0, already retired in 4.2.
+            end_release_id=_R42,
             expression="E-old",
         ),
         OperationVersion(
@@ -272,21 +273,19 @@ def test_operation_cells_empty(session):
     assert eng.operation_cells(session, []) == {}
 
 
-def test_filter_by_release_bad_code(session):
+def test_select_operations_bad_release_code(session):
     with pytest.raises(Invalid):
-        eng._filter_by_release(session, [], "not-a-version")
+        eng.select_operations(session, "not-a-version", None, None)
 
 
-def test_filter_by_release_windows(session):
-    rows = [
-        (1, "a", "e", _R42, None),  # start 4.2, open end
-        (2, "b", "e", _R40, _R40),  # start 4.0, end 4.0
-        (3, "c", "e", 999, None),  # unknown start release -> excluded
-    ]
-    at_42 = eng._filter_by_release(session, rows, "4.2")
-    assert {r[0] for r in at_42} == {1}  # row2 end<4.2, row3 unknown
-    at_40 = eng._filter_by_release(session, rows, "4.0")
-    assert {r[0] for r in at_40} == {2}  # row1 start>4.0, row3 unknown
+def test_release_window_is_half_open(session):
+    """A version whose end is the target release is already retired."""
+    # calcE has two versions: vid 5 (4.0 -> end 4.2) and vid 6 (4.2, open).
+    at_42 = eng.select_operations(session, "4.2", None, None)
+    assert 5 not in at_42
+    assert at_42[6] == ("calcE", "E-new")
+    at_40 = eng.select_operations(session, "4.0", None, None)
+    assert at_40 == {5: ("calcE", "E-old")}
 
 
 def test_dedupe_latest(session):
