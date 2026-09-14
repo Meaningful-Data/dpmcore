@@ -1325,13 +1325,21 @@ class ASTGeneratorService:
                 # declared out of ``precondition_variables`` (#355).
                 if not validation_codes:
                     continue
+            # Variables are registered per gate and merged only once the
+            # gate survives the walk: a gate discarded below must not
+            # leave the variables of its resolved leaves declared behind
+            # it (#355).
+            gate_variables: Dict[str, str] = {}
             gate_ast = self._transform_precondition_ast(
-                ast, resolved, precondition_variables, serialize_ast
+                ast, resolved, gate_variables, serialize_ast
             )
             if gate_ast is None:
-                # Every ``{v_*}`` position dropped for lack of resolution
-                # and nothing else in the tree to keep it standing.
+                # Nothing left standing: either every ``{v_*}`` position
+                # was dropped for lack of resolution, or an unresolved
+                # one sat where dropping it would have tightened the
+                # gate (see ``_transform_precondition_ast``).
                 continue
+            precondition_variables.update(gate_variables)
             if referenced_parameters is not None:
                 self._accumulate_precondition_parameters(
                     referenced_parameters, gate_ast
@@ -1532,6 +1540,7 @@ class ASTGeneratorService:
         resolved: Dict[str, Dict[str, int]],
         precondition_variables: Dict[str, str],
         serialize_ast: Any,
+        negated: bool = False,
     ) -> Optional[Dict[str, Any]]:
         """Walk the parsed gate AST and emit the engine's dict shape.
 
@@ -1539,10 +1548,18 @@ class ASTGeneratorService:
         collapse to a ``PreconditionItem`` dict with the resolved
         ``variable_id``, registering the ``variable_vid`` in
         ``precondition_variables`` on the way. A selection that does not
-        resolve is dropped and the surrounding operator is rewired to keep
-        the tree standing — or the whole gate returns ``None`` when nothing
-        survives. ``ParExpr`` wrappers are unwrapped; ``BinOp`` /
-        ``UnaryOp`` keep their operator. ``ParameterRef`` and boolean
+        resolve becomes ``None`` — *unknown* — and unknown is only ever
+        allowed to relax the gate, never to tighten it: the surrounding
+        operator is rewired around it where dropping it widens the gate
+        (a conjunct of ``and``, or of ``or`` under a ``not``), and
+        otherwise the unknown propagates outwards until the whole gate
+        returns ``None`` and the operations it guarded run ungated.
+        Rewiring an ``or`` — or either side of an ``xor`` — the way an
+        ``and`` is rewired would leave a *stricter* gate behind and skip
+        validations that should have run, so those cases propagate
+        instead. ``ParExpr`` wrappers are unwrapped; ``BinOp`` /
+        ``UnaryOp`` keep their operator, and a ``not`` flips the polarity
+        the rewiring rule is read at. ``ParameterRef`` and boolean
         ``Constant`` leaves go through the standard ``serialize_ast`` path,
         so the gate carries exactly the node shape an expression would
         (``code`` / ``param_type`` / ``default``; ``type_`` / ``value``).
@@ -1566,6 +1583,7 @@ class ASTGeneratorService:
                 resolved,
                 precondition_variables,
                 serialize_ast,
+                negated,
             )
         if isinstance(node, (ast_nodes.VarRef, ast_nodes.PreconditionItem)):
             variable = getattr(node, "variable", None) or getattr(
@@ -1578,25 +1596,19 @@ class ASTGeneratorService:
             serialized: Dict[str, Any] = serialize_ast(node)
             return serialized
         if isinstance(node, ast_nodes.BinOp):
-            left = cls._transform_precondition_ast(
-                node.left, resolved, precondition_variables, serialize_ast
+            return cls._transform_gate_binop(
+                node, resolved, precondition_variables, serialize_ast, negated
             )
-            right = cls._transform_precondition_ast(
-                node.right, resolved, precondition_variables, serialize_ast
-            )
-            if left is None:
-                return right
-            if right is None:
-                return left
-            return {
-                "class_name": "BinOp",
-                "op": node.op,
-                "left": left,
-                "right": right,
-            }
         if isinstance(node, ast_nodes.UnaryOp):
             operand = cls._transform_precondition_ast(
-                node.operand, resolved, precondition_variables, serialize_ast
+                node.operand,
+                resolved,
+                precondition_variables,
+                serialize_ast,
+                # ``not`` is the only unary operator the gate contract
+                # allows (``_GATE_UNARY_OPS``), so descending here always
+                # flips the polarity.
+                not negated,
             )
             if operand is None:
                 return None
@@ -1610,6 +1622,59 @@ class ASTGeneratorService:
             f"{node.__class__.__name__} reached the gate emitter; "
             "_parse_gates should have excluded this gate.",
         )
+
+    @classmethod
+    def _transform_gate_binop(
+        cls,
+        node: Any,
+        resolved: Dict[str, Dict[str, int]],
+        precondition_variables: Dict[str, str],
+        serialize_ast: Any,
+        negated: bool,
+    ) -> Optional[Dict[str, Any]]:
+        """The binary-operator half of :meth:`_transform_precondition_ast`.
+
+        Both sides are walked first; an operand that came back ``None``
+        is an unresolved filing indicator, and whether the node may be
+        rewired around it depends on the operator and the polarity it
+        sits at — see :meth:`_gate_drop_relaxes`.
+        """
+        left = cls._transform_precondition_ast(
+            node.left, resolved, precondition_variables, serialize_ast, negated
+        )
+        right = cls._transform_precondition_ast(
+            node.right,
+            resolved,
+            precondition_variables,
+            serialize_ast,
+            negated,
+        )
+        if left is None or right is None:
+            survivor = right if left is None else left
+            if survivor is None or not cls._gate_drop_relaxes(
+                node.op, negated
+            ):
+                return None
+            return survivor
+        return {
+            "class_name": "BinOp",
+            "op": node.op,
+            "left": left,
+            "right": right,
+        }
+
+    @staticmethod
+    def _gate_drop_relaxes(op: str, negated: bool) -> bool:
+        """Whether dropping an unknown operand of *op* widens the gate.
+
+        ``unknown and X`` weakens to ``X``; ``unknown or X`` does not —
+        it would tighten to ``X`` and skip validations the gate was never
+        meant to skip. Under a ``not`` the two swap by De Morgan, so the
+        rule is read at the current polarity. ``xor`` relaxes at neither
+        polarity: an unknown operand of an exclusive or leaves nothing
+        honest to emit.
+        """
+        return op == ("or" if negated else "and")
 
     @staticmethod
     def _unwrap_start(node: Any, ast_nodes: Any) -> Any:

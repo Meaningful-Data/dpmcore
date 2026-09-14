@@ -537,6 +537,92 @@ class TestBuildPreconditionsBlock:
         assert preconds == {}
         assert vars_ == {}
 
+    def test_unresolved_and_operand_keeps_the_other_side(
+        self, monkeypatch, real_syntax
+    ):
+        """An unknown conjunct is dropped — ``and`` only relaxes."""
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        svc._syntax = real_syntax
+        _install_variable_resolver(
+            monkeypatch, {"A": {"variable_id": 1, "variable_vid": 10}}
+        )
+
+        preconds, vars_ = svc._build_preconditions_block(
+            [("{v_A} and {v_B}", ["v1"])], release_id=None
+        )
+        assert list(preconds) == ["p_10"]
+        assert preconds["p_10"]["ast"] == {
+            "class_name": "PreconditionItem",
+            "variable_id": 1,
+            "variable_code": "A",
+        }
+        assert vars_ == {"10": "b"}
+
+    @pytest.mark.parametrize("op", ["or", "xor"])
+    def test_unresolved_operand_drops_the_whole_gate(
+        self, op, monkeypatch, real_syntax
+    ):
+        """Rewiring an ``or``/``xor`` around an unknown would tighten it.
+
+        ``{v_A} or {v_B}`` with ``B`` unresolved must not collapse to
+        ``{v_A}``: that is a *stricter* gate than the source, and the
+        operations it guards would be skipped for filers that reported
+        only ``B``. The gate is dropped instead, and the vid of the
+        resolved side must not stay behind in ``precondition_variables``.
+        """
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        svc._syntax = real_syntax
+        _install_variable_resolver(
+            monkeypatch, {"A": {"variable_id": 1, "variable_vid": 10}}
+        )
+
+        preconds, vars_ = svc._build_preconditions_block(
+            [(f"{{v_A}} {op} {{v_B}}", ["v1"])], release_id=None
+        )
+        assert preconds == {}
+        assert vars_ == {}
+
+    def test_unresolved_operand_under_not_reads_the_flipped_rule(
+        self, monkeypatch, real_syntax
+    ):
+        """``not`` swaps which operator may be rewired (De Morgan).
+
+        ``not({v_A} and {v_B})`` with ``B`` unknown would tighten to
+        ``not {v_A}``, so the gate goes; ``not({v_A} or {v_B})`` widens
+        to ``not {v_A}``, so it stays.
+        """
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        svc._syntax = real_syntax
+        _install_variable_resolver(
+            monkeypatch, {"A": {"variable_id": 1, "variable_vid": 10}}
+        )
+
+        tightening, no_vars = svc._build_preconditions_block(
+            [("not({v_A} and {v_B})", ["v1"])], release_id=None
+        )
+        assert tightening == {}
+        assert no_vars == {}
+
+        relaxing, vars_ = svc._build_preconditions_block(
+            [("not({v_A} or {v_B})", ["v1"])], release_id=None
+        )
+        # Not a conjunction of items, so the key carries the shape CRC.
+        (key,) = relaxing
+        assert key.startswith("p_10_")
+        assert relaxing[key]["ast"] == {
+            "class_name": "UnaryOp",
+            "op": "not",
+            "operand": {
+                "class_name": "PreconditionItem",
+                "variable_id": 1,
+                "variable_code": "A",
+            },
+        }
+        assert vars_ == {"10": "b"}
+
     def test_collision_merges_affected_operations(
         self, monkeypatch, real_syntax
     ):
