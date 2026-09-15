@@ -2149,9 +2149,9 @@ extract_precondition_codes`, shared with
     ) -> None:
         """Merge *new* cross-instance deps into *existing*.
 
-        Deduplicates by the set of ``(module URI, reference period)``
-        pairs. When a duplicate is found, its ``affected_operations``
-        are merged instead.
+        Deduplicates by the set of ``(module URI, reference period,
+        version_windows)`` triples. When a duplicate is found, its
+        ``affected_operations`` are merged instead.
 
         The reference period is part of the key because two operations
         can need the *same* module at *different* instances — one at
@@ -2159,15 +2159,47 @@ extract_precondition_codes`, shared with
         reachable for the home module). Keying on the URI alone merged
         them into a single entry whose period was whichever operation
         came first, silently sending the other to the wrong instance.
+
+        ``version_windows`` is part of the key too: it is computed per
+        operation, so two operations sharing ``(URI, ref_period)`` can
+        still land on different substitution outcomes and must stay in
+        separate entries.
         """
 
-        def _uri_key(dep: Dict[str, Any]) -> Tuple[Tuple[str, str], ...]:
+        def _windows_key(
+            module: Dict[str, Any],
+        ) -> Tuple[Tuple[str, str, str, str], ...]:
+            windows = (
+                module.get("version_windows")
+                if isinstance(module, dict)
+                else None
+            )
+            if not windows:
+                return ()
+            return tuple(
+                sorted(
+                    (
+                        w.get("URI", ""),
+                        w.get("module_version", ""),
+                        w.get("from_reference_date") or "",
+                        w.get("to_reference_date") or "",
+                    )
+                    for w in windows
+                    if isinstance(w, dict)
+                )
+            )
+
+        def _uri_key(dep: Dict[str, Any]) -> Tuple[Tuple[Any, ...], ...]:
             modules = dep.get("modules", [])
             return tuple(
                 sorted(
-                    (m.get("URI", ""), m.get("ref_period", ""))
+                    (
+                        m.get("URI", ""),
+                        m.get("ref_period", ""),
+                        _windows_key(m),
+                    )
                     if isinstance(m, dict)
-                    else (str(m), "")
+                    else (str(m), "", ())
                     for m in modules
                 )
             )
