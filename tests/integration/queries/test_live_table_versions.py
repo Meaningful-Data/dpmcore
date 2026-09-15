@@ -48,7 +48,14 @@ WORKING = 9003
 
 @pytest.fixture(autouse=True)
 def _clear_query_caches():
-    """The table-data and axis caches are keyed per engine, not per test."""
+    """The table-data and axis caches are keyed per engine, not per test.
+
+    Every in-memory SQLite engine shares one cache key, so an entry left
+    by an earlier test module would be served to the first test here.
+    Cleared on both sides of the yield for that reason.
+    """
+    ViewDatapointsQuery._TABLE_DATA_CACHE.clear()
+    ViewDatapointsQuery._AXIS_ORDER_CACHE.clear()
     yield
     ViewDatapointsQuery._TABLE_DATA_CACHE.clear()
     ViewDatapointsQuery._AXIS_ORDER_CACHE.clear()

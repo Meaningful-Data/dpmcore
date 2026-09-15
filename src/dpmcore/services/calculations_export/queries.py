@@ -15,6 +15,7 @@ release window here goes through :func:`_release_window`.
 
 from __future__ import annotations
 
+import logging
 from datetime import date as date_cls
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, cast
 
@@ -41,11 +42,14 @@ from dpmcore.orm.packaging import (
     ModuleVersionComposition,
 )
 from dpmcore.orm.query_utils import chunked_in
+from dpmcore.orm.release_sort_order import compute_sort_order
 from dpmcore.orm.rendering import TableVersion, TableVersionCell
 from dpmcore.orm.variables import VariableVersion
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Query, Session
+
+logger = logging.getLogger(__name__)
 
 EBA_BASE_URI = "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/"
 """Namespace prefix of the EBA taxonomy URIs the export is keyed by."""
@@ -182,12 +186,20 @@ def get_release_info(
     return {"release": release_code, "publication_date": pub_date}
 
 
-def get_module_uri(session: "Session", module_vid: int) -> tuple[str, str]:
+def get_module_uri(
+    session: "Session",
+    module_vid: int,
+    published_release_id: Optional[int] = None,
+) -> tuple[str, str]:
     """Build a module version's EBA taxonomy URI.
 
     Args:
         session: SQLAlchemy session.
         module_vid: Module version ID.
+        published_release_id: The release the export is keyed at. When
+            the module version itself lives in a working release, the
+            URI reports the newest published release at or before this
+            one instead, and a warning is logged.
 
     Returns:
         ``(uri, framework_code)``.
@@ -200,6 +212,7 @@ def get_module_uri(session: "Session", module_vid: int) -> tuple[str, str]:
             ModuleVersion.code.label("module_code"),
             Framework.code.label("framework_code"),
             Release.code.label("release_code"),
+            ModuleVersion.start_release_id.label("start_release_id"),
         )
         .join(Module, Module.module_id == ModuleVersion.module_id)
         .join(Framework, Framework.framework_id == Module.framework_id)
@@ -231,11 +244,84 @@ def get_module_uri(session: "Session", module_vid: int) -> tuple[str, str]:
                 "the export is keyed by the module's taxonomy URI."
             ),
         )
+    release_code = result.release_code
+    if _is_working_release(session, result.start_release_id):
+        # A working release is the draft dictionary, not something a
+        # consumer can resolve, so the URI carries the newest published
+        # release at or before the one the export is keyed at instead.
+        substitute = get_published_release_code(session, published_release_id)
+        if substitute is not None:
+            logger.warning(
+                "Module %s (VID %s) lives in working release %r; its URI "
+                "reports published release %r instead. The exported "
+                "tables and variables are still the working version's.",
+                result.module_code,
+                module_vid,
+                release_code,
+                substitute,
+            )
+            release_code = substitute
+
     uri = (
         f"{EBA_BASE_URI}{result.framework_code.lower()}/"
-        f"{result.release_code}/mod/{result.module_code.lower()}"
+        f"{release_code}/mod/{result.module_code.lower()}"
     )
     return uri, result.framework_code
+
+
+def get_published_release_code(
+    session: "Session", release_id: Optional[int]
+) -> Optional[str]:
+    """Return the newest *published* release code at or before *release_id*.
+
+    "Published" is dpmcore's own rule rather than anything read off the
+    code: a release whose
+    :func:`~dpmcore.orm.release_sort_order.compute_sort_order` is
+    chronological. An undated or non-chronologically typed (working)
+    release sorts as the latest and is skipped here.
+
+    Args:
+        session: SQLAlchemy session.
+        release_id: The release the export is keyed at; ``None`` yields
+            the newest published release outright.
+
+    Returns:
+        The release code, or ``None`` if no published release qualifies.
+    """
+    rows = session.query(
+        Release.release_id, Release.code, Release.date, Release.type
+    ).all()
+    perpetual = compute_sort_order(None, None)
+    orders = {
+        row.release_id: compute_sort_order(row.date, row.type) for row in rows
+    }
+    ceiling = orders.get(release_id, perpetual) if release_id else perpetual
+    published = [
+        row
+        for row in rows
+        if orders[row.release_id] < perpetual
+        and orders[row.release_id] <= ceiling
+    ]
+    if not published:
+        return None
+    newest = max(published, key=lambda row: orders[row.release_id])
+    return cast(Optional[str], newest.code)
+
+
+def _is_working_release(session: "Session", release_id: Optional[int]) -> bool:
+    """Whether *release_id* names a working (unpublished) release."""
+    if release_id is None:
+        return False
+    row = (
+        session.query(Release.date, Release.type)
+        .filter(Release.release_id == release_id)
+        .first()
+    )
+    if row is None:
+        return False
+    return compute_sort_order(row.date, row.type) >= compute_sort_order(
+        None, None
+    )
 
 
 def get_calculations(
@@ -421,9 +507,12 @@ def get_output_variable_vids(
             VariableVersion.end_release_id,
             release_id,
         )
-        var_info = query.one_or_none()
-        if var_info is not None:
-            result[code] = int(var_info.variable_vid)
+        # .first(), not .one_or_none(): the latter raises on an
+        # ambiguous code, which would abort the whole export with a
+        # bare SQLAlchemy error the CLI does not catch.
+        rows = query.limit(2).all()
+        if len(rows) == 1:
+            result[code] = int(rows[0].variable_vid)
     return result
 
 
@@ -459,17 +548,28 @@ def get_output_tables(
         .filter(ModuleVersionComposition.module_vid == module_vid)
     )
 
+    # Resolved once for the whole module: the per-table loop below would
+    # otherwise repeat the same lookup for every composition row.
+    data_types = get_data_types_by_version(
+        session, output_variable_vids, release_id
+    )
+
     output_tables: Dict[str, Dict[str, Dict[str, str]]] = {}
     for comp_row in composition_query.all():
         cell_query = session.query(TableVersionCell.variable_vid).filter(
-            TableVersionCell.table_vid == comp_row.table_vid,
-            TableVersionCell.variable_vid.in_(output_variable_vids),
+            TableVersionCell.table_vid == comp_row.table_vid
         )
-        table_var_vids = [row.variable_vid for row in cell_query.all()]
-        if table_var_vids:
-            data_types = get_data_types_by_version(
-                session, table_var_vids, release_id
+        # Batched: a wide calculations set can name more output
+        # variables than SQL Server allows bound parameters.
+        table_var_vids = [
+            row.variable_vid
+            for row in chunked_in(
+                cell_query,
+                TableVersionCell.variable_vid,
+                output_variable_vids,
             )
+        ]
+        if table_var_vids:
             output_tables[comp_row.table_code] = {
                 "variables": {
                     str(var_vid): data_types.get(str(var_vid), "m")

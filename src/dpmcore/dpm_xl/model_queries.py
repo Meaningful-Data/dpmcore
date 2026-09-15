@@ -2235,10 +2235,16 @@ class ViewDatapointsQuery:
         else:
             sort_orders = load_release_sort_orders(session)
             perpetual = compute_sort_order(None, None)
+            # A NULL start release means "has always existed", not
+            # "unpublished" -- the same rule filter_live_only applies.
+            # Without this it misses ``sort_orders`` and falls back to
+            # ``perpetual``, so a real version would be dropped here
+            # right after being let through.
             adopted = [
                 row.table_vid
                 for row in rows
-                if sort_orders.get(row.start_release_id, perpetual) < perpetual
+                if row.start_release_id is None
+                or sort_orders.get(row.start_release_id, perpetual) < perpetual
             ]
             table_vids = adopted or [row.table_vid for row in rows]
         if not table_vids or release_id is None or live_only:
