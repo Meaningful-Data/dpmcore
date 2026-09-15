@@ -26,6 +26,7 @@ from sqlalchemy.orm import aliased
 
 from dpmcore.dpm_xl.utils.filters import (
     filter_by_release,
+    filter_live_only,
     release_window_conditions,
 )
 from dpmcore.dpm_xl.utils.range_resolution import (
@@ -2024,6 +2025,7 @@ class ViewDatapointsQuery:
             tuple[str, ...] | None,
             tuple[str, ...] | None,
             int | None,
+            bool,
         ],
         pd.DataFrame,
     ] = {}
@@ -2033,7 +2035,7 @@ class ViewDatapointsQuery:
     # a code with two orders) so range resolution falls back to string
     # comparison for that whole axis.
     _AXIS_ORDER_CACHE: dict[
-        tuple[Hashable, str, int | None],
+        tuple[Hashable, str, int | None, bool],
         dict[str, dict[str, int] | None],
     ] = {}
 
@@ -2174,7 +2176,11 @@ class ViewDatapointsQuery:
 
     @classmethod
     def _resolve_table_version_scope(
-        cls, session: "Session", table: str, release_id: int | None
+        cls,
+        session: "Session",
+        table: str,
+        release_id: int | None,
+        live_only: bool = False,
     ) -> _TableVersionScope:
         """Resolve the table version(s) of ``table`` effective at ``release_id``.
 
@@ -2194,6 +2200,13 @@ class ViewDatapointsQuery:
                 version(s) are currently open, and applies no ghost
                 fallback -- without a target release there is no "prior"
                 version to fall back to.
+            live_only: Select the *live* version(s) instead -- open now
+                and already published (:func:`filter_live_only`) --
+                ignoring ``release_id`` on the table-version axis. The
+                ghost fallback is skipped too: it substitutes the version
+                effective at a release, which a live scope does not have.
+                ``release_id`` still windows the module versions the
+                cells are read through.
 
         Returns:
             The effective scope; its ``table_vids`` are empty when
@@ -2202,26 +2215,39 @@ class ViewDatapointsQuery:
         query = session.query(
             TableVersion.table_vid, TableVersion.start_release_id
         ).filter(TableVersion.code == table)
-        query = filter_by_release(
-            query,
-            start_col=TableVersion.start_release_id,
-            end_col=TableVersion.end_release_id,
-            release_id=release_id,
-            active_only_fallback=True,
-        )
+        if live_only:
+            query = filter_live_only(
+                query,
+                start_col=TableVersion.start_release_id,
+                end_col=TableVersion.end_release_id,
+            )
+        else:
+            query = filter_by_release(
+                query,
+                start_col=TableVersion.start_release_id,
+                end_col=TableVersion.end_release_id,
+                release_id=release_id,
+                active_only_fallback=True,
+            )
         rows = query.all()
         if len(rows) <= 1:
             table_vids = [row.table_vid for row in rows]
         else:
             sort_orders = load_release_sort_orders(session)
             perpetual = compute_sort_order(None, None)
+            # A NULL start release means "has always existed", not
+            # "unpublished" -- the same rule filter_live_only applies.
+            # Without this it misses ``sort_orders`` and falls back to
+            # ``perpetual``, so a real version would be dropped here
+            # right after being let through.
             adopted = [
                 row.table_vid
                 for row in rows
-                if sort_orders.get(row.start_release_id, perpetual) < perpetual
+                if row.start_release_id is None
+                or sort_orders.get(row.start_release_id, perpetual) < perpetual
             ]
             table_vids = adopted or [row.table_vid for row in rows]
-        if not table_vids or release_id is None:
+        if not table_vids or release_id is None or live_only:
             return _TableVersionScope(table_vids)
         return _apply_table_ghost_fallback(
             session, table, table_vids, release_id
@@ -2268,6 +2294,7 @@ class ViewDatapointsQuery:
         session: "Session",
         table: str,
         release_id: int | None = None,
+        live_table_versions: bool = False,
     ) -> dict[str, dict[str, int] | None]:
         """Return the ``{code: order}`` display order per axis of a table.
 
@@ -2289,12 +2316,16 @@ class ViewDatapointsQuery:
             session: SQLAlchemy session.
             table: Table version code.
             release_id: Optional release filter.
+            live_table_versions: Resolve the table-version axis by
+                :func:`~dpmcore.dpm_xl.utils.filters.filter_live_only`
+                instead of by the release window, as
+                :meth:`get_table_data` does under the same flag.
 
         Returns:
             ``{"rows"/"cols"/"sheets": {code: order} | None}``.
         """
         engine_key = _get_engine_cache_key(session)
-        cache_key = (engine_key, table, release_id)
+        cache_key = (engine_key, table, release_id, live_table_versions)
         cached = cls._AXIS_ORDER_CACHE.get(cache_key)
         if cached is not None:
             return cached
@@ -2309,7 +2340,9 @@ class ViewDatapointsQuery:
             aliases["tvh_sheet"].order.label("sheet_order"),
         ).distinct()
 
-        scope = cls._resolve_table_version_scope(session, table, release_id)
+        scope = cls._resolve_table_version_scope(
+            session, table, release_id, live_only=live_table_versions
+        )
         query = query.filter(TableVersion.code == table)
         query = query.filter(TableVersion.table_vid.in_(scope.table_vids))
         query = cls._filter_module_versions(query, scope, release_id)
@@ -2335,6 +2368,7 @@ class ViewDatapointsQuery:
         table: str,
         release_id: int | None,
         selections: tuple[Sequence[str] | None, ...],
+        live_table_versions: bool = False,
     ) -> dict[str, dict[str, int] | None]:
         """Return per-axis order maps, querying only when a range is present.
 
@@ -2347,7 +2381,9 @@ class ViewDatapointsQuery:
         )
         if not has_range:
             return {"rows": None, "cols": None, "sheets": None}
-        return cls.get_axis_orders(session, table, release_id)
+        return cls.get_axis_orders(
+            session, table, release_id, live_table_versions
+        )
 
     # -- public methods -------------------------------------------- #
 
@@ -2360,6 +2396,7 @@ class ViewDatapointsQuery:
         cols: Sequence[str] | None = None,
         sheets: Sequence[str] | None = None,
         release_id: int | None = None,
+        live_table_versions: bool = False,
     ) -> pd.DataFrame:
         """Retrieve cell-level data for a table.
 
@@ -2372,6 +2409,15 @@ class ViewDatapointsQuery:
             cols: Optional column-code filter.
             sheets: Optional sheet-code filter.
             release_id: Optional release filter.
+            live_table_versions: Read the cells of the table's *live*
+                version -- open now and already published
+                (:func:`~dpmcore.dpm_xl.utils.filters.filter_live_only`)
+                -- instead of the version effective at ``release_id``.
+                ``release_id`` still windows the module versions the
+                cells are read through, so a draft table version
+                introduced only in the working release never
+                contributes cells. This is the rule the EBA
+                ``drr_datapoints`` view bakes in.
 
         Returns:
             DataFrame of cell data.
@@ -2387,6 +2433,7 @@ class ViewDatapointsQuery:
             cols_k,
             sheets_k,
             release_id,
+            live_table_versions,
         )
         cached = cls._TABLE_DATA_CACHE.get(cache_key)
         if cached is not None:
@@ -2412,7 +2459,9 @@ class ViewDatapointsQuery:
             ModuleVersion.end_release_id.label("end_release_id"),
         )
 
-        scope = cls._resolve_table_version_scope(session, table, release_id)
+        scope = cls._resolve_table_version_scope(
+            session, table, release_id, live_only=live_table_versions
+        )
         query = query.filter(TableVersion.code == table)
         query = query.filter(TableVersion.table_vid.in_(scope.table_vids))
 
@@ -2421,7 +2470,11 @@ class ViewDatapointsQuery:
         # ``None`` when the axis has no usable order -> string fallback). Only
         # fetch it when a range is actually present.
         axis_orders = cls._axis_orders_for(
-            session, table, release_id, (rows, cols, sheets)
+            session,
+            table,
+            release_id,
+            (rows, cols, sheets),
+            live_table_versions,
         )
 
         # Row filter
@@ -2460,6 +2513,7 @@ class ViewDatapointsQuery:
         table: str,
         table_info: dict[str, Any],
         release_id: int | None = None,
+        live_table_versions: bool = False,
     ) -> pd.DataFrame:
         """Retrieve datapoints with dimension filters.
 
@@ -2468,6 +2522,10 @@ class ViewDatapointsQuery:
             table: Table version code.
             table_info: Dict with rows/cols/sheets lists.
             release_id: Optional release filter.
+            live_table_versions: Restrict the table-version axis to the
+                live version(s) -- see :meth:`get_table_data`. Unlike
+                ``release_id``, this scopes the table version even when
+                no release is given.
 
         Returns:
             DataFrame of filtered datapoints.
@@ -2505,6 +2563,7 @@ class ViewDatapointsQuery:
                 table_info.get("cols"),
                 table_info.get("sheets"),
             ),
+            live_table_versions,
         )
         mapping = {
             "rows": aliases["hvr"].code,
@@ -2519,9 +2578,9 @@ class ViewDatapointsQuery:
                 if clause is not None:
                     query = query.filter(clause)
 
-        if release_id:
+        if release_id or live_table_versions:
             scope = cls._resolve_table_version_scope(
-                session, table, release_id
+                session, table, release_id, live_only=live_table_versions
             )
             query = cls._filter_module_versions(query, scope, release_id)
             query = query.filter(TableVersion.table_vid.in_(scope.table_vids))

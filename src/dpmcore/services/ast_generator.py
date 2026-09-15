@@ -35,6 +35,7 @@ from dpmcore.services.syntax import SyntaxService
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
+    from dpmcore.services.calculations_export import CalculationsExport
     from dpmcore.services.scope_calculator import (
         ScopeCalculatorService,
         ScopeResult,
@@ -469,6 +470,106 @@ class ASTGeneratorService:
             preconditions=preconditions or None,
             severities=severities or None,
             release=release_row.code,
+        )
+
+    def calculations_for_module(
+        self,
+        module_code: str,
+        reference_date: str,
+        publication_date: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Export a module version's calculations set.
+
+        Where :meth:`script_for_module` scripts a module's *validations*,
+        this exports its *calculations*: the operations linked to the
+        module version through ``OperationOutput``, parsed as one script,
+        reordered so a calculation follows the ones it consumes, and
+        serialized with every operand resolved to its datapoints.
+
+        The companion datapoint map is
+        :meth:`calculations_datapoints`; the two are computed by the same
+        pass, so a caller that wants both should use
+        :meth:`calculations_export` and read the two fields off it.
+
+        Args:
+            module_code: Code of the module (e.g. ``"KRI"``).
+            reference_date: Reference date, ``YYYY-MM-DD``. The module
+                version whose reference-date window contains it is the
+                one exported; exactly one must.
+            publication_date: Publication date stamped into the
+                ``dpm_release`` block; defaults to today.
+
+        Returns:
+            The export, keyed by the module's EBA taxonomy URI.
+
+        Raises:
+            ValueError: If the service has no database session.
+            DpmCoreError: If the module version, its calculations or the
+                ``OperationOutput`` table cannot be resolved.
+        """
+        return self.calculations_export(
+            module_code, reference_date, publication_date
+        ).calculations
+
+    def calculations_datapoints(
+        self,
+        module_code: str,
+        reference_date: str,
+        publication_date: Optional[str] = None,
+    ) -> Dict[str, Dict[str, Any]]:
+        """Map every datapoint a module's calculations touch to its cell.
+
+        The companion of :meth:`calculations_for_module`, with the same
+        arguments and the same failure modes.
+
+        Args:
+            module_code: Code of the module (e.g. ``"KRI"``).
+            reference_date: Reference date, ``YYYY-MM-DD``.
+            publication_date: Publication date stamped into the
+                ``dpm_release`` block; defaults to today.
+
+        Returns:
+            ``{variable_id: {"table", "row", "column", "sheet"}}``.
+
+        Raises:
+            ValueError: If the service has no database session.
+            DpmCoreError: If the module version, its calculations or the
+                ``OperationOutput`` table cannot be resolved.
+        """
+        return self.calculations_export(
+            module_code, reference_date, publication_date
+        ).datapoints
+
+    def calculations_export(
+        self,
+        module_code: str,
+        reference_date: str,
+        publication_date: Optional[str] = None,
+    ) -> "CalculationsExport":
+        """Export a module's calculations and datapoint map in one pass.
+
+        Args:
+            module_code: Code of the module (e.g. ``"KRI"``).
+            reference_date: Reference date, ``YYYY-MM-DD``.
+            publication_date: Publication date stamped into the
+                ``dpm_release`` block; defaults to today.
+
+        Returns:
+            Both halves of the export.
+
+        Raises:
+            ValueError: If the service has no database session.
+            DpmCoreError: If the module version, its calculations or the
+                ``OperationOutput`` table cannot be resolved.
+        """
+        from dpmcore.services.calculations_export import CalculationsExporter
+
+        if self.session is None:
+            raise ValueError(
+                "No database session — cannot export calculations."
+            )
+        return CalculationsExporter(self.session).export(
+            module_code, reference_date, publication_date
         )
 
     def list_module_versions(

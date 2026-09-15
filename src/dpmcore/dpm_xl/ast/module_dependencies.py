@@ -119,8 +119,13 @@ class ModuleDependencies(ASTTemplate, ABC):
             raise errors.SemanticError(
                 "1-10", table=node.partial_selection.table
             )
+        # Scoped to this statement only: a script is parsed as one AST,
+        # so leaving it set would silently graft this with-context onto
+        # every following operation's operands.
+        previous = self.partial_selection
         self.partial_selection = node.partial_selection
         self.visit(node.expression)
+        self.partial_selection = previous
 
     def visit_VarID(self, node: VarID) -> None:
 
