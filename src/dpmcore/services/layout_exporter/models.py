@@ -21,6 +21,45 @@ class DimensionMember:
     sign: str = ""
 
 
+@dataclass(frozen=True)
+class ReleaseWindow:
+    """Validity window of the version being exported.
+
+    Codes and signatures are release-versioned, so a workbook must show
+    the ones in force while its module version was reportable — not
+    today's. The window is the module version's start/end releases (the
+    table version's own, when tables are exported outside a module).
+
+    ``start_release_id`` of ``None`` means "since the beginning" and
+    ``end_release_id`` of ``None`` means "still open".
+    """
+
+    start_release_id: Optional[int] = None
+    end_release_id: Optional[int] = None
+
+
+@dataclass
+class EnumValue:
+    """One allowed value of an enumerated variable."""
+
+    code: str
+    label: str
+    depth: int = 0
+    # Fully qualified member signature (e.g. ``eba_CU:ALL``).
+    signature: str = ""
+
+
+@dataclass
+class Enumeration:
+    """The hierarchy that restricts an enumerated variable's values."""
+
+    subcategory_vid: int
+    code: str
+    name: str
+    category_code: str
+    values: list[EnumValue] = field(default_factory=list)
+
+
 @dataclass
 class LayoutHeader:
     """A resolved header in display order."""
@@ -37,7 +76,10 @@ class LayoutHeader:
     parent_first: bool
     depth: int = 0
     sort_key: str = ""
+    property_id: Optional[int] = None
+    context_id: Optional[int] = None
     categorisations: list[DimensionMember] = field(default_factory=list)
+    subcategory_vid: Optional[int] = None
     subcategory_code: str = ""
     subcategory_description: str = ""
     subcategory_cat_code: str = ""
@@ -47,6 +89,7 @@ class LayoutHeader:
     key_data_type_code: str = ""
     key_property_name: str = ""
     key_categorisations: list["DimensionMember"] = field(default_factory=list)
+    key_enumeration: Optional[Enumeration] = None
 
 
 @dataclass
@@ -64,6 +107,13 @@ class CellData:
     data_type_code: str = ""
     domain_label: str = ""
     dp_categorisations: list[DimensionMember] = field(default_factory=list)
+    # True when the cell has no variable yet and its metadata was
+    # derived from the table structure instead.
+    is_derived: bool = False
+    # Enumerated cells only: the hierarchy of the bounding header that
+    # restricts which values may be reported here.
+    subcategory_vid: Optional[int] = None
+    enumeration: Optional[Enumeration] = None
 
 
 @dataclass
@@ -71,6 +121,11 @@ class ExportConfig:
     """Configuration flags for the export."""
 
     annotate: bool = True
+    # Tables under construction have cells before their variables are
+    # generated. When set, such a cell's property and dimensions are
+    # derived from the headers bounding it, so the workbook shows the
+    # datapoint the table is being built to hold.
+    derive_missing_variables: bool = True
     add_header_comments: bool = True
     add_cell_comments: bool = True
     show_code_row: bool = True

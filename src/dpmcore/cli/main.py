@@ -7,13 +7,19 @@ Usage::
     dpmcore generate-script --expressions ./rules.json \
         --module-code COREP_Con --module-version 2.0.1 \
         --database sqlite:///dpm.db --output ./script.json
+    dpmcore generate-graph ./calculations_script.csv \
+        --database sqlite:///dpm.db -o ./graph.html
+    dpmcore generate-graph -e "c1={tA,r1,c1} <- {tB,r1,c1}" \
+        --database sqlite:///dpm.db -o ./graph.html
+    dpmcore generate-graph --database sqlite:///dpm.db --table C_01.00 \
+        -o ./graph.html
     dpmcore --version
 """
 
 from __future__ import annotations
 
 import sys
-from typing import Any
+from typing import Any, cast
 
 import click
 
@@ -551,16 +557,370 @@ def generate_script(
         json.dumps(result, indent=2, default=str), encoding="utf-8"
     )
 
+    _n_ops, n_skipped, n_dep = _script_result_counts(result)
+    console.print(
+        f"[green]Wrote script to[/green] {output} "
+        f"({len(items)} expressions, {n_skipped} skipped, "
+        f"{n_dep} dependency modules)"
+    )
+    _report_skipped_operations(console, result)
+
+
+@main.command("export-script")
+@click.option(
+    "--module-code",
+    default=None,
+    help="Primary module code (e.g. COREP_Con). Required unless "
+    "--all-modules is given.",
+)
+@click.option(
+    "--module-version",
+    default=None,
+    help="Primary module version (e.g. 2.0.1). Mutually exclusive with "
+    "--all-versions and --release; one of the three is required.",
+)
+@click.option(
+    "--all-modules",
+    is_flag=True,
+    default=False,
+    help="Sweep every module in the database, instead of --module-code.",
+)
+@click.option(
+    "--all-versions",
+    is_flag=True,
+    default=False,
+    help="Sweep every active version of the selected module(s), "
+    "instead of --module-version. Mutually exclusive with "
+    "--module-version and --release.",
+)
+@click.option(
+    "--release",
+    default=None,
+    help=(
+        "Release code (e.g. '4.2'). Mutually exclusive with "
+        "--module-version and --all-versions: on its own, resolves each "
+        "selected module to its single version active at this release. "
+        "One of --module-version, --all-versions, or --release is "
+        "required."
+    ),
+)
+@click.option(
+    "--database",
+    required=True,
+    help="SQLAlchemy database URL.",
+)
+@click.option(
+    "--output",
+    default=None,
+    type=click.Path(),
+    help="Where to write the generated script(s). For a single "
+    "module/version target, a JSON file path (defaults to "
+    "'<module_code>-<module_version>.json' in the current directory). "
+    "When sweeping (--all-modules/--all-versions), a directory to write "
+    "one '<module_code>-<version>.json' file per target into (defaults "
+    "to the current directory).",
+)
+def export_script(
+    module_code: str | None,
+    module_version: str | None,
+    all_modules: bool,
+    all_versions: bool,
+    release: str | None,
+    database: str,
+    output: str | None,
+) -> None:
+    """Generate engine-ready DPM-XL validations scripts from the database.
+
+    Unlike ``generate-script``, no ``--expressions`` file is needed: the
+    active validations, preconditions and severities for each module
+    version are discovered directly from the database. Pass
+    ``--module-code``/``--module-version`` for a single target, or
+    ``--all-modules``/``--all-versions`` to sweep many at once.
+    ``--release`` on its own (no ``--module-version``/``--all-versions``)
+    selects each targeted module's version active at that release instead.
+    """
+    import json
+    from pathlib import Path
+
+    try:
+        from rich.console import Console
+    except ImportError:
+        click.echo(
+            "Install 'rich' for pretty output: pip install dpmcore[cli]",
+            err=True,
+        )
+        sys.exit(1)
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.exc import ArgumentError
+    from sqlalchemy.orm import Session
+
+    from dpmcore.services.ast_generator import ASTGeneratorService
+
+    console = Console()
+
+    _validate_export_script_args(
+        console,
+        module_code=module_code,
+        module_version=module_version,
+        all_modules=all_modules,
+        all_versions=all_versions,
+        release=release,
+        output=output,
+    )
+    sweeping = module_version is None
+
+    try:
+        engine = create_engine(database)
+    except ArgumentError:
+        console.print(
+            f"[red]--database is not a valid SQLAlchemy URL:[/red] "
+            f"{database!r}\n"
+            "Pass a URL such as "
+            "[bold]sqlite:////absolute/path/to.sqlite[/bold] or "
+            "[bold]sqlite:///relative/path.sqlite[/bold], not a bare "
+            "filesystem path."
+        )
+        sys.exit(1)
+    with Session(engine) as session:
+        svc = ASTGeneratorService(session)
+
+        if sweeping:
+            try:
+                targets = svc.list_module_versions(
+                    module_code=None if all_modules else module_code,
+                    release=release,
+                )
+            except ValueError as exc:
+                console.print(f"[red]{exc}[/red]")
+                sys.exit(1)
+            if not targets:
+                console.print("[red]No active module versions matched.[/red]")
+                sys.exit(1)
+
+            out_dir = Path(output) if output else Path(".")
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+            succeeded: list[tuple[str, str]] = []
+            failed: list[tuple[str, str]] = []
+            total_skipped = 0
+            for code, version in targets:
+                result = svc.script_for_module(
+                    module_code=code, module_version=version, release=release
+                )
+                if not result.get("success"):
+                    console.print(
+                        f"[yellow]Skipped {code} {version}:[/yellow] "
+                        f"{result.get('error')}"
+                    )
+                    failed.append((code, version))
+                    continue
+
+                out_path = out_dir / f"{code}-{version}.json"
+                out_path.write_text(
+                    json.dumps(result, indent=2, default=str),
+                    encoding="utf-8",
+                )
+                n_ops, n_skipped, n_dep = _script_result_counts(result)
+                total_skipped += n_skipped
+                console.print(
+                    f"[green]Wrote[/green] {out_path} "
+                    f"({n_ops} validations discovered, "
+                    f"{n_skipped} skipped, "
+                    f"{n_dep} dependency modules)"
+                )
+                succeeded.append((code, version))
+
+            _print_sweep_summary(
+                console,
+                n_succeeded=len(succeeded),
+                n_failed=len(failed),
+                n_targets=len(targets),
+                total_skipped=total_skipped,
+            )
+            if failed:
+                sys.exit(1)
+            return
+
+        # _validate_export_script_args guarantees both are set here (the
+        # sweeping branch, which allows either to be None, returned above).
+        result = svc.script_for_module(
+            module_code=cast(str, module_code),
+            module_version=cast(str, module_version),
+            release=release,
+        )
+
+    if not result.get("success"):
+        console.print(
+            f"[red]Script generation failed:[/red] {result.get('error')}"
+        )
+        sys.exit(1)
+
+    out_path = (
+        Path(output)
+        if output
+        else Path(f"{module_code}-{module_version}.json")
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(
+        json.dumps(result, indent=2, default=str), encoding="utf-8"
+    )
+
+    n_ops, n_skipped, n_dep = _script_result_counts(result)
+    console.print(
+        f"[green]Wrote script to[/green] {out_path} "
+        f"({n_ops} validations discovered, {n_skipped} skipped, "
+        f"{n_dep} dependency modules)"
+    )
+    _report_skipped_operations(console, result)
+
+
+def _validate_version_selector_args(
+    console: Any,
+    *,
+    module_version: str | None,
+    all_versions: bool,
+    release: str | None,
+) -> None:
+    """Validate the version-selector option combination, exiting on error.
+
+    ``--module-version``, ``--all-versions`` and a bare ``--release`` (no
+    version selector) are pairwise mutually exclusive, and exactly one of
+    the three is required.
+    """
+    if module_version and all_versions:
+        console.print(
+            "[red]--module-version and --all-versions are mutually "
+            "exclusive.[/red]"
+        )
+        sys.exit(1)
+    if release is not None and (module_version or all_versions):
+        console.print(
+            "[red]--release is mutually exclusive with "
+            "--module-version and --all-versions.[/red]"
+        )
+        sys.exit(1)
+    if not module_version and not all_versions and release is None:
+        console.print(
+            "[red]Specify one of --module-version, --all-versions, or "
+            "--release.[/red]"
+        )
+        sys.exit(1)
+
+
+def _validate_export_script_args(
+    console: Any,
+    *,
+    module_code: str | None,
+    module_version: str | None,
+    all_modules: bool,
+    all_versions: bool,
+    release: str | None,
+    output: str | None,
+) -> None:
+    """Validate ``export-script``'s option combination, exiting on error."""
+    from pathlib import Path
+
+    if bool(module_code) == bool(all_modules):
+        console.print(
+            "[red]Specify exactly one of --module-code or --all-modules.[/red]"
+        )
+        sys.exit(1)
+    _validate_version_selector_args(
+        console,
+        module_version=module_version,
+        all_versions=all_versions,
+        release=release,
+    )
+    if module_version and all_modules:
+        console.print(
+            "[red]--module-version requires --module-code, not "
+            "--all-modules.[/red]"
+        )
+        sys.exit(1)
+
+    sweeping = module_version is None
+    if sweeping and output and Path(output).is_file():
+        console.print(
+            "[red]--output must be a directory when sweeping "
+            "(--all-modules/--all-versions/--release).[/red]"
+        )
+        sys.exit(1)
+
+
+def _print_sweep_summary(
+    console: Any,
+    *,
+    n_succeeded: int,
+    n_failed: int,
+    n_targets: int,
+    total_skipped: int,
+) -> None:
+    """Print the closing tally of an ``export-script`` sweep."""
+    console.print(
+        f"\n[bold]{n_succeeded} succeeded, {n_failed} failed[/bold] "
+        f"out of {n_targets} module versions"
+    )
+    if total_skipped:
+        console.print(
+            f"[yellow]{total_skipped} validations skipped[/yellow] for "
+            "semantic errors — see 'failed_operations' in each script "
+            "for the reason per validation."
+        )
+
+
+def _report_skipped_operations(
+    console: Any, result: dict[str, Any], limit: int = 10
+) -> None:
+    """Print why each skipped validation was left out of the script.
+
+    ``failed_operations`` is already written to the output JSON, but a
+    console line that only counts what made it gives no hint that
+    anything was dropped (#355). Long lists are truncated — the file
+    holds all of them.
+
+    Reasons are escaped before printing: a message naming an item, e.g.
+    ``[eba_AS:x2]``, reads as rich markup and would otherwise be
+    swallowed on its way to the terminal.
+    """
+    from rich.markup import escape
+
+    failed_ops: dict[str, str] = result.get("failed_operations") or {}
+    if not failed_ops:
+        return
+    console.print(
+        f"[yellow]{len(failed_ops)} validations skipped[/yellow] "
+        "for semantic errors:"
+    )
+    for code, reason in list(failed_ops.items())[:limit]:
+        console.print(f"  [yellow]{escape(code)}[/yellow]: {escape(reason)}")
+    if len(failed_ops) > limit:
+        console.print(
+            f"  ... and {len(failed_ops) - limit} more — see "
+            "'failed_operations' in the output file."
+        )
+
+
+def _script_result_counts(result: dict[str, Any]) -> tuple[int, int, int]:
+    """Count validations/skipped/dependency modules in a script() result.
+
+    The skipped count is the size of ``failed_operations``: validations
+    that were discovered in the database but rejected by semantic
+    validation, so they are not in the script. Reporting only the
+    validations that made it hides them (#355).
+    """
     enriched = result.get("enriched_ast") or {}
+    n_ops = sum(
+        len((ns_block or {}).get("operations") or {})
+        for ns_block in enriched.values()
+        if isinstance(ns_block, dict)
+    )
     n_dep = sum(
         len((ns_block or {}).get("dependency_modules") or {})
         for ns_block in enriched.values()
         if isinstance(ns_block, dict)
     )
-    console.print(
-        f"[green]Wrote script to[/green] {output} "
-        f"({len(items)} expressions, {n_dep} dependency modules)"
-    )
+    return n_ops, len(result.get("failed_operations") or {}), n_dep
 
 
 @main.command()
@@ -678,6 +1038,15 @@ def validate(database: str, as_json: bool) -> None:
 )
 @click.option("--no-annotate", is_flag=True, help="Disable annotations.")
 @click.option("--no-comments", is_flag=True, help="Disable cell comments.")
+@click.option(
+    "--derive-missing-variables/--no-derive-missing-variables",
+    default=True,
+    show_default=True,
+    help=(
+        "For cells whose variable has not been generated yet, derive "
+        "the property and dimensions from the table structure."
+    ),
+)
 def export_layout(
     database: str,
     module_code: str | None,
@@ -686,6 +1055,7 @@ def export_layout(
     output_path: str | None,
     no_annotate: bool,
     no_comments: bool,
+    derive_missing_variables: bool,
 ) -> None:
     """Export annotated table layouts to Excel."""
     if not module_code and not table_codes:
@@ -698,6 +1068,7 @@ def export_layout(
         annotate=not no_annotate,
         add_cell_comments=not no_comments,
         add_header_comments=not no_comments,
+        derive_missing_variables=derive_missing_variables,
     )
 
     with connect(database) as db:
@@ -719,3 +1090,196 @@ def export_layout(
             )
 
     click.echo(f"Exported to {path}")
+
+
+def _validate_graph_inputs(
+    database: str | None,
+    csv: str | None,
+    expressions: tuple[str, ...],
+    module_code: str | None,
+    table_code: str | None,
+) -> tuple[str, list[tuple[str, str]]]:
+    """Validate ``generate-graph`` inputs and parse inline expressions.
+
+    Returns ``(database, rows)`` where ``rows`` are the ``(code, expression)``
+    pairs from ``--expression`` (empty for the CSV and dictionary modes).
+    Raises ``click.UsageError`` on any invalid combination.
+    """
+    if database is None:  # required=True guarantees this; narrows for mypy
+        raise click.UsageError("--database is required.")
+    if csv is not None and expressions:
+        raise click.UsageError(
+            "Provide either a CSV path argument or --expression options, "
+            "not both."
+        )
+    reads_dictionary = csv is None and not expressions
+    if not reads_dictionary and (module_code or table_code):
+        raise click.UsageError(
+            "--module / --table only apply when reading the dictionary "
+            "directly (omit the CSV argument and --expression)."
+        )
+    rows: list[tuple[str, str]] = []
+    for item in expressions:
+        code, sep, expr = item.partition("=")
+        if not sep:
+            raise click.UsageError(
+                f"Invalid --expression {item!r}; expected CODE=EXPRESSION."
+            )
+        rows.append((code.strip(), expr.strip()))
+    return database, rows
+
+
+@main.command("generate-graph")
+@click.argument(
+    "csv",
+    required=False,
+    type=click.Path(exists=True, dir_okay=False, path_type=str),
+)
+@click.option(
+    "--expression",
+    "-e",
+    "expressions",
+    multiple=True,
+    metavar="CODE=EXPRESSION",
+    help=(
+        "Inline operation as CODE=EXPRESSION (repeatable). Use instead "
+        "of the CSV argument for a quick, ad-hoc graph. Resolved against "
+        "--database like the CSV mode."
+    ),
+)
+@click.option(
+    "--output",
+    "-o",
+    "output_path",
+    default="calculations_graph.html",
+    show_default=True,
+    type=click.Path(dir_okay=False, path_type=str),
+    help="Output HTML path.",
+)
+@click.option(
+    "--database",
+    default=None,
+    required=True,
+    help=(
+        "SQLAlchemy database URL (required). The engine resolves every "
+        "selection's cells against this DPM dictionary, so dependencies "
+        "are exact in all input modes."
+    ),
+)
+@click.option(
+    "--module",
+    "module_code",
+    default=None,
+    help=(
+        "Dictionary mode only (no CSV/-e): restrict to operations in this "
+        "module version code."
+    ),
+)
+@click.option(
+    "--table",
+    "table_code",
+    default=None,
+    help=(
+        "Dictionary mode only (no CSV/-e): restrict to operations "
+        "referencing this table code."
+    ),
+)
+@click.option(
+    "--release",
+    "release_code",
+    default=None,
+    help="Resolve against this release code (default: the latest release).",
+)
+@click.option(
+    "--title",
+    "-t",
+    default=None,
+    help="Graph title (default: derived from the input).",
+)
+def generate_graph(
+    csv: str | None,
+    expressions: tuple[str, ...],
+    database: str | None,
+    module_code: str | None,
+    table_code: str | None,
+    release_code: str | None,
+    output_path: str,
+    title: str | None,
+) -> None:
+    r"""Build a self-contained HTML dependency graph of a calculations script.
+
+    ``--database URL`` is always required: the engine resolves every
+    selection's cells against the DPM dictionary, so dependencies are exact
+    (ranges and wildcards are expanded, never approximated). Choose the
+    operations to graph with one input source:
+
+    \b
+    * a ``Code,Expression`` CSV file (the CSV argument);
+    * one or more inline ``-e CODE=EXPRESSION`` operations; or
+    * neither — read the DPM dictionary directly (filter with
+      ``--module`` / ``--table``).
+
+    ``--release`` selects the release to resolve against (default: latest).
+    The output is a single HTML file with its rendering libraries embedded
+    inline, so it opens offline.
+    """
+    from pathlib import Path
+
+    try:
+        from rich.console import Console
+    except ImportError:
+        click.echo(
+            "Install 'rich' for pretty output: pip install dpmcore[cli]",
+            err=True,
+        )
+        sys.exit(1)
+
+    from dpmcore.errors import DpmCoreError
+    from dpmcore.services.calculations_graph import CalculationsGraphService
+
+    database, rows = _validate_graph_inputs(
+        database, csv, expressions, module_code, table_code
+    )
+
+    console = Console()
+
+    from dpmcore.connection import connect
+
+    svc = CalculationsGraphService()
+    try:
+        with connect(database) as db:
+            if csv is not None:
+                result = svc.generate(
+                    Path(csv), db.session, title, release_code
+                )
+            elif expressions:
+                result = svc.generate_from_rows(
+                    rows,
+                    db.session,
+                    title or "Execution graph",
+                    release_code,
+                )
+            else:
+                result = svc.generate_from_database(
+                    db.session,
+                    release_code=release_code,
+                    module_code=module_code,
+                    table_code=table_code,
+                    title=title,
+                )
+    except DpmCoreError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        sys.exit(1)
+
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(result.html, encoding="utf-8")
+
+    size_kib = out.stat().st_size // 1024
+    console.print(
+        f"[green]Wrote graph to[/green] {out} "
+        f"({result.n_nodes} operations, {result.n_edges} dependencies, "
+        f"{result.n_roots} roots; {size_kib} KiB, self-contained)."
+    )
+    for warning in result.warnings:
+        console.print(f"[yellow]Warning:[/yellow] {warning}")

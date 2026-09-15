@@ -387,6 +387,97 @@ required; ``preconditions`` and ``severities`` are optional.
        --severity warning --release 4.2 \
        --database sqlite:///dpm.db --output ./script.json
 
+``dpmcore export-script``
+-------------------------
+
+Generate engine-ready DPM-XL validations scripts directly from the
+database, with no ``--expressions`` file. Unlike ``generate-script``, the
+active validations, preconditions and severities for each module version
+are discovered from ``OperationScope`` / ``OperationScopeComposition`` /
+``OperationVersion``.
+
+.. code-block:: text
+
+   dpmcore export-script (--module-code <code> | --all-modules)
+                          (--module-version <ver> | --all-versions | --release <code>)
+                          --database <url> [--output <path>]
+
+**Options:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Option
+     - Description
+   * - ``--module-code TEXT``
+     - Primary module code, e.g. ``COREP_Con``. Required unless
+       ``--all-modules`` is given.
+   * - ``--module-version TEXT``
+     - Primary module version, e.g. ``2.0.1``. Mutually exclusive with
+       ``--all-versions`` and ``--release``; one of the three is required.
+   * - ``--all-modules``
+     - Sweep every module in the database, instead of ``--module-code``.
+   * - ``--all-versions``
+     - Sweep every active version of the selected module(s), instead of
+       ``--module-version``. Mutually exclusive with ``--module-version``
+       and ``--release``.
+   * - ``--release TEXT``
+     - Release code, e.g. ``4.2``. Mutually exclusive with
+       ``--module-version`` and ``--all-versions``: on its own, resolves
+       each selected module to its single version active at this release.
+       One of ``--module-version``, ``--all-versions``, or ``--release``
+       is required.
+   * - ``--database TEXT``
+     - SQLAlchemy database URL. **(Required)**
+   * - ``--output PATH``
+     - Where to write the generated script(s). For a single
+       module/version target, a JSON file path (defaults to
+       ``<module_code>-<module_version>.json`` in the current directory).
+       When sweeping (``--all-modules``/``--all-versions``), a directory
+       to write one ``<module_code>-<version>.json`` file per target into
+       (defaults to the current directory).
+
+**Example — single target:**
+
+.. code-block:: bash
+
+   dpmcore export-script \
+       --module-code COREP_Con --module-version 2.0.1 \
+       --database sqlite:///dpm.db --output ./script.json
+
+**Examples — bulk export:**
+
+.. code-block:: bash
+
+   # Every version of every module
+   dpmcore export-script --all-modules --all-versions \
+       --database sqlite:///dpm.db --output ./scripts/
+
+   # Every version of one module
+   dpmcore export-script --module-code COREP_Con --all-versions \
+       --database sqlite:///dpm.db --output ./scripts/
+
+   # Every module, pinned to its version active at one release (no
+   # --all-versions: exactly one file per module)
+   dpmcore export-script --all-modules --release 4.2 \
+       --database sqlite:///dpm.db --output ./scripts/
+
+A target that fails to resolve is skipped with a warning instead of
+aborting the whole sweep; the command exits non-zero if any target
+failed.
+
+Validations the semantic pass rejects are not part of the script, and
+neither are validations whose precondition falls outside what the engine
+can evaluate — a gate may only combine filing indicators, parameters and
+boolean literals with ``and`` / ``or`` / ``xor`` / ``not``. The console
+reports how many were skipped next to how many were discovered, and
+lists the reason per validation; the full list is written to
+``failed_operations`` in the output JSON. A precondition left gating
+only rejected validations is dropped from the ``preconditions`` block
+rather than shipped with ``affected_operations`` the script does not
+contain.
+
 ``dpmcore export-layout``
 -------------------------
 
@@ -426,6 +517,14 @@ annotations, and categorisation tooltips.
      - Disable dimensional annotations below and to the right of the grid.
    * - ``--no-comments``
      - Disable Excel comments (tooltips) on headers and data cells.
+   * - ``--derive-missing-variables`` /
+       ``--no-derive-missing-variables``
+     - In a dictionary under construction, some cells exist before
+       their variable has been generated. By default the export fills
+       those in from the table structure — the property and dimensions
+       of the headers bounding the cell — so the workbook shows the
+       data point the cell is meant to hold. Pass
+       ``--no-derive-missing-variables`` to leave them empty.
 
 **Examples:**
 
@@ -451,11 +550,22 @@ annotations, and categorisation tooltips.
        --no-comments \
        --output ae.xlsx
 
+   # Export a module under construction, showing only the cells whose
+   # variable already exists
+   dpmcore export-layout \
+       --database sqlite:///dpm.db \
+       --module AE \
+       --no-derive-missing-variables \
+       --output ae.xlsx
+
 **Output format:**
 
 Each generated workbook contains:
 
-- An **Index** sheet with a hyperlinked table of contents
+- An **Index** sheet with a hyperlinked table of contents, one row per
+  worksheet. When the export finds cells whose variable has not been
+  generated yet, it gains a **Cells without a variable** column
+  counting them for each worksheet
 - One sheet per table (alphabetically sorted) — or one sheet per
   Z-axis sheet for tables whose cells are sheet-scoped, named
   ``<table code> (<sheet code>)`` and listed individually in the
@@ -468,6 +578,17 @@ Each generated workbook contains:
     type and the sign recorded on the cell (a cell with no sign shows
     none); excluded cells are greyed out and void cells get a darker
     grey
+  - Data cells whose variable has not been generated yet shaded in
+    pale orange, and the key cells of an open table in that state
+    flagged in their comment; unless ``--no-derive-missing-variables``
+    was passed, both also show the property and dimensions derived
+    from the table structure
+  - The possible values of an enumerated cell listed in its comment:
+    every member of the hierarchy that restricts the cell, indented by
+    its position in it and shown as ``(signature) label``. The key
+    columns of an open table carry the same list. A hierarchy too long
+    for an Excel comment is cut short with an ``... and N more lines``
+    marker
   - Cells reporting a data point that is also reported elsewhere in the
     workbook ("identities") highlighted in yellow, with the other
     locations listed in the cell comment
@@ -477,3 +598,152 @@ Each generated workbook contains:
     identities and dimensional categorisations (``Dimension = Member``)
   - Outline groups for expanding/collapsing hierarchical rows and columns
   - Frozen panes at the data-area origin
+
+
+``dpmcore generate-graph``
+--------------------------
+
+Build a portable, self-contained HTML **dependency graph** from a DPM-XL
+calculations script. The graph shows the execution order of the operations:
+one node per operation, one arrow per dependency. The output is a single
+``.html`` file with its rendering libraries (Cytoscape.js + the dagre layout)
+embedded inline, so it opens offline and can be attached to a ticket or sent
+to another person as a single file.
+
+**``--database URL`` is always required.** The engine resolves every
+selection's cells against the DPM dictionary, so dependencies are exact in
+every mode — row/column ranges and wildcards are expanded to the concrete
+cells they cover, never approximated. Choose the operations to graph with one
+input source:
+
+#. a ``Code,Expression`` **CSV file** (the ``CSV`` argument);
+#. one or more inline **``-e CODE=EXPRESSION``** operations (handy for a
+   quick, ad-hoc graph without authoring a file); or
+#. **neither** — read the DPM dictionary directly (filter with ``--module``
+   / ``--table``).
+
+``--release`` selects the release to resolve against (default: the latest).
+
+.. code-block:: text
+
+   dpmcore generate-graph CSV --database URL [--release R] [-o OUT] [-t TITLE]
+   dpmcore generate-graph -e CODE=EXPRESSION [-e ...] --database URL
+                          [--release R] [-o OUT] [-t TITLE]
+   dpmcore generate-graph --database URL [--module C] [--table T]
+                          [--release R] [-o OUT] [-t TITLE]
+
+**Arguments / Options:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 32 68
+
+   * - Argument / Option
+     - Description
+   * - ``CSV``
+     - Path to the calculations-script CSV.
+   * - ``-e, --expression CODE=EXPRESSION``
+     - An inline operation, given as a ``Code`` and its DPM-XL expression
+       separated by ``=`` (split on the first ``=``). Repeatable.
+   * - ``--database TEXT`` (required)
+     - SQLAlchemy database URL. The engine resolves every selection's cells
+       against this dictionary, so dependencies are exact in all modes.
+   * - ``--module TEXT``
+     - Dictionary mode only (no CSV / ``-e``): restrict to operations in this
+       module version code.
+   * - ``--table TEXT``
+     - Dictionary mode only (no CSV / ``-e``): restrict to operations
+       referencing this table code.
+   * - ``--release TEXT``
+     - Release code to resolve against (e.g. ``4.2``). Defaults to the latest
+       release.
+   * - ``-o, --output PATH``
+     - Output HTML path. Defaults to ``calculations_graph.html``.
+   * - ``-t, --title TEXT``
+     - Graph title. Defaults to a title derived from the input.
+
+**How dependencies are resolved:**
+
+The engine expands every selection to the concrete ``VariableID`` set it
+covers — ranges, wildcards and the sheet dimension included — and draws an
+implicit edge only on an *exact* variable match, so overlapping ranges never
+produce a false dependency.
+
+In the **CSV and inline modes** each ``<lhs> <- ...: (<rhs>)`` assignment is
+resolved against ``--database`` at ``--release``: the left-hand selection is
+the operation's output and the right-hand side its inputs.
+
+In the **dictionary mode** the graph is built from the operations already in
+the DPM dictionary. Those are stored as validations/equalities
+(``with {scope}: {LHS} = {RHS}``); for an ``=`` operation the ``left`` side is
+the output and the ``right`` the inputs. The full dictionary has thousands of
+operations, so a ``--module`` / ``--table`` / ``--release`` filter is
+recommended to keep the graph readable.
+
+**Input format:**
+
+A CSV with a ``Code,Expression`` header. Each row is one operation:
+
+- ``Code`` is the bare operation code. It must **not** start with ``o`` —
+  explicit references use that prefix (see below).
+- ``Expression`` is a DPM-XL assignment of the form
+  ``<lhs selection> <- with {default:..., interval:...}: (<rhs expression>)``.
+  The left-hand side selection is the operation's output; the right-hand side
+  reads its inputs through selection operators ``{...}``. Because expressions
+  contain commas, quoting the ``Expression`` field is recommended; an
+  unquoted expression is still read in full — everything after the first
+  comma is taken as the expression.
+
+**Dependencies:**
+
+An arrow ``A -> B`` is drawn when operation ``B`` depends on ``A``:
+
+- **Implicit** — ``B`` reads a cell that ``A`` writes (matched on the
+  engine-resolved ``VariableID``).
+- **Explicit** — ``B`` references ``A`` directly via ``{o<A-code>}``.
+
+Operations with no incoming arrow are **roots** and are shown in a distinct
+colour. Click a node to see its output cell and full expression; the panel
+also offers search/filter and ``Fit`` / ``Re-layout`` controls.
+
+.. note::
+
+   An operation whose selection cannot be resolved (an unknown table, or a
+   grey cell that carries no variable) is not fatal: its node still renders,
+   its unresolved dependencies are skipped, and a warning is printed.
+   Explicit ``{o<code>}`` references need no cell resolution and are always
+   drawn.
+
+**Examples:**
+
+.. code-block:: bash
+
+   # CSV script, resolved against the dictionary (default output)
+   dpmcore generate-graph calculations_script.csv \
+       --database sqlite:///dpm.db
+
+   # Custom output path, title and release
+   dpmcore generate-graph calculations_script.csv \
+       --database sqlite:///dpm.db \
+       --release 4.2 \
+       -o output/graph.html \
+       -t "COREP calculations"
+
+   # Inline expressions, no CSV file needed
+   dpmcore generate-graph \
+       -e "calc1={tK_1.00, r0010, c0010} <- {tK_2.00, r0010, c0010}" \
+       -e "calc2={tK_3.00, r0010, c0010} <- {tK_1.00, r0010, c0010} + 1" \
+       --database sqlite:///dpm.db \
+       -o graph.html
+
+   # Dictionary mode: graph the operations already in the DPM (one table)
+   dpmcore generate-graph \
+       --database sqlite:///dpm.db \
+       --table C_01.00 \
+       -o graph.html
+
+**Vendored libraries:**
+
+The embedded JavaScript (Cytoscape.js, dagre, cytoscape-dagre — all MIT) is
+vendored under ``dpmcore/services/calculations_graph/assets/``. Their pinned
+versions, source URLs and update steps are recorded in ``assets/VENDOR.md``.

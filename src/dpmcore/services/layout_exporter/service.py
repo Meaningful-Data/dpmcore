@@ -17,8 +17,17 @@ from dpmcore.services.layout_exporter.excel_writer import ExcelLayoutWriter
 from dpmcore.services.layout_exporter.models import (
     DimensionMember,
     ExportConfig,
+    ReleaseWindow,
     TableLayout,
 )
+
+
+def _table_window(tv: object) -> ReleaseWindow:
+    """Release window of a table version, used outside a module export."""
+    return ReleaseWindow(
+        start_release_id=getattr(tv, "start_release_id", None),
+        end_release_id=getattr(tv, "end_release_id", None),
+    )
 
 
 class LayoutExporterService:
@@ -61,9 +70,22 @@ class LayoutExporterService:
                 msg += f" at release '{release_code}'"
             raise ValueError(msg)
 
+        # Codes are read in the module version's release window: a
+        # workbook must show the codes in force while that module
+        # version was reportable, not today's.
+        module_version = queries.load_module_version(
+            self.session,
+            module_code,
+            release_code,
+        )
+        window = ReleaseWindow(
+            start_release_id=getattr(module_version, "start_release_id", None),
+            end_release_id=getattr(module_version, "end_release_id", None),
+        )
+
         layouts = []
         for tv in table_versions:
-            layout = self._build_layout(tv)
+            layout = self._build_layout(tv, window, config)
             if layout.rows or layout.columns:
                 layouts.append(layout)
 
@@ -98,7 +120,7 @@ class LayoutExporterService:
             )
             if tv is None:
                 continue
-            layout = self._build_layout(tv)
+            layout = self._build_layout(tv, _table_window(tv), config)
             if layout.rows or layout.columns:
                 layouts.append(layout)
 
@@ -113,6 +135,7 @@ class LayoutExporterService:
         self,
         table_code: str,
         release_code: Optional[str] = None,
+        config: Optional[ExportConfig] = None,
     ) -> TableLayout:
         """Build the intermediate layout for a single table.
 
@@ -125,15 +148,33 @@ class LayoutExporterService:
         )
         if tv is None:
             raise ValueError(f"Table '{table_code}' not found")
-        return self._build_layout(tv)
+        return self._build_layout(tv, _table_window(tv), config)
 
-    def _build_layout(self, tv: object) -> TableLayout:  # noqa: C901
-        """Core pipeline: query -> process -> TableLayout."""
+    def _build_layout(  # noqa: C901
+        self,
+        tv: object,
+        window: Optional[ReleaseWindow] = None,
+        config: Optional[ExportConfig] = None,
+    ) -> TableLayout:
+        """Core pipeline: query -> process -> TableLayout.
+
+        ``window`` is the release window codes are read in — the module
+        version's when exporting a module, the table version's own
+        otherwise.
+        """
+        if window is None:
+            window = _table_window(tv)
+        cfg = config or ExportConfig()
         # Load all headers
         raw_headers = queries.load_headers(self.session, tv.table_vid)  # type: ignore[attr-defined]
 
-        # Collect context_ids, property_ids, and subcategory_vids
+        # Collect context_ids, property_ids, and subcategory_vids.
+        # The table's own context is loaded with the headers': cells
+        # inherit it, and derived cells need it to be complete.
         context_ids: set[int] = set()
+        table_context_id = getattr(tv, "context_id", None)
+        if table_context_id:
+            context_ids.add(table_context_id)
         property_ids: set[int] = set()
         subcategory_vids: set[int] = set()
         for _tvh, _header, hv in raw_headers:
@@ -148,10 +189,12 @@ class LayoutExporterService:
         context_cats = queries.load_categorisations(
             self.session,
             context_ids,
+            window,
         )
         property_cats = queries.load_property_as_categorisation(
             self.session,
             property_ids,
+            window,
         )
         subcategory_info = queries.load_subcategory_info(
             self.session,
@@ -166,6 +209,8 @@ class LayoutExporterService:
             subcategory_info,
         )
 
+        all_headers = columns + rows + sheets
+
         # Load cells
         raw_cells = queries.load_cells(self.session, tv.table_vid)  # type: ignore[attr-defined]
 
@@ -175,60 +220,88 @@ class LayoutExporterService:
             if tvc.variable_vid:
                 variable_vids.add(tvc.variable_vid)
 
-        # Also collect key variable VIDs from open-row key columns
-        for col in columns:
-            if col.key_variable_vid:
-                variable_vids.add(col.key_variable_vid)
+        # Also collect key variable VIDs from key headers. Open rows
+        # put their key on a column, open sheets on the Z header.
+        for header in all_headers:
+            if header.key_variable_vid:
+                variable_vids.add(header.key_variable_vid)
 
         dp_cats = queries.load_dp_categorisations(
             self.session,
             variable_vids,
+            window,
         )
         variable_info = queries.load_variable_info(
             self.session,
             variable_vids,
         )
+        # Properties reached through the headers, for whatever has no
+        # variable to name them.
+        property_info = (
+            queries.load_property_info(self.session, property_ids)
+            if cfg.derive_missing_variables
+            else {}
+        )
 
-        # Populate key variable fields on open-row key columns
-        for col in columns:
-            if col.key_variable_vid and col.key_variable_vid in variable_info:
-                v_id, dtype, prop_name = variable_info[col.key_variable_vid]
-                col.key_variable_id = v_id
-                col.key_data_type_code = dtype
-                col.key_property_name = prop_name
+        # Populate key variable fields on key headers
+        for header in all_headers:
+            key_vid = header.key_variable_vid
+            if key_vid and key_vid in variable_info:
+                v_id, dtype, prop_name = variable_info[key_vid]
+                header.key_variable_id = v_id
+                header.key_data_type_code = dtype
+                header.key_property_name = prop_name
+            elif header.is_key and header.property_id in property_info:
+                # No key variable generated yet: the header names the
+                # property itself.
+                dtype, prop_name = property_info[header.property_id]
+                header.key_data_type_code = dtype
+                header.key_property_name = prop_name
 
-        # Build synthetic key dimension annotations for key columns
+        # Build synthetic key dimension annotations for key headers.
+        # The key variable names the property; failing that, so does
+        # the header.
         key_variable_vids: set[int] = {
-            col.key_variable_vid for col in columns if col.key_variable_vid
+            h.key_variable_vid for h in all_headers if h.key_variable_vid
         }
-        if key_variable_vids:
-            key_vid_prop_ids = queries.load_key_variable_property_ids(
+        key_vid_prop_ids = (
+            queries.load_key_variable_property_ids(
                 self.session,
                 key_variable_vids,
             )
-            key_prop_ids = set(key_vid_prop_ids.values())
+            if key_variable_vids
+            else {}
+        )
+        key_prop_by_header: dict[int, int] = {}
+        for header in all_headers:
+            if not header.is_key:
+                continue
+            prop_id = key_vid_prop_ids.get(header.key_variable_vid or 0)
+            if prop_id is None and cfg.derive_missing_variables:
+                prop_id = header.property_id
+            if prop_id:
+                key_prop_by_header[header.header_id] = prop_id
+
+        if key_prop_by_header:
             key_prop_cats = queries.load_property_as_categorisation(
                 self.session,
-                key_prop_ids,
+                set(key_prop_by_header.values()),
+                window,
             )
-            for col in columns:
-                if (
-                    col.key_variable_vid
-                    and col.key_variable_vid in key_vid_prop_ids
-                ):
-                    prop_id = key_vid_prop_ids[col.key_variable_vid]
-                    atm_dm = key_prop_cats.get(prop_id)
-                    if atm_dm:
-                        col.key_categorisations = [
-                            DimensionMember(
-                                property_id=atm_dm.property_id,
-                                dimension_label=atm_dm.member_label,
-                                dimension_code=atm_dm.member_code,
-                                domain_code=atm_dm.domain_code,
-                                member_label="",
-                                member_code="",
-                            ),
-                        ]
+            for header in all_headers:
+                prop_id = key_prop_by_header.get(header.header_id)
+                atm_dm = key_prop_cats.get(prop_id) if prop_id else None
+                if atm_dm:
+                    header.key_categorisations = [
+                        DimensionMember(
+                            property_id=atm_dm.property_id,
+                            dimension_label=atm_dm.member_label,
+                            dimension_code=atm_dm.member_code,
+                            domain_code=atm_dm.domain_code,
+                            member_label="",
+                            member_code="",
+                        ),
+                    ]
 
         # Build cell data
         row_ids = {h.header_id for h in rows}
@@ -248,6 +321,30 @@ class LayoutExporterService:
             dp_cats,
             variable_info,
         )
+
+        # Cells whose variable has not been generated yet
+        if cfg.derive_missing_variables:
+            processing.derive_missing_cell_data(
+                cells,
+                all_headers,
+                property_info,
+                context_cats.get(table_context_id, [])
+                if table_context_id
+                else [],
+            )
+
+        # Possible values of enumerated cells and key headers
+        enum_subcat_vids = processing.resolve_enumeration_sources(
+            cells,
+            all_headers,
+        )
+        if enum_subcat_vids:
+            enumerations = queries.load_enumerations(
+                self.session,
+                enum_subcat_vids,
+                window,
+            )
+            processing.attach_enumerations(cells, all_headers, enumerations)
 
         return processing.build_table_layout(tv, columns, rows, sheets, cells)
 

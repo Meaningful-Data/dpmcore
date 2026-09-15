@@ -17,6 +17,7 @@ from dpmcore.orm.glossary import (
     ItemCategory,
     Property,
     PropertyCategory,
+    SupercategoryComposition,
 )
 from dpmcore.orm.infrastructure import (
     Concept,
@@ -42,7 +43,8 @@ from dpmcore.server.app import create_app
 #         exercises the per-version code change.
 #   - 52 "ASSET" (Asset type) — DataType=Enumeration, PropertyCategory
 #         links to enumerated Category ASSET_TYPE. Items LOAN (alive
-#         at 4.0 only) and BOND (alive throughout).
+#         at 4.0 only) and BOND (alive throughout). ASSET_TYPE also
+#         composes EQUITY_TYPE from 4.1, which is where SHARE is filed.
 #   - 53 "PARTY" — DataType=String, no enumeration.
 # ------------------------------------------------------------------ #
 
@@ -143,7 +145,31 @@ def seeded_engine(engine):
                 created_release_id=1,
                 owner_id=1,
             ),
+            Category(
+                category_id=61,
+                code="EQUITY_TYPE",
+                name="Equity type",
+                description="",
+                is_enumerated=True,
+                is_active=True,
+                is_external_ref_data=False,
+                created_release_id=1,
+                owner_id=1,
+            ),
         ]
+    )
+    s.flush()
+
+    # ASSET_TYPE is a super-category from 4.1 on: EQUITY_TYPE joins it,
+    # bringing SHARE into ASSET_TYPE's value set without SHARE ever
+    # having an ItemCategory row in ASSET_TYPE itself (#359).
+    s.add(
+        SupercategoryComposition(
+            supercategory_id=60,
+            category_id=61,
+            start_release_id=2,
+            end_release_id=None,
+        )
     )
     s.flush()
 
@@ -180,6 +206,7 @@ def seeded_engine(engine):
             # Enumeration members for property 52.
             Item(item_id=700, name="Loan", is_property=False, is_active=True),
             Item(item_id=701, name="Bond", is_property=False, is_active=True),
+            Item(item_id=702, name="Share", is_property=False, is_active=True),
         ]
     )
     s.flush()
@@ -268,6 +295,16 @@ def seeded_engine(engine):
                 code="BOND",
                 is_default_item=False,
                 signature="ASSET_TYPE(BOND)",
+                end_release_id=None,
+            ),
+            # Filed in the composed category, never in ASSET_TYPE.
+            ItemCategory(
+                item_id=702,
+                start_release_id=1,
+                category_id=61,
+                code="SHARE",
+                is_default_item=False,
+                signature="EQUITY_TYPE(SHARE)",
                 end_release_id=None,
             ),
         ]
@@ -389,7 +426,29 @@ class TestEnumeration:
         resp = client.get("/api/v1/structure/property/EBA/ASSET/4.1")
         p = resp.json()["data"]["properties"][0]
         codes = {i["code"] for i in p["enumeration"]["items"]}
-        assert codes == {"BOND"}
+        # LOAN gone (end=2); SHARE arrives with the composition.
+        assert codes == {"BOND", "SHARE"}
+
+    def test_a_composed_categorys_items_are_absent_before_it_joins(
+        self, client
+    ):
+        """The composition only opens at 4.1 (#359)."""
+        resp = client.get("/api/v1/structure/property/EBA/ASSET/4.0")
+        p = resp.json()["data"]["properties"][0]
+
+        assert "SHARE" not in {i["code"] for i in p["enumeration"]["items"]}
+
+    def test_each_item_names_the_category_filing_it(self, client):
+        resp = client.get("/api/v1/structure/property/EBA/ASSET/4.1")
+        enum = resp.json()["data"]["properties"][0]["enumeration"]
+
+        assert enum["categoryCode"] == "ASSET_TYPE"
+        assert {i["code"]: i["categoryCode"] for i in enum["items"]} == {
+            "BOND": "ASSET_TYPE",
+            "SHARE": "EQUITY_TYPE",
+        }
+        for item in enum["items"]:
+            assert item["signature"].startswith(f"{item['categoryCode']}(")
 
     def test_non_enumerated_property(self, client):
         resp = client.get("/api/v1/structure/property/EBA/PARTY/4.0")
@@ -470,15 +529,18 @@ class TestQueryBudget:
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["data"]["properties"]) == 3
-        # Budget breakdown:
+        # Budget breakdown (11 as of #359):
         #   3 release-resolution queries (filter_by_release internals);
         #   1 count, 1 main paginated query;
-        #   2 enumeration loads (PropertyCategory+Category, then
-        #     ItemCategory+Item — only when at least one property is
-        #     enumerated);
+        #   4 enumeration loads (PropertyCategory+Category,
+        #     SuperCategoryComposition, ItemCategory+Item, and the
+        #     member categories' codes — only when at least one
+        #     property is enumerated);
         #   1 owner lookup.
-        # ≤12 leaves headroom; budget is independent of property count.
-        assert counter.count <= 12, (
+        # The super-category lookup is a fixed cost, whatever the
+        # number of enumerated properties.
+        # ≤14 leaves headroom; budget is independent of property count.
+        assert counter.count <= 14, (
             f"property path issued {counter.count} queries — "
             f"likely an N+1 regression."
         )

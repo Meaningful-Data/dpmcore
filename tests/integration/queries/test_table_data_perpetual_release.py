@@ -273,7 +273,7 @@ def test_none_release_id_also_prefers_the_adopted_version(memory_session):
     assert data.loc[data["row_code"] == "0010", "variable_id"].iloc[0] == 50
 
 
-def test_resolve_current_table_vids_falls_back_when_nothing_is_adopted(
+def test_table_version_scope_falls_back_when_nothing_is_adopted(
     memory_session,
 ):
     """A table that only exists as drafts still resolves to something."""
@@ -312,8 +312,8 @@ def test_resolve_current_table_vids_falls_back_when_nothing_is_adopted(
     )
     session.commit()
 
-    table_vids = ViewDatapointsQuery._resolve_current_table_vids(
+    table_vids = ViewDatapointsQuery._resolve_table_version_scope(
         session, "T_ALLDRAFT", 9001
-    )
+    ).table_vids
 
     assert sorted(table_vids) == [201, 202]

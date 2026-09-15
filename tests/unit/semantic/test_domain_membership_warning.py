@@ -34,15 +34,24 @@ from dpmcore.dpm_xl.ast.nodes import (
     VarID,
     WhereClauseOp,
 )
+from dpmcore.dpm_xl.model_queries import PropertyDomains
 from dpmcore.dpm_xl.warning_collector import collect_warnings
+
+
+def _domains(own, members=()):
+    return PropertyDomains(own=frozenset(own), members=frozenset(members))
+
 
 # property_id -> domain, as the dictionary would resolve it at a release.
 PROPERTY_DOMAINS = {
-    901: {"qPO"},
-    902: {"qST"},
-    903: {"qAS"},
+    901: _domains({"qPO"}),
+    902: _domains({"qST"}),
+    903: _domains({"qAS"}),
     # A property in a non-enumerated category resolves to no domain.
-    904: set(),
+    904: None,
+    # A super-category: qTU holds one item of its own and draws the
+    # rest of its value set from the categories composing it.
+    905: _domains({"qTU"}, {"qFI", "qAI"}),
 }
 
 # item signature -> domain.
@@ -52,6 +61,12 @@ ITEM_DOMAINS = {
     "eba_RT:x14": {"RT"},
     "eba_AS:x2": {"AS"},
     "eba_qAS:qx1": {"qAS"},
+    # In qTU itself — the "not applicable / all" default item.
+    "eba_qTU:qx0": {"qTU"},
+    # In categories composing qTU: offered by some of its columns.
+    "eba_qFI:qx2366": {"qFI"},
+    "eba_qFI:qx9999": {"qFI"},
+    "eba_qAI:qx2006": {"qAI"},
 }
 
 
@@ -63,7 +78,7 @@ def stub_dictionary(monkeypatch):
         return {
             property_id: PROPERTY_DOMAINS[property_id]
             for property_id in property_ids
-            if PROPERTY_DOMAINS.get(property_id)
+            if PROPERTY_DOMAINS.get(property_id) is not None
         }
 
     def items(session, signatures, release_id=None):
@@ -107,8 +122,13 @@ def fixture_keys(monkeypatch):
     return asked
 
 
-def _selection(*property_ids, table="C_14.00", cols=("0060",)):
-    """A cell selection resolving to one data point per property."""
+def _selection(*property_ids, table="C_14.00", cols=("0060",), cells=None):
+    """A cell selection resolving to one data point per property.
+
+    Without *cells* the frame carries no cell identity, which is how a
+    caller that cannot locate the data points looks: the header
+    subcategory is then unreachable and the domains are all there is.
+    """
     node = VarID(
         table=table,
         rows=None,
@@ -117,7 +137,11 @@ def _selection(*property_ids, table="C_14.00", cols=("0060",)):
         interval=None,
         default=None,
     )
-    node.data = pd.DataFrame({"property_id": list(property_ids)})
+    columns = {"property_id": list(property_ids)}
+    if cells is not None:
+        columns["table_vid"] = [vid for vid, _cell in cells]
+        columns["cell_id"] = [cell for _vid, cell in cells]
+    node.data = pd.DataFrame(columns)
     return node
 
 
@@ -319,6 +343,113 @@ class TestComponentResolution:
         )
 
         assert len(_run(node)) == 2
+
+
+class TestSuperCategories:
+    """A super-category widens the domain; a header narrows it back.
+
+    Property 905 is typed on ``qTU``, which holds its own default item
+    and composes ``qFI`` and ``qAI``. The column's header names a
+    subcategory listing a subset of the members' items, which is what
+    the component actually offers (#359).
+    """
+
+    @pytest.fixture
+    def offered(self, monkeypatch):
+        """Every data point of table 7066 offers ``eba_qFI:qx2366``."""
+
+        def cells(session, cells, release_id=None):
+            return {
+                (table_vid, cell_id, 905): 20918
+                for table_vid, cell_id in cells
+                if table_vid == 7066
+            }
+
+        def signatures(session, vids, release_id=None):
+            return {vid: {"eba_qFI:qx2366"} for vid in vids}
+
+        monkeypatch.setattr(
+            domain_membership.SubCategoryQuery,
+            "get_cell_subcategory_vids",
+            staticmethod(cells),
+        )
+        monkeypatch.setattr(
+            domain_membership.SubCategoryQuery,
+            "get_subcategory_signatures",
+            staticmethod(signatures),
+        )
+
+    def test_an_item_of_a_composing_category_is_silent(self):
+        node = BinOp(_selection(905), "=", _item("eba_qFI:qx2366"))
+
+        assert _run(node) == []
+
+    def test_the_super_categorys_own_item_is_silent(self):
+        node = BinOp(_selection(905), "=", _item("eba_qTU:qx0"))
+
+        assert _run(node) == []
+
+    def test_an_item_outside_every_composing_category_warns(self):
+        node = BinOp(_selection(905), "=", _item("eba_PL:x72"))
+
+        (warning,) = _run(node)
+
+        assert "takes items from domain qAI, qFI, qTU" in warning
+
+    def test_without_cell_identity_the_widened_domain_stands(self):
+        """No table_vid/cell_id column: nothing to look a header up by."""
+        node = BinOp(_selection(905), "=", _item("eba_qFI:qx9999"))
+
+        assert _run(node) == []
+
+    def test_a_member_item_the_column_does_not_offer_warns(self, offered):
+        node = BinOp(
+            _selection(905, cells=[(7066, 800)]), "=", _item("eba_qFI:qx9999")
+        )
+
+        (warning,) = _run(node)
+
+        assert "[eba_qFI:qx9999] belongs to domain qFI" in warning
+        assert "which composes qTU" in warning
+        assert "the 1 item { tC_14.00, c0060 } enumerates there" in warning
+        assert "the comparison is never true" in warning
+
+    def test_an_offered_member_item_stays_silent(self, offered):
+        node = BinOp(
+            _selection(905, cells=[(7066, 800)]), "=", _item("eba_qFI:qx2366")
+        )
+
+        assert _run(node) == []
+
+    def test_the_default_item_survives_the_narrowing(self, offered):
+        """The subcategory does not list it, but the domain still holds it."""
+        node = BinOp(
+            _selection(905, cells=[(7066, 800)]), "=", _item("eba_qTU:qx0")
+        )
+
+        assert _run(node) == []
+
+    def test_a_data_point_with_no_header_subcategory_widens_back(
+        self, offered
+    ):
+        """Table 9999 answers nothing, so the whole selection falls back."""
+        node = BinOp(
+            _selection(905, 905, cells=[(7066, 800), (9999, 801)]),
+            "=",
+            _item("eba_qFI:qx9999"),
+        )
+
+        assert _run(node) == []
+
+    def test_a_plain_domain_is_never_narrowed(self, offered):
+        """No members to recover precision for — and so no extra query."""
+        node = BinOp(
+            _selection(901, cells=[(7066, 800)]), "=", _item("eba_PL:x72")
+        )
+
+        (warning,) = _run(node)
+
+        assert "takes items from domain qPO" in warning
 
 
 class TestOpenKeys:

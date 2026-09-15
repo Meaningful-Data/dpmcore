@@ -18,6 +18,8 @@ from openpyxl.worksheet.hyperlink import Hyperlink
 from dpmcore.services.layout_exporter.models import (
     CellData,
     DimensionMember,
+    Enumeration,
+    EnumValue,
     ExportConfig,
     LayoutHeader,
     TableLayout,
@@ -48,11 +50,28 @@ _IDENTITY_FILL = PatternFill(
 _KEY_FILL = PatternFill(
     start_color="C4D79B", end_color="C4D79B", fill_type="solid"
 )
+# Cells of a table under construction, whose variable has not been
+# generated yet: what they show comes from the table's structure.
+_PENDING_FILL = PatternFill(
+    start_color="FDE9D9", end_color="FDE9D9", fill_type="solid"
+)
+_PENDING_NOTE = "No variable generated for this cell yet."
+_DERIVED_NOTE = "Property and dimensions derived from the table structure."
 # Excel worksheet titles are limited to 31 characters.
 _MAX_SHEET_TITLE = 31
 # Cap the identity list in a tooltip; a few datapoints are reported in
 # dozens of cells and the comment box would be unreadable.
 _MAX_IDENTITIES_IN_TOOLTIP = 15
+# Excel rejects a comment longer than 32,767 characters and shows a
+# repair dialog for the whole workbook, so the list of possible values
+# of a very large hierarchy (NACE runs to 841 codes) is cut short.
+_MAX_TOOLTIP_CHARS = 30000
+# Comment box geometry: it grows with the text so a long value list is
+# readable without resizing, up to a height that still fits a screen.
+_COMMENT_WIDTH = 400
+_COMMENT_MIN_HEIGHT = 200
+_COMMENT_MAX_HEIGHT = 600
+_COMMENT_LINE_HEIGHT = 14
 
 _TITLE_FONT = Font(bold=True, size=11)
 _HEADER_FONT = Font(bold=True, size=10)
@@ -96,6 +115,7 @@ class _IndexEntry(NamedTuple):
     title: str
     layout: TableLayout
     sheet_label: str
+    pending: int
 
 
 class ExcelLayoutWriter:
@@ -141,6 +161,11 @@ class ExcelLayoutWriter:
                         title=title,
                         layout=layout,
                         sheet_label=sheet.label if sheet else "",
+                        pending=_count_pending_cells(
+                            layout,
+                            sheet_id,
+                            active_sheets,
+                        ),
                     ),
                 )
 
@@ -162,11 +187,16 @@ class ExcelLayoutWriter:
         # A "Sheet" column is only meaningful when at least one table
         # was split into one worksheet per Z-axis sheet.
         has_sheets = any(e.sheet_label for e in entries)
+        # So is a "Pending" one: it counts the cells still waiting for
+        # a variable, which is zero for a finished dictionary.
+        has_pending = any(e.pending for e in entries)
 
         # Column headers
         headers = ["#", "Table Code", "Table Name"]
         if has_sheets:
             headers.append("Sheet")
+        if has_pending:
+            headers.append("Cells without a variable")
         for col, header in enumerate(headers, start=1):
             cell = ws.cell(row=3, column=col, value=header)
             cell.font = _HEADER_FONT
@@ -202,12 +232,25 @@ class ExcelLayoutWriter:
                 )
                 sheet_cell.border = _BORDER_ALL
 
+            if has_pending:
+                count = entry.pending
+                pending_cell = ws.cell(
+                    row=row,
+                    column=5 if has_sheets else 4,
+                    value=count,
+                )
+                pending_cell.border = _BORDER_ALL
+                if count:
+                    pending_cell.fill = _PENDING_FILL
+
         # Column widths
         ws.column_dimensions["A"].width = 6
         ws.column_dimensions["B"].width = 18
         ws.column_dimensions["C"].width = 80
         if has_sheets:
             ws.column_dimensions["D"].width = 50
+        if has_pending:
+            ws.column_dimensions["E" if has_sheets else "D"].width = 26
 
     def _write_table(  # noqa: C901
         self,
@@ -356,11 +399,19 @@ class ExcelLayoutWriter:
                     ann_val_cell.font = Font(size=9)
                     ann_val_cell.alignment = Alignment(horizontal="left")
 
-                if cfg.add_header_comments and sh.categorisations:
-                    tooltip = _format_categorisations(sh.categorisations)
-                    sc.comment = Comment(
-                        tooltip, "dpmcore", width=400, height=150
-                    )
+                if cfg.add_header_comments:
+                    # An open-sheet table keys its sheets off the Z
+                    # header's variable, so its possible values belong
+                    # here — there is no key cell to hang them on.
+                    parts = []
+                    if sh.categorisations:
+                        parts.append(
+                            _format_categorisations(sh.categorisations)
+                        )
+                    if sh.is_key:
+                        parts.append(_key_cell_tooltip(sh))
+                    if parts:
+                        sc.comment = _comment("\n\n".join(parts))
 
         # --- "Columns" label ---
         col_cell = ws.cell(
@@ -419,9 +470,8 @@ class ExcelLayoutWriter:
 
             # Header tooltip
             if cfg.add_header_comments and ch.categorisations:
-                tooltip = _format_categorisations(ch.categorisations)
-                cell.comment = Comment(
-                    tooltip, "dpmcore", width=400, height=150
+                cell.comment = _comment(
+                    _format_categorisations(ch.categorisations)
                 )
 
         # Grey-fill the entire column header grid (including empty cells)
@@ -523,12 +573,8 @@ class ExcelLayoutWriter:
 
             # Header tooltip
             if cfg.add_header_comments and rh.categorisations:
-                tooltip = _format_categorisations(rh.categorisations)
-                label_cell.comment = Comment(
-                    tooltip,
-                    "dpmcore",
-                    width=400,
-                    height=150,
+                label_cell.comment = _comment(
+                    _format_categorisations(rh.categorisations)
                 )
 
         # --- Open-row tables ---
@@ -571,28 +617,8 @@ class ExcelLayoutWriter:
                     cell.fill = _VOID_FILL
                 elif cell_data is None or cell_data.is_excluded:
                     cell.fill = _EXCLUDED_FILL
-                elif cell_data.variable_vid:
-                    # Build cell content: VariableID + data type + sign
-                    display_id = (
-                        cell_data.variable_id or cell_data.variable_vid
-                    )
-                    cell_lines = [str(display_id)]
-                    if cell_data.data_type_code:
-                        if (
-                            cell_data.data_type_code == "e"
-                            and cell_data.domain_label
-                        ):
-                            cell_lines.append(f"[{cell_data.domain_label}]")
-                        elif cell_data.data_type_code in _DATA_TYPE_SYMBOLS:
-                            cell_lines.append(
-                                _DATA_TYPE_SYMBOLS[cell_data.data_type_code]
-                            )
-                    # Only the sign stored on the cell is shown: a
-                    # NULL sign is "No Sign" in DPM Studio and must not
-                    # be reported as positive (DRR-1967, DRR-1970).
-                    if cell_data.sign:
-                        cell_lines.append(cell_data.sign)
-                    cell.value = "\n".join(cell_lines)
+                else:
+                    cell.value = _cell_content(cell_data) or None
                     cell.alignment = Alignment(
                         horizontal="center",
                         vertical="center",
@@ -601,26 +627,27 @@ class ExcelLayoutWriter:
 
                     # Identities: highlight datapoints reported by more
                     # than one cell of the workbook.
-                    location = _cell_location(
-                        layout.table_code,
-                        rh.code,
-                        ch.code,
-                        sheet_code,
-                    )
-                    others = self._other_identity_locations(
-                        cell_data.variable_vid,
-                        location,
-                    )
-                    if others:
-                        cell.fill = _IDENTITY_FILL
+                    others: list[str] = []
+                    if cell_data.variable_vid:
+                        location = _cell_location(
+                            layout.table_code,
+                            rh.code,
+                            ch.code,
+                            sheet_code,
+                        )
+                        others = self._other_identity_locations(
+                            cell_data.variable_vid,
+                            location,
+                        )
+                        if others:
+                            cell.fill = _IDENTITY_FILL
+                    else:
+                        cell.fill = _PENDING_FILL
 
                     # Cell tooltip
                     if cfg.add_cell_comments:
-                        cell.comment = Comment(
+                        cell.comment = _comment(
                             _cell_tooltip(cell_data, others),
-                            "dpmcore",
-                            width=400,
-                            height=200,
                         )
 
         # --- Annotations ---
@@ -712,7 +739,7 @@ class ExcelLayoutWriter:
             cell.font = _DATA_FONT
             cell.border = _BORDER_ALL
 
-            if ch.is_key and ch.key_variable_id:
+            if ch.is_key:
                 cell.fill = _KEY_FILL
                 if ch.key_data_type_code == "e":
                     type_symbol = f"[{ch.key_property_name}]"
@@ -721,7 +748,13 @@ class ExcelLayoutWriter:
                         ch.key_data_type_code,
                         ch.key_data_type_code,
                     )
-                lines = [str(ch.key_variable_id), type_symbol]
+                lines = (
+                    []
+                    if ch.key_variable_id is None
+                    else [str(ch.key_variable_id)]
+                )
+                if type_symbol:
+                    lines.append(type_symbol)
                 if ch.key_property_name:
                     lines.append(f"<{ch.key_property_name}>")
                 cell.value = "\n".join(lines)
@@ -730,59 +763,42 @@ class ExcelLayoutWriter:
                     vertical="center",
                     wrap_text=True,
                 )
+                if cfg.add_cell_comments:
+                    cell.comment = _comment(_key_cell_tooltip(ch))
             else:
                 cell_data = layout.cells.get((None, ch.header_id, sheet_id))
-                if (
-                    cell_data is not None
-                    and not cell_data.is_excluded
-                    and cell_data.variable_vid
-                ):
-                    display_id = (
-                        cell_data.variable_id or cell_data.variable_vid
-                    )
-                    cell_lines = [str(display_id)]
-                    if cell_data.data_type_code:
-                        if (
-                            cell_data.data_type_code == "e"
-                            and cell_data.domain_label
-                        ):
-                            cell_lines.append(f"[{cell_data.domain_label}]")
-                        elif cell_data.data_type_code in _DATA_TYPE_SYMBOLS:
-                            cell_lines.append(
-                                _DATA_TYPE_SYMBOLS[cell_data.data_type_code]
-                            )
-                    if cell_data.sign:
-                        cell_lines.append(cell_data.sign)
-                    cell.value = "\n".join(cell_lines)
+                if cell_data is not None and cell_data.is_void:
+                    cell.fill = _VOID_FILL
+                elif cell_data is None or cell_data.is_excluded:
+                    cell.fill = _EXCLUDED_FILL
+                else:
+                    cell.value = _cell_content(cell_data) or None
                     cell.alignment = Alignment(
                         horizontal="center",
                         vertical="center",
                         wrap_text=True,
                     )
 
-                    location = _cell_location(
-                        layout.table_code,
-                        "",
-                        ch.code,
-                        sheet_code,
-                    )
-                    others = self._other_identity_locations(
-                        cell_data.variable_vid,
-                        location,
-                    )
-                    if others:
-                        cell.fill = _IDENTITY_FILL
-                    if cfg.add_cell_comments:
-                        cell.comment = Comment(
-                            _cell_tooltip(cell_data, others),
-                            "dpmcore",
-                            width=400,
-                            height=200,
+                    others = []
+                    if cell_data.variable_vid:
+                        location = _cell_location(
+                            layout.table_code,
+                            "",
+                            ch.code,
+                            sheet_code,
                         )
-                elif cell_data is not None and cell_data.is_void:
-                    cell.fill = _VOID_FILL
-                else:
-                    cell.fill = _EXCLUDED_FILL
+                        others = self._other_identity_locations(
+                            cell_data.variable_vid,
+                            location,
+                        )
+                        if others:
+                            cell.fill = _IDENTITY_FILL
+                    else:
+                        cell.fill = _PENDING_FILL
+                    if cfg.add_cell_comments:
+                        cell.comment = _comment(
+                            _cell_tooltip(cell_data, others),
+                        )
 
     def _other_identity_locations(
         self,
@@ -1057,12 +1073,85 @@ def _build_identity_index(layouts: list[TableLayout]) -> dict[int, list[str]]:
     return {vvid: locs for vvid, locs in locations.items() if len(locs) > 1}
 
 
+def _count_pending_cells(
+    layout: TableLayout,
+    sheet_id: Optional[int],
+    active_sheets: list[LayoutHeader],
+) -> int:
+    """Reportable cells of one worksheet that have no variable yet.
+
+    A Z-axis-split table is written one worksheet per sheet, each
+    rendering only the cells keyed with its own ``sheet_id``, so the
+    count is taken over those alone — counting the whole layout would
+    repeat the table's total on every one of its rows in the index.
+
+    An open table draws one key cell per key column on every one of
+    its worksheets, from the header rather than from a cell, and those
+    count as well. So does the Z key header of an open-sheet table,
+    over ``active_sheets`` — the Z headers this worksheet annotates.
+    """
+    pending = sum(
+        1
+        for (_row_id, _col_id, cell_sheet_id), cd in layout.cells.items()
+        if cell_sheet_id == sheet_id
+        and not cd.variable_vid
+        and not cd.is_excluded
+        and not cd.is_void
+    )
+    # The key cells of an open table are rendered from their header
+    # and have no ``cells`` entry of their own, so they have to be
+    # counted here too — the worksheet already flags them as pending.
+    if not layout.rows:
+        pending += sum(
+            1
+            for ch in layout.columns
+            if ch.is_key and not ch.is_abstract and not ch.key_variable_vid
+        )
+    # An open-sheet table keys its sheets off the Z header's variable,
+    # which the worksheet flags as pending in the header's comment
+    # rather than in a cell of its own.
+    pending += sum(
+        1
+        for sh in active_sheets
+        if sh.is_key and not sh.is_abstract and not sh.key_variable_vid
+    )
+    return pending
+
+
+def _cell_content(cell_data: CellData) -> str:
+    """What a data cell shows: variable id, data type and sign.
+
+    A cell whose variable has not been generated yet has no id to
+    show, so it starts at the data type — blank when even that is
+    unknown.
+    """
+    lines = []
+    if cell_data.variable_vid:
+        lines.append(str(cell_data.variable_id or cell_data.variable_vid))
+    if cell_data.data_type_code:
+        if cell_data.data_type_code == "e" and cell_data.domain_label:
+            lines.append(f"[{cell_data.domain_label}]")
+        elif cell_data.data_type_code in _DATA_TYPE_SYMBOLS:
+            lines.append(_DATA_TYPE_SYMBOLS[cell_data.data_type_code])
+    # Only the sign stored on the cell is shown: a NULL sign is
+    # "No Sign" in DPM Studio and must not be reported as positive
+    # (DRR-1967, DRR-1970).
+    if cell_data.sign:
+        lines.append(cell_data.sign)
+    return "\n".join(lines)
+
+
 def _cell_tooltip(cell_data: CellData, identities: list[str]) -> str:
     """Tooltip for a data cell: variable ids, identities, dimensions."""
     lines = []
+    if not cell_data.variable_vid:
+        lines.append(_PENDING_NOTE)
+        if cell_data.is_derived:
+            lines.append(_DERIVED_NOTE)
     if cell_data.variable_id:
         lines.append(f"VariableID = {cell_data.variable_id}")
-    lines.append(f"VariableVID = {cell_data.variable_vid}")
+    if cell_data.variable_vid:
+        lines.append(f"VariableVID = {cell_data.variable_vid}")
     if identities:
         shown = identities[:_MAX_IDENTITIES_IN_TOOLTIP]
         lines.append("")
@@ -1074,7 +1163,102 @@ def _cell_tooltip(cell_data: CellData, identities: list[str]) -> str:
     if cell_data.dp_categorisations:
         lines.append("")
         lines.append(_format_categorisations(cell_data.dp_categorisations))
+    if cell_data.enumeration:
+        lines.append("")
+        lines.append(_format_enumeration(cell_data.enumeration))
+    return _fit_tooltip("\n".join(lines))
+
+
+def _key_cell_tooltip(header: LayoutHeader) -> str:
+    """Tooltip for the key cell of an open table."""
+    lines = []
+    if not header.key_variable_vid:
+        lines.append(_PENDING_NOTE)
+        if header.key_property_name:
+            lines.append(_DERIVED_NOTE)
+    if header.key_variable_id:
+        lines.append(f"VariableID = {header.key_variable_id}")
+    if header.key_variable_vid:
+        lines.append(f"VariableVID = {header.key_variable_vid}")
+    if header.key_property_name:
+        lines.append(f"Property = {header.key_property_name}")
+    if header.key_enumeration:
+        lines.append("")
+        lines.append(_format_enumeration(header.key_enumeration))
+    return _fit_tooltip("\n".join(lines))
+
+
+def _format_enumeration(enum: Enumeration) -> str:
+    """Format the possible values of an enumerated cell.
+
+    Child values are indented under their parent, matching the order
+    and nesting of the hierarchy.
+    """
+    title = f"Possible values - ({enum.code}) {enum.name}"
+    lines = [f"{title} [{len(enum.values)}]:"]
+    lines.extend(
+        f"  {'  ' * value.depth}({_member_signature(enum, value)}) "
+        f"{value.label}"
+        for value in enum.values
+    )
     return "\n".join(lines)
+
+
+def _member_signature(enum: Enumeration, value: EnumValue) -> str:
+    """Fully qualified member signature, e.g. ``eba_CU:ALL``.
+
+    Members imported without a signature fall back to the plain
+    ``domain:code`` pair.
+    """
+    return value.signature or f"{enum.category_code}:{value.code}"
+
+
+def _fit_tooltip(text: str) -> str:
+    """Cut a tooltip down to what Excel accepts, on a line boundary."""
+    if len(text) <= _MAX_TOOLTIP_CHARS:
+        return text
+    lines = text.split("\n")
+    # The marker counts against the cap too, so reserve its longest
+    # possible form up front. Without this the result overshoots by the
+    # marker's length, which would also make a second pass over an
+    # already-fitted tooltip truncate it again.
+    budget = _MAX_TOOLTIP_CHARS - len(f"... and {len(lines)} more lines\n")
+    kept: list[str] = []
+    used = 0
+    for index, line in enumerate(lines):
+        used += len(line) + 1
+        if used > budget:
+            hidden = len(lines) - index
+            if not kept:
+                # A first line longer than the whole budget would leave
+                # the tooltip with nothing but the marker, so cut the
+                # line itself instead of dropping it.
+                kept.append(line[:budget])
+                hidden -= 1
+            if hidden:
+                kept.append(f"... and {hidden} more lines")
+            break
+        kept.append(line)
+    return "\n".join(kept)
+
+
+def _comment(text: str) -> Comment:
+    """Build a comment sized to its content.
+
+    The text is fitted here rather than by the callers: several
+    tooltips are assembled from parts that were each fitted on their
+    own, and only their concatenation can breach Excel's limit.
+    """
+    fitted = _fit_tooltip(text)
+    height = _COMMENT_MIN_HEIGHT + _COMMENT_LINE_HEIGHT * max(
+        0, fitted.count("\n") - 8
+    )
+    return Comment(
+        fitted,
+        "dpmcore",
+        width=_COMMENT_WIDTH,
+        height=min(height, _COMMENT_MAX_HEIGHT),
+    )
 
 
 def _collect_axis_dimensions(
