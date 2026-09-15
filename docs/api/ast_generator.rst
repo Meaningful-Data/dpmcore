@@ -11,6 +11,13 @@ tables, preconditions, and dependency information.
 The same script generation is exposed through the ``generate-script``
 CLI command and the ``/api/v1/scripts`` REST endpoint.
 
+The service also exports a module's **calculations** set --
+:meth:`~ASTGeneratorService.calculations_for_module` and its companion
+:meth:`~ASTGeneratorService.calculations_datapoints` -- which is the
+operations linked to the module version through ``OperationOutput``,
+rather than the validations scoped to it. That export is exposed through
+the ``export-calculations`` CLI command.
+
 ASTGeneratorService
 -------------------
 
@@ -18,3 +25,14 @@ ASTGeneratorService
    :members:
    :undoc-members:
    :show-inheritance:
+
+Calculations export
+-------------------
+
+.. module:: dpmcore.services.calculations_export
+
+.. autoclass:: CalculationsExport
+
+.. autoclass:: CalculationsExporter
+   :members:
+   :undoc-members:
