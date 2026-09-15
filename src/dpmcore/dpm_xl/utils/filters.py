@@ -318,6 +318,66 @@ def filter_active_only(query: Any, end_col: Any) -> Any:
     return query.filter(or_(end_col.is_(None), end_col.in_(perpetual_ids)))
 
 
+def filter_live_only(query: Any, start_col: Any, end_col: Any) -> Any:
+    """Filter for versions that are open now *and* already published.
+
+    :func:`filter_active_only` answers "still open"; this narrows that to
+    "still open **and** not a draft", by also dropping rows introduced
+    only by a perpetual release — an undated or non-chronological (e.g.
+    ``"Playground"``) release, which is the working state rather than a
+    published one. A row starting there exists only in the draft
+    dictionary, so a consumer that reports the published model must not
+    see it.
+
+    This is the rule the EBA ``drr_datapoints`` view bakes in as
+    ``(EndReleaseID IS NULL OR EndReleaseID = 9999) AND StartReleaseID
+    != 9999``. ``9999`` is that distribution's perpetual release; dpmcore
+    identifies one by :func:`~dpmcore.orm.release_sort_order.compute_sort_order`
+    instead of by a literal ID, so the same rule holds on a database
+    whose working release is numbered anything else.
+
+    Unlike a release window, this ignores ``release_id`` entirely: it
+    always describes the *current* state of the dictionary.
+
+    A ``NULL`` start release is treated as published — it carries no
+    perpetual marker, so it cannot be a draft introduced by one. (The
+    EBA original's ``!= 9999`` drops it, but a ``NULL`` start in DPM
+    means "has always existed", not "unpublished".)
+
+    Args:
+        query: SQLAlchemy ``Query`` — must be a session-bound ``Query``
+            (i.e. produced by ``Session.query(...)``); see
+            :func:`filter_by_release`.
+        start_col: Column for start release ID (FK to ``Release``).
+        end_col: Column for end release ID (FK to ``Release``).
+
+    Returns:
+        Filtered query.
+
+    Raises:
+        TypeError: If ``query`` is not a session-bound SQLAlchemy
+            ``Query``.
+    """
+    session = getattr(query, "session", None)
+    if session is None:
+        raise TypeError(
+            "filter_live_only(query=...) expects a session-bound "
+            "SQLAlchemy Query (Session.query(...))."
+        )
+    sort_orders = load_release_sort_orders(session)
+    perpetual_ids = release_ids_for_sort_order(
+        sort_orders, ge=compute_sort_order(None, None)
+    )
+    query = query.filter(or_(end_col.is_(None), end_col.in_(perpetual_ids)))
+    if not perpetual_ids:
+        # No perpetual release in this database: nothing can be a draft,
+        # and an empty ``NOT IN ()`` is a tautology SQLAlchemy warns on.
+        return query
+    return query.filter(
+        or_(start_col.is_(None), start_col.notin_(perpetual_ids))
+    )
+
+
 def filter_item_version(
     sort_orders: Dict[int, int],
     ref_sort_order: Optional[int],

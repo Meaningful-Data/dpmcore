@@ -216,6 +216,7 @@ class OperandsChecking(ASTTemplate, ABC):
         ast: AST,
         release_id: int | None,
         is_scripting: bool = False,
+        live_table_versions: bool = False,
     ) -> None:
         self.expression = expression
         self.release_id = release_id
@@ -243,6 +244,10 @@ class OperandsChecking(ASTTemplate, ABC):
         # is the type. Surfaced as the runtime-binding contract.
         self.parameters: list[ParameterRef] = []
         self.is_scripting = is_scripting
+        # Read each table's live (open + published) version instead of
+        # the one effective at release_id -- see
+        # ViewDatapointsQuery.get_table_data.
+        self.live_table_versions = live_table_versions
 
         self.session = session
 
@@ -519,6 +524,7 @@ class OperandsChecking(ASTTemplate, ABC):
                 table_info["cols"],
                 table_info["sheets"],
                 self.release_id,
+                self.live_table_versions,
             )
             # Insert data type on each node by selecting only data required by node
             for node in self.operands[table]:
@@ -607,8 +613,13 @@ class OperandsChecking(ASTTemplate, ABC):
             raise errors.SemanticError(
                 "1-10", table=node.partial_selection.table
             )
+        # Scoped to this statement only: a script is parsed as one AST,
+        # so leaving it set would silently graft this with-context onto
+        # every following operation's operands.
+        previous = self.partial_selection
         self.partial_selection = node.partial_selection
         self.visit(node.expression)
+        self.partial_selection = previous
 
     def visit_VarID(self, node: VarID) -> None:
 
