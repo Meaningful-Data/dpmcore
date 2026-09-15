@@ -117,6 +117,13 @@ class DAGAnalyzer(ASTTemplate):
             # iteration order.
             for output in calc["outputs"]:
                 for sub_key, sub_calc in self.dependencies.items():
+                    # Never against itself. A statement that reads the
+                    # cell it writes -- a time_shift carry-forward reads
+                    # the previous period -- is not a cycle, but a
+                    # self-edge keeps its own indegree above zero and
+                    # Kahn's algorithm reports one.
+                    if sub_key == key:
+                        continue
                     if output in sub_calc["inputs"]:
                         edges.append((key, sub_key))
 
