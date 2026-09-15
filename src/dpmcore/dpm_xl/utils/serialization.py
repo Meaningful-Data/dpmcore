@@ -713,6 +713,21 @@ class ASTToJSONVisitor(NodeVisitor):
             "reference_period": node.component,
         }
 
+    def visit_DateConstructorOp(self, node: Any) -> NodeDict:
+        """Visit DateConstructorOp nodes.
+
+        ``year``/``month``/``day`` are full Nodes (§10.3.5 admits a
+        Recordset in any of the three positions), so each is serialized
+        recursively rather than copied as a raw value.
+        """
+        return {
+            "class_name": "DateConstructorOp",
+            "op": node.op,
+            "year": self.visit(node.year),
+            "month": self.visit(node.month),
+            "day": self.visit(node.day),
+        }
+
     def visit_AnnualiseOp(self, node: Any) -> NodeDict:
         """Visit AnnualiseOp nodes."""
         return {
