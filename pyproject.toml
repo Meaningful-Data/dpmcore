@@ -51,7 +51,7 @@ documentation = "https://docs.dpmcore.meaningfuldata.eu"
 # should stay within semver compatibility.
 server = ["fastapi>=0.141.1", "uvicorn[standard]>=0.52.1"]
 django = ["django>=5.2.17", "mssql-django>=1.8.0"]
-postgres = ["psycopg2-binary>=2.9.12,<3.0"]
+postgres = ["psycopg2-binary>=2.9.13,<3.0"]
 sqlserver = ["pyodbc>=5.0"]
 # pandas / numpy ranges mirror vtlengine's published pins so that
 # dpmcore + vtlengine can be co-installed without resolver conflicts.
@@ -64,7 +64,7 @@ all = [
     "uvicorn[standard]>=0.52.1",
     "django>=5.2.17",
     "mssql-django>=1.8.0",
-    "psycopg2-binary>=2.9.12,<3.0",
+    "psycopg2-binary>=2.9.13,<3.0",
     "pyodbc>=5.0",
     "pandas>=2.1.4,<3.0",
     "numpy>=2.2.0,<2.3",
