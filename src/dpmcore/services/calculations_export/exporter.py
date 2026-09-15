@@ -104,9 +104,11 @@ class CalculationsExporter:
         module_vid = get_module_version_id(
             session, module_code, reference_date
         )
-        module_uri, framework_code = get_module_uri(session, module_vid)
         module_meta = get_module_metadata(session, module_vid)
         release_id = module_meta["start_release_id"]
+        module_uri, framework_code = get_module_uri(
+            session, module_vid, release_id
+        )
         release_info = get_release_info(session, release_id, publication_date)
 
         calculations = self._collect_calculations(module_vid, module_code)
@@ -297,7 +299,7 @@ class CalculationsExporter:
             release_id: Release to resolve at.
 
         Returns:
-            ``{module_uri: {"tables": {...}}}``.
+            ``{module_uri: {"tables": {...}, "variables": {...}}}``.
         """
         data_types = get_data_types(
             self.session, dependencies.all_datapoints, release_id
@@ -315,8 +317,16 @@ class CalculationsExporter:
         for dep_module_code, dep_info in grouped.items():
             if dep_module_code == module_code:
                 continue
-            dep_uri, _ = get_module_uri(self.session, dep_info["module_vid"])
-            result[dep_uri] = {"tables": dep_info["tables"]}
+            dep_uri, _ = get_module_uri(
+                self.session, dep_info["module_vid"], release_id
+            )
+            result[dep_uri] = {
+                "tables": dep_info["tables"],
+                # The union of the tables' variables. Redundant with
+                # them, but the consumer contract carries both and reads
+                # this one directly rather than re-deriving it.
+                "variables": _merged_variables(dep_info["tables"]),
+            }
         return result
 
     def _outputs(
@@ -385,6 +395,27 @@ class CalculationsExporter:
                     str(var_id), "m"
                 )
         return output_variables, output_tables
+
+
+def _merged_variables(
+    tables: Dict[str, Dict[str, Any]],
+) -> Dict[str, str]:
+    """Return one ``{variable_id: data_type}`` map for a module's tables.
+
+    A variable shared by two tables of the same module carries the same
+    data type in both, so merging cannot lose information.
+
+    Args:
+        tables: The module's table entries, each with a ``variables``
+            map.
+
+    Returns:
+        The merged variables map, ordered by variable id.
+    """
+    merged: Dict[str, str] = {}
+    for table in tables.values():
+        merged.update(table.get("variables", {}))
+    return {key: merged[key] for key in sorted(merged, key=int)}
 
 
 def _build_expression(calculations: List[Dict[str, Any]]) -> str:

@@ -361,6 +361,26 @@ class TestCalculationsForModule:
         # flattened back to the "m" default.
         assert tables[DEP_TABLE]["variables"] == {"22001": "m"}
 
+    def test_a_dependency_module_carries_its_merged_variables(
+        self, calc_session
+    ):
+        """The consumer contract wants ``variables`` beside ``tables``.
+
+        It is the union of the module's tables' variables, so a reader
+        does not have to walk the tables to learn what the module
+        contributes.
+        """
+        ns = _namespace(
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+        )
+
+        (dep_uri,) = ns["dependency_modules"]
+        entry = ns["dependency_modules"][dep_uri]
+        assert set(entry) == {"tables", "variables"}
+        assert entry["variables"] == {"22001": "m"}
+
     def test_data_types_come_from_the_dictionary(self, calc_session):
         calc_session.query(DataType).filter(DataType.data_type_id == 1).update(
             {DataType.code: "p"}
@@ -624,3 +644,84 @@ class TestModuleUri:
             ASTGeneratorService(calc_session).calculations_for_module(
                 HOME_MODULE, REFERENCE_DATE
             )
+
+
+@pytest.mark.integration
+class TestWorkingReleaseUri:
+    """A draft release must not key an exported taxonomy URI.
+
+    ``filter_by_release`` already keeps a correctly-typed working
+    release out of a published export, so this only bites when the
+    export itself is keyed at one -- exporting the draft dictionary.
+    """
+
+    WORKING = 8003
+
+    def _seed(self, session):
+        session.add_all(
+            [
+                Release(release_id=RELEASE, code="8.0", date=date(2025, 1, 1)),
+                Release(release_id=LATER, code="8.1", date=date(2026, 1, 1)),
+                # Dated, but typed as the working dictionary: it sorts as
+                # the latest whatever its date says.
+                Release(
+                    release_id=self.WORKING,
+                    code="Playground",
+                    date=date(1970, 1, 1),
+                    type="playground",
+                ),
+                Framework(framework_id=1, code="CALC_FW"),
+                Module(module_id=1, framework_id=1),
+            ]
+        )
+        session.add(
+            ModuleVersion(
+                module_vid=1,
+                module_id=1,
+                code=HOME_MODULE,
+                version_number="1.0.0",
+                from_reference_date=date(2026, 1, 1),
+                to_reference_date=date(2026, 12, 31),
+                start_release_id=self.WORKING,
+                end_release_id=None,
+            )
+        )
+        session.commit()
+
+    def test_a_working_release_is_replaced_by_the_published_one(
+        self, memory_session, caplog
+    ):
+        from dpmcore.services.calculations_export.queries import (
+            get_module_uri,
+        )
+
+        self._seed(memory_session)
+
+        with caplog.at_level("WARNING"):
+            uri, _ = get_module_uri(memory_session, 1, self.WORKING)
+
+        # 8.1 is the newest published release; "Playground" never
+        # reaches the URI.
+        assert uri.endswith("/calc_fw/8.1/mod/calc_home")
+        assert "Playground" not in uri
+        # Substituting silently would hide that the exported content is
+        # still the working version's.
+        assert "working release" in caplog.text
+        assert "Playground" in caplog.text
+
+    def test_a_published_release_is_left_alone(self, memory_session, caplog):
+        from dpmcore.services.calculations_export.queries import (
+            get_module_uri,
+        )
+
+        self._seed(memory_session)
+        memory_session.query(ModuleVersion).filter(
+            ModuleVersion.module_vid == 1
+        ).update({ModuleVersion.start_release_id: RELEASE})
+        memory_session.commit()
+
+        with caplog.at_level("WARNING"):
+            uri, _ = get_module_uri(memory_session, 1, RELEASE)
+
+        assert uri.endswith("/calc_fw/8.0/mod/calc_home")
+        assert caplog.text == ""

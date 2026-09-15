@@ -1175,8 +1175,12 @@ def export_calculations(
         (dp_path, export.datapoints),
     ):
         path.parent.mkdir(parents=True, exist_ok=True)
+        # newline="\n" keeps the bytes identical on Windows: the export
+        # is compared byte for byte against the reference EBA output.
         path.write_text(
-            json.dumps(payload, indent=2, default=str), encoding="utf-8"
+            json.dumps(payload, indent=2, default=str),
+            encoding="utf-8",
+            newline="\n",
         )
 
     namespace: dict[str, Any] = next(iter(export.calculations.values()), {})
