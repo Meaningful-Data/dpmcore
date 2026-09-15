@@ -13,6 +13,8 @@ Usage::
         --database sqlite:///dpm.db -o ./graph.html
     dpmcore generate-graph --database sqlite:///dpm.db --table C_01.00 \
         -o ./graph.html
+    dpmcore export-calculations --module-code KRI \
+        --reference-date 2026-12-31 --database sqlite:///dpm.db
     dpmcore --version
 """
 
@@ -1090,6 +1092,101 @@ def export_layout(
             )
 
     click.echo(f"Exported to {path}")
+
+
+@main.command("export-calculations")
+@click.option(
+    "--module-code",
+    required=True,
+    help="Module code whose calculations to export (e.g. KRI).",
+)
+@click.option(
+    "--reference-date",
+    required=True,
+    help="Reference date (YYYY-MM-DD) selecting the module version.",
+)
+@click.option(
+    "--publication-date",
+    default=None,
+    help="Publication date stamped into the dpm_release block "
+    "(YYYY-MM-DD, default: today).",
+)
+@click.option(
+    "--database",
+    required=True,
+    help="SQLAlchemy database URL.",
+)
+@click.option(
+    "--output",
+    default=None,
+    type=click.Path(),
+    help="Where to write the export (default: "
+    "'<module_code>.json' in the current directory).",
+)
+@click.option(
+    "--datapoints-output",
+    default=None,
+    type=click.Path(),
+    help="Where to write the companion datapoint map (default: "
+    "'<output-base>_datapoints.json').",
+)
+def export_calculations(
+    module_code: str,
+    reference_date: str,
+    publication_date: str | None,
+    database: str,
+    output: str | None,
+    datapoints_output: str | None,
+) -> None:
+    """Export a module version's calculations set as JSON.
+
+    Writes two files: the calculations export, keyed by the module's EBA
+    taxonomy URI, and the companion datapoint map that names the cell
+    behind every datapoint it references.
+
+    Requires a database with an ``OperationOutput`` table — the link
+    from an operation to the module version it writes to, which the
+    Access DPM 2.0 distribution does not carry.
+    """
+    import json
+    from pathlib import Path
+
+    from dpmcore.connection import connect
+    from dpmcore.errors import DpmCoreError
+
+    out_path = Path(output) if output else Path(f"{module_code}.json")
+    dp_path = (
+        Path(datapoints_output)
+        if datapoints_output
+        else out_path.with_name(f"{out_path.stem}_datapoints.json")
+    )
+
+    try:
+        with connect(database) as db:
+            export = db.services.ast_generator.calculations_export(
+                module_code, reference_date, publication_date
+            )
+    except DpmCoreError as exc:
+        click.echo(f"Calculations export failed: {exc}", err=True)
+        sys.exit(1)
+
+    for path, payload in (
+        (out_path, export.calculations),
+        (dp_path, export.datapoints),
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(payload, indent=2, default=str), encoding="utf-8"
+        )
+
+    namespace: dict[str, Any] = next(iter(export.calculations.values()), {})
+    n_calcs = len(namespace.get("calculations", {}).get("operation_codes", []))
+    n_deps = len(namespace.get("dependency_modules", {}))
+    click.echo(
+        f"Wrote {out_path} ({n_calcs} calculations, "
+        f"{n_deps} dependency modules)"
+    )
+    click.echo(f"Wrote {dp_path} ({len(export.datapoints)} datapoints)")
 
 
 def _validate_graph_inputs(
