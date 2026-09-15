@@ -20,15 +20,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
-DEFAULT_DRR_PATH = Path.home() / "dev" / "EBA" / "drr_operations"
-DEFAULT_DB_URL = (
-    "mssql+pyodbc://SA:DRR%40local1@localhost:1433/DPM_EBA"
-    "?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"
-)
+# Both defaults describe a local parity setup and differ per developer,
+# so they come from the environment rather than being baked in:
+#   DPM_PARITY_DB_URL   SQLAlchemy URL of the DPM database to compare against
+#   DPM_PARITY_DRR_PATH checkout of the EBA drr_operations repository
+_DRR_PATH_ENV = os.environ.get("DPM_PARITY_DRR_PATH")
+DEFAULT_DRR_PATH = Path(_DRR_PATH_ENV) if _DRR_PATH_ENV else None
+DEFAULT_DB_URL = os.environ.get("DPM_PARITY_DB_URL")
 DEFAULT_WORKDIR = Path("/tmp/export_parity")  # noqa: S108
 PUBLICATION_DATE = "2026-01-01"
 
@@ -182,8 +185,19 @@ def main():
     )
     parser.add_argument("--modules", nargs="+", default=["KRI", "CODIS"])
     parser.add_argument("--reference-date", default="2026-12-31")
-    parser.add_argument("--db-url", default=DEFAULT_DB_URL)
-    parser.add_argument("--drr-path", type=Path, default=DEFAULT_DRR_PATH)
+    parser.add_argument(
+        "--db-url",
+        default=DEFAULT_DB_URL,
+        required=DEFAULT_DB_URL is None,
+        help="SQLAlchemy URL of the DPM database (env DPM_PARITY_DB_URL)",
+    )
+    parser.add_argument(
+        "--drr-path",
+        type=Path,
+        default=DEFAULT_DRR_PATH,
+        required=DEFAULT_DRR_PATH is None,
+        help="Path to the drr_operations checkout (env DPM_PARITY_DRR_PATH)",
+    )
     parser.add_argument("--workdir", type=Path, default=DEFAULT_WORKDIR)
     args = parser.parse_args()
 
