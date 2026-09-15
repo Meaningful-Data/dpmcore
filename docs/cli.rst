@@ -478,6 +478,77 @@ only rejected validations is dropped from the ``preconditions`` block
 rather than shipped with ``affected_operations`` the script does not
 contain.
 
+``dpmcore export-calculations``
+-------------------------------
+
+Export a module version's **calculations** set as JSON. Where
+``export-script`` scripts a module's validations, this exports the
+operations linked to the module version through ``OperationOutput`` --
+the ones that *write* into it.
+
+The calculations are parsed as one script, reordered so a calculation
+always follows the ones it consumes, and serialized with every operand
+resolved to its datapoints. Two files are written: the export itself,
+keyed by the module's EBA taxonomy URI, and a companion datapoint map
+naming the cell behind every datapoint the calculations reference.
+
+.. code-block:: text
+
+   dpmcore export-calculations --module-code <code>
+                               --reference-date <YYYY-MM-DD>
+                               --database <url>
+                               [--publication-date <YYYY-MM-DD>]
+                               [--output <path>] [--datapoints-output <path>]
+
+**Options:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Option
+     - Description
+   * - ``--module-code TEXT``
+     - Module code whose calculations to export, e.g. ``KRI``.
+       **(Required)**
+   * - ``--reference-date TEXT``
+     - Reference date, ``YYYY-MM-DD``. The module version whose
+       reference-date window contains it is the one exported; exactly
+       one must. **(Required)**
+   * - ``--database TEXT``
+     - SQLAlchemy database URL. **(Required)**
+   * - ``--publication-date TEXT``
+     - Publication date stamped into the ``dpm_release`` block.
+       Defaults to today.
+   * - ``--output PATH``
+     - Where to write the export. Defaults to ``<module_code>.json`` in
+       the current directory.
+   * - ``--datapoints-output PATH``
+     - Where to write the companion datapoint map. Defaults to
+       ``<output-base>_datapoints.json``.
+
+**Example:**
+
+.. code-block:: bash
+
+   dpmcore export-calculations \
+       --module-code KRI --reference-date 2026-12-31 \
+       --database sqlite:///dpm.db --output ./kri.json
+
+.. note::
+
+   The command needs a database carrying the ``OperationOutput`` table,
+   which links an operation to the module version it writes to. That
+   table exists in the EBA SQL Server DPM databases but not in the
+   Access DPM 2.0 distribution, so a migrated Access database reports
+   the omission instead of exporting an empty set.
+
+   Cells are read from each table's **live** version -- open now and
+   already published -- rather than from the version effective at the
+   module's release, matching the EBA pipeline this export feeds. A
+   table version introduced only in a working (``Playground``) release
+   therefore never contributes datapoints.
+
 ``dpmcore export-layout``
 -------------------------
 

@@ -240,6 +240,30 @@ three are pairwise mutually exclusive — a bare `--release` (no
 single version active at that release, instead of naming a version
 directly.
 
+**Calculations export:**
+
+Export a module version's *calculations* — the operations linked to it
+through `OperationOutput`, the ones that write into it — as the JSON the
+downstream deployment consumes. The calculations are parsed as one
+script, reordered so a calculation follows the ones it consumes, and
+serialized with every operand resolved to its datapoints. Two files are
+written: the export, keyed by the module's EBA taxonomy URI, and a
+companion datapoint map.
+
+```bash
+dpmcore export-calculations --module-code KRI \
+    --reference-date 2026-12-31 \
+    --database sqlite:///dpm.db --output ./kri.json
+```
+
+The reference date selects the module version: exactly one must be valid
+at it. Cells are read from each table's *live* version — open now and
+already published — rather than the version effective at the module's
+release, so a table version introduced only in a working (`Playground`)
+release never contributes datapoints. The command needs a database
+carrying the `OperationOutput` table, which the Access DPM 2.0
+distribution does not have.
+
 **Calculations dependency graph:**
 
 Turn DPM-XL operations into a single self-contained HTML dependency graph —
