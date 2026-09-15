@@ -18,6 +18,7 @@ consumes.
 from __future__ import annotations
 
 import logging
+from collections import deque
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Set
 
 import pandas as pd
@@ -45,7 +46,7 @@ from dpmcore.dpm_xl.utils.serialization import (
     NodeDict,
     NodeValue,
 )
-from dpmcore.errors import InternalError
+from dpmcore.errors import InternalError, Invalid
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -98,8 +99,9 @@ class DAGAnalyzer(ASTTemplate):
             ast: The ``Start`` node holding the script's statements.
 
         Raises:
-            ValueError: If the calculations form a cycle, or two of them
+            Invalid: If the calculations form a cycle, or two of them
                 assign the same output.
+            InternalError: If the reordering would lose a statement.
         """
         self.visit(ast)
 
@@ -117,6 +119,11 @@ class DAGAnalyzer(ASTTemplate):
                     edges.append((key, sub_key))
 
         sorting = self._topological_sort(vertex, edges)
+        # The overwrite check is about the statements themselves, not
+        # about their order: run it even when nothing needs reordering,
+        # or two independent calculations writing the same cell go
+        # unreported.
+        self._check_overwriting(ast.children)
         if edges:
             self._sort_ast(ast, sorting)
 
@@ -134,7 +141,7 @@ class DAGAnalyzer(ASTTemplate):
             The statement numbers in dependency order.
 
         Raises:
-            ValueError: If the graph has a cycle.
+            Invalid: If the graph has a cycle.
         """
         indegree = dict.fromkeys(nodes, 0)
         successors: Dict[int, List[int]] = {n: [] for n in nodes}
@@ -142,24 +149,30 @@ class DAGAnalyzer(ASTTemplate):
             if a in indegree and b in indegree:
                 successors[a].append(b)
                 indegree[b] += 1
-        queue = [n for n in nodes if indegree[n] == 0]
+        queue = deque(n for n in nodes if indegree[n] == 0)
         order: List[int] = []
         while queue:
-            n = queue.pop(0)
+            n = queue.popleft()
             order.append(n)
             for m in successors[n]:
                 indegree[m] -= 1
                 if indegree[m] == 0:
                     queue.append(m)
         if len(order) != len(nodes):
-            raise ValueError("Cyclic dependency detected between calculations")
+            raise Invalid(
+                title="Cyclic calculations",
+                description=(
+                    "The module's calculations depend on each other in a "
+                    "cycle, so no evaluation order exists."
+                ),
+            )
         return order
 
     def _sort_ast(self, ast: Any, sorting: List[int]) -> None:
         """Apply the computed order to ``ast.children``.
 
         Raises:
-            ValueError: If the order does not account for every
+            InternalError: If the order does not account for every
                 statement -- reordering must never lose one.
         """
         calculations = list(ast.children)
@@ -169,11 +182,13 @@ class DAGAnalyzer(ASTTemplate):
             if 0 <= x - 1 < len(calculations)
         ]
         if len(ordered) != len(calculations):
-            raise ValueError(
-                f"Dependency order covers {len(ordered)} of "
-                f"{len(calculations)} calculations"
+            raise InternalError(
+                title="Incomplete calculation ordering",
+                description=(
+                    f"Dependency order covers {len(ordered)} of "
+                    f"{len(calculations)} calculations."
+                ),
             )
-        self._check_overwriting(ordered)
         ast.children = ordered
 
     def _check_overwriting(self, outputs: Sequence[Any]) -> None:
@@ -183,7 +198,7 @@ class DAGAnalyzer(ASTTemplate):
             outputs: The reordered statements.
 
         Raises:
-            ValueError: If an output is assigned more than once.
+            Invalid: If an output is assigned more than once.
         """
         seen: Set[str] = set()
         for output in outputs:
@@ -195,7 +210,13 @@ class DAGAnalyzer(ASTTemplate):
             if value is None:
                 continue
             if value in seen:
-                raise ValueError(f"Output {value} is assigned more than once")
+                raise Invalid(
+                    title="Duplicate calculation output",
+                    description=(
+                        f"Output {value} is assigned by more than one "
+                        "calculation."
+                    ),
+                )
             seen.add(value)
 
     def visit_Start(self, node: Any) -> None:
@@ -305,6 +326,61 @@ class DependencyTableExtractor(ASTTemplate):
         self.release_id = release_id
         self.tables: Dict[str, Dict[str, Any]] = {}
         self.all_datapoints: List[int] = []
+        # Operands repeat across a module's calculations, and
+        # get_filtered_datapoints is uncached: without this, the same
+        # selection is resolved once per occurrence, each time reloading
+        # the release sort orders behind the live-version filter.
+        self._datapoints_cache: Dict[
+            tuple[str, tuple[str, ...], tuple[str, ...], tuple[str, ...]],
+            List[int],
+        ] = {}
+
+    def _variable_ids(self, table: str, node: VarID) -> List[int]:
+        """Return the datapoint ids *node* selects, resolved once per key.
+
+        Args:
+            table: The operand's table code, already known non-empty.
+            node: The operand to resolve.
+
+        Returns:
+            The distinct ``VariableID``s the selection covers.
+        """
+        key = (
+            table,
+            tuple(node.rows or ()),
+            tuple(node.cols or ()),
+            tuple(node.sheets or ()),
+        )
+        cached = self._datapoints_cache.get(key)
+        if cached is not None:
+            return cached
+
+        # No release on the datapoints query on purpose. The table
+        # version is already pinned to the live one, and windowing the
+        # module join as well would empty the dependency set for a table
+        # whose live version has moved into a newer module version.
+        # ``group_tables_by_module`` applies the release scoping.
+        datapoints_df = ViewDatapointsQuery.get_filtered_datapoints(
+            self.session,
+            table,
+            {"rows": node.rows, "cols": node.cols, "sheets": node.sheets},
+            live_table_versions=True,
+        )
+        # A grey cell carries no variable: it is part of the rendering,
+        # never a datapoint, and its NaN would poison the id list.
+        variable_ids = (
+            []
+            if datapoints_df.empty
+            else [
+                int(v)
+                for v in datapoints_df["variable_id"]
+                .dropna()
+                .unique()
+                .tolist()
+            ]
+        )
+        self._datapoints_cache[key] = variable_ids
+        return variable_ids
 
     def _get_open_keys(self, table_code: str) -> Dict[str, str]:
         """Return ``{property_code: data_type}`` for a table's open keys."""
@@ -327,33 +403,19 @@ class DependencyTableExtractor(ASTTemplate):
         if not table:
             return
 
-        # No release on the datapoints query on purpose. The table
-        # version is already pinned to the live one, and windowing the
-        # module join as well would empty the dependency set for a table
-        # whose live version has moved into a newer module version.
-        # ``group_tables_by_module`` applies the release scoping.
-        datapoints_df = ViewDatapointsQuery.get_filtered_datapoints(
-            self.session,
-            table,
-            {"rows": node.rows, "cols": node.cols, "sheets": node.sheets},
-            live_table_versions=True,
-        )
-        if datapoints_df.empty:
-            return
-
-        # A grey cell carries no variable: it is part of the rendering,
-        # never a datapoint, and its NaN would poison the id list.
-        variable_ids = [
-            int(v)
-            for v in datapoints_df["variable_id"].dropna().unique().tolist()
-        ]
+        variable_ids = self._variable_ids(table, node)
         if not variable_ids:
             return
 
-        entry = self.tables.setdefault(
-            table,
-            {"variables": set(), "open_keys": self._get_open_keys(table)},
-        )
+        # Not setdefault: its default is evaluated eagerly, so the
+        # open-key query would run again on every operand naming a
+        # table already collected.
+        if table not in self.tables:
+            self.tables[table] = {
+                "variables": set(),
+                "open_keys": self._get_open_keys(table),
+            }
+        entry = self.tables[table]
         entry["variables"].update(variable_ids)
         self.all_datapoints.extend(variable_ids)
 
@@ -390,17 +452,23 @@ class VarIDDataEnricher(ASTTemplate):
         if filtered is None or filtered.empty:
             return
 
-        xyz_data = generate_xyz(
-            filtered[
-                [
-                    "row_code",
-                    "column_code",
-                    "sheet_code",
-                    "variable_id",
-                    "cell_id",
-                ]
-            ].copy()
-        )
+        # Keep the *_order columns: generate_xyz ranks X/Y/Z by the
+        # stored display order when they are present, and falls back to
+        # the code text when they are not -- which is the pre-#209
+        # ordering, wrong for any table showing a code out of sequence.
+        projection = [
+            "row_code",
+            "column_code",
+            "sheet_code",
+            "variable_id",
+            "cell_id",
+        ]
+        projection += [
+            column
+            for column in ("row_order", "column_order", "sheet_order")
+            if column in filtered.columns
+        ]
+        xyz_data = generate_xyz(filtered[projection].copy())
 
         unique_rows = filtered["row_code"].dropna().unique()
         unique_cols = filtered["column_code"].dropna().unique()

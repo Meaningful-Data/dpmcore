@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 
 from dpmcore.dpm_xl.ast.nodes import Constant, VarID
+from dpmcore.errors import Invalid
 from dpmcore.services.calculations_export.exporter import (
     CalculationsExporter,
     _build_datapoint_mapping,
@@ -122,17 +123,27 @@ class TestDAGAnalyzer:
             f"{_CELL_A} <- {_CELL_B} + 1;\n{_CELL_B} <- {_CELL_A} + 1;"
         )
 
-        with pytest.raises(ValueError, match="Cyclic dependency"):
+        with pytest.raises(Invalid, match="cycle"):
             DAGAnalyzer().create_dag(ast)
 
     def test_assigning_the_same_output_twice_is_reported(self):
-        # The third statement consumes the cell, so the DAG has edges
-        # and the overwrite check runs.
         ast = _parse(
             f"{_CELL_A} <- 1;\n{_CELL_A} <- 2;\n{_CELL_B} <- {_CELL_A} + 1;"
         )
 
-        with pytest.raises(ValueError, match="assigned more than once"):
+        with pytest.raises(Invalid, match="assigned by more than one"):
+            DAGAnalyzer().create_dag(ast)
+
+    def test_a_duplicate_output_is_reported_without_any_edge(self):
+        """The check is about the statements, not about their order.
+
+        Two independent calculations writing the same cell produce no
+        dependency edge, so nothing needs reordering -- the conflict
+        still has to be reported.
+        """
+        ast = _parse(f"{_CELL_A} <- 1;\n{_CELL_A} <- 2;")
+
+        with pytest.raises(Invalid, match="assigned by more than one"):
             DAGAnalyzer().create_dag(ast)
 
     def test_a_statement_that_assigns_nothing_is_kept(self):
@@ -312,6 +323,47 @@ class TestVarIDDataEnricher:
         payload = next(iter(enricher.payloads.values()))
         assert "row" not in payload
         assert payload["column"] == "0010"
+
+    def test_x_follows_the_display_order_not_the_code_text(self):
+        """Ranking a row axis by code text is the pre-#209 behaviour.
+
+        This table displays 0100 between 0010 and 0020, so the exported
+        x coordinates must be 1, 2, 3 in *display* order -- which is a
+        different answer from sorting the codes as strings.
+        """
+        frame = self._frame(
+            [
+                {
+                    "table_code": "A",
+                    "row_code": code,
+                    "row_order": order,
+                    "column_code": "0010",
+                    "column_order": 1,
+                    "sheet_code": None,
+                    "sheet_order": None,
+                    "variable_id": variable_id,
+                    "cell_id": variable_id,
+                    "data_type": "m",
+                    "cell_code": f"{{A, r{code}, c0010}}",
+                }
+                for code, order, variable_id in (
+                    ("0010", 1, 1),
+                    ("0100", 2, 2),
+                    ("0020", 3, 3),
+                )
+            ]
+        )
+        ast = _parse("x := {tA, r*, c0010};")
+
+        enricher = VarIDDataEnricher(frame)
+        enricher.visit(ast)
+
+        payload = next(iter(enricher.payloads.values()))
+        assert [(entry["x"], entry["row"]) for entry in payload["data"]] == [
+            (1, "0010"),
+            (2, "0100"),
+            (3, "0020"),
+        ]
 
 
 class TestHelpers:
