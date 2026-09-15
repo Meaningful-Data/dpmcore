@@ -245,6 +245,23 @@ def calc_session(memory_session):
     return session
 
 
+@pytest.fixture(autouse=True)
+def _clear_query_caches():
+    """The table-data and axis caches are keyed per engine, not per test.
+
+    Every in-memory SQLite engine shares one cache key, so an entry left
+    by an earlier test module would be served to the first test here.
+    Cleared on both sides of the yield for that reason.
+    """
+    from dpmcore.dpm_xl.model_queries import ViewDatapointsQuery
+
+    ViewDatapointsQuery._TABLE_DATA_CACHE.clear()
+    ViewDatapointsQuery._AXIS_ORDER_CACHE.clear()
+    yield
+    ViewDatapointsQuery._TABLE_DATA_CACHE.clear()
+    ViewDatapointsQuery._AXIS_ORDER_CACHE.clear()
+
+
 def _namespace(export):
     """The single namespace block of an export."""
     assert len(export) == 1
@@ -507,9 +524,138 @@ class TestWithExpressions:
         assert checker.partial_selection is None
 
 
+class TestOperationVersionWindow:
+    """Only the operation version effective at the export's release."""
+
+    EARLIER = 8000
+
+    def _supersede(self, session):
+        """Give operation 100 an older, already-closed version."""
+        session.add(
+            Release(release_id=self.EARLIER, code="7.0", date=date(2024, 1, 1))
+        )
+        session.flush()
+        session.add(
+            OperationVersion(
+                operation_vid=9100,
+                operation_id=100,
+                expression=(
+                    f"{{t{HOME_TABLE}, r0020, c{COLUMN}}} <- "
+                    f"{{t{DEP_TABLE}, r0010, c{COLUMN}}}"
+                ),
+                start_release_id=self.EARLIER,
+                end_release_id=RELEASE,
+            )
+        )
+        session.add(OperationOutput(operation_vid=9100, module_vid=1))
+        session.commit()
+
+    def test_a_superseded_version_is_not_exported(self, calc_session):
+        """``OperationOutput`` links every version, not just the current one.
+
+        Unwindowed, the closed version comes back beside its successor
+        and the two assign the same cell -- which the duplicate-output
+        check rejects, aborting the module's export outright.
+        """
+        self._supersede(calc_session)
+
+        ns = _namespace(
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+        )
+
+        assert ns["calculations"]["operation_codes"] == ["c_0001", "c_0002"]
+
+    def test_the_operations_are_read_in_a_stable_order(self, calc_session):
+        """Row order decides the script, so it cannot be left to the join."""
+        from dpmcore.services.calculations_export.queries import (
+            get_calculations,
+        )
+
+        rows = get_calculations(calc_session, 1, RELEASE)
+
+        assert [row["operation_vid"] for row in rows] == [100, 101]
+
+
+class TestDependencyScope:
+    def test_the_assigned_cell_is_not_a_dependency(self, calc_session):
+        """What a calculation writes is not something it reads.
+
+        ``ASTTemplate`` visits a ``PersistentAssignment``'s target, so
+        without an override the home table is collected as a dependency
+        of the calculation that writes into it.
+        """
+        from dpmcore.services.calculations_export.visitors import (
+            DependencyTableExtractor,
+        )
+
+        script = (
+            f"{{t{HOME_TABLE}, r0030, c{COLUMN}}} <- "
+            f"{{t{DEP_TABLE}, r0010, c{COLUMN}}} + 1;"
+        )
+        ast = SyntaxService().parse(script)
+        CalculationsOperandsChecking(
+            calc_session,
+            script,
+            ast,
+            RELEASE,
+            is_scripting=True,
+            live_table_versions=True,
+        )
+
+        extractor = DependencyTableExtractor(calc_session, RELEASE)
+        extractor.visit(ast)
+
+        assert set(extractor.tables) == {DEP_TABLE}
+
+
+class TestDraftModuleVersion:
+    """A module version living in a working release is still exportable."""
+
+    WORKING = 8003
+
+    def test_the_calculations_survive_the_working_release(
+        self, calc_session, caplog
+    ):
+        """The URI substitution is unreachable if the export empties first.
+
+        ``get_calculations`` used to re-gate the module version it was
+        handed, which rejects exactly the module versions
+        ``get_module_uri`` substitutes a published release for -- so the
+        substitution reported a release for an export that then failed
+        with "no calculations".
+        """
+        calc_session.add(
+            Release(
+                release_id=self.WORKING,
+                code="Playground",
+                date=date(1970, 1, 1),
+                type="playground",
+            )
+        )
+        calc_session.query(ModuleVersion).filter(
+            ModuleVersion.module_vid == 1
+        ).update({ModuleVersion.start_release_id: self.WORKING})
+        calc_session.commit()
+
+        with caplog.at_level("WARNING"):
+            export = ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+
+        (uri,) = export
+        assert uri.endswith("/calcfw/8.1/mod/calc_home")
+        assert "working release" in caplog.text
+        assert _namespace(export)["calculations"]["operation_codes"] == [
+            "c_0001",
+            "c_0002",
+        ]
+
+
 class TestFailureModes:
     def test_unknown_module_is_reported(self, calc_session):
-        with pytest.raises(NotFound, match="Module version not resolvable"):
+        with pytest.raises(NotFound, match="Module version not found"):
             ASTGeneratorService(calc_session).calculations_for_module(
                 "NOPE", REFERENCE_DATE
             )

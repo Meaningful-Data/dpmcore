@@ -9,14 +9,23 @@ module's EBA taxonomy URI) and its companion datapoint map.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+)
 
 import pandas as pd
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import SQLAlchemyError
 
-from dpmcore.errors import ConfigurationError, InternalError, NotFound
+from dpmcore.errors import ConfigurationError, Invalid, NotFound
 from dpmcore.services.calculations_export.queries import (
     get_calculations,
     get_data_types,
@@ -42,6 +51,8 @@ from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 _OPERATION_OUTPUT_TABLE = "OperationOutput"
 
@@ -97,8 +108,8 @@ class CalculationsExporter:
                 ``OperationOutput`` table.
             NotFound: If the module version, or its calculations, cannot
                 be resolved.
-            InternalError: If the parsed script does not have one
-                statement per calculation.
+            Invalid: If the parsed script does not have one statement
+                per calculation.
         """
         session = self.session
         module_vid = get_module_version_id(
@@ -111,7 +122,9 @@ class CalculationsExporter:
         )
         release_info = get_release_info(session, release_id, publication_date)
 
-        calculations = self._collect_calculations(module_vid, module_code)
+        calculations = self._collect_calculations(
+            module_vid, module_code, release_id
+        )
         script = _build_expression(calculations)
         ast, operation_codes = self._parse(script, calculations)
         operands = CalculationsOperandsChecking(
@@ -170,7 +183,10 @@ class CalculationsExporter:
         )
 
     def _collect_calculations(
-        self, module_vid: int, module_code: str
+        self,
+        module_vid: int,
+        module_code: str,
+        release_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Read the module version's calculations, or explain why not.
 
@@ -183,6 +199,7 @@ class CalculationsExporter:
         Args:
             module_vid: The module version to read.
             module_code: Its code, for the error message.
+            release_id: Release to window the operation versions at.
 
         Returns:
             The calculation records that carry an expression.
@@ -193,7 +210,7 @@ class CalculationsExporter:
             NotFound: If the module version has no calculations.
         """
         try:
-            rows = get_calculations(self.session, module_vid)
+            rows = get_calculations(self.session, module_vid, release_id)
         except SQLAlchemyError as exc:
             if self._has_operation_output():
                 raise
@@ -244,14 +261,14 @@ class CalculationsExporter:
             belongs to ``ast.children[i]``.
 
         Raises:
-            InternalError: If the script does not parse into exactly one
+            Invalid: If the script does not parse into exactly one
                 statement per calculation -- the pairing is positional,
                 so a mismatch would label statements with the wrong
                 operation code.
         """
         ast = self._syntax.parse(script)
         if len(ast.children) != len(calculations):
-            raise InternalError(
+            raise Invalid(
                 title="Calculations do not pair with their operations",
                 description=(
                     f"{len(calculations)} calculation expressions parsed "
@@ -304,14 +321,25 @@ class CalculationsExporter:
         data_types = get_data_types(
             self.session, dependencies.all_datapoints, release_id
         )
-        for table_info in dependencies.tables.values():
-            table_info["variables"] = {
-                str(var_id): data_types.get(str(var_id), "m")
-                for var_id in sorted(table_info["variables"])
+        # A new mapping rather than an edit in place: the extractor's
+        # own ``variables`` are sets of ids, and rewriting them as
+        # ``{id: type}`` dicts would leave it unusable for a second call.
+        resolved_tables: Dict[str, Dict[str, Any]] = {
+            table_code: {
+                **table_info,
+                "variables": {
+                    str(var_id): data_types.get(str(var_id), "m")
+                    for var_id in sorted(table_info["variables"])
+                },
             }
+            for table_code, table_info in dependencies.tables.items()
+        }
+        _warn_on_default_data_types(
+            "dependency", dependencies.all_datapoints, data_types
+        )
 
         grouped = group_tables_by_module(
-            self.session, dependencies.tables, release_id
+            self.session, resolved_tables, release_id
         )
         result: Dict[str, Dict[str, Any]] = {}
         for dep_module_code, dep_info in grouped.items():
@@ -370,6 +398,7 @@ class CalculationsExporter:
         datapoint_types = get_data_types(
             self.session, datapoint_ids, release_id
         )
+        _warn_on_default_data_types("output", datapoint_ids, datapoint_types)
 
         output_variables: Dict[str, str] = {}
         for var_code in outputs.output_variables:
@@ -395,6 +424,42 @@ class CalculationsExporter:
                     str(var_id), "m"
                 )
         return output_variables, output_tables
+
+
+def _warn_on_default_data_types(
+    what: str,
+    wanted: Sequence[Any],
+    resolved: Dict[str, str],
+) -> None:
+    """Warn when a datapoint's data type fell back to the ``"m"`` default.
+
+    Operand datapoints come from each table's *live* version, while
+    their data types are resolved in the release window the export is
+    keyed at. A variable introduced after that release therefore
+    resolves to nothing and silently becomes ``"m"``; saying which ones
+    turns a wrong data type in the export into a visible one.
+
+    Args:
+        what: Short label naming the id set, for the log line.
+        wanted: The datapoint ids looked up.
+        resolved: The mapping that came back.
+    """
+    missing = sorted(
+        {
+            str(int(var_id))
+            for var_id in wanted
+            if not pd.isna(var_id) and str(int(var_id)) not in resolved
+        }
+    )
+    if not missing:
+        return
+    logger.warning(
+        "%s datapoint(s) have no data type in the export's release "
+        "window and default to 'm' (%s): %s",
+        len(missing),
+        what,
+        ", ".join(missing[:20]) + (", ..." if len(missing) > 20 else ""),
+    )
 
 
 def _merged_variables(

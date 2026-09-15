@@ -17,7 +17,16 @@ from __future__ import annotations
 
 import logging
 from datetime import date as date_cls
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    cast,
+)
 
 import pandas as pd
 
@@ -27,7 +36,7 @@ from dpmcore.dpm_xl.utils.filters import (
     filter_by_release,
     filter_live_only,
 )
-from dpmcore.errors import NotFound
+from dpmcore.errors import Invalid, NotFound
 from dpmcore.orm.glossary import Property
 from dpmcore.orm.infrastructure import DataType, Release
 from dpmcore.orm.operations import (
@@ -98,7 +107,9 @@ def get_module_version_id(
         The module version ID.
 
     Raises:
-        NotFound: If no module version, or more than one, matches.
+        NotFound: If no module version matches.
+        Invalid: If more than one does -- the reference date does not
+            identify a single module version to export.
     """
     query = session.query(ModuleVersion.module_vid).filter(
         ModuleVersion.code == module_code
@@ -110,8 +121,16 @@ def get_module_version_id(
         ModuleVersion.to_reference_date,
     )
     rows = query.all()
-    if len(rows) != 1:
+    if not rows:
         raise NotFound(
+            title="Module version not found",
+            description=(
+                f"No module version of {module_code!r} is valid at "
+                f"{reference_date}."
+            ),
+        )
+    if len(rows) > 1:
+        raise Invalid(
             title="Module version not resolvable",
             description=(
                 f"{len(rows)} module versions of {module_code!r} are valid "
@@ -325,26 +344,40 @@ def _is_working_release(session: "Session", release_id: Optional[int]) -> bool:
 
 
 def get_calculations(
-    session: "Session", module_vid: int
+    session: "Session",
+    module_vid: int,
+    release_id: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Return a module version's calculation expressions and codes.
 
     Mirrors the EBA ``drr_calculations`` view -- ``ModuleVersion`` join
-    ``OperationOutput`` join ``OperationVersion``, live-release filtered
-    -- and picks up ``Operation.code`` in the same query, so an
-    expression and its operation code can never come from two different
-    row sets. ``Operation`` is outer-joined: an ``OperationVersion``
-    with no ``Operation`` still contributes its expression, with a
-    ``None`` code.
+    ``OperationOutput`` join ``OperationVersion`` -- and picks up
+    ``Operation.code`` in the same query, so an expression and its
+    operation code can never come from two different row sets.
+    ``Operation`` is outer-joined: an ``OperationVersion`` with no
+    ``Operation`` still contributes its expression, with a ``None``
+    code.
+
+    Only the *operation* version is release-windowed. ``module_vid``
+    already pins the module version the caller resolved by reference
+    date, so re-gating it here could only ever turn that one row into
+    none -- which is what it did for a module version living in a
+    working release, the case :func:`get_module_uri` deliberately
+    supports.
 
     Args:
         session: SQLAlchemy session.
         module_vid: Module version ID.
+        release_id: Release to window the operation versions at;
+            ``None`` selects the live ones. Without it a superseded
+            operation version is returned beside its successor, and the
+            two assign the same output.
 
     Returns:
-        ``[{"operation_vid", "expression", "operation_code"}, ...]``.
+        ``[{"operation_vid", "expression", "operation_code"}, ...]``,
+        ordered by ``OperationVID``.
     """
-    query = (
+    query: Any = (
         session.query(
             OperationVersion.operation_vid.label("operation_vid"),
             OperationVersion.expression.label("expression"),
@@ -365,11 +398,18 @@ def get_calculations(
         )
         .filter(ModuleVersion.module_vid == module_vid)
     )
-    query = filter_live_only(
+    query = _release_window(
         query,
-        ModuleVersion.start_release_id,
-        ModuleVersion.end_release_id,
+        OperationVersion.start_release_id,
+        OperationVersion.end_release_id,
+        release_id,
     )
+    # Ordered explicitly: the row order decides the script's statement
+    # order, the positional operation-code pairing and the dependency
+    # sort's tie-break, and an unordered join is free to return the same
+    # rows differently on every run -- which a byte-parity check against
+    # the reference export cannot tolerate.
+    query = query.order_by(OperationVersion.operation_vid)
     df = read_sql_with_connection(query.statement, session)
     return cast(List[Dict[str, Any]], df.to_dict(orient="records"))
 
@@ -496,24 +536,33 @@ def get_output_variable_vids(
     Returns:
         Mapping of code to ``VariableVID``, omitting unresolved codes.
     """
-    result: Dict[str, int] = {}
-    for code in variable_codes:
-        query: Any = session.query(VariableVersion).filter(
-            VariableVersion.code == code
-        )
-        query = _release_window(
-            query,
-            VariableVersion.start_release_id,
-            VariableVersion.end_release_id,
-            release_id,
-        )
-        # .first(), not .one_or_none(): the latter raises on an
-        # ambiguous code, which would abort the whole export with a
-        # bare SQLAlchemy error the CLI does not catch.
-        rows = query.limit(2).all()
-        if len(rows) == 1:
-            result[code] = int(rows[0].variable_vid)
-    return result
+    wanted = list(dict.fromkeys(code for code in variable_codes if code))
+    if not wanted:
+        return {}
+    query: Any = session.query(
+        VariableVersion.code.label("code"),
+        VariableVersion.variable_vid.label("variable_vid"),
+    )
+    query = _release_window(
+        query,
+        VariableVersion.start_release_id,
+        VariableVersion.end_release_id,
+        release_id,
+    )
+    # One batched query, not one per code: a wide calculations set names
+    # enough output variables for the per-code loop to dominate the
+    # export against a remote SQL Server.
+    resolved: Dict[str, Optional[int]] = {}
+    for row in chunked_in(query, VariableVersion.code, wanted):
+        if row.code in resolved:
+            # Ambiguous: recorded as unresolved rather than raising, so
+            # one bad code does not abort the whole export.
+            resolved[row.code] = None
+        else:
+            resolved[row.code] = int(row.variable_vid)
+    return {
+        code: vid for code in wanted if (vid := resolved.get(code)) is not None
+    }
 
 
 def get_output_tables(
@@ -597,43 +646,35 @@ def group_tables_by_module(
         carrying each table's variables and open keys through unchanged.
     """
     module_tables: Dict[str, Dict[str, Any]] = {}
+    if not tables:
+        return module_tables
 
+    table_vid_by_code = _windowed_table_vids(session, tables, release_id)
+    dropped = [code for code in tables if code not in table_vid_by_code]
+    if dropped:
+        # The operands were resolved against each table's *live* version,
+        # which need not be the one effective at ``release_id``. Saying
+        # so beats a dependency quietly missing from the export.
+        logger.warning(
+            "%s dependency table(s) have no version at the export's "
+            "release and are left out of dependency_modules: %s",
+            len(dropped),
+            ", ".join(sorted(dropped)),
+        )
+    if not table_vid_by_code:
+        return module_tables
+
+    modules_by_table_vid = _modules_of_table_vids(
+        session, set(table_vid_by_code.values()), release_id
+    )
+
+    # Driven by ``tables`` rather than by the query results, so the
+    # exported order follows the order the operands were collected in.
     for table_code, table_info in tables.items():
-        table_query: Any = session.query(TableVersion.table_vid).filter(
-            TableVersion.code == table_code
-        )
-        table_query = _release_window(
-            table_query,
-            TableVersion.start_release_id,
-            TableVersion.end_release_id,
-            release_id,
-        )
-        table_result = table_query.first()
-        if not table_result:
+        table_vid = table_vid_by_code.get(table_code)
+        if table_vid is None:
             continue
-
-        module_query: Any = (
-            session.query(
-                ModuleVersionComposition.module_vid.label("module_vid"),
-                ModuleVersion.code.label("module_code"),
-                ModuleVersion.from_reference_date.label("from_date"),
-                ModuleVersion.to_reference_date.label("to_date"),
-            )
-            .join(
-                ModuleVersion,
-                ModuleVersion.module_vid
-                == ModuleVersionComposition.module_vid,
-            )
-            .filter(ModuleVersionComposition.table_vid == table_result[0])
-        )
-        module_query = _release_window(
-            module_query,
-            ModuleVersion.start_release_id,
-            ModuleVersion.end_release_id,
-            release_id,
-        )
-
-        for row in module_query.all():
+        for row in modules_by_table_vid.get(table_vid, ()):
             entry = module_tables.setdefault(
                 row.module_code,
                 {
@@ -651,3 +692,104 @@ def group_tables_by_module(
             }
 
     return module_tables
+
+
+def _windowed_table_vids(
+    session: "Session",
+    tables: Dict[str, Dict[str, Any]],
+    release_id: Optional[int],
+) -> Dict[str, int]:
+    """Resolve each table code to one ``TableVID`` at ``release_id``.
+
+    One batched query in place of one per table.
+
+    A release window can only match two versions of one code if their
+    windows overlap, which the dictionary should not contain. The lowest
+    ``TableVID`` wins so the export is at least reproducible -- the
+    per-table ``.first()`` this replaces had no ``ORDER BY`` at all --
+    and the ambiguity is logged rather than resolved silently.
+
+    Args:
+        session: SQLAlchemy session.
+        tables: The dependency tables, keyed by code.
+        release_id: Release to window the table versions at.
+
+    Returns:
+        ``{table_code: table_vid}``, omitting codes with no version in
+        the window.
+    """
+    query: Any = session.query(
+        TableVersion.code.label("code"),
+        TableVersion.table_vid.label("table_vid"),
+    )
+    query = _release_window(
+        query,
+        TableVersion.start_release_id,
+        TableVersion.end_release_id,
+        release_id,
+    )
+    resolved: Dict[str, int] = {}
+    ambiguous: Set[str] = set()
+    for row in chunked_in(query, TableVersion.code, list(tables)):
+        table_vid = int(row.table_vid)
+        current = resolved.get(row.code)
+        if current is None:
+            resolved[row.code] = table_vid
+            continue
+        ambiguous.add(row.code)
+        resolved[row.code] = min(current, table_vid)
+    if ambiguous:
+        logger.warning(
+            "%s dependency table(s) have overlapping versions at the "
+            "export's release; the lowest TableVID is used: %s",
+            len(ambiguous),
+            ", ".join(sorted(ambiguous)),
+        )
+    return resolved
+
+
+def _modules_of_table_vids(
+    session: "Session",
+    table_vids: "set[int]",
+    release_id: Optional[int],
+) -> Dict[int, List[Any]]:
+    """Return the module versions holding each of ``table_vids``.
+
+    Args:
+        session: SQLAlchemy session.
+        table_vids: The table versions to look up.
+        release_id: Release to window the module versions at.
+
+    Returns:
+        ``{table_vid: [row, ...]}`` where each row carries
+        ``module_vid``, ``module_code``, ``from_date`` and ``to_date``.
+    """
+    query: Any = (
+        session.query(
+            ModuleVersionComposition.table_vid.label("table_vid"),
+            ModuleVersionComposition.module_vid.label("module_vid"),
+            ModuleVersion.code.label("module_code"),
+            ModuleVersion.from_reference_date.label("from_date"),
+            ModuleVersion.to_reference_date.label("to_date"),
+        )
+        .join(
+            ModuleVersion,
+            ModuleVersion.module_vid == ModuleVersionComposition.module_vid,
+        )
+        .order_by(ModuleVersionComposition.module_vid)
+    )
+    query = _release_window(
+        query,
+        ModuleVersion.start_release_id,
+        ModuleVersion.end_release_id,
+        release_id,
+    )
+    # The ORDER BY is safe under chunking: the batches partition
+    # ``table_vids``, so every row of one table version lands in a
+    # single batch and stays ordered within its group.
+    grouped: Dict[int, List[Any]] = {}
+    for row in chunked_in(
+        query, ModuleVersionComposition.table_vid, sorted(table_vids)
+    ):
+        grouped.setdefault(int(row.table_vid), []).append(row)
+    return grouped
