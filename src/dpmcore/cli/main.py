@@ -21,6 +21,7 @@ Usage::
 from __future__ import annotations
 
 import sys
+from datetime import datetime
 from typing import Any, cast
 
 import click
@@ -1103,6 +1104,7 @@ def export_layout(
 @click.option(
     "--reference-date",
     required=True,
+    type=click.DateTime(formats=["%Y-%m-%d"]),
     help="Reference date (YYYY-MM-DD) selecting the module version.",
 )
 @click.option(
@@ -1132,7 +1134,7 @@ def export_layout(
 )
 def export_calculations(
     module_code: str,
-    reference_date: str,
+    reference_date: datetime,
     publication_date: str | None,
     database: str,
     output: str | None,
@@ -1164,7 +1166,9 @@ def export_calculations(
     try:
         with connect(database) as db:
             export = db.services.ast_generator.calculations_export(
-                module_code, reference_date, publication_date
+                module_code,
+                reference_date.strftime("%Y-%m-%d"),
+                publication_date,
             )
     except DpmCoreError as exc:
         click.echo(f"Calculations export failed: {exc}", err=True)
