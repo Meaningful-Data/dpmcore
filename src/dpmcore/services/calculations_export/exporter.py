@@ -117,9 +117,7 @@ class CalculationsExporter:
         )
         module_meta = get_module_metadata(session, module_vid)
         release_id = module_meta["start_release_id"]
-        module_uri, framework_code = get_module_uri(
-            session, module_vid, release_id
-        )
+        module_uri, framework_code = get_module_uri(session, module_vid)
         release_info = get_release_info(session, release_id, publication_date)
 
         calculations = self._collect_calculations(
@@ -345,16 +343,13 @@ class CalculationsExporter:
         for dep_module_code, dep_info in grouped.items():
             if dep_module_code == module_code:
                 continue
-            dep_uri, _ = get_module_uri(
-                self.session, dep_info["module_vid"], release_id
-            )
-            result[dep_uri] = {
-                "tables": dep_info["tables"],
-                # The union of the tables' variables. Redundant with
-                # them, but the consumer contract carries both and reads
-                # this one directly rather than re-deriving it.
-                "variables": _merged_variables(dep_info["tables"]),
-            }
+            dep_uri, _ = get_module_uri(self.session, dep_info["module_vid"])
+            # `tables` only: the calculations contract carries no
+            # `variables` key on a dependency entry (that is the
+            # validations export's shape), and adding one puts every
+            # module with dependencies out of parity with
+            # drr_operations.
+            result[dep_uri] = {"tables": dep_info["tables"]}
         return result
 
     def _outputs(
@@ -460,27 +455,6 @@ def _warn_on_default_data_types(
         what,
         ", ".join(missing[:20]) + (", ..." if len(missing) > 20 else ""),
     )
-
-
-def _merged_variables(
-    tables: Dict[str, Dict[str, Any]],
-) -> Dict[str, str]:
-    """Return one ``{variable_id: data_type}`` map for a module's tables.
-
-    A variable shared by two tables of the same module carries the same
-    data type in both, so merging cannot lose information.
-
-    Args:
-        tables: The module's table entries, each with a ``variables``
-            map.
-
-    Returns:
-        The merged variables map, ordered by variable id.
-    """
-    merged: Dict[str, str] = {}
-    for table in tables.values():
-        merged.update(table.get("variables", {}))
-    return {key: merged[key] for key in sorted(merged, key=int)}
 
 
 def _build_expression(calculations: List[Dict[str, Any]]) -> str:

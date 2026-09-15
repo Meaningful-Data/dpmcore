@@ -395,8 +395,7 @@ class TestCalculationsForModule:
 
         (dep_uri,) = ns["dependency_modules"]
         entry = ns["dependency_modules"][dep_uri]
-        assert set(entry) == {"tables", "variables"}
-        assert entry["variables"] == {"22001": "m"}
+        assert set(entry) == {"tables"}
 
     def test_data_types_come_from_the_dictionary(self, calc_session):
         calc_session.query(DataType).filter(DataType.data_type_id == 1).update(
@@ -618,13 +617,12 @@ class TestDraftModuleVersion:
     def test_the_calculations_survive_the_working_release(
         self, calc_session, caplog
     ):
-        """The URI substitution is unreachable if the export empties first.
+        """A working-release export must not empty itself out.
 
         ``get_calculations`` used to re-gate the module version it was
-        handed, which rejects exactly the module versions
-        ``get_module_uri`` substitutes a published release for -- so the
-        substitution reported a release for an export that then failed
-        with "no calculations".
+        handed, which rejects exactly the module versions that live in a
+        working release -- so the export warned about one and then
+        failed with "no calculations".
         """
         calc_session.add(
             Release(
@@ -645,7 +643,7 @@ class TestDraftModuleVersion:
             )
 
         (uri,) = export
-        assert uri.endswith("/calcfw/8.1/mod/calc_home")
+        assert uri.endswith("/calcfw/Playground/mod/calc_home")
         assert "working release" in caplog.text
         assert _namespace(export)["calculations"]["operation_codes"] == [
             "c_0001",
@@ -834,7 +832,7 @@ class TestWorkingReleaseUri:
         )
         session.commit()
 
-    def test_a_working_release_is_replaced_by_the_published_one(
+    def test_a_working_release_keys_the_uri_and_warns(
         self, memory_session, caplog
     ):
         from dpmcore.services.calculations_export.queries import (
@@ -844,14 +842,14 @@ class TestWorkingReleaseUri:
         self._seed(memory_session)
 
         with caplog.at_level("WARNING"):
-            uri, _ = get_module_uri(memory_session, 1, self.WORKING)
+            uri, _ = get_module_uri(memory_session, 1)
 
-        # 8.1 is the newest published release; "Playground" never
-        # reaches the URI.
-        assert uri.endswith("/calc_fw/8.1/mod/calc_home")
-        assert "Playground" not in uri
-        # Substituting silently would hide that the exported content is
-        # still the working version's.
+        # Reported verbatim: the reference export keys its dependency
+        # modules at the working release and the consumer looks them up
+        # by URI, so substituting a published code repoints them.
+        assert uri.endswith("/calc_fw/Playground/mod/calc_home")
+        # Silence would hide that the URI does not resolve against a
+        # published taxonomy.
         assert "working release" in caplog.text
         assert "Playground" in caplog.text
 
@@ -867,7 +865,7 @@ class TestWorkingReleaseUri:
         memory_session.commit()
 
         with caplog.at_level("WARNING"):
-            uri, _ = get_module_uri(memory_session, 1, RELEASE)
+            uri, _ = get_module_uri(memory_session, 1)
 
         assert uri.endswith("/calc_fw/8.0/mod/calc_home")
         assert caplog.text == ""

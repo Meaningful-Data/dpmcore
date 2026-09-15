@@ -208,17 +208,18 @@ def get_release_info(
 def get_module_uri(
     session: "Session",
     module_vid: int,
-    published_release_id: Optional[int] = None,
 ) -> tuple[str, str]:
     """Build a module version's EBA taxonomy URI.
+
+    The release code is reported verbatim, a working release included:
+    the reference export keys its dependency modules at ``Playground``
+    and the consumer looks them up by URI, so rewriting one to the
+    newest published release would silently repoint it. A working
+    release is logged as a warning instead.
 
     Args:
         session: SQLAlchemy session.
         module_vid: Module version ID.
-        published_release_id: The release the export is keyed at. When
-            the module version itself lives in a working release, the
-            URI reports the newest published release at or before this
-            one instead, and a warning is logged.
 
     Returns:
         ``(uri, framework_code)``.
@@ -265,66 +266,20 @@ def get_module_uri(
         )
     release_code = result.release_code
     if _is_working_release(session, result.start_release_id):
-        # A working release is the draft dictionary, not something a
-        # consumer can resolve, so the URI carries the newest published
-        # release at or before the one the export is keyed at instead.
-        substitute = get_published_release_code(session, published_release_id)
-        if substitute is not None:
-            logger.warning(
-                "Module %s (VID %s) lives in working release %r; its URI "
-                "reports published release %r instead. The exported "
-                "tables and variables are still the working version's.",
-                result.module_code,
-                module_vid,
-                release_code,
-                substitute,
-            )
-            release_code = substitute
+        logger.warning(
+            "Module %s (VID %s) lives in working release %r; its URI "
+            "carries that code. A consumer resolving the URI against a "
+            "published taxonomy will not find it.",
+            result.module_code,
+            module_vid,
+            release_code,
+        )
 
     uri = (
         f"{EBA_BASE_URI}{result.framework_code.lower()}/"
         f"{release_code}/mod/{result.module_code.lower()}"
     )
     return uri, result.framework_code
-
-
-def get_published_release_code(
-    session: "Session", release_id: Optional[int]
-) -> Optional[str]:
-    """Return the newest *published* release code at or before *release_id*.
-
-    "Published" is dpmcore's own rule rather than anything read off the
-    code: a release whose
-    :func:`~dpmcore.orm.release_sort_order.compute_sort_order` is
-    chronological. An undated or non-chronologically typed (working)
-    release sorts as the latest and is skipped here.
-
-    Args:
-        session: SQLAlchemy session.
-        release_id: The release the export is keyed at; ``None`` yields
-            the newest published release outright.
-
-    Returns:
-        The release code, or ``None`` if no published release qualifies.
-    """
-    rows = session.query(
-        Release.release_id, Release.code, Release.date, Release.type
-    ).all()
-    perpetual = compute_sort_order(None, None)
-    orders = {
-        row.release_id: compute_sort_order(row.date, row.type) for row in rows
-    }
-    ceiling = orders.get(release_id, perpetual) if release_id else perpetual
-    published = [
-        row
-        for row in rows
-        if orders[row.release_id] < perpetual
-        and orders[row.release_id] <= ceiling
-    ]
-    if not published:
-        return None
-    newest = max(published, key=lambda row: orders[row.release_id])
-    return cast(Optional[str], newest.code)
 
 
 def _is_working_release(session: "Session", release_id: Optional[int]) -> bool:
@@ -362,8 +317,7 @@ def get_calculations(
     already pins the module version the caller resolved by reference
     date, so re-gating it here could only ever turn that one row into
     none -- which is what it did for a module version living in a
-    working release, the case :func:`get_module_uri` deliberately
-    supports.
+    working release, the case the export deliberately supports.
 
     Args:
         session: SQLAlchemy session.
