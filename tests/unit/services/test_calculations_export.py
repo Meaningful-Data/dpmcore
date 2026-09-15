@@ -80,13 +80,13 @@ class TestOperationCodePairing:
 
     def test_a_multi_statement_expression_is_rejected(self):
         """Positional pairing cannot attribute two statements to one code."""
-        from dpmcore.errors import InternalError
+        from dpmcore.errors import Invalid
 
         exporter = CalculationsExporter.__new__(CalculationsExporter)
         exporter._syntax = SyntaxService()
 
         calculations = [_calc("x := 1; y := 2", "c1")]
-        with pytest.raises(InternalError, match="do not pair"):
+        with pytest.raises(Invalid, match="do not pair"):
             exporter._parse(_build_expression(calculations), calculations)
 
 
@@ -261,13 +261,13 @@ class TestSerializer:
 
     def test_a_computed_shift_is_rejected(self):
         """The exported shape has nowhere to put an expression."""
-        from dpmcore.errors import InternalError
+        from dpmcore.errors import Invalid
 
         ast = _parse(
             "x := time_shift({tA, r0010, c0010}, Q, 1 + 1, refPeriod);"
         )
 
-        with pytest.raises(InternalError, match="not a literal"):
+        with pytest.raises(Invalid, match="not a literal"):
             CalculationsJSONVisitor().visit(ast)
 
     def test_a_precomputed_operand_is_emitted_verbatim(self):
@@ -323,6 +323,51 @@ class TestVarIDDataEnricher:
         payload = next(iter(enricher.payloads.values()))
         assert "row" not in payload
         assert payload["column"] == "0010"
+
+    def test_a_grey_cell_is_left_out_of_the_data(self):
+        """A grey cell has no variable, so it has no datapoint to report.
+
+        ``get_table_data`` sorts the frame with ``na_position="last"``,
+        so a NaN ``variable_id`` is an expected part of it -- and the
+        id it stands in for cannot be reported, nor passed to ``int()``.
+        """
+        frame = self._frame(
+            [
+                {
+                    "table_code": "A",
+                    "row_code": "0010",
+                    "row_order": 1,
+                    "column_code": "0010",
+                    "column_order": 1,
+                    "sheet_code": None,
+                    "sheet_order": None,
+                    "variable_id": 1,
+                    "cell_id": 1,
+                    "data_type": "m",
+                    "cell_code": "{A, r0010, c0010}",
+                },
+                {
+                    "table_code": "A",
+                    "row_code": "0020",
+                    "row_order": 2,
+                    "column_code": "0010",
+                    "column_order": 1,
+                    "sheet_code": None,
+                    "sheet_order": None,
+                    "variable_id": None,
+                    "cell_id": 2,
+                    "data_type": "m",
+                    "cell_code": "{A, r0020, c0010}",
+                },
+            ]
+        )
+        ast = _parse("x := {tA, r*, c0010};")
+
+        enricher = VarIDDataEnricher(frame)
+        enricher.visit(ast)
+
+        payload = next(iter(enricher.payloads.values()))
+        assert [entry["datapoint"] for entry in payload["data"]] == [1]
 
     def test_x_follows_the_display_order_not_the_code_text(self):
         """Ranking a row axis by code text is the pre-#209 behaviour.

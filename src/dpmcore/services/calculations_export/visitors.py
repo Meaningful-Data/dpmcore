@@ -111,12 +111,14 @@ class DAGAnalyzer(ASTTemplate):
         vertex = list(self.dependencies)
         edges = []
         for key, calc in self.dependencies.items():
-            if not calc["outputs"]:
-                continue
-            output = calc["outputs"][0]
-            for sub_key, sub_calc in self.dependencies.items():
-                if sub_calc["inputs"] and output in sub_calc["inputs"]:
-                    edges.append((key, sub_key))
+            # Every output, not just the first: a statement with more
+            # than one would otherwise have its remaining outputs left
+            # unconstrained, and which one survived depended on set
+            # iteration order.
+            for output in calc["outputs"]:
+                for sub_key, sub_calc in self.dependencies.items():
+                    if output in sub_calc["inputs"]:
+                        edges.append((key, sub_key))
 
         sorting = self._topological_sort(vertex, edges)
         # The overwrite check is about the statements themselves, not
@@ -223,9 +225,13 @@ class DAGAnalyzer(ASTTemplate):
         """Record one dependency entry per statement."""
         for child in node.children:
             self.visit(child)
+            # dict.fromkeys, not set(): the outputs decide the DAG's
+            # edges, and a set's iteration order varies with the
+            # interpreter's hash seed -- so the exported statement order
+            # would too.
             self.dependencies[self.calculation_number] = {
-                "inputs": list(set(self.inputs)),
-                "outputs": list(set(self.outputs)),
+                "inputs": list(dict.fromkeys(self.inputs)),
+                "outputs": list(dict.fromkeys(self.outputs)),
             }
             self.calculation_number += 1
             self.inputs = []
@@ -334,6 +340,15 @@ class DependencyTableExtractor(ASTTemplate):
             tuple[str, tuple[str, ...], tuple[str, ...], tuple[str, ...]],
             List[int],
         ] = {}
+
+    def visit_PersistentAssignment(self, node: PersistentAssignment) -> None:
+        """Walk the expression only -- the target is written, not read.
+
+        ``ASTTemplate`` visits the assignment target as well, which
+        would register the cell the calculation *writes* as one of the
+        tables it depends on.
+        """
+        self.visit(node.right)
 
     def _variable_ids(self, table: str, node: VarID) -> List[int]:
         """Return the datapoint ids *node* selects, resolved once per key.
@@ -482,6 +497,13 @@ class VarIDDataEnricher(ASTTemplate):
 
         data_list: List[NodeValue] = []
         for item in xyz_data:
+            # A grey cell is part of the rendering and carries no
+            # variable, so a selection covering one yields NaN where a
+            # datapoint id would be. It has nothing to report and must
+            # not reach ``int()``, which raises on NaN.
+            variable_id = item.get("variable_id")
+            if variable_id is None or pd.isna(variable_id):
+                continue
             entry: NodeDict = {}
             if multi_rows and item.get("x") is not None:
                 entry["x"] = int(item["x"])
@@ -489,7 +511,7 @@ class VarIDDataEnricher(ASTTemplate):
             if multi_cols and item.get("y") is not None:
                 entry["y"] = int(item["y"])
                 entry["column"] = item["column_code"]
-            entry["datapoint"] = int(item["variable_id"])
+            entry["datapoint"] = int(variable_id)
             entry["operand_reference_id"] = self._next_ref_id()
             data_list.append(entry)
 
@@ -633,9 +655,9 @@ def _shift_number_text(node: Any) -> str:
         The signed integer as a string, e.g. ``"-1"``.
 
     Raises:
-        InternalError: If the shift is not an integer literal. The
-            exported shape has nowhere to put an expression, so this
-            fails loudly rather than emitting something unreadable.
+        Invalid: If the shift is not an integer literal. The exported
+            shape has nowhere to put an expression, so this fails
+            loudly rather than emitting something unreadable.
     """
     sign = 1
     current = node
@@ -653,7 +675,7 @@ def _shift_number_text(node: Any) -> str:
             return str(sign * int(current.value))
         except (TypeError, ValueError):
             pass
-    raise InternalError(
+    raise Invalid(
         title="Shift number is not a literal",
         description=(
             "time_shift was given a computed shift number "
