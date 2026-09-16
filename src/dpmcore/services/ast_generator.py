@@ -92,6 +92,19 @@ def _normalize_variable_code(code: str) -> str:
     return code
 
 
+def _sweep_order(
+    row: Tuple[Optional[str], Optional[str], Optional[int]],
+) -> Tuple[str, int]:
+    """Sort key reproducing the sweep's ``(code, start_release_id)`` order.
+
+    Applied in Python rather than SQL so ghost-fallback versions (#372),
+    which the release-filtered query cannot return, sort in with the
+    rows it did return. A null start sorts first, as SQLite ordered it.
+    """
+    code, _version_number, start_release_id = row
+    return (code or "", -1 if start_release_id is None else start_release_id)
+
+
 def _format_date(value: Any, fallback: Optional[str] = None) -> Optional[str]:
     """Format a ``date`` / ``datetime`` / string as ``YYYY-MM-DD``."""
     if value is None:
@@ -594,7 +607,10 @@ class ASTGeneratorService:
             ``(code, start_release_id)``, excluding ghost/phantom
             ``ModuleVersion`` rows (``from_reference_date ==
             to_reference_date``, both non-null — the same test
-            :meth:`_walk_ghost_chain` uses).
+            :meth:`_walk_ghost_chain` uses). With ``release``, a module
+            whose only covering versions are ghosts is represented by
+            its ghost fallback instead of being dropped (#372, see
+            :meth:`_ghost_fallback_versions`).
 
         Raises:
             ValueError: If a database session is missing, or ``release``
@@ -613,7 +629,9 @@ class ASTGeneratorService:
         session = self.session
 
         query = session.query(
-            ModuleVersion.code, ModuleVersion.version_number
+            ModuleVersion.code,
+            ModuleVersion.version_number,
+            ModuleVersion.start_release_id,
         ).filter(
             or_(
                 ModuleVersion.from_reference_date.is_(None),
@@ -624,6 +642,7 @@ class ASTGeneratorService:
         )
         if module_code is not None:
             query = query.filter(ModuleVersion.code == module_code)
+        release_id: Optional[int] = None
         if release is not None:
             release_id = resolve_release_id(session, release_code=release)
             query = filter_by_release(
@@ -632,13 +651,16 @@ class ASTGeneratorService:
                 end_col=ModuleVersion.end_release_id,
                 release_id=release_id,
             )
-        query = query.order_by(
-            ModuleVersion.code, ModuleVersion.start_release_id
-        )
+        rows: List[Tuple[Optional[str], Optional[str], Optional[int]]] = [
+            (code, version_number, start_release_id)
+            for code, version_number, start_release_id in query.all()
+        ]
+        if release_id is not None:
+            rows.extend(self._ghost_fallback_versions(release_id, module_code))
 
         seen: set[Tuple[str, str]] = set()
         pairs: List[Tuple[str, str]] = []
-        for code, version_number in query.all():
+        for code, version_number, _start in sorted(rows, key=_sweep_order):
             if code is None or version_number is None:
                 continue
             pair = (code, version_number)
@@ -646,6 +668,64 @@ class ASTGeneratorService:
                 seen.add(pair)
                 pairs.append(pair)
         return pairs
+
+    def _ghost_fallback_versions(
+        self, release_id: int, module_code: Optional[str]
+    ) -> List[Tuple[Optional[str], Optional[str], Optional[int]]]:
+        """Module versions standing in for a ghost at ``release_id``.
+
+        A module whose only release-covering versions are ghosts has no
+        sweep target of its own, since :meth:`list_module_versions`
+        excludes ghosts — and rightly so, a ghost scripts to a
+        single-day reporting window. Per the #182 fallback rule the
+        release is represented by the latest prior non-ghost version of
+        the module, so that version is the module's export target
+        (#372). Its own release window ends before ``release_id``;
+        :meth:`_resolve_explicit_release` accepts it anyway, because
+        :meth:`_effective_end_release_id` extends a fallback's end past
+        its ghost siblings (#221).
+
+        Args:
+            release_id: Target release id.
+            module_code: Restrict to this module, ``None`` for all.
+
+        Returns:
+            ``(code, version_number, start_release_id)`` triples, in the
+            shape :meth:`list_module_versions` sorts.
+        """
+        from dpmcore.dpm_xl.model_queries import (
+            ghost_fallback_module_versions,
+        )
+        from dpmcore.orm.packaging import ModuleVersion
+
+        session = self.session
+        if session is None:
+            return []
+        module_ids: Optional[set[int]] = None
+        if module_code is not None:
+            module_ids = {
+                module_id
+                for (module_id,) in session.query(ModuleVersion.module_id)
+                .filter(ModuleVersion.code == module_code)
+                .distinct()
+                .all()
+                if module_id is not None
+            }
+        substitutions = ghost_fallback_module_versions(
+            session, release_id, module_ids
+        )
+        if not substitutions:
+            return []
+        return [
+            (code, version_number, start_release_id)
+            for code, version_number, start_release_id in session.query(
+                ModuleVersion.code,
+                ModuleVersion.version_number,
+                ModuleVersion.start_release_id,
+            )
+            .filter(ModuleVersion.module_vid.in_(list(substitutions)))
+            .all()
+        ]
 
     def _discover_module_validations(
         self,
@@ -663,12 +743,11 @@ class ASTGeneratorService:
         ``OperationScopeComposition``, filtered to this release using
         dpmcore's point-release model (:func:`filter_by_release`, a window
         containment check rather than a raw ``StartReleaseID``/
-        ``EndReleaseID`` overlap). This does not filter out operations
-        scoped exclusively to phantom module versions (see
-        :meth:`list_module_versions`'s docstring for what "phantom" means
-        here) — that guard only matters when sweeping every module in the
-        database, which this single-module lookup never does; revisit
-        alongside a future ``--all-modules`` sweep.
+        ``EndReleaseID`` overlap).
+
+        When ``mv`` stands in for a ghost at ``release_row`` the ghost's
+        scopes are read through it as well — see
+        :meth:`_ghosts_represented_by`.
 
         Returns:
             ``(expressions, preconditions, severities)`` ready to pass to
@@ -709,7 +788,14 @@ class ASTGeneratorService:
                 Operation,
                 OperationVersion.operation_id == Operation.operation_id,
             )
-            .filter(OperationScopeComposition.module_vid == mv.module_vid)
+            .filter(
+                OperationScopeComposition.module_vid.in_(
+                    [
+                        mv.module_vid,
+                        *self._ghosts_represented_by(mv, release_row),
+                    ]
+                )
+            )
             # Access boolean convention: True is stored as -1, not 1.
             .filter(OperationScope.is_active.in_([-1, 1, True]))
             .filter(
@@ -751,6 +837,41 @@ class ASTGeneratorService:
             list(self._resolve_preconditions(prec_vid_to_codes))
         )
         return expressions, preconditions, severities
+
+    def _ghosts_represented_by(self, mv: Any, release_row: Any) -> List[int]:
+        """Ghost module versions ``mv`` stands in for at ``release_row``.
+
+        When ``mv`` is the #182 fallback for a module whose only
+        release-covering versions are ghosts, the validations active at
+        that release are the ones scoped to those ghosts: their
+        ``OperationScopeComposition`` rows carry the ghost's
+        ``ModuleVID``, which a plain ``mv.module_vid`` filter never sees,
+        so the fallback scripted to 30 of DORA's 67 validations at 4.2
+        (#372).
+
+        The ghosts' VIDs widen that filter rather than replacing it: a
+        validation the fallback carries and the ghost dropped stays in
+        the script, which is what the module reported at the fallback's
+        own releases. In the 4.2.1 dictionary the two differ for one
+        module (``IF_CLASS3`` at 4.0 and 4.1, one validation).
+
+        Args:
+            mv: The module version being scripted.
+            release_row: The ``Release`` it is being scripted at.
+
+        Returns:
+            The ghost ``ModuleVID``s, empty when ``mv`` covers
+            ``release_row`` in its own right.
+        """
+        from dpmcore.dpm_xl.model_queries import (
+            ghost_fallback_module_versions,
+        )
+
+        if self.session is None or mv.module_id is None:
+            return []
+        return ghost_fallback_module_versions(
+            self.session, release_row.release_id, {mv.module_id}
+        ).get(mv.module_vid, [])
 
     def _resolve_preconditions(
         self, prec_vid_to_codes: Dict[int, List[str]]
