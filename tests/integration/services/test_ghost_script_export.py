@@ -29,6 +29,9 @@ _GHOST_RELEASES = ("4.2", "4.2.1")
 _OWN_RELEASE = "4.1"
 # Ghost with no prior non-ghost version: nothing to fall back to.
 _NO_FALLBACK_MODULE = "FINREP9DP"
+# Validations active for DORA at a release covered only by the ghost.
+_VALIDATIONS_AT_GHOST_RELEASE = 67
+_ALL_RELEASES = ("3.4", "3.5", "4.0", "4.1", "4.2", "4.2.1")
 
 
 def _module_vid(session, code, version):
@@ -113,6 +116,11 @@ def test_sweep_never_surfaces_a_ghost(fixture_session):
 
 def test_ghost_with_nothing_prior_stays_out(fixture_session):
     """A module whose first version is a ghost has no target (#182)."""
+    assert (_NO_FALLBACK_MODULE, "1.0.0") in _ghost_pairs(fixture_session), (
+        f"fixture: {_NO_FALLBACK_MODULE} 1.0.0 is no longer a ghost, so this "
+        f"no longer covers the 'nothing prior to stand in for it' branch"
+    )
+
     targets = ASTGeneratorService(fixture_session).list_module_versions(
         module_code=_NO_FALLBACK_MODULE, release="4.2"
     )
@@ -121,15 +129,58 @@ def test_ghost_with_nothing_prior_stays_out(fixture_session):
 
 
 def test_module_scoped_sweep_matches_the_all_modules_slice(fixture_session):
-    """``--module-code`` and ``--all-modules`` must agree on the target."""
+    """``--module-code`` and ``--all-modules`` must agree on the target.
+
+    Checked for *every* code in the dictionary at every release, not just
+    a module that happens to substitute: the case that broke was a module
+    renamed across versions (``REM_BM`` -> ``REM_BM_CI``), where the
+    scoped call answered with the predecessor's code -- a pair absent
+    from the all-modules result, so a spot check on one module could not
+    see it.
+    """
+    service = ASTGeneratorService(fixture_session)
+    every_code = {
+        r.Code
+        for r in fixture_session.execute(
+            text("SELECT DISTINCT Code FROM ModuleVersion")
+        ).fetchall()
+    }
+    assert len(every_code) > 1
+
+    for release in _ALL_RELEASES:
+        everything = set(service.list_module_versions(release=release))
+        for code in every_code:
+            scoped = set(
+                service.list_module_versions(module_code=code, release=release)
+            )
+            assert scoped == {p for p in everything if p[0] == code}, (
+                f"{code} at {release}"
+            )
+
+
+def test_renamed_module_does_not_answer_with_its_old_code(fixture_session):
+    """A rename must not make the fallback leak out under the new name.
+
+    ``REM_BM_CI`` 2.2.0 starts at 4.2; at 4.0 the module is still named
+    ``REM_BM`` and its only covering version is a ghost. Resolving the
+    requested code to a *module* and returning that module's fallback
+    answered the request with ``('REM_BM', '2.0.0')``.
+    """
     service = ASTGeneratorService(fixture_session)
 
-    everything = set(service.list_module_versions(release="4.2"))
-    scoped = set(
-        service.list_module_versions(module_code=_MODULE, release="4.2")
-    )
+    for code, release in (
+        ("REM_BM_CI", "4.0"),
+        ("REM_HE_CI", "4.0"),
+        ("REM_GAP_CI", "4.0"),
+        ("RESOL1", "4.0"),
+        ("CODIS", "4.0"),
+        ("REM_BM_CI", "4.1"),
+    ):
+        targets = service.list_module_versions(
+            module_code=code, release=release
+        )
 
-    assert scoped == {p for p in everything if p[0] == _MODULE}
+        assert targets == [], f"{code} at {release}"
 
 
 def test_fallback_script_reaches_the_ghosts_validations(fixture_session):
@@ -144,7 +195,11 @@ def test_fallback_script_reaches_the_ghosts_validations(fixture_session):
         ASTGeneratorService(session), _FALLBACK, "4.2"
     )
 
-    assert ghost_only & codes
+    # Subset, not intersection: the bug was that the fallback scripted to
+    # 30 of the 67 validations active at 4.2, which a non-empty
+    # intersection would also have satisfied.
+    assert ghost_only <= codes
+    assert len(codes) == _VALIDATIONS_AT_GHOST_RELEASE
 
 
 def test_fallback_script_stays_within_both_scopes(fixture_session):
@@ -189,3 +244,21 @@ def test_release_the_version_covers_itself_is_unaffected(fixture_session):
     )
 
     assert not codes & ghost_only
+
+
+def test_default_release_matches_the_explicit_one(fixture_session):
+    """Both entry points must agree on where the window ends.
+
+    ``_resolve_explicit_release`` accepts 4.2 for DORA 1.1.0 because the
+    version stands in for the ghost there (#221), but
+    ``_latest_release_in_window`` read the raw ``EndReleaseID``, so
+    omitting the release picked 4.1 and silently returned the narrower
+    pre-#372 script.
+    """
+    service = ASTGeneratorService(fixture_session)
+
+    default_codes, _ = _script_codes(service, _FALLBACK, None)
+    explicit_codes, _ = _script_codes(service, _FALLBACK, _GHOST_RELEASES[-1])
+
+    assert default_codes == explicit_codes
+    assert len(default_codes) == _VALIDATIONS_AT_GHOST_RELEASE
