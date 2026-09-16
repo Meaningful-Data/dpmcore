@@ -1663,6 +1663,70 @@ class ModuleVersionQuery:
     """Query helpers around ModuleVersion."""
 
     @staticmethod
+    def ghost_fallbacks(
+        session: "Session",
+        release_id: int,
+    ) -> dict[int, list[int]]:
+        """Map each fallback module version to the ghosts it stands in for.
+
+        The module-level statement of the #182 rule, for callers holding
+        a ``ModuleVersion`` rather than operand rows: a module whose
+        *every* release-covering version is a ghost is represented at
+        ``release_id`` by the latest prior non-collapsed version of the
+        same module (see :func:`_latest_prior_non_collapsed_vids`).
+        Modules with a genuine covering version, and ghosts with nothing
+        prior to stand in for them, are left out -- the caller keeps the
+        clean "module not present at this release" outcome for the
+        latter.
+
+        Where :func:`_resolve_with_ghost_fallback` re-runs the caller's
+        operand lookup against the fallback version, this only *reports*
+        the substitution, so a caller can both enumerate the fallback as
+        the release's export target and read the ghost's operation
+        scopes through it (#372).
+
+        The scan is release-wide rather than narrowed to a module: the
+        ghost/genuine partition is per-module, so a single module's
+        entry is the same either way, and one release-wide result can be
+        cached and shared across every module of a sweep.
+
+        Args:
+            session: SQLAlchemy session.
+            release_id: Target release id.
+
+        Returns:
+            Mapping ``{fallback_module_vid: [ghost_module_vid, ...]}``,
+            the ghost VIDs sorted.
+        """
+        query = filter_by_release(
+            session.query(
+                ModuleVersion.module_id,
+                ModuleVersion.module_vid,
+                ModuleVersion.from_reference_date,
+                ModuleVersion.to_reference_date,
+            ),
+            start_col=ModuleVersion.start_release_id,
+            end_col=ModuleVersion.end_release_id,
+            release_id=release_id,
+        )
+        ghosts: dict[int, list[int]] = {}
+        genuine: set[int] = set()
+        for module_id, module_vid, from_date, to_date in query.all():
+            if module_id is None:
+                continue
+            if _is_collapsed_window(from_date, to_date):
+                ghosts.setdefault(module_id, []).append(module_vid)
+            else:
+                genuine.add(module_id)
+        fallback = _latest_prior_non_collapsed_vids(
+            session, set(ghosts) - genuine, release_id
+        )
+        return {
+            module_vid: sorted(ghosts[module_id])
+            for module_id, module_vid in fallback.items()
+        }
+
+    @staticmethod
     def get_last_release(
         session: "Session",
     ) -> int | None:

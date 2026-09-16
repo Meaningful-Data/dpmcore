@@ -1318,7 +1318,9 @@ class TestLatestReleaseInWindow:
     def test_unknown_start_release_raises(self):
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
-        mv = SimpleNamespace(start_release_id=42, end_release_id=None)
+        mv = SimpleNamespace(
+            start_release_id=42, end_release_id=None, module_id=None
+        )
         # resolve_sort_order issues session.query(Release.date,
         # Release.type).filter(Release.release_id == ...).first(); no
         # matching Release row
@@ -1335,7 +1337,11 @@ class TestLatestReleaseInWindow:
     def test_unknown_end_release_raises(self):
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
-        mv = SimpleNamespace(start_release_id=1, end_release_id=99)
+        # ``module_id=None`` short-circuits _effective_end_release_id to
+        # the raw end, so the window bound under test is release 99.
+        mv = SimpleNamespace(
+            start_release_id=1, end_release_id=99, module_id=None
+        )
         # Two resolve_sort_order calls: first returns a dated release,
         # second finds no Release row so the end-bound resolver raises.
         svc.session.query.return_value.filter.return_value.first.side_effect = [  # noqa: E501
