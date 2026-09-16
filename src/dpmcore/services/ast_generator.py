@@ -93,16 +93,23 @@ def _normalize_variable_code(code: str) -> str:
 
 
 def _sweep_order(
+    sort_orders: Dict[int, int],
     row: Tuple[Optional[str], Optional[str], Optional[int]],
 ) -> Tuple[str, int]:
-    """Sort key reproducing the sweep's ``(code, start_release_id)`` order.
+    """Sort key ordering the sweep by ``(code, start release date)``.
 
     Applied in Python rather than SQL so ghost-fallback versions (#372),
     which the release-filtered query cannot return, sort in with the
-    rows it did return. A null start sorts first, as SQLite ordered it.
+    rows it did return. The second component is the start release's
+    date-based sort order, never the opaque ``start_release_id`` itself,
+    which is non-monotonic from DPM 4.2.1 onwards; a missing or orphan
+    start sorts first.
     """
     code, _version_number, start_release_id = row
-    return (code or "", -1 if start_release_id is None else start_release_id)
+    order = (
+        None if start_release_id is None else sort_orders.get(start_release_id)
+    )
+    return (code or "", -1 if order is None else order)
 
 
 def _format_date(value: Any, fallback: Optional[str] = None) -> Optional[str]:
@@ -129,6 +136,7 @@ class ASTGeneratorService:
         self._semantic: Optional[SemanticService] = None
         self._scope_calc: Optional["ScopeCalculatorService"] = None
         self._syntax = SyntaxService()
+        self._ghost_fallback_cache: Dict[int, Dict[int, List[int]]] = {}
         if session is not None:
             from dpmcore.services.scope_calculator import (
                 ScopeCalculatorService,
@@ -623,6 +631,7 @@ class ASTGeneratorService:
             resolve_release_id,
         )
         from dpmcore.orm.packaging import ModuleVersion
+        from dpmcore.orm.release_sort_order import load_release_sort_orders
 
         if self.session is None:
             raise ValueError("No database session — cannot list modules.")
@@ -651,16 +660,24 @@ class ASTGeneratorService:
                 end_col=ModuleVersion.end_release_id,
                 release_id=release_id,
             )
+        # Unpacked rather than ``list(query.all())``: a SQLAlchemy ``Row``
+        # is not a ``tuple`` to mypy, and the fallback rows are appended
+        # to this same list.
         rows: List[Tuple[Optional[str], Optional[str], Optional[int]]] = [
             (code, version_number, start_release_id)
             for code, version_number, start_release_id in query.all()
         ]
         if release_id is not None:
-            rows.extend(self._ghost_fallback_versions(release_id, module_code))
+            rows.extend(
+                self._ghost_fallback_versions(session, release_id, module_code)
+            )
 
+        sort_orders = load_release_sort_orders(session)
         seen: set[Tuple[str, str]] = set()
         pairs: List[Tuple[str, str]] = []
-        for code, version_number, _start in sorted(rows, key=_sweep_order):
+        for code, version_number, _start in sorted(
+            rows, key=lambda row: _sweep_order(sort_orders, row)
+        ):
             if code is None or version_number is None:
                 continue
             pair = (code, version_number)
@@ -669,8 +686,31 @@ class ASTGeneratorService:
                 pairs.append(pair)
         return pairs
 
+    def _release_ghost_fallbacks(
+        self, session: "Session", release_id: int
+    ) -> Dict[int, List[int]]:
+        """``{fallback_module_vid: [ghost_module_vid, ...]}``, memoised.
+
+        The map is release-wide and identical for every module of a
+        release, so an ``--all-modules`` sweep computes it once instead
+        of once per target: each miss costs two ``ModuleVersion``
+        queries plus a full ``Release`` scan, and the sweep asks for it
+        again in :meth:`_ghosts_represented_by` for every module it
+        scripts.
+        """
+        from dpmcore.dpm_xl.model_queries import ModuleVersionQuery
+
+        cached = self._ghost_fallback_cache.get(release_id)
+        if cached is None:
+            cached = ModuleVersionQuery.ghost_fallbacks(session, release_id)
+            self._ghost_fallback_cache[release_id] = cached
+        return cached
+
     def _ghost_fallback_versions(
-        self, release_id: int, module_code: Optional[str]
+        self,
+        session: "Session",
+        release_id: int,
+        module_code: Optional[str],
     ) -> List[Tuple[Optional[str], Optional[str], Optional[int]]]:
         """Module versions standing in for a ghost at ``release_id``.
 
@@ -685,47 +725,36 @@ class ASTGeneratorService:
         :meth:`_effective_end_release_id` extends a fallback's end past
         its ghost siblings (#221).
 
+        ``module_code`` filters the *fallback's own* code, not the
+        module it belongs to: a module renamed across versions (six of
+        them in the 4.2.1 dictionary, e.g. ``REM_BM`` → ``REM_BM_CI``)
+        would otherwise answer a request for the new name with a version
+        carrying the old one, which is neither what the caller asked for
+        nor what an ``--all-modules`` sweep returns at that release.
+
         Args:
+            session: SQLAlchemy session.
             release_id: Target release id.
-            module_code: Restrict to this module, ``None`` for all.
+            module_code: Restrict to this module code, ``None`` for all.
 
         Returns:
             ``(code, version_number, start_release_id)`` triples, in the
             shape :meth:`list_module_versions` sorts.
         """
-        from dpmcore.dpm_xl.model_queries import (
-            ghost_fallback_module_versions,
-        )
         from dpmcore.orm.packaging import ModuleVersion
+        from dpmcore.orm.query_utils import chunked_in
 
-        session = self.session
-        if session is None:
-            return []
-        module_ids: Optional[set[int]] = None
-        if module_code is not None:
-            module_ids = {
-                module_id
-                for (module_id,) in session.query(ModuleVersion.module_id)
-                .filter(ModuleVersion.code == module_code)
-                .distinct()
-                .all()
-                if module_id is not None
-            }
-        substitutions = ghost_fallback_module_versions(
-            session, release_id, module_ids
-        )
+        substitutions = self._release_ghost_fallbacks(session, release_id)
         if not substitutions:
             return []
-        return [
-            (code, version_number, start_release_id)
-            for code, version_number, start_release_id in session.query(
-                ModuleVersion.code,
-                ModuleVersion.version_number,
-                ModuleVersion.start_release_id,
-            )
-            .filter(ModuleVersion.module_vid.in_(list(substitutions)))
-            .all()
-        ]
+        query = session.query(
+            ModuleVersion.code,
+            ModuleVersion.version_number,
+            ModuleVersion.start_release_id,
+        )
+        if module_code is not None:
+            query = query.filter(ModuleVersion.code == module_code)
+        return list(chunked_in(query, ModuleVersion.module_vid, substitutions))
 
     def _discover_module_validations(
         self,
@@ -747,7 +776,12 @@ class ASTGeneratorService:
 
         When ``mv`` stands in for a ghost at ``release_row`` the ghost's
         scopes are read through it as well — see
-        :meth:`_ghosts_represented_by`.
+        :meth:`_ghosts_represented_by`. Outside that substitution the
+        filter stays on ``mv``'s own ``ModuleVID``, so a module that has
+        both a genuine covering version and a ghost at the same release
+        still does not see the ghost's scopes; no module in the 4.2.1
+        dictionary has that shape, but it is the case to revisit if one
+        appears.
 
         Returns:
             ``(expressions, preconditions, severities)`` ready to pass to
@@ -774,6 +808,7 @@ class ASTGeneratorService:
                 OperationVersion.expression,
                 OperationScope.severity,
                 OperationVersion.precondition_operation_vid,
+                OperationScopeComposition.module_vid,
             )
             .join(
                 OperationScope,
@@ -792,7 +827,7 @@ class ASTGeneratorService:
                 OperationScopeComposition.module_vid.in_(
                     [
                         mv.module_vid,
-                        *self._ghosts_represented_by(mv, release_row),
+                        *self._ghosts_represented_by(session, mv, release_row),
                     ]
                 )
             )
@@ -813,13 +848,26 @@ class ASTGeneratorService:
         )
 
         # A code can match more than one OperationVersion row; keep the
-        # latest (highest OperationVID) per code.
-        _Row = Tuple[int, str, Optional[str], Optional[int]]
+        # latest (highest OperationVID) per code. Widening the scope
+        # filter to the ghosts ``mv`` stands in for can also return one
+        # OperationVersion twice, once per scope, and the two scope rows
+        # may carry different severities — rank ``mv``'s own scope above
+        # the ghost's so the winner does not depend on join order.
+        _Rank = Tuple[int, int]
+        _Row = Tuple[_Rank, str, Optional[str], Optional[int]]
         latest_by_code: Dict[str, _Row] = {}
-        for op_vid, code, expression, severity, prec_vid in query.all():
+        for (
+            op_vid,
+            code,
+            expression,
+            severity,
+            prec_vid,
+            scope_vid,
+        ) in query.all():
+            rank = (op_vid, 1 if scope_vid == mv.module_vid else 0)
             existing = latest_by_code.get(code)
-            if existing is None or op_vid > existing[0]:
-                latest_by_code[code] = (op_vid, expression, severity, prec_vid)
+            if existing is None or rank > existing[0]:
+                latest_by_code[code] = (rank, expression, severity, prec_vid)
 
         expressions: List[Tuple[str, str]] = []
         severities: Dict[str, str] = {}
@@ -838,7 +886,9 @@ class ASTGeneratorService:
         )
         return expressions, preconditions, severities
 
-    def _ghosts_represented_by(self, mv: Any, release_row: Any) -> List[int]:
+    def _ghosts_represented_by(
+        self, session: "Session", mv: Any, release_row: Any
+    ) -> List[int]:
         """Ghost module versions ``mv`` stands in for at ``release_row``.
 
         When ``mv`` is the #182 fallback for a module whose only
@@ -856,6 +906,7 @@ class ASTGeneratorService:
         module (``IF_CLASS3`` at 4.0 and 4.1, one validation).
 
         Args:
+            session: SQLAlchemy session.
             mv: The module version being scripted.
             release_row: The ``Release`` it is being scripted at.
 
@@ -863,14 +914,8 @@ class ASTGeneratorService:
             The ghost ``ModuleVID``s, empty when ``mv`` covers
             ``release_row`` in its own right.
         """
-        from dpmcore.dpm_xl.model_queries import (
-            ghost_fallback_module_versions,
-        )
-
-        if self.session is None or mv.module_id is None:
-            return []
-        return ghost_fallback_module_versions(
-            self.session, release_row.release_id, {mv.module_id}
+        return self._release_ghost_fallbacks(
+            session, release_row.release_id
         ).get(mv.module_vid, [])
 
     def _resolve_preconditions(
@@ -1215,6 +1260,15 @@ class ASTGeneratorService:
         release still in ``status='validation'`` — the exact shape that
         made dpmcore emit ``4.2`` while the reference declared ``4.2.1``
         for the same fixture DB.
+
+        The upper bound is ``mv``'s *effective* end
+        (:meth:`_effective_end_release_id`), the same bound
+        :meth:`_resolve_explicit_release` window-checks against. Reading
+        the raw ``end_release_id`` here instead made the two entry points
+        disagree: a release the explicit path accepts because ``mv``
+        stands in for a ghost there (#221) was one this path would never
+        pick, so ``script_for_module`` without a release silently
+        returned the narrower pre-#372 script.
         """
         from dpmcore.orm.infrastructure import Release
         from dpmcore.orm.release_sort_order import (
@@ -1233,10 +1287,11 @@ class ASTGeneratorService:
                 mv.start_release_id,
                 role="Module version window start release",
             )
-        if mv.end_release_id is not None:
+        effective_end_id = self._effective_end_release_id(mv)
+        if effective_end_id is not None:
             end_sort = resolve_sort_order(
                 self.session,
-                mv.end_release_id,
+                effective_end_id,
                 role="Module version window end release",
             )
         perpetual_sort_order = compute_sort_order(None, None)
