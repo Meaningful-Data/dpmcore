@@ -1393,7 +1393,8 @@ class TestDetectCrossModuleDependencies:
 
     def test_cross_time_ref_period_resolves_predecessor(self):
         """A shifted date before D0, with a substitutable predecessor,
-        produces one version_windows entry."""
+        produces one version_windows entry.
+        """
         svc, SR = self._make_svc()
         svc._get_module_tables = lambda vid, release_id=None: {
             "C_01.00": {"variables": {"100": "m"}, "open_keys": {}},
@@ -1405,9 +1406,7 @@ class TestDetectCrossModuleDependencies:
         candidate.from_reference_date = date(2025, 3, 31)
         candidate.to_reference_date = date(2026, 3, 30)
         candidate.start_release_id = 5
-        svc._find_preceding_module_version = MagicMock(
-            return_value=candidate
-        )
+        svc._find_preceding_module_version = MagicMock(return_value=candidate)
         svc._get_module_uri = lambda module_vid, mv=None: {
             10: "http://uri/mod_10",
             20: "http://uri/mod_20",
@@ -1796,7 +1795,9 @@ class TestGetModuleUri:
 def _load_shift_reference_date():
     """Load the module-level ``_shift_reference_date`` helper."""
     _load_module()
-    return sys.modules["dpmcore.services.scope_calculator"]._shift_reference_date
+    return sys.modules[
+        "dpmcore.services.scope_calculator"
+    ]._shift_reference_date
 
 
 class TestShiftReferenceDate:
@@ -1858,7 +1859,9 @@ class TestSubstitutionPossible:
 
     def test_missing_variable_fails(self):
         Svc, _ = _load_module()
-        current_tables = {"C_14.00": {"variables": {"v1": "x"}, "open_keys": {}}}
+        current_tables = {
+            "C_14.00": {"variables": {"v1": "x"}, "open_keys": {}}
+        }
         candidate_tables = {"C_14.00": {"variables": {}, "open_keys": {}}}
         assert not Svc._substitution_possible(
             current_tables, {"v1": "x"}, candidate_tables
@@ -1877,7 +1880,9 @@ class TestSubstitutionPossible:
     def test_variable_id_identity_ignores_table_name(self):
         """Table name is not part of the identity test."""
         Svc, _ = _load_module()
-        current_tables = {"C_14.00": {"variables": {"v1": "x"}, "open_keys": {}}}
+        current_tables = {
+            "C_14.00": {"variables": {"v1": "x"}, "open_keys": {}}
+        }
         candidate_tables = {
             "C_14.00_renamed": {"variables": {"v1": "x"}, "open_keys": {}}
         }
@@ -1933,7 +1938,9 @@ class TestFindPrecedingModuleVersion:
         q = svc.session.query.return_value
         q.filter.return_value.order_by.return_value.all.return_value = []
 
-        assert svc._find_preceding_module_version(200, date(2026, 3, 31)) is None
+        assert (
+            svc._find_preceding_module_version(200, date(2026, 3, 31)) is None
+        )
 
     def test_collapsed_ghost_row_is_skipped(self):
         """A ghost row (from == to) is not a genuine predecessor."""

@@ -18,7 +18,9 @@ from typing import (
     Union,
 )
 
-from dateutil.relativedelta import relativedelta
+from dateutil.relativedelta import (  # type: ignore[import-untyped]
+    relativedelta,
+)
 
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
 from dpmcore.dpm_xl.utils.filters import resolve_release_id
@@ -707,6 +709,7 @@ class ScopeCalculatorService:
         # recompute when this method runs inside a loop with a fixed
         # ``primary_module_vid`` (the query is a per-table variable/
         # open-key fetch, not a code-only lookup).
+        primary_tables: Union[Set[str], Dict[str, Any]]
         if home_module_tables is None:
             primary_tables = self._get_module_tables(
                 primary_module_vid, release_id=release_id
@@ -778,7 +781,7 @@ class ScopeCalculatorService:
         ts: Dict[str, List[str]],
         primary_module_vid: int,
         release_id: Optional[int],
-        home_module_tables: Optional[Set[str]] = None,
+        home_module_tables: Optional[Union[Set[str], Dict[str, Any]]] = None,
     ) -> List[str]:
         """Return the reference periods shifted *within* the home module.
 
@@ -1041,9 +1044,7 @@ class ScopeCalculatorService:
             else None
         )
         shifted_to = (
-            _shift_reference_date(window_to, ref_period)
-            if window_to
-            else None
+            _shift_reference_date(window_to, ref_period) if window_to else None
         )
         if shifted_from is not None and shifted_from >= d0:
             return []  # the shifted window never precedes D0
@@ -1085,9 +1086,7 @@ class ScopeCalculatorService:
             "from_reference_date": (
                 str(candidate_from) if candidate_from else None
             ),
-            "to_reference_date": (
-                str(candidate_to) if candidate_to else None
-            ),
+            "to_reference_date": (str(candidate_to) if candidate_to else None),
         }
         version_number = getattr(candidate, "version_number", None)
         if version_number:
@@ -1103,7 +1102,7 @@ class ScopeCalculatorService:
         operation_code: Optional[str],
         referenced_variables: Optional[Dict[str, str]] = None,
         referenced_tables: Optional[Set[str]] = None,
-        home_module_tables: Optional[Set[str]] = None,
+        home_module_tables: Optional[Union[Set[str], Dict[str, Any]]] = None,
     ) -> Optional[Tuple[List[Dict[str, Any]], str, Dict[str, Any]]]:
         """Build the (cross_deps, uri, dependency_module) triple for *vid*.
 

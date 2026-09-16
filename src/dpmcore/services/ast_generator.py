@@ -2272,11 +2272,7 @@ extract_precondition_codes`, shared with
         def _windows_key(
             module: Dict[str, Any],
         ) -> Tuple[Tuple[str, str, str, str], ...]:
-            windows = (
-                module.get("version_windows")
-                if isinstance(module, dict)
-                else None
-            )
+            windows = module.get("version_windows")
             if not windows:
                 return ()
             return tuple(
