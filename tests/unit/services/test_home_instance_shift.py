@@ -99,6 +99,7 @@ class TestHomeShiftIsCrossInstance:
                         "URI": "uri/10",
                         "ref_period": "T-1Q",
                         "module_version": "3.1.0",
+                        "version_windows": [],
                     }
                 ],
                 "affected_operations": ["EGDQ_0896"],
@@ -165,6 +166,55 @@ class TestHomeShiftIsCrossInstance:
             == "T-1Q"
         )
 
+    def test_home_tables_dict_enables_the_substitution_check(self, svc):
+        """A full (not bare-set) home_module_tables resolves a real predecessor."""
+        home_mv = SimpleNamespace(
+            module_vid=HOME,
+            module_id=1,
+            version_number="2.0.0",
+            from_reference_date=date(2026, 3, 31),
+            to_reference_date=None,
+        )
+        svc.session.query.return_value.filter.return_value.first.return_value = (  # noqa: E501
+            home_mv
+        )
+        predecessor = SimpleNamespace(
+            module_vid=99,
+            module_id=1,
+            version_number="1.0.0",
+            from_reference_date=date(2025, 3, 31),
+            to_reference_date=date(2026, 3, 30),
+            start_release_id=None,
+        )
+        svc.session.query.return_value.filter.return_value.order_by.return_value.all.return_value = [  # noqa: E501
+            predecessor
+        ]
+        home_tables_detail = {
+            "C_48.02": {"variables": {"v1": "m"}, "open_keys": {}}
+        }
+        svc._get_module_tables = lambda module_vid, release_id=None: (
+            home_tables_detail
+        )
+
+        info = svc.detect_cross_module_dependencies(
+            scope_result=ScopeResult(scopes=[_scope([HOME])]),
+            primary_module_vid=HOME,
+            operation_code="EGDQ_0559",
+            time_shifts={"C_48.02": ["T-1A"]},
+            home_module_tables=home_tables_detail,
+        )
+        window = info["cross_instance_dependencies"][0]["modules"][0][
+            "version_windows"
+        ]
+        assert window == [
+            {
+                "URI": "uri/99",
+                "module_version": "1.0.0",
+                "from_reference_date": "2025-03-31",
+                "to_reference_date": "2026-03-30",
+            }
+        ]
+
     def test_two_distinct_home_shifts_are_both_declared(self, svc):
         """One entry per distinct period — the schema has no per-table one."""
         svc._get_module_tables = lambda module_vid, release_id=None: {
@@ -185,7 +235,7 @@ class TestHomeShiftIsCrossInstance:
         assert periods == ["T-1Q", "T-4Q"]
 
     def test_module_version_omitted_when_the_row_has_none(self, svc):
-        """A version-less module version declares only URI and period."""
+        """A version-less module version omits ``module_version``."""
         svc.session.query.return_value.filter.return_value.first.return_value = _mv(  # noqa: E501
             HOME, version_number=None
         )
@@ -196,7 +246,7 @@ class TestHomeShiftIsCrossInstance:
             time_shifts={"C_48.02": ["T-1Q"]},
         )
         assert info["cross_instance_dependencies"][0]["modules"] == [
-            {"URI": "uri/10", "ref_period": "T-1Q"}
+            {"URI": "uri/10", "ref_period": "T-1Q", "version_windows": []}
         ]
 
     def test_unresolvable_uri_keeps_the_intra_classification(self, svc):
@@ -306,6 +356,7 @@ class TestHomeModuleResolutionIsMemoised:
                     "URI": "uri/10",
                     "ref_period": "T-1Q",
                     "module_version": "3.1.0",
+                    "version_windows": [],
                 }
             ]
         ] * 3

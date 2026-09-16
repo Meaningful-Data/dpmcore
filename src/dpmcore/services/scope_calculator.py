@@ -521,7 +521,7 @@ class ScopeCalculatorService:
         release_code: Optional[str] = None,
         referenced_variables: Optional[Dict[str, str]] = None,
         referenced_tables: Optional[Set[str]] = None,
-        home_module_tables: Optional[Set[str]] = None,
+        home_module_tables: Optional[Union[Set[str], Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Build dependency information for a scope result.
 
@@ -554,14 +554,14 @@ class ScopeCalculatorService:
                 narrows each dependency module's declaration to the
                 subset the operation uses (#250); omit both to declare
                 the dependency modules whole.
-            home_module_tables: Optional pre-computed set of table codes
-                owned by the primary (home) module — the same set this
-                method would derive from :meth:`_get_module_tables`.
-                Callers that iterate this method with a fixed
-                ``primary_module_vid`` (per-op dependency detection
-                over a script's operations) should pass a single
-                pre-computed set to avoid re-running the per-table
-                variable/open-key fetch on every iteration.
+            home_module_tables: Optional pre-computed table codes owned
+                by the primary (home) module, either as a bare set or
+                as the full ``{code: {variables, open_keys}}`` dict
+                :meth:`_get_module_tables` returns. Callers with a
+                fixed ``primary_module_vid`` should pass one of these
+                to avoid re-running the per-table fetch, passing the
+                full dict also lets a shifted home instance run the
+                version-window substitution check without a bare set.
 
         Returns a dict with:
         - ``intra_instance_validations``
@@ -645,6 +645,12 @@ class ScopeCalculatorService:
                     release_id=release_id,
                     referenced_variables=referenced_variables,
                     referenced_tables=referenced_tables,
+                    home_module_tables=home_module_tables,
+                    home_tables_dict=(
+                        home_module_tables
+                        if isinstance(home_module_tables, dict)
+                        else None
+                    ),
                 )
                 if primary_has_intra
                 else []
@@ -702,10 +708,8 @@ class ScopeCalculatorService:
         # ``primary_module_vid`` (the query is a per-table variable/
         # open-key fetch, not a code-only lookup).
         if home_module_tables is None:
-            primary_tables = set(
-                self._get_module_tables(
-                    primary_module_vid, release_id=release_id
-                ).keys()
+            primary_tables = self._get_module_tables(
+                primary_module_vid, release_id=release_id
             )
         else:
             primary_tables = home_module_tables
@@ -742,6 +746,12 @@ class ScopeCalculatorService:
                 release_id=release_id,
                 referenced_variables=referenced_variables,
                 referenced_tables=referenced_tables,
+                home_module_tables=primary_tables,
+                home_tables_dict=(
+                    primary_tables
+                    if isinstance(primary_tables, dict)
+                    else None
+                ),
             )
         )
 
@@ -817,6 +827,8 @@ class ScopeCalculatorService:
         release_id: Optional[int] = None,
         referenced_variables: Optional[Dict[str, str]] = None,
         referenced_tables: Optional[Set[str]] = None,
+        home_module_tables: Optional[Union[Set[str], Dict[str, Any]]] = None,
+        home_tables_dict: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """Build the cross-instance entries for shifted home instances.
 
@@ -831,10 +843,13 @@ class ScopeCalculatorService:
         ``_home_module_refs``: the caller iterates this once per
         operation with the same ``primary_module_vid``.
 
-        ``referenced_variables``/``referenced_tables`` narrow the
-        version-window substitution test (:meth:`_resolve_version_windows`)
-        to what this operation actually reads, same as
-        :meth:`_build_dependency_entry` does on the foreign-module side.
+        The version-window substitution check needs the full
+        ``{code: {variables, open_keys}}`` detail, not just table
+        codes. ``home_tables_dict`` supplies it directly when the
+        caller already has it; if not and ``home_module_tables`` was
+        given as a bare set, the check is skipped (``version_windows``
+        comes back empty) rather than re-running the fetch the caller
+        opted out of.
         """
         if not periods:
             return []
@@ -854,22 +869,32 @@ class ScopeCalculatorService:
         if not uri:
             return []
 
-        tables_dict_full = self._get_module_tables(
-            primary_module_vid, release_id=release_id
-        )
-        narrowed = self._narrow_dependency_tables(
-            tables_dict_full, referenced_tables, referenced_variables
-        )
-        current_tables = narrowed or tables_dict_full
-        current_variables: Dict[str, str] = {
-            k: v
-            for tbl in current_tables.values()
-            for k, v in tbl.get("variables", {}).items()
-        }
-        for var_id, type_code in sorted(
-            (referenced_variables or {}).items()
-        ):
-            current_variables.setdefault(var_id, type_code)
+        if home_tables_dict is not None:
+            tables_dict_full: Optional[Dict[str, Any]] = home_tables_dict
+        elif home_module_tables is None:
+            tables_dict_full = self._get_module_tables(
+                primary_module_vid, release_id=release_id
+            )
+        else:
+            tables_dict_full = None
+
+        if tables_dict_full is None:
+            current_tables: Optional[Dict[str, Any]] = None
+            current_variables: Optional[Dict[str, str]] = None
+        else:
+            narrowed = self._narrow_dependency_tables(
+                tables_dict_full, referenced_tables, referenced_variables
+            )
+            current_tables = narrowed or tables_dict_full
+            current_variables = {
+                k: v
+                for tbl in current_tables.values()
+                for k, v in tbl.get("variables", {}).items()
+            }
+            for var_id, type_code in sorted(
+                (referenced_variables or {}).items()
+            ):
+                current_variables.setdefault(var_id, type_code)
 
         return [
             self._cross_dep_entry(
@@ -913,13 +938,17 @@ class ScopeCalculatorService:
         from_date = getattr(mv, "from_reference_date", None)
         to_date = getattr(mv, "to_reference_date", None)
         if ref_period != "T":
-            module_entry["version_windows"] = self._resolve_version_windows(
-                mv=mv,
-                ref_period=ref_period,
-                window_from=from_date,
-                window_to=to_date,
-                current_tables=current_tables or {},
-                current_variables=current_variables or {},
+            module_entry["version_windows"] = (
+                []
+                if current_tables is None
+                else self._resolve_version_windows(
+                    mv=mv,
+                    ref_period=ref_period,
+                    window_from=from_date,
+                    window_to=to_date,
+                    current_tables=current_tables,
+                    current_variables=current_variables or {},
+                )
             )
         return {
             "modules": [module_entry],

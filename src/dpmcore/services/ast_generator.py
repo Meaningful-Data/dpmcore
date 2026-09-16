@@ -2187,15 +2187,17 @@ extract_precondition_codes`, shared with
         all_dep_modules: Dict[str, Any] = {}
         all_scope_results: List["ScopeResult"] = []
 
-        # The home-module table set is a per-script constant (the
-        # primary module never changes across this loop), and computing
-        # it inside ``detect_cross_module_dependencies`` would repeat a
+        # The home-module tables are a per-script constant (the primary
+        # module never changes across this loop), and computing them
+        # inside ``detect_cross_module_dependencies`` would repeat a
         # per-table variable/open-key fetch on every iteration. Compute
-        # it once here and thread it through.
-        home_module_tables: Set[str] = set(
+        # them once here and thread the full dict through
+        # It also lets a shifted home instance run the version-window
+        # substitution check without an extra fetch.
+        home_module_tables: Dict[str, Any] = (
             self._scope_calc._get_module_tables(
                 primary_module_vid, release_id=release_id
-            ).keys()
+            )
         )
 
         for item, sr, ts, refs in scope_pairs:
