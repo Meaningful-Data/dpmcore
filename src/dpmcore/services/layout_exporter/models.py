@@ -47,6 +47,11 @@ class EnumValue:
     depth: int = 0
     # Fully qualified member signature (e.g. ``eba_CU:ALL``).
     signature: str = ""
+    # Code of the category the member is filed in, which is the one
+    # its own code belongs to: a hierarchy hanging from a
+    # super-category draws its values from the categories composing
+    # it, and each names itself with its own.
+    category_code: str = ""
 
 
 @dataclass
