@@ -222,7 +222,7 @@ class ASTGeneratorService:
                 preconditions or []
             )
 
-            from_submission_date = _format_date(
+            from_reference_date = _format_date(
                 mv.from_reference_date, fallback=_DEFAULT_FROM_DATE
             )
 
@@ -258,149 +258,481 @@ class ASTGeneratorService:
                     continue
                 result, ast, ts = prepared.result, prepared.ast, prepared.ts
                 ast_dict = serialize_ast(ast)
-                # Operand refs come off the *raw* serialisation: cleaning
-                # strips the ``data_type`` each datapoint is typed by.
-                op_refs = _OperandRefs(
-                    tables=self._extract_referenced_tables(ast_dict),
-                    variables=self._extract_operand_datapoints(ast_dict),
-                )
-                self._clean_ast_data_entries(ast_dict)
-                referenced_table_codes.update(op_refs.tables)
-                self._accumulate_parameters(
-                    referenced_parameters, result.parameters
-                )
-
                 root_operator_id = self._resolve_root_operator_id(ast, session)
 
-                operations[code] = self._build_operation_entry(
-                    expression=expr,
-                    code=code,
+                scope_error = self._process_operation(
+                    item=item,
                     ast_dict=ast_dict,
-                    severity=resolved_severities[code],
-                    submission_date=from_submission_date,
+                    parameters=result.parameters,
                     root_operator_id=root_operator_id,
-                )
-
-                sr = self._scope_calc.calculate_from_expression(
-                    expression=expr,
+                    ts=ts,
                     release_id=release_id,
-                    precondition_items=code_to_precondition_items.get(
-                        code, []
-                    ),
+                    resolved_severities=resolved_severities,
+                    from_reference_date=from_reference_date,
+                    code_to_precondition_items=code_to_precondition_items,
+                    operations=operations,
+                    scope_pairs=scope_pairs,
+                    referenced_table_codes=referenced_table_codes,
+                    referenced_parameters=referenced_parameters,
                 )
-                if sr.has_error:
+                if scope_error is not None:
                     # A script whose dependency block is silently missing
                     # is structurally valid but semantically wrong (#122),
                     # so a scope failure fails the whole generation.
                     return {
                         "success": False,
                         "enriched_ast": None,
-                        "error": (
-                            f"Scope calculation failed for operation "
-                            f"'{code}': {sr.error_message}"
-                        ),
+                        "error": scope_error,
                         "failed_operations": failed_operations,
                     }
-                scope_pairs.append((item, sr, ts, op_refs))
 
-            primary_tables_full = self._scope_calc._get_module_tables(
-                primary_module_vid, release_id=release_id
-            )
-            # Seed from every module-composition table that carries
-            # variables — i.e. the non-abstract tables; abstract templates
-            # have no cells, and the engine schema forbids an empty
-            # variables map — then union in anything the expressions
-            # reference. MDPM lists all such tables even when no validation
-            # touches them (#158). The union keeps this additive: a
-            # referenced table is never dropped.
-            seed_codes = {
-                code
-                for code, data in primary_tables_full.items()
-                if data.get("variables")
-            }
-            seed_codes |= {
-                code
-                for code in referenced_table_codes
-                if code in primary_tables_full
-            }
-            tables_block: Dict[str, Any] = {
-                code: primary_tables_full[code] for code in sorted(seed_codes)
-            }
-            variables_block: Dict[str, str] = {}
-            for tbl in tables_block.values():
-                variables_block.update(tbl.get("variables", {}))
-
-            # ``emitted_operations`` is the script's own ``operations``,
-            # not the harvested list: anything that landed in
-            # ``failed_operations`` must not be left gated (#355).
-            preconditions_block, precondition_variables_block = (
-                self._build_preconditions_block(
-                    preconditions or [],
-                    release_id=release_id,
-                    referenced_parameters=referenced_parameters,
-                    emitted_operations=set(operations),
-                )
-            )
-
-            # Runtime-binding contract: the declared type of every parameter
-            # this script needs, keyed by code. This is the scope-wide
-            # invariant. ``is_set`` is recoverable from the ``set-`` prefix
-            # and ``default`` is a per-reference fallback the engine binds
-            # per scope, so neither belongs in this registry. Built after
-            # the gates so a parameter that only appears in a gate is
-            # declared alongside the ones the expressions reference.
-            parameters_block: Dict[str, str] = {
-                prm_code: prm.declared_type
-                for prm_code, prm in sorted(referenced_parameters.items())
-            }
-
-            dependency_info = self._build_dependency_info(
-                scope_pairs=scope_pairs,
+            return self._assemble_script(
+                mv=mv,
+                release_row=release_row,
                 primary_module_vid=primary_module_vid,
                 release_id=release_id,
+                preconditions=preconditions,
+                operations=operations,
+                failed_operations=failed_operations,
+                scope_pairs=scope_pairs,
+                referenced_table_codes=referenced_table_codes,
+                referenced_parameters=referenced_parameters,
             )
-            dep_information: Dict[str, Any]
-            dep_modules: Dict[str, Any]
-            if dependency_info is not None:
-                dep_information = dependency_info["dependency_information"]
-                dep_modules = dependency_info["dependency_modules"]
-            else:
-                dep_information = {
-                    "intra_instance_validations": [],
-                    "cross_instance_dependencies": [],
-                    "alternative_dependencies": [],
-                }
-                dep_modules = {}
 
-            namespace = (
+        except ValueError as exc:
+            return {
+                "success": False,
+                "enriched_ast": None,
+                "error": str(exc),
+                "failed_operations": {},
+            }
+        except Exception as exc:
+            return {
+                "success": False,
+                "enriched_ast": None,
+                "error": str(exc),
+                "failed_operations": {},
+            }
+
+    def _process_operation(
+        self,
+        *,
+        item: Tuple[str, str],
+        ast_dict: Dict[str, Any],
+        parameters: List[ParameterInfo],
+        root_operator_id: int,
+        ts: Dict[str, List[str]],
+        release_id: int,
+        resolved_severities: Dict[str, str],
+        from_reference_date: Optional[str],
+        code_to_precondition_items: Dict[str, List[Any]],
+        operations: Dict[str, Dict[str, Any]],
+        scope_pairs: List[
+            Tuple[
+                Tuple[str, str],
+                "ScopeResult",
+                Dict[str, List[str]],
+                _OperandRefs,
+            ]
+        ],
+        referenced_table_codes: set[str],
+        referenced_parameters: Dict[str, ParameterInfo],
+        operation_vid: Optional[int] = None,
+    ) -> Optional[str]:
+        """Fold one operation's already-resolved AST into the script's
+        accumulators (``operations``, ``scope_pairs``,
+        ``referenced_table_codes``, ``referenced_parameters`` — all
+        mutated in place).
+
+        Independent of how ``ast_dict``/``parameters``/``root_operator_id``
+        were obtained — re-parsed from text, or reshaped from the
+        persisted ``OperationNode`` tree — this is the same regardless.
+        Only ``expr``/``code`` (from *item*) reach the scope calculator,
+        which always works from the raw expression text.
+
+        ``operation_vid`` is the real ``OperationVID`` this operation was
+        discovered under, when the caller has one (:meth:`script_from_db`
+        always does, from :meth:`_discover_module_validations`). ``None``
+        for :meth:`script`'s caller-supplied ``expressions`` — those
+        codes may not even be real DB operations (e.g. an
+        ``--expressions`` file) — in which case
+        :meth:`_build_operation_entry` falls back to its deterministic
+        hash. See dpmcore#364.
+
+        Returns the scope-calculation error message on failure (callers
+        decide whether that aborts the whole script or just excludes
+        this operation), or ``None`` on success. Nothing is added to
+        ``operations``/``referenced_table_codes``/``referenced_parameters``/
+        ``scope_pairs`` until the scope calculation has actually
+        succeeded — a failed operation must leave no trace in them,
+        since a script whose dependency block is silently missing is
+        structurally valid but semantically wrong (#122).
+        """
+        expr, code = item[0], item[1]
+
+        sr = self._scope_calc.calculate_from_expression(
+            expression=expr,
+            release_id=release_id,
+            precondition_items=code_to_precondition_items.get(
+                code, []
+            ),
+        )
+        if sr.has_error:
+            return (
+                f"Scope calculation failed for operation "
+                f"'{code}': {sr.error_message}"
+            )
+
+        # Operand refs come off the *raw* serialisation: cleaning
+        # strips the ``data_type`` each datapoint is typed by.
+        op_refs = _OperandRefs(
+            tables=self._extract_referenced_tables(ast_dict),
+            variables=self._extract_operand_datapoints(ast_dict),
+        )
+        self._clean_ast_data_entries(ast_dict)
+        referenced_table_codes.update(op_refs.tables)
+        self._accumulate_parameters(referenced_parameters, parameters)
+
+        operations[code] = self._build_operation_entry(
+            expression=expr,
+            code=code,
+            ast_dict=ast_dict,
+            severity=resolved_severities[code],
+            reference_date=from_reference_date,
+            root_operator_id=root_operator_id,
+            operation_vid=operation_vid,
+        )
+        scope_pairs.append((item, sr, ts, op_refs))
+        return None
+
+    def _assemble_script(
+        self,
+        *,
+        mv: Any,
+        release_row: Any,
+        primary_module_vid: int,
+        release_id: int,
+        preconditions: Optional[
+            List[Union[Tuple[str, List[str]], Dict[str, Any]]]
+        ],
+        operations: Dict[str, Dict[str, Any]],
+        failed_operations: Dict[str, str],
+        scope_pairs: List[
+            Tuple[
+                Tuple[str, str],
+                "ScopeResult",
+                Dict[str, List[str]],
+                _OperandRefs,
+            ]
+        ],
+        referenced_table_codes: set[str],
+        referenced_parameters: Dict[str, ParameterInfo],
+    ) -> Dict[str, Any]:
+        """Assemble the final script dict from already-resolved operations.
+
+        Everything here is independent of how each operation's AST was
+        obtained (re-parsed from text, or reshaped from the persisted
+        ``OperationNode`` tree) — it only reads what the per-operation
+        loop already produced. Shared by :meth:`script` (the
+        text-reparse path) and the DB-native path.
+
+        This is a verbatim extraction of what used to be the tail of
+        :meth:`script`'s body — no behaviour changed, only where the
+        code lives.
+        """
+        primary_tables_full = self._scope_calc._get_module_tables(
+            primary_module_vid, release_id=release_id
+        )
+        # Seed from every module-composition table that carries
+        # variables — i.e. the non-abstract tables; abstract templates
+        # have no cells, and the engine schema forbids an empty
+        # variables map — then union in anything the expressions
+        # reference. MDPM lists all such tables even when no validation
+        # touches them (#158). The union keeps this additive: a
+        # referenced table is never dropped.
+        seed_codes = {
+            code
+            for code, data in primary_tables_full.items()
+            if data.get("variables")
+        }
+        seed_codes |= {
+            code
+            for code in referenced_table_codes
+            if code in primary_tables_full
+        }
+        tables_block: Dict[str, Any] = {
+            code: primary_tables_full[code] for code in sorted(seed_codes)
+        }
+        variables_block: Dict[str, str] = {}
+        for tbl in tables_block.values():
+            variables_block.update(tbl.get("variables", {}))
+
+        # ``emitted_operations`` is the script's own ``operations``,
+        # not the harvested list: anything that landed in
+        # ``failed_operations`` must not be left gated (#355).
+        preconditions_block, precondition_variables_block = (
+            self._build_preconditions_block(
+                preconditions or [],
+                release_id=release_id,
+                referenced_parameters=referenced_parameters,
+                emitted_operations=set(operations),
+            )
+        )
+
+        # Runtime-binding contract: the declared type of every parameter
+        # this script needs, keyed by code. This is the scope-wide
+        # invariant. ``is_set`` is recoverable from the ``set-`` prefix
+        # and ``default`` is a per-reference fallback the engine binds
+        # per scope, so neither belongs in this registry. Built after
+        # the gates so a parameter that only appears in a gate is
+        # declared alongside the ones the expressions reference.
+        parameters_block: Dict[str, str] = {
+            prm_code: prm.declared_type
+            for prm_code, prm in sorted(referenced_parameters.items())
+        }
+
+        dependency_info = self._build_dependency_info(
+            scope_pairs=scope_pairs,
+            primary_module_vid=primary_module_vid,
+            release_id=release_id,
+        )
+        dep_information: Dict[str, Any]
+        dep_modules: Dict[str, Any]
+        if dependency_info is not None:
+            dep_information = dependency_info["dependency_information"]
+            dep_modules = dependency_info["dependency_modules"]
+        else:
+            dep_information = {
+                "intra_instance_validations": [],
+                "cross_instance_dependencies": [],
+                "alternative_dependencies": [],
+            }
+            dep_modules = {}
+
+        namespace = (
                 self._scope_calc._get_module_uri(
                     module_vid=primary_module_vid,
                     mv=mv,
                 )
                 or _DEFAULT_NAMESPACE
+        )
+
+        module_info = self._build_module_info(mv)
+        ns_block: Dict[str, Any] = {
+            **module_info,
+            "dpm_release": self._build_release_info(release_row),
+            "dates": self._build_dates(mv),
+            "operations": operations,
+            "variables": variables_block,
+            "tables": tables_block,
+            "parameters": parameters_block,
+            "preconditions": preconditions_block,
+            "precondition_variables": precondition_variables_block,
+            "dependency_information": dep_information,
+            "dependency_modules": dep_modules,
+        }
+
+        return {
+            "success": True,
+            "enriched_ast": {namespace: ns_block},
+            "error": None,
+            "failed_operations": failed_operations,
+        }
+
+    def script_from_db(
+        self,
+        expressions: List[Tuple[str, str]],
+        operation_vids: Dict[str, int],
+        mv: Any,
+        release_row: Any,
+        preconditions: Optional[
+            List[Union[Tuple[str, List[str]], Dict[str, Any]]]
+        ] = None,
+        severity: Optional[str] = None,
+        severities: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, Any]:
+        """Generate an engine-ready validations script for a DB-discovered
+        module version.
+
+        For each operation, its persisted ``OperationNode`` tree is tried
+        first (:func:`db_ast.build_ast_dict_from_db`) — falling back to
+        re-parsing its expression text only when that isn't possible
+        (an unsupported construct, or the reshaper for it not being
+        implemented yet — see dpmcore#364). Shares
+        :meth:`_process_operation`/:meth:`_assemble_script` with
+        :meth:`script`; the only thing that differs between the two is
+        how each operation's ``ast_dict``/``parameters``/``ts``/
+        ``root_operator_id`` are obtained.
+
+        Args:
+            expressions, preconditions, severity, severities: same as
+                :meth:`script`.
+            operation_vids: ``{code: OperationVID}``, from
+                :meth:`_discover_module_validations` — which operations
+                have a persisted AST to try first.
+            mv, release_row: already resolved by the caller
+                (:meth:`script_for_module`), so this doesn't re-resolve
+                them.
+
+        Returns:
+            Same shape as :meth:`script`. Unlike :meth:`script`, a
+            per-operation scope-calculation error does not fail the
+            whole result: it is recorded in ``failed_operations`` and
+            that operation is left out, the same as a semantic error or
+            an ungateable precondition. :meth:`script` still aborts on
+            a scope error (#122) — this method discovers every active
+            validation for the module itself, so one bad operation
+            failing the whole discovered set would be a worse surprise
+            here than for a caller-supplied ``expressions`` list.
+        """
+        session = self.session
+        if (
+            self._semantic is None
+            or self._scope_calc is None
+            or session is None
+        ):
+            return {
+                "success": False,
+                "enriched_ast": None,
+                "error": "No database session — cannot generate script.",
+                "failed_operations": {},
+            }
+
+        try:
+            from dpmcore.dpm_xl.utils.db_ast import (
+                UnsupportedDbAst,
+                build_ast_dict_from_db,
+            )
+            from dpmcore.dpm_xl.utils.serialization import serialize_ast
+
+            primary_module_vid: int = mv.module_vid
+            release_id: int = release_row.release_id
+
+            validation_codes = [code for _, code in expressions]
+            resolved_severities = self._resolve_severities(
+                severity, severities, validation_codes
             )
 
-            module_info = self._build_module_info(mv)
-            ns_block: Dict[str, Any] = {
-                **module_info,
-                "dpm_release": self._build_release_info(release_row),
-                "dates": self._build_dates(mv),
-                "operations": operations,
-                "variables": variables_block,
-                "tables": tables_block,
-                "parameters": parameters_block,
-                "preconditions": preconditions_block,
-                "precondition_variables": precondition_variables_block,
-                "dependency_information": dep_information,
-                "dependency_modules": dep_modules,
-            }
+            try:
+                code_to_precondition_items = self._build_precondition_index(
+                    preconditions or []
+                )
+            except ValueError as exc:
+                return {
+                    "success": False,
+                    "enriched_ast": None,
+                    "error": str(exc),
+                    "failed_operations": {},
+                }
+            gate_failures = self._unsupported_gate_operations(
+                preconditions or []
+            )
 
-            return {
-                "success": True,
-                "enriched_ast": {namespace: ns_block},
-                "error": None,
-                "failed_operations": failed_operations,
-            }
+            from_reference_date = _format_date(
+                mv.from_reference_date, fallback=_DEFAULT_FROM_DATE
+            )
+
+            operations: Dict[str, Dict[str, Any]] = {}
+            failed_operations: Dict[str, str] = {}
+            scope_pairs: List[
+                Tuple[
+                    Tuple[str, str],
+                    "ScopeResult",
+                    Dict[str, List[str]],
+                    _OperandRefs,
+                ]
+            ] = []
+            referenced_table_codes: set[str] = set()
+            referenced_parameters: Dict[str, ParameterInfo] = {}
+
+            for item in expressions:
+                expr, code = item[0], item[1]
+
+                # Checked once, up front, for both resolution paths below
+                # — a precondition the engine cannot evaluate must reject
+                # the operation regardless of whether its own AST would
+                # otherwise resolve from the DB or from re-parsed text.
+                gate_failure = gate_failures.get(code)
+                if gate_failure is not None:
+                    failed_operations[code] = gate_failure
+                    continue
+
+                ast_dict: Optional[Dict[str, Any]] = None
+                parameters: List[ParameterInfo] = []
+                ts: Dict[str, List[str]] = {}
+                root_operator_id: Optional[int] = None
+
+                operation_vid = operation_vids.get(code)
+                if operation_vid is not None:
+                    try:
+                        ast_dict, root_operator_id = build_ast_dict_from_db(
+                            session, operation_vid, release_id
+                        )
+                    except UnsupportedDbAst:
+                        ast_dict = None
+
+                if ast_dict is None:
+                    # Same resolution script() uses for the text-reparse
+                    # path — duplicated rather than shared, it's a
+                    # handful of lines (see dpmcore#364).
+                    prepared = self._prepare_expression(
+                        self._semantic,
+                        expr,
+                        release_id,
+                        gate_failure=None,
+                    )
+                    if prepared.error is not None:
+                        failed_operations[code] = prepared.error
+                        continue
+                    result, ast, ts = (
+                        prepared.result,
+                        prepared.ast,
+                        prepared.ts,
+                    )
+                    ast_dict = serialize_ast(ast)
+                    parameters = result.parameters
+                    root_operator_id = self._resolve_root_operator_id(
+                        ast, session
+                    )
+
+                scope_error = self._process_operation(
+                    item=item,
+                    ast_dict=ast_dict,
+                    parameters=parameters,
+                    root_operator_id=root_operator_id,
+                    ts=ts,
+                    release_id=release_id,
+                    resolved_severities=resolved_severities,
+                    from_reference_date=from_reference_date,
+                    code_to_precondition_items=code_to_precondition_items,
+                    operations=operations,
+                    scope_pairs=scope_pairs,
+                    referenced_table_codes=referenced_table_codes,
+                    referenced_parameters=referenced_parameters,
+                    operation_vid=operation_vid,
+                )
+                if scope_error is not None:
+                    # Unlike script()'s text-reparse path (#122), a scope
+                    # failure here excludes just this operation instead of
+                    # aborting the whole module: export-script discovers
+                    # every active validation for the module by itself, so
+                    # one bad operation would otherwise take down a script
+                    # the caller never explicitly asked for by name.
+                    failed_operations[code] = scope_error
+                    continue
+
+            return self._assemble_script(
+                mv=mv,
+                release_row=release_row,
+                primary_module_vid=primary_module_vid,
+                release_id=release_id,
+                preconditions=preconditions,
+                operations=operations,
+                failed_operations=failed_operations,
+                scope_pairs=scope_pairs,
+                referenced_table_codes=referenced_table_codes,
+                referenced_parameters=referenced_parameters,
+            )
 
         except ValueError as exc:
             return {
@@ -428,7 +760,7 @@ class ASTGeneratorService:
         No ``expressions``, ``preconditions`` or ``severities`` need to be
         supplied — they are looked up from ``OperationScope`` /
         ``OperationScopeComposition`` / ``OperationVersion`` for this module
-        version, then handed to :meth:`script`.
+        version, then handed to :meth:`script_from_db`.
 
         Args:
             module_code: Code of the module (e.g. ``"COREP_Con"``).
@@ -451,7 +783,7 @@ class ASTGeneratorService:
             mv, release_row = self._resolve_release(
                 module_code, module_version, release
             )
-            expressions, preconditions, severities = (
+            expressions, operation_vids, preconditions, severities = (
                 self._discover_module_validations(mv, release_row)
             )
         except ValueError as exc:
@@ -462,13 +794,13 @@ class ASTGeneratorService:
                 "failed_operations": {},
             }
 
-        return self.script(
+        return self.script_from_db(
             expressions=expressions,
-            module_code=module_code,
-            module_version=module_version,
+            operation_vids=operation_vids,
+            mv=mv,
+            release_row=release_row,
             preconditions=preconditions or None,
             severities=severities or None,
-            release=release_row.code,
         )
 
     def list_module_versions(
@@ -552,6 +884,7 @@ class ASTGeneratorService:
         release_row: Any,
     ) -> Tuple[
         List[Tuple[str, str]],
+        Dict[str, int],
         List[Union[Tuple[str, List[str]], Dict[str, Any]]],
         Dict[str, str],
     ]:
@@ -570,8 +903,11 @@ class ASTGeneratorService:
         alongside a future ``--all-modules`` sweep.
 
         Returns:
-            ``(expressions, preconditions, severities)`` ready to pass to
-            :meth:`script`.
+            ``(expressions, operation_vids, preconditions, severities)``
+            ready to pass to :meth:`script`. ``operation_vids`` maps each
+            code to the ``OperationVID`` already resolved by this same
+            query, so callers that want the persisted AST for an
+            operation don't need a second lookup for it.
         """
         from sqlalchemy import or_
 
@@ -635,12 +971,14 @@ class ASTGeneratorService:
                 latest_by_code[code] = (op_vid, expression, severity, prec_vid)
 
         expressions: List[Tuple[str, str]] = []
+        operation_vids: Dict[str, int] = {}
         severities: Dict[str, str] = {}
         prec_vid_to_codes: Dict[int, List[str]] = {}
-        for code, (_, expression, severity, prec_vid) in sorted(
+        for code, (op_vid, expression, severity, prec_vid) in sorted(
             latest_by_code.items()
         ):
             expressions.append((expression, code))
+            operation_vids[code] = op_vid
             if severity:
                 severities[code] = severity
             if prec_vid is not None:
@@ -649,7 +987,7 @@ class ASTGeneratorService:
         preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]] = (
             list(self._resolve_preconditions(prec_vid_to_codes))
         )
-        return expressions, preconditions, severities
+        return expressions, operation_vids, preconditions, severities
 
     def _resolve_preconditions(
         self, prec_vid_to_codes: Dict[int, List[str]]
@@ -1210,23 +1548,43 @@ class ASTGeneratorService:
         code: str,
         ast_dict: Any,
         severity: str,
-        submission_date: Optional[str],
+        reference_date: Optional[str],
         root_operator_id: int,
+        operation_vid: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Assemble a single ``operations[code]`` entry.
 
-        ``version_id`` is a deterministic CRC32 of the expression
-        truncated to four digits; this replaces pydpm's
-        non-deterministic ``hash(expression) % 10000``.
+        ``version_id`` is the real ``OperationVID`` when the caller has
+        one (:meth:`script_from_db` always does — the wire format's own
+        spec, dpm-xl-docs' ``03-document-sections.md`` §3.10, defines
+        ``version_id`` as exactly that: "OperationVID of this Operation
+        version in the source DPM content"). Only when ``operation_vid``
+        is unavailable (:meth:`script`'s caller-supplied ``expressions``,
+        which may not even name a real DB operation — e.g. an
+        ``--expressions`` file) does this fall back to a deterministic
+        CRC32 of the expression truncated to four digits, which replaces
+        pydpm's non-deterministic ``hash(expression) % 10000``.
+
+        ``reference_date`` is the *module version's* reference date
+        (``ModuleVersion.from_reference_date``), not a genuine
+        per-operation submission date — ``OperationScope`` has its own
+        ``FromSubmissionDate`` column that this doesn't read. The wire
+        key stays ``from_submission_date`` (the established script
+        format contract); only the Python name reflects what it's
+        actually fed from.
         """
-        version_id = zlib.crc32(expression.encode("utf-8")) % 10000
+        version_id = (
+            operation_vid
+            if operation_vid is not None
+            else zlib.crc32(expression.encode("utf-8")) % 10000
+        )
         return {
             "version_id": version_id,
             "code": code,
             "expression": expression,
             "root_operator_id": root_operator_id,
             "ast": ast_dict,
-            "from_submission_date": submission_date or _DEFAULT_FROM_DATE,
+            "from_submission_date": reference_date or _DEFAULT_FROM_DATE,
             "severity": severity,
         }
 

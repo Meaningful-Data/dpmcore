@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import zlib
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -425,6 +426,25 @@ class TestBuildOperationEntry:
         assert out["code"] == "v1"
         assert out["from_submission_date"] == "2026-03-31"
         assert out["ast"] == {"x": 1}
+
+    def test_operation_vid_overrides_crc32(self):
+        """dpmcore#364: when the caller knows the real ``OperationVID``
+        (:meth:`script_from_db`), ``version_id`` is that value verbatim
+        — not the CRC32 fallback :meth:`script` uses when it doesn't.
+        """
+        _, Cls, _ = _bare_svc()
+        out = Cls._build_operation_entry(
+            "expr", "v1", {"x": 1}, "warning", "2026-03-31", 24,
+            operation_vid=99999,
+        )
+        assert out["version_id"] == 99999
+
+    def test_no_operation_vid_falls_back_to_crc32(self):
+        _, Cls, _ = _bare_svc()
+        out = Cls._build_operation_entry(
+            "expr", "v1", {"x": 1}, "warning", "2026-03-31", 24
+        )
+        assert out["version_id"] == zlib.crc32(b"expr") % 10000
 
 
 # ------------------------------------------------------------------ #
@@ -2302,3 +2322,265 @@ class TestScript:
         assert svc._semantic.validate.called
         for call in svc._semantic.validate.call_args_list:
             assert "check_scope" not in call.kwargs
+
+
+# ------------------------------------------------------------------ #
+# script_from_db (dpmcore#364) — the DB-native path used by
+# script_for_module/export-script. Shares _process_operation/
+# _assemble_script with TestScript's script(), so only what's specific
+# to this method is exercised here: per-operation DB-vs-text-reparse
+# resolution, the real OperationVID reaching version_id, and the
+# non-fatal (per-operation) scope-error handling that differs from
+# script()'s all-or-nothing behaviour.
+# ------------------------------------------------------------------ #
+
+
+class _FakeUnsupportedDbAst(Exception):
+    """Stand-in for ``db_ast.UnsupportedDbAst`` in ``script_from_db``
+    tests — a distinct exception type ``_stub_db_ast`` installs as both
+    the fake module's ``UnsupportedDbAst`` and what a stubbed
+    ``build_ast_dict_from_db`` raises, so ``script_from_db``'s own
+    ``except UnsupportedDbAst:`` (bound to this same class via the
+    stubbed import) actually catches it.
+    """
+
+
+class TestScriptFromDb:
+    # Deliberately not a subclass of TestScript: that would make pytest
+    # collect and re-run every TestScript test again under this class
+    # name, none of which touch script_from_db at all. The two small
+    # helpers below are an intentional, small duplication instead.
+
+    def _build_svc(self, mv=None, release_row=None):
+        svc, _, mod = _bare_svc()
+        svc.session = MagicMock()
+        svc._semantic = MagicMock()
+        svc._scope_calc = MagicMock()
+        svc._syntax = MagicMock()
+
+        if mv is None:
+            framework = SimpleNamespace(code="COREP")
+            module = SimpleNamespace(framework=framework)
+            mv = SimpleNamespace(
+                module_vid=1,
+                start_release_id=1,
+                end_release_id=None,
+                from_reference_date=date(2026, 3, 31),
+                to_reference_date=None,
+                code="MOD",
+                version_number="1.0",
+                module=module,
+            )
+        if release_row is None:
+            release_row = SimpleNamespace(
+                release_id=2, code="4.2", date=date(2025, 4, 28)
+            )
+
+        svc._resolve_release = lambda mc, mv_, rel: (mv, release_row)
+        svc._resolve_root_operator_id = staticmethod(lambda ast, session: 24)
+
+        svc._scope_calc._get_module_tables.return_value = {
+            "C_01.00": {
+                "variables": {"100": "m"},
+                "open_keys": {"BASE": "e"},
+            }
+        }
+        svc._scope_calc._get_module_uri.return_value = "http://example/mod"
+        svc._scope_calc.calculate_from_expression.return_value = (
+            SimpleNamespace(has_error=False, scopes=[])
+        )
+        svc._scope_calc.detect_cross_module_dependencies.return_value = {
+            "intra_instance_validations": ["v1"],
+            "cross_instance_dependencies": [],
+            "dependency_modules": {},
+        }
+        svc._scope_calc.detect_alternative_dependencies.return_value = []
+        return svc, mv, release_row, mod
+
+    def _stub_serialize_ast(self, monkeypatch, return_value):
+        ser_mod = MagicMock()
+        ser_mod.serialize_ast = lambda ast: return_value
+        monkeypatch.setitem(
+            sys.modules, "dpmcore.dpm_xl.utils.serialization", ser_mod
+        )
+
+    def _stub_db_ast(self, monkeypatch, build_ast_dict_from_db):
+        """Install a fake ``dpmcore.dpm_xl.utils.db_ast`` module.
+
+        ``script_from_db`` imports it locally (inside its ``try:``
+        block), so it resolves through ``sys.modules`` at call time —
+        same mechanism ``_stub_serialize_ast`` relies on for
+        ``dpmcore.dpm_xl.utils.serialization``.
+        """
+        mod = SimpleNamespace(
+            UnsupportedDbAst=_FakeUnsupportedDbAst,
+            build_ast_dict_from_db=build_ast_dict_from_db,
+        )
+        monkeypatch.setitem(
+            sys.modules, "dpmcore.dpm_xl.utils.db_ast", mod
+        )
+
+    def test_no_session_returns_error(self):
+        svc, _, _mod = _bare_svc()
+        svc.session = None
+        svc._semantic = None
+        svc._scope_calc = None
+        out = svc.script_from_db(
+            expressions=[("x", "v1")],
+            operation_vids={"v1": 42},
+            mv=SimpleNamespace(),
+            release_row=SimpleNamespace(),
+        )
+        assert out["success"] is False
+        assert "No database session" in out["error"]
+
+    def test_db_path_used_and_text_reparse_skipped(self, monkeypatch):
+        """When ``build_ast_dict_from_db`` succeeds, the text-reparse
+        path (``_semantic.validate``) must never run for that operation.
+        """
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
+        build = MagicMock(return_value=(db_ast_dict, 24))
+        self._stub_db_ast(monkeypatch, build)
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        ns = next(iter(out["enriched_ast"].values()))
+        op = ns["operations"]["v1"]
+        assert op["ast"] == db_ast_dict
+        # The real OperationVID reaches the wire as version_id (dpm-xl
+        # script-format spec §3.10), not the CRC32 fallback script() uses.
+        assert op["version_id"] == 555
+        build.assert_called_once_with(svc.session, 555, release_row.release_id)
+        svc._semantic.validate.assert_not_called()
+
+    def test_falls_back_to_text_reparse_when_unsupported(self, monkeypatch):
+        build = MagicMock(
+            side_effect=_FakeUnsupportedDbAst("unsupported construct")
+        )
+        self._stub_db_ast(monkeypatch, build)
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, mv, release_row, _ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        ns = next(iter(out["enriched_ast"].values()))
+        op = ns["operations"]["v1"]
+        # Falls back to the text-reparsed AST...
+        assert op["ast"]["class_name"] == "VarID"
+        # ...but version_id still uses the already-known real
+        # OperationVID — the fallback is per-AST, not per-identity.
+        assert op["version_id"] == 555
+        assert svc._semantic.validate.called
+
+    def test_no_operation_vid_skips_db_and_uses_crc32(self, monkeypatch):
+        """A code with no entry in ``operation_vids`` never even attempts
+        the DB path, and its ``version_id`` falls back to the CRC32 hash
+        — same as :meth:`script`'s caller-supplied expressions.
+        """
+        build = MagicMock()
+        self._stub_db_ast(monkeypatch, build)
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, mv, release_row, _ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        build.assert_not_called()
+        ns = next(iter(out["enriched_ast"].values()))
+        op = ns["operations"]["v1"]
+        assert op["version_id"] == zlib.crc32(b"e1") % 10000
+
+    def test_gate_failure_skips_before_any_ast_attempt(self, monkeypatch):
+        build = MagicMock(
+            return_value=(
+                {"class_name": "VarID", "table": "C", "data": []},
+                24,
+            )
+        )
+        self._stub_db_ast(monkeypatch, build)
+        svc, mv, release_row, _ = self._build_svc()
+        # Bypass real gate-text parsing (covered by TestScript already;
+        # not what this test is about): force v1's gate to be
+        # unsupported so we can check the short-circuit in isolation.
+        svc._unsupported_gate_operations = lambda preconditions: {
+            "v1": "gate not supported"
+        }
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1"), ("e2", "v2")],
+            operation_vids={"v1": 1, "v2": 2},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        assert out["failed_operations"] == {"v1": "gate not supported"}
+        # v1 is skipped before either AST path is even attempted; only
+        # v2 (operation_vid=2) ever reaches build_ast_dict_from_db.
+        build.assert_called_once_with(svc.session, 2, release_row.release_id)
+
+    def test_per_operation_scope_error_is_non_fatal(self, monkeypatch):
+        """Unlike :meth:`script` (#122 — a scope error fails the whole
+        module), a scope-calculation error here only excludes that one
+        operation: this method discovers every active validation for the
+        module by itself, so one bad operation must not take the rest
+        down with it.
+        """
+        build = MagicMock(
+            side_effect=[
+                ({"class_name": "VarID", "table": "C", "data": []}, 24),
+                ({"class_name": "VarID", "table": "C", "data": []}, 24),
+            ]
+        )
+        self._stub_db_ast(monkeypatch, build)
+        svc, mv, release_row, _ = self._build_svc()
+        svc._scope_calc.calculate_from_expression.side_effect = [
+            SimpleNamespace(has_error=True, error_message="boom"),
+            SimpleNamespace(has_error=False, scopes=[]),
+        ]
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1"), ("e2", "v2")],
+            operation_vids={"v1": 1, "v2": 2},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        assert "v1" in out["failed_operations"]
+        assert "boom" in out["failed_operations"]["v1"]
+        ns = next(iter(out["enriched_ast"].values()))
+        assert "v1" not in ns["operations"]
+        assert "v2" in ns["operations"]

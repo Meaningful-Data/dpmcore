@@ -638,6 +638,12 @@ def export_script(
     ``--all-modules``/``--all-versions`` to sweep many at once.
     ``--release`` on its own (no ``--module-version``/``--all-versions``)
     selects each targeted module's version active at that release instead.
+
+    The output file holds only the ``enriched_ast`` content — the same
+    ``{namespace: ...}`` shape mdpm's own export produces — not the
+    ``success``/``error``/``failed_operations`` wrapper ``script()``
+    returns internally. Skipped validations are reported on the console
+    instead, not written into the file.
     """
     import json
     from pathlib import Path
@@ -718,7 +724,7 @@ def export_script(
 
                 out_path = out_dir / f"{code}-{version}.json"
                 out_path.write_text(
-                    json.dumps(result, indent=2, default=str),
+                    json.dumps(result["enriched_ast"], indent=2, default=str),
                     encoding="utf-8",
                 )
                 n_ops, n_skipped, n_dep = _script_result_counts(result)
@@ -729,6 +735,7 @@ def export_script(
                     f"{n_skipped} skipped, "
                     f"{n_dep} dependency modules)"
                 )
+                _report_skipped_operations(console, result)
                 succeeded.append((code, version))
 
             _print_sweep_summary(
@@ -763,7 +770,8 @@ def export_script(
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(
-        json.dumps(result, indent=2, default=str), encoding="utf-8"
+        json.dumps(result["enriched_ast"], indent=2, default=str),
+        encoding="utf-8",
     )
 
     n_ops, n_skipped, n_dep = _script_result_counts(result)
@@ -864,7 +872,7 @@ def _print_sweep_summary(
     if total_skipped:
         console.print(
             f"[yellow]{total_skipped} validations skipped[/yellow] for "
-            "semantic errors — see 'failed_operations' in each script "
+            "semantic errors — see the per-target detail printed above "
             "for the reason per validation."
         )
 
@@ -874,10 +882,11 @@ def _report_skipped_operations(
 ) -> None:
     """Print why each skipped validation was left out of the script.
 
-    ``failed_operations`` is already written to the output JSON, but a
-    console line that only counts what made it gives no hint that
-    anything was dropped (#355). Long lists are truncated — the file
-    holds all of them.
+    A console line that only counts what made it gives no hint that
+    anything was dropped (#355) — the output file no longer carries
+    ``failed_operations`` for ``export-script`` (only the ``enriched_ast``
+    content, matching mdpm's own script shape), so this is the only place
+    skipped validations are reported for that command.
 
     Reasons are escaped before printing: a message naming an item, e.g.
     ``[eba_AS:x2]``, reads as rich markup and would otherwise be
@@ -895,10 +904,7 @@ def _report_skipped_operations(
     for code, reason in list(failed_ops.items())[:limit]:
         console.print(f"  [yellow]{escape(code)}[/yellow]: {escape(reason)}")
     if len(failed_ops) > limit:
-        console.print(
-            f"  ... and {len(failed_ops) - limit} more — see "
-            "'failed_operations' in the output file."
-        )
+        console.print(f"  ... and {len(failed_ops) - limit} more skipped")
 
 
 def _script_result_counts(result: dict[str, Any]) -> tuple[int, int, int]:
