@@ -34,6 +34,7 @@ Thanks for your interest in contributing! This guide covers the basics to get yo
 ## Project Conventions
 - `dpmcore` follows a layered architecture: ORM (SQLAlchemy 2.0) → Services → REST API (FastAPI) / Django integration / CLI (Click). See [README.md](README.md) for the layout.
 - DPM-XL grammar lives in `src/dpmcore/dpm_xl/grammar/`; regenerate via `antlr4 -Dlanguage=Python3 -visitor` against the `.g4` file. Do not hand-edit generated lexer/parser/tokens.
+- The `.g4` grammar files must be mirrored in the `dpm-xl-docs` repository (`docs/grammar/`, `main` branch), CI fails if they diverge. When you change the grammar here, update the copy in `dpm-xl-docs` too.
 - Service methods return frozen dataclasses (not dicts). All public modules, classes, and functions carry Google-style docstrings (enforced by ruff `D` rules).
 - Tests use the markers `unit`, `integration`, `api`, `django`. Integration tests may hit a real database.
 
