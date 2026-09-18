@@ -1834,10 +1834,14 @@ class ASTGeneratorService:
         Rewiring an ``or`` — or either side of an ``xor`` — the way an
         ``and`` is rewired would leave a *stricter* gate behind and skip
         validations that should have run, so those cases propagate
-        instead. ``ParExpr`` wrappers are unwrapped; ``BinOp`` /
-        ``UnaryOp`` keep their operator, and a ``not`` flips the polarity
-        the rewiring rule is read at. ``ParameterRef`` and boolean
-        ``Constant`` leaves go through the standard ``serialize_ast`` path,
+        instead. ``ParExpr`` wrappers are rebuilt around their transformed
+        ``expression`` (dropped only when that inner result is itself
+        ``None``) — the spec requires preserving source parenthesisation
+        for reconstruction even though it carries no precedence of its
+        own. ``BinOp``/``UnaryOp`` keep their operator, and a ``not``
+        flips the polarity the rewiring rule is read at. ``ParameterRef``
+        and boolean ``Constant`` leaves go through the standard
+        ``serialize_ast`` path,
         so the gate carries exactly the node shape an expression would
         (``code`` / ``param_type`` / ``default``; ``type_`` / ``value``).
         Any other node is a programming error here: ``_parse_gates`` keeps
@@ -1855,13 +1859,16 @@ class ASTGeneratorService:
         node = cls._unwrap_start(node, ast_nodes)
 
         if isinstance(node, ast_nodes.ParExpr):
-            return cls._transform_precondition_ast(
+            inner = cls._transform_precondition_ast(
                 node.expression,
                 resolved,
                 precondition_variables,
                 serialize_ast,
                 negated,
             )
+            if inner is None:
+                return None
+            return {"class_name": "ParExpr", "expression": inner}
         if isinstance(node, (ast_nodes.VarRef, ast_nodes.PreconditionItem)):
             variable = getattr(node, "variable", None) or getattr(
                 node, "variable_code", None

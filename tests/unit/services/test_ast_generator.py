@@ -794,18 +794,6 @@ class TestBuildPreconditionsBlock:
 # ------------------------------------------------------------------ #
 
 
-def _collect_class_names(node, acc=None):
-    acc = set() if acc is None else acc
-    if isinstance(node, dict):
-        acc.add(node.get("class_name"))
-        for value in node.values():
-            _collect_class_names(value, acc)
-    elif isinstance(node, list):
-        for item in node:
-            _collect_class_names(item, acc)
-    return acc
-
-
 class TestGateParameterPropagation:
     """A ``{p_*}`` reference in a gate reaches the engine intact.
 
@@ -973,7 +961,10 @@ class TestGateParameterPropagation:
 
     def test_not_xor_and_grouping_preserved(self, monkeypatch, real_syntax):
         """Every operator the engine's evaluator implements survives, and
-        grouping parentheses are unwrapped rather than emitted.
+        grouping parentheses are rebuilt as a ``ParExpr`` node rather
+        than unwrapped — the spec requires preserving source
+        parenthesisation for reconstruction (§4.10), even though a
+        ``ParExpr`` carries no precedence of its own.
         """
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
@@ -1005,9 +996,11 @@ class TestGateParameterPropagation:
         negation = ast["left"]
         assert negation["class_name"] == "UnaryOp"
         assert negation["op"] == "not"
-        assert negation["operand"]["class_name"] == "BinOp"
-        assert negation["operand"]["op"] == "xor"
-        assert "ParExpr" not in _collect_class_names(ast)
+        wrapped = negation["operand"]
+        assert wrapped["class_name"] == "ParExpr"
+        xor_node = wrapped["expression"]
+        assert xor_node["class_name"] == "BinOp"
+        assert xor_node["op"] == "xor"
         assert vars_ == {"10": "b", "20": "b", "30": "b"}
 
     def test_gates_with_different_shapes_never_share_a_key(
