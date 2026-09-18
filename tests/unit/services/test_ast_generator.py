@@ -965,6 +965,13 @@ class TestGateParameterPropagation:
         than unwrapped — the spec requires preserving source
         parenthesisation for reconstruction (§4.10), even though a
         ``ParExpr`` carries no precedence of its own.
+
+        The grouped clause here is the *right* operand of ``or``, not
+        the operand of ``not``: the AST constructor has its own,
+        unrelated special case for ``not (...)`` — it always unwraps
+        that particular ``ParExpr`` (``visitNotExpr`` in
+        ``ast/constructor.py``) — so asserting the wrapper survives
+        needs a grouped clause that case doesn't touch.
         """
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
@@ -979,7 +986,7 @@ class TestGateParameterPropagation:
         )
 
         preconds, vars_ = svc._build_preconditions_block(
-            [("not ({v_A} xor {v_B}) or {v_C}", ["v1"])], release_id=None
+            [("not {v_A} or ({v_B} xor {v_C})", ["v1"])], release_id=None
         )
 
         [entry] = preconds.values()
@@ -988,19 +995,31 @@ class TestGateParameterPropagation:
         ast = entry["ast"]
         assert ast["class_name"] == "BinOp"
         assert ast["op"] == "or"
-        assert ast["right"] == {
-            "class_name": "PreconditionItem",
-            "variable_id": 3,
-            "variable_code": "C",
-        }
+
         negation = ast["left"]
         assert negation["class_name"] == "UnaryOp"
         assert negation["op"] == "not"
-        wrapped = negation["operand"]
+        assert negation["operand"] == {
+            "class_name": "PreconditionItem",
+            "variable_id": 1,
+            "variable_code": "A",
+        }
+
+        wrapped = ast["right"]
         assert wrapped["class_name"] == "ParExpr"
         xor_node = wrapped["expression"]
         assert xor_node["class_name"] == "BinOp"
         assert xor_node["op"] == "xor"
+        assert xor_node["left"] == {
+            "class_name": "PreconditionItem",
+            "variable_id": 2,
+            "variable_code": "B",
+        }
+        assert xor_node["right"] == {
+            "class_name": "PreconditionItem",
+            "variable_id": 3,
+            "variable_code": "C",
+        }
         assert vars_ == {"10": "b", "20": "b", "30": "b"}
 
     def test_gates_with_different_shapes_never_share_a_key(
