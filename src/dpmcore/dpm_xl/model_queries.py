@@ -2557,8 +2557,9 @@ class ViewDatapointsQuery:
 
         Returns:
             One row per (table version, module version carrying it),
-            with the module version's release window, ordered as the
-            join that produced it was.
+            with the module version's release window, sorted by
+            ``(table_vid, module_vid)`` -- the order
+            :func:`_with_module_windows` fans the cells out in.
         """
         query = (
             session.query(
@@ -2975,8 +2976,8 @@ def _with_module_windows(
 
     Args:
         data: Cell frame to fan out.
-        membership: One row per (table version, module version), in
-            ``ModuleVID`` order.
+        membership: One row per (table version, module version),
+            sorted by ``(table_vid, module_vid)``.
         cell_major: Group by cell and then by module version, rather
             than the other way round.
 
