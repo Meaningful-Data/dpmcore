@@ -172,7 +172,8 @@ Version is maintained in `pyproject.toml` (`[project].version`). When bumping, c
 ## Common Pitfalls
 
 1. **Never edit ANTLR-generated files** — change the `.g4` grammar and regenerate.
-2. **Identifiers cannot be nullable** in DPM models; measures can.
-3. **ANTLR version** — Must use 4.9.2 to match the `antlr4-python3-runtime` pin.
-4. **SQL Server driver** — `pyodbc` requires the Microsoft ODBC Driver 17+ installed on the host.
-5. **Version updates** — update the version in `pyproject.toml`. Create a new branch `bump-version-{version}` from `origin/master`.
+2. **Keep `dpm-xl-docs` in sync** — grammar changes must be mirrored in `dpm-xl-docs` (`docs/grammar/`, `main` branch) or the `grammar-sync` CI job fails.
+3. **Identifiers cannot be nullable** in DPM models; measures can.
+4. **ANTLR version** — Must use 4.9.2 to match the `antlr4-python3-runtime` pin.
+5. **SQL Server driver** — `pyodbc` requires the Microsoft ODBC Driver 17+ installed on the host.
+6. **Version updates** — update the version in `pyproject.toml`. Create a new branch `bump-version-{version}` from `origin/master`.

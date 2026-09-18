@@ -1552,9 +1552,9 @@ def _ghost_module_ids_for_table_vids(
         :meth:`ViewDatapointsQuery._resolve_table_version_scope`), and
         deciding per version would also have to merge the live module
         versions into ``_TableVersionScope.fallback_module_vids`` --
-        :meth:`ViewDatapointsQuery._filter_module_versions` replaces the
-        release filter with that list, so a live version left out of it
-        would lose its rows.
+        :meth:`ViewDatapointsQuery._module_membership` restricts
+        membership to that list instead of applying the release filter,
+        so a live version left out of it would lose its rows.
     """
     rows = (
         filter_by_release(
@@ -1661,6 +1661,70 @@ def _apply_table_ghost_fallback(
 
 class ModuleVersionQuery:
     """Query helpers around ModuleVersion."""
+
+    @staticmethod
+    def ghost_fallbacks(
+        session: "Session",
+        release_id: int,
+    ) -> dict[int, list[int]]:
+        """Map each fallback module version to the ghosts it stands in for.
+
+        The module-level statement of the #182 rule, for callers holding
+        a ``ModuleVersion`` rather than operand rows: a module whose
+        *every* release-covering version is a ghost is represented at
+        ``release_id`` by the latest prior non-collapsed version of the
+        same module (see :func:`_latest_prior_non_collapsed_vids`).
+        Modules with a genuine covering version, and ghosts with nothing
+        prior to stand in for them, are left out -- the caller keeps the
+        clean "module not present at this release" outcome for the
+        latter.
+
+        Where :func:`_resolve_with_ghost_fallback` re-runs the caller's
+        operand lookup against the fallback version, this only *reports*
+        the substitution, so a caller can both enumerate the fallback as
+        the release's export target and read the ghost's operation
+        scopes through it (#372).
+
+        The scan is release-wide rather than narrowed to a module: the
+        ghost/genuine partition is per-module, so a single module's
+        entry is the same either way, and one release-wide result can be
+        cached and shared across every module of a sweep.
+
+        Args:
+            session: SQLAlchemy session.
+            release_id: Target release id.
+
+        Returns:
+            Mapping ``{fallback_module_vid: [ghost_module_vid, ...]}``,
+            the ghost VIDs sorted.
+        """
+        query = filter_by_release(
+            session.query(
+                ModuleVersion.module_id,
+                ModuleVersion.module_vid,
+                ModuleVersion.from_reference_date,
+                ModuleVersion.to_reference_date,
+            ),
+            start_col=ModuleVersion.start_release_id,
+            end_col=ModuleVersion.end_release_id,
+            release_id=release_id,
+        )
+        ghosts: dict[int, list[int]] = {}
+        genuine: set[int] = set()
+        for module_id, module_vid, from_date, to_date in query.all():
+            if module_id is None:
+                continue
+            if _is_collapsed_window(from_date, to_date):
+                ghosts.setdefault(module_id, []).append(module_vid)
+            else:
+                genuine.add(module_id)
+        fallback = _latest_prior_non_collapsed_vids(
+            session, set(ghosts) - genuine, release_id
+        )
+        return {
+            module_vid: sorted(ghosts[module_id])
+            for module_id, module_vid in fallback.items()
+        }
 
     @staticmethod
     def get_last_release(
@@ -2039,46 +2103,253 @@ class ViewDatapointsQuery:
         dict[str, dict[str, int] | None],
     ] = {}
 
+    # Cells of one table-version scope, with their axes resolved, keyed
+    # by engine + table + the table versions themselves: every release
+    # and ``live`` flag that resolves to the same versions, and every
+    # cell selection over them, shares one fetch.
+    _CELL_FRAME_CACHE: dict[
+        tuple[Hashable, str, tuple[int, ...]],
+        pd.DataFrame,
+    ] = {}
+
+    # The module versions a (table, release, live) scope resolves to,
+    # and with them the table versions to read. Resolving one costs up
+    # to four queries, and every cell selection over the same table
+    # asked for the same answer.
+    _MEMBERSHIP_CACHE: dict[
+        tuple[Hashable, str, int | None, bool, bool],
+        pd.DataFrame,
+    ] = {}
+
+    _AXES: tuple[tuple[str, str], ...] = (
+        ("row", "row_id"),
+        ("column", "column_id"),
+        ("sheet", "sheet_id"),
+    )
+
     # -- internal helpers ------------------------------------------ #
 
     @staticmethod
-    def _create_base_query_with_aliases(
+    def _pinned_header_pairs(
         session: "Session",
-    ) -> tuple["Query[Any]", dict[str, Any]]:
-        """Build the base multi-join query.
+        table_vids: Sequence[int],
+    ) -> dict[tuple[int, int], list[tuple[str | None, int | None]]]:
+        """Return ``{(table_vid, header_id): [(code, order)]}`` for a scope.
+
+        A table version pins the exact ``HeaderVersion`` of each of its
+        headers through its ``TableVersionHeader`` rows, and stores their
+        display order there. A table version has a few dozen headers
+        against hundreds or thousands of cells, so they are read once
+        here and applied to the cells in pandas
+        (:meth:`_add_axis_columns`) rather than joined per cell and per
+        axis. Those three joins, each of them a disjunction the optimiser
+        could not turn into a seek, are what made a call scan millions of
+        pages to return a handful of codes (issue #361).
+
+        The join to ``HeaderVersion`` is an outer one: a row that pins no
+        version still carries the display order, as it did when this was
+        a left join on the cell query.
 
         Args:
             session: SQLAlchemy session.
+            table_vids: The table versions in scope.
 
         Returns:
-            Tuple of (query, aliases dict).
+            The ``(code, order)`` pairs each header resolves to -- a list
+            because nothing stops a header being pinned twice, and the
+            join this replaces would have yielded a row for each.
         """
-        hvr = aliased(HeaderVersion)
-        hvc = aliased(HeaderVersion)
-        hvs = aliased(HeaderVersion)
-        tvh_row = aliased(TableVersionHeader)
-        tvh_col = aliased(TableVersionHeader)
-        tvh_sheet = aliased(TableVersionHeader)
+        rows = (
+            session.query(
+                TableVersionHeader.table_vid,
+                TableVersionHeader.header_id,
+                HeaderVersion.code,
+                TableVersionHeader.order,
+            )
+            .select_from(TableVersionHeader)
+            .outerjoin(
+                HeaderVersion,
+                HeaderVersion.header_vid == TableVersionHeader.header_vid,
+            )
+            .filter(TableVersionHeader.table_vid.in_(list(table_vids)))
+            .all()
+        )
+        pinned: dict[tuple[int, int], list[tuple[str | None, int | None]]] = {}
+        for table_vid, header_id, code, order in rows:
+            pinned.setdefault((int(table_vid), int(header_id)), []).append(
+                (code, order)
+            )
+        return pinned
+
+    @staticmethod
+    def _unpinned_header_pairs(
+        session: "Session",
+        header_ids: Collection[int],
+    ) -> dict[int, list[tuple[str | None, int | None]]]:
+        """Return ``{header_id: [(code, None)]}`` for unpinned headers.
+
+        A table version with no ``TableVersionHeader`` row for one of the
+        headers its cells point at falls back to matching
+        ``HeaderVersion.HeaderID`` directly. Nothing then pins a version,
+        so every version of that header answers -- and the header carries
+        no display order, since the order is stored on the missing row.
+        Both were already true of the outer join this replaces.
+
+        Args:
+            session: SQLAlchemy session.
+            header_ids: The headers left unresolved by
+                :meth:`_pinned_header_pairs`.
+
+        Returns:
+            The ``(code, None)`` pairs each of them resolves to, empty
+            when there is nothing to fall back on.
+        """
+        if not header_ids:
+            return {}
+        rows = (
+            session.query(HeaderVersion.header_id, HeaderVersion.code)
+            .filter(HeaderVersion.header_id.in_(sorted(header_ids)))
+            .all()
+        )
+        unpinned: dict[int, list[tuple[str | None, int | None]]] = {}
+        for header_id, code in rows:
+            unpinned.setdefault(int(header_id), []).append((code, None))
+        return unpinned
+
+    @classmethod
+    def _unpinned_header_ids(
+        cls,
+        frame: pd.DataFrame,
+        pinned: dict[tuple[int, int], list[tuple[str | None, int | None]]],
+    ) -> set[int]:
+        """Return the headers of ``frame``'s cells ``pinned`` does not cover.
+
+        Args:
+            frame: Cell frame carrying ``table_vid`` and the three axis
+                header id columns.
+            pinned: Map from :meth:`_pinned_header_pairs`.
+
+        Returns:
+            The header ids needing the direct fallback; a cell that has
+            no header on an axis (a table without sheets) contributes
+            none.
+        """
+        missing: set[int] = set()
+        for _axis, id_col in cls._AXES:
+            for table_vid, header_id in zip(
+                frame["table_vid"], frame[id_col], strict=True
+            ):
+                if pd.isna(header_id):
+                    continue
+                if (int(table_vid), int(header_id)) not in pinned:
+                    missing.add(int(header_id))
+        return missing
+
+    @classmethod
+    def _add_axis_columns(
+        cls,
+        session: "Session",
+        frame: pd.DataFrame,
+        table_vids: Sequence[int],
+    ) -> pd.DataFrame:
+        """Add ``{row,column,sheet}_{code,order}`` to a cell frame.
+
+        Each axis is resolved through the table version's own pinned
+        header, falling back to the header id alone
+        (:meth:`_unpinned_header_pairs`). A fallback header can resolve
+        to several versions, so the frame is exploded per axis -- the
+        same row multiplication the outer join produced, and the reason
+        the pairs are kept as lists.
+
+        Args:
+            session: SQLAlchemy session.
+            frame: Cell frame from :meth:`_cell_frame`, which this may
+                modify.
+            table_vids: The table versions in scope.
+
+        Returns:
+            The frame with the six axis columns added and the working
+            columns dropped.
+        """
+        pinned = cls._pinned_header_pairs(session, table_vids)
+        unpinned = cls._unpinned_header_pairs(
+            session, cls._unpinned_header_ids(frame, pinned)
+        )
+
+        def pairs_of(
+            table_vid: Any, header_id: Any
+        ) -> list[tuple[str | None, int | None]]:
+            if pd.isna(header_id):
+                return [(None, None)]
+            key = (int(table_vid), int(header_id))
+            if key in pinned:
+                return pinned[key]
+            return unpinned.get(int(header_id), [(None, None)])
+
+        for axis, id_col in cls._AXES:
+            candidates = [
+                pairs_of(table_vid, header_id)
+                for table_vid, header_id in zip(
+                    frame["table_vid"], frame[id_col], strict=True
+                )
+            ]
+            if any(len(pair) > 1 for pair in candidates):
+                # Only an unpinned header answers with several versions,
+                # which is rare enough to be worth not rebuilding the
+                # frame for the axes that resolve one to one.
+                frame[f"{axis}_pair"] = pd.Series(
+                    candidates, index=frame.index, dtype=object
+                )
+                frame = frame.explode(f"{axis}_pair")
+                pairs = list(frame.pop(f"{axis}_pair"))
+            else:
+                pairs = [pair[0] for pair in candidates]
+            frame[f"{axis}_code"] = [pair[0] for pair in pairs]
+            frame[f"{axis}_order"] = [pair[1] for pair in pairs]
+        return frame.reset_index(drop=True)
+
+    @classmethod
+    def _cell_frame(
+        cls,
+        session: "Session",
+        table: str,
+        table_vids: Sequence[int],
+    ) -> pd.DataFrame:
+        """Return every cell of ``table_vids``, with its axes resolved.
+
+        The single query the three public methods are built on: the
+        cells of the scoped table versions and the variable payload
+        hanging off them, narrowed by nothing but ``table_vid``. Each
+        method then selects its columns and applies its own cell
+        selection in pandas, which keeps one shape of SQL -- and one
+        execution per table version -- behind a whole validation run,
+        however many different selections it asks for.
+
+        Args:
+            session: SQLAlchemy session.
+            table: Table version code; every row carries it, so it is set
+                as a column rather than joined back through
+                ``TableVersion``.
+            table_vids: The table versions to read cells from, already
+                scoped by :meth:`_module_membership`.
+
+        Returns:
+            The cached frame for this scope. Callers must treat it as
+            read-only and derive their result from it.
+        """
+        cache_key = (
+            _get_engine_cache_key(session),
+            table,
+            tuple(sorted(table_vids)),
+        )
+        cached = cls._CELL_FRAME_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
 
         query = (
             session.query()
-            .select_from(TableVersion)
-            .join(
-                ModuleVersionComposition,
-                TableVersion.table_vid == ModuleVersionComposition.table_vid,
-            )
-            .join(
-                ModuleVersion,
-                ModuleVersionComposition.module_vid
-                == ModuleVersion.module_vid,
-            )
-            .join(
-                TableVersionCell,
-                and_(
-                    TableVersionCell.table_vid == TableVersion.table_vid,
-                    TableVersionCell.is_void == False,  # noqa: E712
-                ),
-            )
+            .select_from(TableVersionCell)
+            .join(Cell, TableVersionCell.cell_id == Cell.cell_id)
             .outerjoin(
                 VariableVersion,
                 TableVersionCell.variable_vid == VariableVersion.variable_vid,
@@ -2091,88 +2362,81 @@ class ViewDatapointsQuery:
                 DataType,
                 Property.data_type_id == DataType.data_type_id,
             )
-            .join(
-                Cell,
-                TableVersionCell.cell_id == Cell.cell_id,
+            .add_columns(
+                TableVersionCell.cell_code.label("cell_code"),
+                TableVersionCell.cell_id.label("cell_id"),
+                TableVersionCell.table_vid.label("table_vid"),
+                Cell.row_id.label("row_id"),
+                Cell.column_id.label("column_id"),
+                Cell.sheet_id.label("sheet_id"),
+                VariableVersion.variable_id.label("variable_id"),
+                VariableVersion.variable_vid.label("variable_vid"),
+                VariableVersion.context_id.label("context_id"),
+                VariableVersion.property_id.label("variable_property_id"),
+                Property.property_id.label("property_property_id"),
+                DataType.code.label("data_type"),
             )
-            # Join TVH first to get the release-pinned HeaderVersion (fallback: direct header_id).
-            .outerjoin(
-                tvh_row,
-                and_(
-                    tvh_row.table_vid == TableVersion.table_vid,
-                    tvh_row.header_id == Cell.row_id,
-                ),
-            )
-            .outerjoin(
-                hvr,
-                or_(
-                    # TVH present: use the exact HeaderVersion it references
-                    and_(
-                        tvh_row.header_vid.isnot(None),
-                        hvr.header_vid == tvh_row.header_vid,
-                    ),
-                    # TVH absent: fall back to direct join on header_id
-                    and_(
-                        tvh_row.table_vid.is_(None),
-                        hvr.header_id == Cell.row_id,
-                    ),
-                ),
-            )
-            .outerjoin(
-                tvh_col,
-                and_(
-                    tvh_col.table_vid == TableVersion.table_vid,
-                    tvh_col.header_id == Cell.column_id,
-                ),
-            )
-            .outerjoin(
-                hvc,
-                or_(
-                    # TVH present: use the exact HeaderVersion it references
-                    and_(
-                        tvh_col.header_vid.isnot(None),
-                        hvc.header_vid == tvh_col.header_vid,
-                    ),
-                    # TVH absent: fall back to direct join on header_id
-                    and_(
-                        tvh_col.table_vid.is_(None),
-                        hvc.header_id == Cell.column_id,
-                    ),
-                ),
-            )
-            .outerjoin(
-                tvh_sheet,
-                and_(
-                    tvh_sheet.table_vid == TableVersion.table_vid,
-                    tvh_sheet.header_id == Cell.sheet_id,
-                ),
-            )
-            .outerjoin(
-                hvs,
-                or_(
-                    # TVH present: use the exact HeaderVersion it references
-                    and_(
-                        tvh_sheet.header_vid.isnot(None),
-                        hvs.header_vid == tvh_sheet.header_vid,
-                    ),
-                    # TVH absent: fall back to direct join on header_id
-                    and_(
-                        tvh_sheet.table_vid.is_(None),
-                        hvs.header_id == Cell.sheet_id,
-                    ),
-                ),
+            .filter(
+                TableVersionCell.is_void == False,  # noqa: E712
+                TableVersionCell.table_vid.in_(list(table_vids)),
             )
         )
+        frame = read_sql_with_connection(query.statement, session)
+        frame["table_code"] = table
+        frame = cls._add_axis_columns(session, frame, table_vids)
+        cls._CELL_FRAME_CACHE[cache_key] = frame
+        return frame
 
-        aliases = {
-            "hvr": hvr,
-            "hvc": hvc,
-            "hvs": hvs,
-            "tvh_row": tvh_row,
-            "tvh_col": tvh_col,
-            "tvh_sheet": tvh_sheet,
-        }
-        return query, aliases
+    @classmethod
+    def _scoped_cell_frame(
+        cls,
+        session: "Session",
+        table: str,
+        release_id: int | None,
+        live_table_versions: bool,
+        scoped: bool = True,
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Resolve ``table``'s scope at a release and read its cells.
+
+        Args:
+            session: SQLAlchemy session.
+            table: Table version code.
+            release_id: Release filter.
+            live_table_versions: Resolve the table-version axis by
+                :func:`~dpmcore.dpm_xl.utils.filters.filter_live_only`.
+            scoped: ``False`` accepts every version of ``table`` a module
+                version carries, whatever its release window -- what
+                :meth:`get_filtered_datapoints` asks for when given
+                neither a release nor the ``live`` flag.
+
+        Returns:
+            The cell frame of the resolved scope, and the module
+            versions it is read through -- one row per module version,
+            which :func:`_with_module_windows` fans the cells back out
+            over for the frames that report the window.
+        """
+        cache_key = (
+            _get_engine_cache_key(session),
+            table,
+            release_id,
+            live_table_versions,
+            scoped,
+        )
+        membership = cls._MEMBERSHIP_CACHE.get(cache_key)
+        if membership is None:
+            scope = (
+                cls._resolve_table_version_scope(
+                    session, table, release_id, live_only=live_table_versions
+                )
+                if scoped
+                else None
+            )
+            membership = cls._module_membership(
+                session, table, scope, release_id
+            )
+            cls._MEMBERSHIP_CACHE[cache_key] = membership
+        table_vids = sorted(set(membership["table_vid"]))
+        return cls._cell_frame(session, table, table_vids), membership
 
     @classmethod
     def _resolve_table_version_scope(
@@ -2254,39 +2518,88 @@ class ViewDatapointsQuery:
         )
 
     @staticmethod
-    def _filter_module_versions(
-        query: "Query[Any]",
-        scope: _TableVersionScope,
+    def _module_membership(
+        session: "Session",
+        table: str,
+        scope: _TableVersionScope | None,
         release_id: int | None,
-    ) -> "Query[Any]":
-        """Narrow the ``ModuleVersion`` join to the versions ``scope`` resolved.
+    ) -> pd.DataFrame:
+        """Return the module versions carrying each version of ``table``.
 
-        Normally that is the plain release window. In the ghost-fallback
-        case the effective versions are the fallback's, whose release
-        window ends before ``release_id``, so filtering by release would
-        drop every row; the join is narrowed to their VIDs instead --
-        keeping the module-membership scoping the release filter provides.
+        Module membership scopes which *table versions* may be read, not
+        which cells: every cell of a table version shares its answer. It
+        used to be a join on the cell query, which repeated each cell
+        once per module version holding the table and left ``DISTINCT``
+        (or the ``cell_code`` de-duplication in :meth:`get_table_data`)
+        to collapse the fan-out again -- work proportional to the cells,
+        for an answer that has one row per table version. Resolving it
+        here costs one small query against ``ModuleVersionComposition``;
+        the cell query then takes a plain ``IN`` list, and the frames
+        that report the module version's release window rebuild the
+        fan-out from these few rows (:func:`_with_module_windows`). This
+        is half of issue #361; :meth:`_pinned_header_pairs` is the other
+        half.
+
+        Normally membership is windowed by the plain release window. In
+        the ghost-fallback case the effective module versions are the
+        fallback's, whose window ends *before* ``release_id``, so
+        filtering by release would drop every version; membership is
+        restricted to those module versions instead.
 
         Args:
-            query: Query joining ``ModuleVersion``.
-            scope: Scope from :meth:`_resolve_table_version_scope`.
-            release_id: Release filter; ``None`` leaves ``query`` as is.
+            session: SQLAlchemy session.
+            table: Table version code.
+            scope: Scope from :meth:`_resolve_table_version_scope`, or
+                ``None`` to accept every version of ``table`` that any
+                module version carries -- what an unscoped
+                :meth:`get_filtered_datapoints` call asks for.
+            release_id: Release filter; ``None`` windows nothing.
 
         Returns:
-            The narrowed query.
+            One row per (table version, module version carrying it),
+            with the module version's release window, sorted by
+            ``(table_vid, module_vid)`` -- the order
+            :func:`_with_module_windows` fans the cells out in.
         """
-        if scope.fallback_module_vids is not None:
-            return query.filter(
-                ModuleVersion.module_vid.in_(scope.fallback_module_vids)
+        query = (
+            session.query(
+                ModuleVersionComposition.table_vid.label("table_vid"),
+                ModuleVersion.module_vid.label("module_vid"),
+                ModuleVersion.start_release_id.label("module_start_release"),
+                ModuleVersion.end_release_id.label("module_end_release"),
             )
-        if release_id is None:
-            return query
-        return filter_by_release(
-            query,
-            start_col=ModuleVersion.start_release_id,
-            end_col=ModuleVersion.end_release_id,
-            release_id=release_id,
+            .select_from(ModuleVersionComposition)
+            .join(
+                ModuleVersion,
+                ModuleVersionComposition.module_vid
+                == ModuleVersion.module_vid,
+            )
+            .join(
+                TableVersion,
+                TableVersion.table_vid == ModuleVersionComposition.table_vid,
+            )
+            .filter(TableVersion.code == table)
+            .distinct()
         )
+        if scope is not None:
+            query = query.filter(
+                ModuleVersionComposition.table_vid.in_(scope.table_vids)
+            )
+            if scope.fallback_module_vids is not None:
+                query = query.filter(
+                    ModuleVersion.module_vid.in_(scope.fallback_module_vids)
+                )
+            elif release_id is not None:
+                query = filter_by_release(
+                    query,
+                    start_col=ModuleVersion.start_release_id,
+                    end_col=ModuleVersion.end_release_id,
+                    release_id=release_id,
+                )
+        membership = read_sql_with_connection(query.statement, session)
+        return membership.sort_values(
+            ["table_vid", "module_vid"], kind="stable"
+        ).reset_index(drop=True)
 
     @classmethod
     def get_axis_orders(
@@ -2308,9 +2621,10 @@ class ViewDatapointsQuery:
         Callers then fall back to string comparison for that whole axis, so
         order-based and string-based comparison are never mixed within an axis.
 
-        Results are cached per engine + table + release. The table and release
-        scoping mirrors :meth:`get_table_data` so the map matches the code
-        universe of the data query.
+        Results are cached per engine + table + release, over a cell
+        frame that is itself cached (:meth:`_cell_frame`), so the map
+        matches the code universe of the data query by construction --
+        it is read off the same rows.
 
         Args:
             session: SQLAlchemy session.
@@ -2330,24 +2644,11 @@ class ViewDatapointsQuery:
         if cached is not None:
             return cached
 
-        query, aliases = cls._create_base_query_with_aliases(session)
-        query = query.add_columns(
-            aliases["hvr"].code.label("row_code"),
-            aliases["hvc"].code.label("column_code"),
-            aliases["hvs"].code.label("sheet_code"),
-            aliases["tvh_row"].order.label("row_order"),
-            aliases["tvh_col"].order.label("column_order"),
-            aliases["tvh_sheet"].order.label("sheet_order"),
-        ).distinct()
-
-        scope = cls._resolve_table_version_scope(
-            session, table, release_id, live_only=live_table_versions
+        # No module-version fan-out here: it would repeat rows the map
+        # builders already fold together, and contributes no column.
+        data, _membership = cls._scoped_cell_frame(
+            session, table, release_id, live_table_versions
         )
-        query = query.filter(TableVersion.code == table)
-        query = query.filter(TableVersion.table_vid.in_(scope.table_vids))
-        query = cls._filter_module_versions(query, scope, release_id)
-
-        data = read_sql_with_connection(query.statement, session)
 
         axes = {
             "rows": ("row_code", "row_order"),
@@ -2439,31 +2740,9 @@ class ViewDatapointsQuery:
         if cached is not None:
             return cached
 
-        query, aliases = cls._create_base_query_with_aliases(session)
-
-        query = query.add_columns(
-            TableVersionCell.cell_code.label("cell_code"),
-            TableVersion.code.label("table_code"),
-            aliases["hvr"].code.label("row_code"),
-            aliases["hvc"].code.label("column_code"),
-            aliases["hvs"].code.label("sheet_code"),
-            aliases["tvh_row"].order.label("row_order"),
-            aliases["tvh_col"].order.label("column_order"),
-            aliases["tvh_sheet"].order.label("sheet_order"),
-            VariableVersion.variable_id.label("variable_id"),
-            VariableVersion.property_id.label("property_id"),
-            DataType.code.label("data_type"),
-            TableVersion.table_vid.label("table_vid"),
-            TableVersionCell.cell_id.label("cell_id"),
-            ModuleVersion.start_release_id.label("start_release_id"),
-            ModuleVersion.end_release_id.label("end_release_id"),
+        data, membership = cls._scoped_cell_frame(
+            session, table, release_id, live_table_versions
         )
-
-        scope = cls._resolve_table_version_scope(
-            session, table, release_id, live_only=live_table_versions
-        )
-        query = query.filter(TableVersion.code == table)
-        query = query.filter(TableVersion.table_vid.in_(scope.table_vids))
 
         # Range endpoints are resolved against the stored display order, not
         # the code text; ``get_axis_orders`` supplies the per-axis map (or
@@ -2477,30 +2756,32 @@ class ViewDatapointsQuery:
             live_table_versions,
         )
 
-        # Row filter
-        if rows is not None and rows != ["*"]:
-            query = _apply_dimension_filter(
-                query, aliases["hvr"].code, rows, axis_orders["rows"]
-            )
+        selections = (
+            (rows, "row_code", "rows"),
+            (cols, "column_code", "cols"),
+            (sheets, "sheet_code", "sheets"),
+        )
+        for values, code_col, axis in selections:
+            if values is not None and values != ["*"]:
+                data = _narrow_to_dimension(
+                    data, code_col, values, axis_orders[axis]
+                )
 
-        # Column filter
-        if cols is not None and cols != ["*"]:
-            query = _apply_dimension_filter(
-                query, aliases["hvc"].code, cols, axis_orders["cols"]
-            )
-
-        # Sheet filter
-        if sheets is not None and sheets != ["*"]:
-            query = _apply_dimension_filter(
-                query, aliases["hvs"].code, sheets, axis_orders["sheets"]
-            )
-
-        query = cls._filter_module_versions(query, scope, release_id)
-
-        data = read_sql_with_connection(query.statement, session)
-
+        data = _project(
+            _with_module_windows(data, membership), _TABLE_DATA_COLUMNS
+        )
         if len(data) > 0:
-            data = data.sort_values("variable_id", na_position="last")
+            # The sort has one job: push the grey cells last, so a cell
+            # carrying a variable wins over the same cell rendered grey
+            # in another table version. Everything else about it is a
+            # tie -- the rows one cell is fanned out into share their
+            # ``variable_id`` -- and the tie is meant to be broken by
+            # the fan-out order (:func:`_with_module_windows`), so the
+            # sort must not reorder ties. The default ``quicksort``
+            # does, which left the surviving row to a numpy internal.
+            data = data.sort_values(
+                "variable_id", na_position="last", kind="stable"
+            )
             data = data.drop_duplicates(subset=["cell_code"], keep="first")
 
         cls._TABLE_DATA_CACHE[cache_key] = data
@@ -2530,29 +2811,16 @@ class ViewDatapointsQuery:
         Returns:
             DataFrame of filtered datapoints.
         """
-        query, aliases = cls._create_base_query_with_aliases(session)
-
-        query = query.add_columns(
-            TableVersionCell.cell_code.label("cell_code"),
-            TableVersion.code.label("table_code"),
-            aliases["hvr"].code.label("row_code"),
-            aliases["hvc"].code.label("column_code"),
-            aliases["hvs"].code.label("sheet_code"),
-            aliases["tvh_row"].order.label("row_order"),
-            aliases["tvh_col"].order.label("column_order"),
-            aliases["tvh_sheet"].order.label("sheet_order"),
-            VariableVersion.variable_id.label("variable_id"),
-            DataType.code.label("data_type"),
-            TableVersion.table_vid.label("table_vid"),
-            Property.property_id.label("property_id"),
-            ModuleVersion.start_release_id.label("start_release"),
-            ModuleVersion.end_release_id.label("end_release"),
-            TableVersionCell.cell_id.label("cell_id"),
-            VariableVersion.context_id.label("context_id"),
-            VariableVersion.variable_vid.label("variable_vid"),
-        ).distinct()
-
-        query = query.filter(TableVersion.code == table)
+        # Without a release or the ``live`` flag, every version of the
+        # table a module version carries is in scope -- the rule the
+        # ``ModuleVersion`` join carried on its own.
+        data, membership = cls._scoped_cell_frame(
+            session,
+            table,
+            release_id,
+            live_table_versions,
+            scoped=bool(release_id or live_table_versions),
+        )
 
         axis_orders = cls._axis_orders_for(
             session,
@@ -2566,26 +2834,26 @@ class ViewDatapointsQuery:
             live_table_versions,
         )
         mapping = {
-            "rows": aliases["hvr"].code,
-            "cols": aliases["hvc"].code,
-            "sheets": aliases["hvs"].code,
+            "rows": "row_code",
+            "cols": "column_code",
+            "sheets": "sheet_code",
         }
         for key, values in table_info.items():
             if values is not None and key in mapping:
-                clause = _dimension_clause(
-                    mapping[key], values, axis_orders[key]
+                mask = _dimension_mask(
+                    data[mapping[key]], values, axis_orders[key]
                 )
-                if clause is not None:
-                    query = query.filter(clause)
+                if mask is not None:
+                    data = data[mask]
 
-        if release_id or live_table_versions:
-            scope = cls._resolve_table_version_scope(
-                session, table, release_id, live_only=live_table_versions
+        return (
+            _project(
+                _with_module_windows(data, membership, cell_major=True),
+                _FILTERED_DATAPOINT_COLUMNS,
             )
-            query = cls._filter_module_versions(query, scope, release_id)
-            query = query.filter(TableVersion.table_vid.in_(scope.table_vids))
-
-        return read_sql_with_connection(query.statement, session)
+            .drop_duplicates()
+            .reset_index(drop=True)
+        )
 
 
 def _build_axis_order_map(
@@ -2641,63 +2909,225 @@ def _resolve_dimension_values(
     return codes, unresolved
 
 
-def _apply_dimension_filter(
-    query: "Query[Any]",
-    # column is either a SQLAlchemy ColumnElement or an InstrumentedAttribute
-    # from ORM; see _filter_elements for rationale.
-    column: Any,
-    values: Sequence[str],
-    order_map: dict[str, int] | None,
-) -> "Query[Any]":
-    """Apply a row/col/sheet dimension filter for ``get_table_data``.
+# ``(source column, label)`` of the frames the datapoint methods return.
+# The cell frame carries both property ids the two used to select --
+# ``VariableVersion``'s and the ``Property`` row's, which differ when a
+# variable points at a property that has no row -- so each keeps the one
+# it read.
+_TABLE_DATA_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("cell_code", "cell_code"),
+    ("table_code", "table_code"),
+    ("row_code", "row_code"),
+    ("column_code", "column_code"),
+    ("sheet_code", "sheet_code"),
+    ("row_order", "row_order"),
+    ("column_order", "column_order"),
+    ("sheet_order", "sheet_order"),
+    ("variable_id", "variable_id"),
+    ("variable_property_id", "property_id"),
+    ("data_type", "data_type"),
+    ("table_vid", "table_vid"),
+    ("cell_id", "cell_id"),
+    ("module_start_release", "start_release_id"),
+    ("module_end_release", "end_release_id"),
+)
 
-    Ranges are resolved to concrete codes by display order and filtered with
-    ``IN``. If a range cannot be resolved by order (reversed, or the axis is
-    not fully ordered), the axis filter is **widened** — dropped entirely —
-    rather than compared by code text: ``get_table_data`` is always re-filtered
-    by the order-aware ``filter_all_data`` pass, which stays the authoritative
-    narrower and the source of the ``1-2`` endpoint error, so it must never
-    under-fetch.
+_FILTERED_DATAPOINT_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("cell_code", "cell_code"),
+    ("table_code", "table_code"),
+    ("row_code", "row_code"),
+    ("column_code", "column_code"),
+    ("sheet_code", "sheet_code"),
+    ("row_order", "row_order"),
+    ("column_order", "column_order"),
+    ("sheet_order", "sheet_order"),
+    ("variable_id", "variable_id"),
+    ("data_type", "data_type"),
+    ("table_vid", "table_vid"),
+    ("property_property_id", "property_id"),
+    ("module_start_release", "start_release"),
+    ("module_end_release", "end_release"),
+    ("cell_id", "cell_id"),
+    ("context_id", "context_id"),
+    ("variable_vid", "variable_vid"),
+)
+
+
+def _with_module_windows(
+    data: pd.DataFrame,
+    membership: pd.DataFrame,
+    cell_major: bool = False,
+) -> pd.DataFrame:
+    """Repeat each cell once per module version carrying its table.
+
+    The frames report the release window of the module version the
+    cells were read through, and a table version in two module versions
+    used to come back twice per cell because the join said so --
+    collapsed again by ``DISTINCT`` in
+    :meth:`~ViewDatapointsQuery.get_filtered_datapoints` and by the
+    ``cell_code`` de-duplication in
+    :meth:`~ViewDatapointsQuery.get_table_data`. The join is gone
+    (:meth:`~ViewDatapointsQuery._module_membership`), so the same
+    multiplicity is rebuilt here from the handful of rows it resolved
+    to, rather than being carried through the cell query.
+
+    The order matters, and the two methods need opposite ones -- which
+    is what the joins they replace emitted, measured against them over
+    the whole 4.2.1 dictionary rather than reasoned about. It matters
+    because the rows one cell is repeated into differ in nothing but
+    these two columns, so which of them survives the per-cell
+    de-duplication in :meth:`~ViewDatapointsQuery.get_table_data`
+    follows from their order alone: module-major there reproduces that
+    method's answer in all 5,224 non-empty calls the dictionary has,
+    where cell-major changes it in 409 of them. For
+    :meth:`~ViewDatapointsQuery.get_filtered_datapoints`, whose
+    ``DISTINCT`` kept every one of those rows, cell-major is the order
+    that matches.
 
     Args:
-        query: SQLAlchemy query.
-        column: Header code column.
+        data: Cell frame to fan out.
+        membership: One row per (table version, module version),
+            sorted by ``(table_vid, module_vid)``.
+        cell_major: Group by cell and then by module version, rather
+            than the other way round.
+
+    Returns:
+        A new frame with the window columns added.
+    """
+    windows = membership[
+        ["table_vid", "module_start_release", "module_end_release"]
+    ]
+    if cell_major:
+        return data.merge(windows, on="table_vid", how="inner")
+    return windows.merge(data, on="table_vid", how="inner")
+
+
+def _project(
+    data: pd.DataFrame, columns: Sequence[tuple[str, str]]
+) -> pd.DataFrame:
+    """Select and label the columns one datapoint method returns.
+
+    Args:
+        data: A cell frame from
+            :meth:`ViewDatapointsQuery._cell_frame`.
+        columns: ``(source column, label)`` pairs, in output order.
+
+    Returns:
+        A new frame; the shared cell frame is never handed out or
+        modified.
+    """
+    projected = data[[source for source, _label in columns]]
+    return _restore_sql_dtypes(projected.rename(columns=dict(columns)))
+
+
+def _restore_sql_dtypes(frame: pd.DataFrame) -> pd.DataFrame:
+    """Give a selection the dtypes reading it from SQL used to give it.
+
+    pandas infers a frame's dtypes from the rows it is built from, so an
+    id column came back ``int64`` when the selected rows carried no
+    ``NULL``, ``float64`` when some did and ``object`` when all of them
+    did. The cells are now read once per table version and narrowed in
+    pandas, where those dtypes are fixed by the whole table rather than
+    by the selection: a grey cell anywhere in it would leave a selection
+    containing none as ``float64``, handing callers ``1234.0`` where they
+    used to get ``1234`` -- and putting that straight into a dependency
+    list.
+
+    Args:
+        frame: A projected frame, already a copy.
+
+    Returns:
+        The same frame, re-typed column by column.
+    """
+    for column in frame.columns:
+        values = frame[column]
+        if values.dtype != "float64":
+            continue
+        if bool(values.isna().all()):
+            frame[column] = pd.Series(
+                [None] * len(values), index=values.index, dtype=object
+            )
+        elif bool(values.notna().all()) and bool((values % 1 == 0).all()):
+            frame[column] = values.astype("int64")
+    return frame
+
+
+def _narrow_to_dimension(
+    data: pd.DataFrame,
+    code_col: str,
+    values: Sequence[str],
+    order_map: dict[str, int] | None,
+) -> pd.DataFrame:
+    """Apply a row/col/sheet dimension filter for ``get_table_data``.
+
+    Ranges are resolved to concrete codes by display order. If a range
+    cannot be resolved by order (reversed, or the axis is not fully
+    ordered), the axis filter is **widened** — dropped entirely — rather
+    than compared by code text: ``get_table_data`` is always re-filtered
+    by the order-aware ``filter_all_data`` pass, which stays the
+    authoritative narrower and the source of the ``1-2`` endpoint error,
+    so it must never under-fetch.
+
+    Args:
+        data: Cell frame to narrow.
+        code_col: Header code column of the axis being filtered.
         values: List of filter values (may have ranges).
         order_map: ``{code: order}`` for this axis, or ``None`` when the axis
             has no usable order.
 
     Returns:
-        Filtered query.
+        The narrowed frame, or ``data`` itself when the filter widens.
     """
     codes, unresolved = _resolve_dimension_values(values, order_map)
-    if unresolved:
-        return query
-    if not codes:
-        return query
-    return query.filter(column.in_(codes))
+    if unresolved or not codes:
+        return data
+    return data[data[code_col].isin(codes)]
 
 
-def _dimension_clause(
-    column: Any,
+def _dimension_mask(
+    code_column: "pd.Series[Any]",
     values: Sequence[str],
     order_map: dict[str, int] | None,
-) -> Any | None:
-    """Build a dimension filter clause for ``get_filtered_datapoints``.
+) -> "pd.Series[bool] | None":
+    """Build a dimension filter mask for ``get_filtered_datapoints``.
 
-    Like :func:`_apply_dimension_filter` but returns a clause instead of
-    widening: a range that cannot be resolved by order falls back to a string
-    ``between`` (this method's result is used directly, without a pandas
-    re-filter, so it must still narrow). Returns ``None`` when there is nothing
-    to filter (e.g. an all-wildcard selection).
+    Like :func:`_narrow_to_dimension` but never widens: a range that
+    cannot be resolved by order falls back to comparing the code text
+    (this method's result is used directly, without a
+    ``filter_all_data`` re-filter, so it must still narrow). Returns
+    ``None`` when there is nothing to filter (e.g. an all-wildcard
+    selection).
+
+    A cell with no header on the axis is excluded either way, as the
+    ``NULL`` it carries was by the SQL comparison this replaces.
+
+    Args:
+        code_column: Header code column of the axis being filtered.
+        values: List of filter values (may have ranges).
+        order_map: ``{code: order}`` for this axis, or ``None``.
+
+    Returns:
+        The row mask, or ``None`` when the selection filters nothing.
     """
     codes, unresolved = _resolve_dimension_values(values, order_map)
-    clauses: list[Any] = []
+    masks: list["pd.Series[bool]"] = []
     if codes:
-        clauses.append(column.in_(codes))
-    clauses.extend(column.between(lo, hi) for lo, hi in unresolved)
-    if not clauses:
+        masks.append(code_column.isin(codes))
+    if unresolved:
+        # An axis no cell carries comes back as NaN, which compares with
+        # neither endpoint; ``present`` reproduces the ``NULL BETWEEN``
+        # that excluded it, over text the comparison accepts.
+        present = code_column.notna()
+        text = code_column.fillna("").astype(str)
+        masks.extend(
+            present & (text >= lo) & (text <= hi) for lo, hi in unresolved
+        )
+    if not masks:
         return None
-    return or_(*clauses)
+    selected = masks[0]
+    for mask in masks[1:]:
+        selected = selected | mask
+    return selected
 
 
 # ------------------------------------------------------------------ #

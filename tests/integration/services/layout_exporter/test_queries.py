@@ -22,7 +22,13 @@ from _helpers import (  # noqa: E402  (sys.path injected via conftest)
     seed_releases,
 )
 
-from dpmcore.orm.glossary import Item, ItemCategory, PropertyCategory
+from dpmcore.orm.glossary import (
+    Category,
+    Item,
+    ItemCategory,
+    PropertyCategory,
+    SupercategoryComposition,
+)
 from dpmcore.orm.infrastructure import Release
 from dpmcore.orm.packaging import ModuleVersion
 from dpmcore.orm.release_sort_order import load_release_sort_orders
@@ -739,6 +745,121 @@ def test_load_enumerations_skips_items_without_a_code(memory_session):
 
     enum = queries.load_enumerations(memory_session, {11}, OPEN)[11]
     assert [v.code for v in enum.values] == ["m1", "m2"]
+
+
+def _seed_supercategory_hierarchy(memory_session):
+    """'SUPER' composes 'MEMBER', and its 'SC' hierarchy spans both.
+
+    The shape of EBA's ``qTU``: the super-category holds one item of
+    its own and draws the rest from the categories composing it, which
+    are where ``ItemCategory`` files them (#359).
+    """
+    seed_releases(memory_session)
+    seed_property_category(memory_session)
+    seed_domain_category(memory_session, 40, "SUPER")
+    memory_session.add(
+        Category(
+            category_id=41, code="MEMBER", name="MEMBER", is_enumerated=True
+        )
+    )
+    memory_session.add(
+        SupercategoryComposition(supercategory_id=40, category_id=41)
+    )
+    add_subcategory(
+        memory_session,
+        subcategory_id=4,
+        subcategory_vid=41,
+        category_id=40,
+        code="SC",
+        name="Type of underlying",
+    )
+    make_member(
+        memory_session,
+        item_id=401,
+        name="Own item",
+        domain_category_id=40,
+        code="s1",
+        signature="eba_SUPER:s1",
+    )
+    make_member(
+        memory_session,
+        item_id=402,
+        name="Item of the composing category",
+        domain_category_id=41,
+        code="m1",
+        signature="eba_MEMBER:m1",
+    )
+    add_subcategory_item(
+        memory_session, subcategory_vid=41, item_id=401, order=1
+    )
+    add_subcategory_item(
+        memory_session, subcategory_vid=41, item_id=402, order=2
+    )
+
+
+def test_load_enumerations_expands_super_categories(memory_session):
+    """A value filed in a composing category is one of the domain's."""
+    _seed_supercategory_hierarchy(memory_session)
+    memory_session.commit()
+
+    enum = queries.load_enumerations(memory_session, {41}, OPEN)[41]
+
+    assert [(v.code, v.signature, v.category_code) for v in enum.values] == [
+        ("s1", "eba_SUPER:s1", "SUPER"),
+        ("m1", "eba_MEMBER:m1", "MEMBER"),
+    ]
+
+
+def test_load_enumerations_prefer_the_hierarchys_own_category(memory_session):
+    """Filed in both the super-category and a member: the domain wins."""
+    _seed_supercategory_hierarchy(memory_session)
+    add_item_category(
+        memory_session,
+        item_id=402,
+        domain_category_id=40,
+        code="from_domain",
+        signature="eba_SUPER:from_domain",
+        start_release_id=2,
+    )
+    memory_session.commit()
+
+    enum = queries.load_enumerations(memory_session, {41}, OPEN)[41]
+
+    assert [(v.code, v.category_code) for v in enum.values] == [
+        ("s1", "SUPER"),
+        ("from_domain", "SUPER"),
+    ]
+
+
+def test_load_enumerations_keeps_a_member_filed_without_a_code(memory_session):
+    """A codeless filing still names its member through its signature.
+
+    EBA files NAMIBIA under ``GA`` with a null code and the signature
+    ``eba_GA:NA``; dropping it would cost the country list a country.
+    """
+    _seed_hierarchy(memory_session)
+    memory_session.add(Item(item_id=204, name="Namibia"))
+    memory_session.add(
+        ItemCategory(
+            item_id=204,
+            start_release_id=1,
+            category_id=30,
+            code=None,
+            signature="eba_DOM:NA",
+        ),
+    )
+    add_subcategory_item(
+        memory_session, subcategory_vid=11, item_id=204, order=3
+    )
+    memory_session.commit()
+
+    enum = queries.load_enumerations(memory_session, {11}, OPEN)[11]
+
+    assert [(v.code, v.signature) for v in enum.values] == [
+        ("m1", "eba_DOM:m1"),
+        ("m2", "eba_DOM:m2"),
+        ("", "eba_DOM:NA"),
+    ]
 
 
 def test_load_enumerations_empty_input(memory_session):

@@ -93,8 +93,18 @@ def test_left_hand_side_never_becomes_a_leaf_when_it_does_not_resolve(
     ml_generation.session.get.assert_not_called()
 
 
-def test_right_hand_side_is_still_visited_and_linked(ml_generation):
+def test_right_hand_side_is_still_visited_and_linked(
+    ml_generation, monkeypatch
+):
     ml_generation.extract_operand_data = MagicMock(return_value=[])
+    # The target cell still gets resolved on the way past; this test is
+    # about the right-hand side, so stub the lookup as the two above do
+    # rather than let it read from a MagicMock session.
+    monkeypatch.setattr(
+        ViewDatapointsQuery,
+        "get_table_data",
+        MagicMock(return_value=pd.DataFrame(columns=["variable_id"])),
+    )
 
     node = _persistent_assignment()
     ml_generation.visit_PersistentAssignment(node)

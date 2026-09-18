@@ -130,8 +130,8 @@ conditionalOperators:
     ;
 
 stringOperators:
-    LEN LPAREN expression RPAREN                                              #unaryStringFunction
-    | SUBSTR LPAREN expression (COMMA INTEGER_LITERAL (COMMA INTEGER_LITERAL)?)? RPAREN #substrFunction
+    LEN LPAREN expression RPAREN                                                              #unaryStringFunction
+    | SUBSTR LPAREN expression (COMMA INTEGER_LITERAL (COMMA INTEGER_LITERAL)?)? RPAREN      #substrFunction
     ;
 
 aggregateOperators:
@@ -173,8 +173,8 @@ windowBoundary:
     UNBOUNDED PRECEDING
     | UNBOUNDED FOLLOWING
     | CURRENT_DATA_POINT
-    | INTEGER_LITERAL PRECEDING
-    | INTEGER_LITERAL FOLLOWING
+    | INTEGER_LITERAL TIME_PERIOD? PRECEDING
+    | INTEGER_LITERAL TIME_PERIOD? FOLLOWING
 ;
 
 // Dimension management and members
@@ -240,15 +240,6 @@ selectOperand:
     | parameterRef
     ;
 
-parameterRef:
-    PARAMETER_REFERENCE COMMA parameterType (COMMA default)?
-    ;
-
-parameterType:
-    NUMBER | INTEGER | STRING | PARAM_DATE | BOOLEAN | ITEM
-    | SET_NUMBER | SET_INTEGER | SET_STRING | SET_DATE | SET_BOOLEAN | SET_ITEM
-    ;
-
 varID:
     CURLY_BRACKET_LEFT varRef CURLY_BRACKET_RIGHT
     ;
@@ -263,6 +254,25 @@ varRef:
 
 operationRef:
     OPERATION_REFERENCE
+    ;
+
+parameterRef:
+    PARAMETER_REFERENCE COMMA parameterType (COMMA default)?
+    ;
+
+parameterType:
+    NUMBER
+    | INTEGER
+    | STRING
+    | PARAM_DATE
+    | BOOLEAN
+    | ITEM
+    | SET_NUMBER
+    | SET_INTEGER
+    | SET_STRING
+    | SET_DATE
+    | SET_BOOLEAN
+    | SET_ITEM
     ;
 
 cellAddress:
