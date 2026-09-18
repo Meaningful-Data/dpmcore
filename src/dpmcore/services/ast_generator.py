@@ -892,15 +892,26 @@ class ASTGeneratorService:
 
         Resolves the module version's active operations by joining
         ``OperationVersion`` to ``OperationScope`` /
-        ``OperationScopeComposition``, filtered to this release using
-        dpmcore's point-release model (:func:`filter_by_release`, a window
-        containment check rather than a raw ``StartReleaseID``/
-        ``EndReleaseID`` overlap). This does not filter out operations
-        scoped exclusively to phantom module versions (see
-        :meth:`list_module_versions`'s docstring for what "phantom" means
-        here) — that guard only matters when sweeping every module in the
-        database, which this single-module lookup never does; revisit
-        alongside a future ``--all-modules`` sweep.
+        ``OperationScopeComposition``, restricted to the operations
+        composed into *mv* — but, unlike a single-release point lookup,
+        an ``OperationVersion`` is a candidate whenever its window
+        **overlaps** *mv*'s own ``[start_release_id, end_release_id)``
+        (mirrors mdpm's ``get_active_operations``, using
+        :mod:`dpmcore.orm.release_sort_order` instead of raw
+        ``ReleaseID`` comparison so a non-monotonic release ID can't
+        misorder the overlap check). *release_row* is not used here at
+        all; it only affects the release-scoped lookups elsewhere in
+        the pipeline (``db_ast.py``, dependency info).
+
+        Also drops any candidate whose *only* ``OperationScopeID`` under
+        *mv* is shared exclusively with phantom module versions (see
+        :meth:`list_module_versions`'s docstring for what "phantom"
+        means) — mirrors mdpm's ``is_phantom_module_op``: a validation
+        reaching this module only through a cross-framework pairing
+        whose counterpart never really existed as its own module
+        version should not surface here. A previous version of this
+        docstring said this guard "only matters when sweeping every
+        module" — confirmed wrong: a single-module lookup needs it too.
 
         Returns:
             ``(expressions, operation_vids, preconditions, severities)``
@@ -911,12 +922,16 @@ class ASTGeneratorService:
         """
         from sqlalchemy import or_
 
-        from dpmcore.dpm_xl.utils.filters import filter_by_release
         from dpmcore.orm.operations import (
             Operation,
             OperationScope,
             OperationScopeComposition,
             OperationVersion,
+        )
+        from dpmcore.orm.release_sort_order import (
+            compute_sort_order,
+            load_release_sort_orders,
+            sort_order_from,
         )
 
         session = self.session
@@ -930,6 +945,9 @@ class ASTGeneratorService:
                 OperationVersion.expression,
                 OperationScope.severity,
                 OperationVersion.precondition_operation_vid,
+                OperationScope.operation_scope_id,
+                OperationVersion.start_release_id,
+                OperationVersion.end_release_id,
             )
             .join(
                 OperationScope,
@@ -954,18 +972,49 @@ class ASTGeneratorService:
                 )
             )
         )
-        query = filter_by_release(
-            query,
-            start_col=OperationVersion.start_release_id,
-            end_col=OperationVersion.end_release_id,
-            release_id=release_row.release_id,
+        rows = query.all()
+
+        sort_orders = load_release_sort_orders(session)
+        open_end_sort = compute_sort_order(None, None)
+
+        def _end_sort(release_id: Optional[int]) -> int:
+            if release_id is None:
+                return open_end_sort
+            return sort_order_from(sort_orders, release_id)
+
+        module_start_sort = sort_order_from(sort_orders, mv.start_release_id)
+        module_end_sort = _end_sort(mv.end_release_id)
+
+        overlapping = [
+            row
+            for row in rows
+            if module_end_sort > sort_order_from(sort_orders, row[6])
+            and _end_sort(row[7]) > module_start_sort
+        ]
+
+        scope_ids = {row[5] for row in overlapping}
+        phantom_scope_ids = (
+            self._phantom_paired_scope_ids(session, scope_ids, mv.module_vid)
+            if scope_ids
+            else set()
         )
 
         # A code can match more than one OperationVersion row; keep the
         # latest (highest OperationVID) per code.
         _Row = Tuple[int, str, Optional[str], Optional[int]]
         latest_by_code: Dict[str, _Row] = {}
-        for op_vid, code, expression, severity, prec_vid in query.all():
+        for (
+            op_vid,
+            code,
+            expression,
+            severity,
+            prec_vid,
+            scope_id,
+            _start_rel,
+            _end_rel,
+        ) in overlapping:
+            if scope_id in phantom_scope_ids:
+                continue
             existing = latest_by_code.get(code)
             if existing is None or op_vid > existing[0]:
                 latest_by_code[code] = (op_vid, expression, severity, prec_vid)
@@ -988,6 +1037,52 @@ class ASTGeneratorService:
             list(self._resolve_preconditions(prec_vid_to_codes))
         )
         return expressions, operation_vids, preconditions, severities
+
+    @staticmethod
+    def _phantom_paired_scope_ids(
+        session: Session, scope_ids: set[int], module_vid: int
+    ) -> set[int]:
+        """``OperationScopeID``s whose only *other* composed module
+        versions (besides *module_vid*) are all phantom.
+
+        Mirrors mdpm's ``is_phantom_module_op``. A scope shared with no
+        other module at all is never phantom here — this only voids a
+        cross-framework pairing whose counterpart turned out to be
+        phantom, not a plain single-module scope.
+        """
+        from dpmcore.orm.operations import OperationScopeComposition
+        from dpmcore.orm.packaging import ModuleVersion
+
+        rows = (
+            session.query(
+                OperationScopeComposition.operation_scope_id,
+                ModuleVersion.from_reference_date,
+                ModuleVersion.to_reference_date,
+            )
+            .join(
+                ModuleVersion,
+                ModuleVersion.module_vid == OperationScopeComposition.module_vid,
+            )
+            .filter(
+                OperationScopeComposition.operation_scope_id.in_(scope_ids)
+            )
+            .filter(OperationScopeComposition.module_vid != module_vid)
+            .all()
+        )
+        others_by_scope: Dict[int, List[bool]] = {}
+        for scope_id, from_date, to_date in rows:
+            is_phantom = (
+                from_date is not None
+                and to_date is not None
+                and from_date == to_date
+            )
+            others_by_scope.setdefault(scope_id, []).append(is_phantom)
+
+        return {
+            scope_id
+            for scope_id, flags in others_by_scope.items()
+            if flags and all(flags)
+        }
 
     def _resolve_preconditions(
         self, prec_vid_to_codes: Dict[int, List[str]]

@@ -471,18 +471,18 @@ class _Builder:
         return ast_nodes.GroupingClause(components=components)
 
     def _component_text(self, node: OperationNode) -> str:
-        """A plain-string component reference: an ``r``/``c``/``s`` axis
-        marker, or a property *code* — never a nested node. mdpm's
-        ``build_node`` reads ``ItemCategory.Code`` here, not ``Signature``
-        (unlike ``Scalar``/``Set``).
+        """A plain-string component reference: an axis marker (``r``/
+        ``c``/``s``/``refPeriod``/...), or a property *code* — never a
+        nested node. mdpm's ``build_node`` reads ``ItemCategory.Code``
+        here, not ``Signature`` (unlike ``Scalar``/``Set``).
         """
         refs = self._tree.refs_by_node.get(node.node_id) or []
         if len(refs) == 1:
             ref = refs[0]
-            if ref.operand_reference in ("r", "c", "s"):
-                return ref.operand_reference
             if ref.operand_reference == "property" and ref.property_id is not None:
                 return self._item_category_code(ref.property_id)
+            if ref.operand_reference != "property":
+                return ref.operand_reference
         if node.scalar is not None:
             return node.scalar
         raise UnsupportedDbAst(
@@ -554,7 +554,12 @@ class _Builder:
             )
 
         if discriminators == {"item"}:
-            if len(refs) > 1:
+            # A single-element set literal (e.g. `{[item]}`) still needs
+            # a Set, not a bare Scalar — ref count alone can't tell them
+            # apart, but the argument slot name can.
+            arg = node.operator_argument
+            is_set_argument = arg is not None and arg.name == "set"
+            if is_set_argument or len(refs) > 1:
                 return ast_nodes.Set(
                     children=[self._build_scalar(r) for r in refs]
                 )
@@ -598,10 +603,12 @@ class _Builder:
         )
 
     # ------------------------------------------------------------- #
-    # VarID: the one leaf shape with resolved-cell fan-out. Matches
-    # mdpm's ``build_node``/``get_varid_common_information`` exactly,
-    # not dpmcore's own ``visit_VarID`` (which prunes a coordinate
-    # shared by every entry; mdpm never does).
+    # VarID: the one leaf shape with resolved-cell fan-out. The
+    # per-entry coordinate is unconditional (spec §2.5/V-6 — every
+    # entry carries it regardless of whether that axis varies), which
+    # neither mdpm's own ``get_varid_common_information`` nor
+    # dpmcore's own ``visit_VarID`` (which prunes it when common) get
+    # right; this builds it directly instead of matching either.
     # ------------------------------------------------------------- #
 
     def _build_varid(
@@ -625,17 +632,23 @@ class _Builder:
             raw_columns.append(loc.column)
             raw_sheets.append(loc.sheet)
 
-            # mdpm pairs each coordinate with its position field — "row"
-            # only appears when "x" does, never independently.
+            # The coordinate (row/column/sheet) identifies the cell and
+            # belongs on every entry the table has it for; the index
+            # (x/y/z) is the position within this operand and belongs
+            # only where that axis actually varies — the two are
+            # independent, not paired.
             entry: Dict[str, Any] = {}
             if ref.x is not None:
                 entry["x"] = int(ref.x)
+            if loc.row is not None:
                 entry["row"] = loc.row
             if ref.y is not None:
                 entry["y"] = int(ref.y)
+            if loc.column is not None:
                 entry["column"] = loc.column
             if ref.z is not None:
                 entry["z"] = int(ref.z)
+            if loc.sheet is not None:
                 entry["sheet"] = loc.sheet
             entry["datapoint"] = int(ref.variable_id)
             entry["operand_reference_id"] = int(ref.operand_reference_id)
