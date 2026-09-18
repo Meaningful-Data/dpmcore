@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from types import SimpleNamespace
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -87,10 +86,8 @@ class CalculationsExporter:
         """Bind the exporter to ``session``."""
         self.session = session
         self._syntax = SyntaxService()
-        # Reused for the version-window resolution: the
-        # shift/predecessor/substitution machinery is the same one
-        # validations already use, so it is composed in rather
-        # than duplicated.
+        # Reuses validations' shift/predecessor/substitution machinery
+        # for version-window resolution.
         self._scope_calc = ScopeCalculatorService(session)
 
     def export(
@@ -364,9 +361,7 @@ class CalculationsExporter:
                 for period in dependencies.periods.get(table_code, ())
                 if period != "T"
             }
-            # A dependency never read at a shifted period carries no
-            # `version_windows` at all, matching validations' own
-            # rule of omitting it when ref_period is "T".
+            # Omitted, not empty, when never read at a shifted period.
             if cross_time_periods:
                 entry["version_windows"] = (
                     self._resolve_dependency_version_windows(
@@ -384,24 +379,9 @@ class CalculationsExporter:
     ) -> List[Dict[str, Any]]:
         """Resolve ``version_windows`` for one dependency module.
 
-        Delegates the shift/predecessor/substitution logic to
-        :meth:`ScopeCalculatorService._find_version_window_candidate`
-        -- the same machinery validations already use -- and builds
-        the entry itself with the additional ``tables`` field a
-        calculations dependency needs, since it has no separate
-        per-instance declaration to resolve them against.
-
-        The substitution test is scoped per period: a table read at
-        ``T``, or at a different ``ref_period``, must not affect
-        whether *this* period's candidate is substitutable -- else an
-        unrelated table's rename or missing variable could block a
-        substitution the tables actually shifted at this period would
-        have passed on their own.
-
-        A dependency module carries one ``version_windows`` list
-        regardless of how many distinct ``ref_periods`` read it, so
-        windows resolved under different periods that land on the same
-        candidate are merged into one entry.
+        Runs the substitution check per period, scoped to only that
+        period's own tables so an unrelated table's rename can't block
+        it, then merges same-candidate results into one entry.
         """
         all_tables = dep_info["tables"]
         ref_periods = {
@@ -410,11 +390,6 @@ class CalculationsExporter:
             for period in table_periods.get(table_code, ())
             if period != "T"
         }
-        fake_mv = SimpleNamespace(
-            from_reference_date=dep_info["from_date"],
-            module_id=dep_info["module_id"],
-        )
-
         windows: List[Dict[str, Any]] = []
         for period in sorted(ref_periods):
             period_tables = {
@@ -428,9 +403,9 @@ class CalculationsExporter:
                 for var_id, type_code in tbl.get("variables", {}).items()
             }
             found = self._scope_calc._find_version_window_candidate(
-                mv=fake_mv,
+                module_id=dep_info["module_id"],
+                d0=dep_info["from_date"],
                 ref_period=period,
-                window_from=dep_info["from_date"],
                 window_to=dep_info["to_date"],
                 current_tables=period_tables,
                 current_variables=period_variables,
@@ -438,23 +413,23 @@ class CalculationsExporter:
             if found is None:
                 continue
             entry: Dict[str, Any] = {
-                "URI": found.uri,
+                "URI": found["URI"],
                 "from_reference_date": (
-                    str(found.from_reference_date)
-                    if found.from_reference_date
+                    str(found["from_reference_date"])
+                    if found["from_reference_date"]
                     else None
                 ),
                 "to_reference_date": (
-                    str(found.to_reference_date)
-                    if found.to_reference_date
+                    str(found["to_reference_date"])
+                    if found["to_reference_date"]
                     else None
                 ),
                 "tables": _narrow_candidate_tables(
-                    found.tables, period_variables
+                    found["tables"], period_variables
                 ),
             }
-            if found.module_version:
-                entry["module_version"] = found.module_version
+            if found["module_version"]:
+                entry["module_version"] = found["module_version"]
             windows.append(entry)
         return _merge_version_windows(windows)
 
@@ -533,11 +508,8 @@ def _narrow_candidate_tables(
 ) -> Dict[str, Any]:
     """Group the candidate's own tables by the ``VariableID``s in use.
 
-    Table names are not part of the ``VariableID`` identity test: the
-    candidate Module Version may host the same variable under a
-    different table code, so the grouping is driven by variable
-    membership in the candidate's own taxonomy rather than by matching
-    the current side's table codes.
+    Grouped by the candidate's own table codes, not the current side's:
+    the same variable may live under a different table there.
     """
     narrowed: Dict[str, Any] = {}
     for table_code, table_data in candidate_tables.items():
@@ -560,13 +532,8 @@ def _merge_version_windows(
 ) -> List[Dict[str, Any]]:
     """Union same-candidate entries resolved under different periods.
 
-    A calculations dependency-module entry carries one
-    ``version_windows`` list regardless of how many distinct
-    ``ref_periods`` read it -- unlike validations, which declares one
-    module instance per period and so never needs this. Two periods
-    landing on the same predecessor Module Version merge into one
-    entry (dates unioned, ``tables`` combined) instead of being listed
-    twice.
+    Two periods landing on the same predecessor Module Version merge
+    into one entry (dates unioned, ``tables`` combined).
     """
     merged: Dict[Tuple[str, str], Dict[str, Any]] = {}
     for entry in entries:

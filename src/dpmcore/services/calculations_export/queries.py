@@ -719,10 +719,7 @@ def _modules_of_table_vids(
     Returns:
         ``{table_vid: [row, ...]}`` where each row carries
         ``module_vid``, ``module_id``, ``module_code``, ``from_date``
-        and ``to_date``. ``module_id`` (the module family, stable
-        across its versions) is what a version-window lookup needs to
-        find the *preceding* version of the same module -- it is not
-        derivable from ``module_vid`` alone.
+        and ``to_date``.
     """
     query: Any = (
         session.query(

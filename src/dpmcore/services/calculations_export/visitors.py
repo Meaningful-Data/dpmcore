@@ -360,13 +360,7 @@ class DependencyTableExtractor(ASTTemplate):
         self.visit(node.right)
 
     def visit_TimeShiftOp(self, node: Any) -> None:
-        """Track the ambient reference period while visiting the shift.
-
-        Mirrors ``ASTTemplate``'s own traversal (visit ``node.operand``)
-        so nothing is skipped; the only addition is remembering which
-        period a ``VarID`` reached under is read at, restored on the
-        way back out so a sibling outside the shift is not mislabeled.
-        """
+        """Track the ambient reference period while visiting the shift."""
         prev = self._current_period
         self._current_period = _time_shift_ref_period(node)
         self.visit(node.operand)
@@ -711,16 +705,8 @@ def _shift_number_text(node: Any) -> str:
 def _time_shift_ref_period(node: Any) -> str:
     """Return the ``T[+-]<n><indicator>`` period a ``TimeShiftOp`` reads.
 
-    The declared period is the opposite of the shift the expression
-    asks for: ``time_shift(x, A, 1, refPeriod)`` reads the instance at
-    ``T-1A``, ``time_shift(x, Q, -1, refPeriod)`` at ``T+1Q``. Mirrors
-    ``ASTGeneratorService._shift_marker``/``._to_ref_period`` (built the
-    same way for the validations path), reusing :func:`_shift_number_text`
-    rather than re-parsing the shift literal.
-
-    Raises:
-        Invalid: Propagated from :func:`_shift_number_text` when the
-            shift number is not an integer literal.
+    The sign is the opposite of the shift the expression asks for:
+    ``time_shift(x, A, 1, refPeriod)`` reads the instance at ``T-1A``.
     """
     magnitude = int(_shift_number_text(node.shift_number))
     if magnitude == 0:

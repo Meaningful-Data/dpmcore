@@ -699,11 +699,10 @@ class TestMergeVersionWindows:
 class _FakeScopeCalc:
     """Stand-in for ``ScopeCalculatorService._find_version_window_candidate``.
 
-    ``candidate_by_period`` maps a ``ref_period`` to the candidate it
-    resolves to (a ``SimpleNamespace`` shaped like
-    ``_VersionWindowCandidate``: ``uri``, ``module_version``,
-    ``tables``, ``from_reference_date``, ``to_reference_date``), or
-    leaves it out for "no candidate found".
+    ``candidate_by_period`` maps a ``ref_period`` to the candidate dict
+    it resolves to (``URI``, ``module_version``, ``tables``,
+    ``from_reference_date``, ``to_reference_date``), or leaves it out
+    for "no candidate found".
     """
 
     def __init__(self, candidate_by_period):
@@ -713,9 +712,9 @@ class _FakeScopeCalc:
 
     def _find_version_window_candidate(
         self,
-        mv,
+        module_id,
+        d0,
         ref_period,
-        window_from,
         window_to,
         current_tables,
         current_variables,
@@ -741,20 +740,19 @@ class TestResolveDependencyVersionWindows:
 
     def test_one_period_resolves_a_window_with_narrowed_tables(self):
         from datetime import date
-        from types import SimpleNamespace
 
         candidate_tables = {
             "A_old": {"variables": {"1": "m", "9": "m"}, "open_keys": {}}
         }
         fake = _FakeScopeCalc(
             {
-                "T-1A": SimpleNamespace(
-                    uri="http://uri/old",
-                    module_version="1.0.0",
-                    tables=candidate_tables,
-                    from_reference_date=date(2025, 3, 31),
-                    to_reference_date=date(2026, 3, 30),
-                )
+                "T-1A": {
+                    "URI": "http://uri/old",
+                    "module_version": "1.0.0",
+                    "tables": candidate_tables,
+                    "from_reference_date": date(2025, 3, 31),
+                    "to_reference_date": date(2026, 3, 30),
+                }
             }
         )
         exporter = CalculationsExporter.__new__(CalculationsExporter)
@@ -796,27 +794,26 @@ class TestResolveDependencyVersionWindows:
 
     def test_two_periods_on_the_same_candidate_are_merged(self):
         from datetime import date
-        from types import SimpleNamespace
 
         candidate_tables = {
             "A_old": {"variables": {"1": "m"}, "open_keys": {}}
         }
         fake = _FakeScopeCalc(
             {
-                "T-1A": SimpleNamespace(
-                    uri="http://uri/old",
-                    module_version="1.0.0",
-                    tables=candidate_tables,
-                    from_reference_date=date(2025, 3, 31),
-                    to_reference_date=date(2026, 3, 30),
-                ),
-                "T-2A": SimpleNamespace(
-                    uri="http://uri/old",
-                    module_version="1.0.0",
-                    tables=candidate_tables,
-                    from_reference_date=date(2024, 3, 31),
-                    to_reference_date=date(2026, 3, 30),
-                ),
+                "T-1A": {
+                    "URI": "http://uri/old",
+                    "module_version": "1.0.0",
+                    "tables": candidate_tables,
+                    "from_reference_date": date(2025, 3, 31),
+                    "to_reference_date": date(2026, 3, 30),
+                },
+                "T-2A": {
+                    "URI": "http://uri/old",
+                    "module_version": "1.0.0",
+                    "tables": candidate_tables,
+                    "from_reference_date": date(2024, 3, 31),
+                    "to_reference_date": date(2026, 3, 30),
+                },
             }
         )
         exporter = CalculationsExporter.__new__(CalculationsExporter)
@@ -834,18 +831,8 @@ class TestResolveDependencyVersionWindows:
         assert fake.calls == ["T-1A", "T-2A"]
 
     def test_a_table_read_at_a_different_period_does_not_contaminate(self):
-        """A table irrelevant to this period must not reach its check.
-
-        Table A is read at ``T-1A``, table B only at ``T-4Q``. Before
-        the fix, both tables' variables were merged into one
-        ``current_tables``/``current_variables`` pair reused for every
-        period -- so a rename or missing variable on B (irrelevant to
-        A's shift) could block A's own, otherwise valid, substitution.
-        This asserts the substitution test for each period only ever
-        sees the table actually read at that period.
-        """
+        """A table read at a different period must not reach this check."""
         from datetime import date
-        from types import SimpleNamespace
 
         dep_info = self._dep_info(
             {
@@ -855,15 +842,15 @@ class TestResolveDependencyVersionWindows:
         )
         fake = _FakeScopeCalc(
             {
-                "T-1A": SimpleNamespace(
-                    uri="http://uri/old",
-                    module_version="1.0.0",
-                    tables={
+                "T-1A": {
+                    "URI": "http://uri/old",
+                    "module_version": "1.0.0",
+                    "tables": {
                         "A_old": {"variables": {"1": "m"}, "open_keys": {}}
                     },
-                    from_reference_date=date(2025, 3, 31),
-                    to_reference_date=date(2026, 3, 30),
-                )
+                    "from_reference_date": date(2025, 3, 31),
+                    "to_reference_date": date(2026, 3, 30),
+                }
                 # No candidate for T-4Q: B's shift resolves nothing,
                 # but must not prevent A's from resolving either.
             }
@@ -948,7 +935,6 @@ class TestDependencyModulesVersionWindows:
 
     def test_a_cross_time_dependency_gets_version_windows(self, monkeypatch):
         from datetime import date
-        from types import SimpleNamespace
 
         dep_info = {
             "module_vid": 20,
@@ -963,13 +949,15 @@ class TestDependencyModulesVersionWindows:
         exporter.session = None
         exporter._scope_calc = _FakeScopeCalc(
             {
-                "T-1A": SimpleNamespace(
-                    uri="http://uri/dep-old",
-                    module_version="1.0.0",
-                    tables={"A": {"variables": {"1": "m"}, "open_keys": {}}},
-                    from_reference_date=date(2025, 3, 31),
-                    to_reference_date=date(2026, 3, 30),
-                )
+                "T-1A": {
+                    "URI": "http://uri/dep-old",
+                    "module_version": "1.0.0",
+                    "tables": {
+                        "A": {"variables": {"1": "m"}, "open_keys": {}}
+                    },
+                    "from_reference_date": date(2025, 3, 31),
+                    "to_reference_date": date(2026, 3, 30),
+                }
             }
         )
         dependencies = self._extractor_stub(

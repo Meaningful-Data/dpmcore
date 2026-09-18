@@ -105,23 +105,6 @@ class ScopeResult:
     error_source: Optional[str] = None
 
 
-@dataclass(frozen=True)
-class _VersionWindowCandidate:
-    """A Module Version substituting for another under a cross-time shift.
-
-    Returned by ``_find_version_window_candidate``: enough to build
-    either shape of ``version_windows`` entry -- validations' (URI,
-    module_version, dates) or calculations' (the same, plus ``tables``,
-    narrowed from ``tables`` by the caller).
-    """
-
-    uri: str
-    module_version: Optional[str]
-    tables: Dict[str, Any]
-    from_reference_date: Optional[date]
-    to_reference_date: Optional[date]
-
-
 class ScopeCalculatorService:
     """Calculate operation scopes for DPM-XL expressions.
 
@@ -856,12 +839,8 @@ class ScopeCalculatorService:
         operation with the same ``primary_module_vid``.
 
         The version-window substitution check needs the full
-        ``{code: {variables, open_keys}}`` detail, not just table
-        codes. ``home_module_tables`` supplies it directly when the
-        caller already has it as such a dict; otherwise it is fetched
-        here rather than skipped, since every period reaching this
-        method is already a genuine cross-time shift (``periods``
-        excludes ``"T"``) and the check is unavoidable work regardless.
+        ``{code: {variables, open_keys}}`` detail: fetched here when
+        ``home_module_tables`` isn't already such a dict.
         """
         if not periods:
             return []
@@ -927,10 +906,8 @@ class ScopeCalculatorService:
         window, and ``module_version`` is omitted when the row carries
         no version number.
 
-        For a cross-time reference (``ref_period != "T"``), also
-        resolves ``version_windows``: the Module Version substituting
-        for mv while the shifted reference date precedes mv's own
-        ``from_reference_date``. Omitted for ``ref_period == "T"``.
+        Also resolves ``version_windows`` when ``ref_period != "T"``,
+        omitted otherwise.
         """
         module_entry: Dict[str, Any] = {
             "URI": uri,
@@ -943,9 +920,9 @@ class ScopeCalculatorService:
         to_date = getattr(mv, "to_reference_date", None)
         if ref_period != "T":
             module_entry["version_windows"] = self._resolve_version_windows(
-                mv=mv,
+                module_id=getattr(mv, "module_id", None),
+                d0=from_date,
                 ref_period=ref_period,
-                window_from=from_date,
                 window_to=to_date,
                 current_tables=current_tables,
                 current_variables=current_variables,
@@ -990,14 +967,7 @@ class ScopeCalculatorService:
         current_variables: Dict[str, str],
         candidate_tables: Dict[str, Any],
     ) -> bool:
-        """VariableID / open-key identity test between two module versions.
-
-        Every ``VariableID`` in current_variables must exist
-        somewhere in candidate_tables (table name doesn't matter).
-        For every table in current_tables with open keys, the same
-        table code in candidate_tables must carry the same open-key
-        property codes.
-        """
+        """VariableID / open-key identity test between two module versions."""
         candidate_variables = {
             var_id
             for tbl in candidate_tables.values()
@@ -1017,37 +987,27 @@ class ScopeCalculatorService:
 
     def _find_version_window_candidate(
         self,
-        mv: Any,
+        module_id: Optional[int],
+        d0: Optional[date],
         ref_period: str,
-        window_from: Optional[date],
         window_to: Optional[date],
         current_tables: Dict[str, Any],
         current_variables: Dict[str, str],
-    ) -> Optional["_VersionWindowCandidate"]:
-        """Find the Module Version substituting for ``mv`` under a shift.
+    ) -> Optional[Dict[str, Any]]:
+        """Find the Module Version substituting for ``d0`` under a shift.
 
-        ``None`` when the shifted window never precedes mv's own
-        ``from_reference_date``, or when no preceding Module Version
-        passes the substitution test. Split out from
-        :meth:`_resolve_version_windows` so a caller needing more than
-        that method's entry shape -- the candidate's own ``tables``,
-        not just its dates -- can build its own entry from the same
-        resolution without re-running it.
+        Returns ``{"URI", "module_version", "tables",
+        "from_reference_date", "to_reference_date"}`` (dates as
+        ``date`` objects), or ``None`` if there is no substitute.
         """
-        d0 = getattr(mv, "from_reference_date", None)
-        module_id = getattr(mv, "module_id", None)
         if d0 is None or module_id is None:
             return None
 
-        shifted_from = (
-            _shift_reference_date(window_from, ref_period)
-            if window_from
-            else None
-        )
+        shifted_from = _shift_reference_date(d0, ref_period)
         shifted_to = (
             _shift_reference_date(window_to, ref_period) if window_to else None
         )
-        if shifted_from is not None and shifted_from >= d0:
+        if shifted_from >= d0:
             return None  # the shifted window never precedes D0
 
         candidate = self._find_preceding_module_version(module_id, d0)
@@ -1069,7 +1029,7 @@ class ScopeCalculatorService:
             return None
 
         candidate_from = candidate.from_reference_date
-        if shifted_from is not None and candidate_from is not None:
+        if candidate_from is not None:
             candidate_from = max(candidate_from, shifted_from)
 
         day_before_d0 = d0 - timedelta(days=1)
@@ -1082,31 +1042,28 @@ class ScopeCalculatorService:
         if shifted_to is not None:
             candidate_to = min(candidate_to, shifted_to)
 
-        return _VersionWindowCandidate(
-            uri=candidate_uri,
-            module_version=getattr(candidate, "version_number", None),
-            tables=candidate_tables,
-            from_reference_date=candidate_from,
-            to_reference_date=candidate_to,
-        )
+        return {
+            "URI": candidate_uri,
+            "module_version": getattr(candidate, "version_number", None),
+            "tables": candidate_tables,
+            "from_reference_date": candidate_from,
+            "to_reference_date": candidate_to,
+        }
 
     def _resolve_version_windows(
         self,
-        mv: Any,
+        module_id: Optional[int],
+        d0: Optional[date],
         ref_period: str,
-        window_from: Optional[date],
         window_to: Optional[date],
         current_tables: Dict[str, Any],
         current_variables: Dict[str, str],
     ) -> List[Dict[str, Any]]:
-        """Build ``version_windows`` for one cross-time module reference.
-
-        Empty when :meth:`_find_version_window_candidate` finds nothing.
-        """
+        """Build ``version_windows`` for one cross-time module reference."""
         found = self._find_version_window_candidate(
-            mv,
+            module_id,
+            d0,
             ref_period,
-            window_from,
             window_to,
             current_tables,
             current_variables,
@@ -1115,20 +1072,20 @@ class ScopeCalculatorService:
             return []
 
         entry: Dict[str, Any] = {
-            "URI": found.uri,
+            "URI": found["URI"],
             "from_reference_date": (
-                str(found.from_reference_date)
-                if found.from_reference_date
+                str(found["from_reference_date"])
+                if found["from_reference_date"]
                 else None
             ),
             "to_reference_date": (
-                str(found.to_reference_date)
-                if found.to_reference_date
+                str(found["to_reference_date"])
+                if found["to_reference_date"]
                 else None
             ),
         }
-        if found.module_version:
-            entry["module_version"] = found.module_version
+        if found["module_version"]:
+            entry["module_version"] = found["module_version"]
         return [entry]
 
     def _build_dependency_entry(

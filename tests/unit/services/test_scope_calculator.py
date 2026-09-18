@@ -32,23 +32,16 @@ def _patch_orm(monkeypatch):
     data_stub.get_module_schema_ref = MagicMock(return_value=None)
     monkeypatch.setitem(sys.modules, "dpmcore.data", data_stub)
 
-    # Stub dpmcore.services._open_keys so ``_get_module_tables`` gets a
-    # real (empty) dict back instead of a MagicMock in ``open_keys`` —
-    # a bare MagicMock stub would need a matching real DB query, which
-    # the mocked session in these tests does not provide.
+    # Stub dpmcore.services._open_keys so ``open_keys`` comes back a
+    # real (empty) dict instead of a MagicMock.
     open_keys_stub = MagicMock()
     open_keys_stub.get_open_keys_for_tables = MagicMock(return_value={})
     monkeypatch.setitem(
         sys.modules, "dpmcore.services._open_keys", open_keys_stub
     )
 
-    # dpmcore.orm.query_utils.chunked_in is a real, dependency-light
-    # helper (typing only) that issues the same filter().all() chain
-    # the tests mock on ``session.query(...)`` directly — stubbing it
-    # like the rest of ``dpmcore.orm`` would return a MagicMock in
-    # place of the real filtered rows. Registering the genuine
-    # submodule lets it resolve despite the stubbed ``dpmcore.orm``
-    # parent package.
+    # Register the real submodule so ``chunked_in`` still resolves
+    # despite the stubbed ``dpmcore.orm`` parent package.
     import dpmcore.orm.query_utils as _real_query_utils
 
     monkeypatch.setitem(
@@ -943,9 +936,7 @@ class TestDetectCrossModuleDependencies:
         q = svc.session.query.return_value
         q.filter.return_value.all.return_value = [mv]
         # _build_home_instance_deps resolves the home module's own
-        # ModuleVersion via a separate .first() query -- C_01.00 is
-        # (per this test's stubbed _get_module_tables) also a home
-        # table, so the shift reaches that path too.
+        # ModuleVersion via a separate .first() query.
         q.filter.return_value.first.return_value = mv
 
         sr = SR(
@@ -1364,12 +1355,8 @@ class TestDetectCrossModuleDependencies:
         mv.from_reference_date = date(2026, 3, 31)
         mv.to_reference_date = None
 
-        # A distinct, date-less mv for the separate home-module lookup
-        # _build_home_instance_deps performs internally (C_01.00 is,
-        # per this test's stubbed _get_module_tables, also a home
-        # table) — from_reference_date=None short-circuits
-        # _resolve_version_windows before it calls the predecessor
-        # resolver, keeping the assertion below scoped to module 20.
+        # Date-less mv for the separate home-module lookup, scoping the
+        # assertion below to module 20.
         home_mv = MagicMock(from_reference_date=None, to_reference_date=None)
 
         q = svc.session.query.return_value
@@ -1892,15 +1879,7 @@ class TestSubstitutionPossible:
 
 
 def _patch_module_version_comparison():
-    """Let ``ModuleVersion.to_reference_date`` support ``<`` under the stub.
-
-    ``dpmcore.orm.packaging`` is force-stubbed to a bare ``MagicMock`` for
-    this file's tests, so ``ModuleVersion`` is itself a ``MagicMock``
-    attribute. Equality-based filters already work (Python's default
-    ``__eq__`` falls back to identity without raising), but ``<`` has no
-    such default — configuring it explicitly is enough, since ``.filter()``
-    itself is mocked and never inspects the expression's value.
-    """
+    """Let ``ModuleVersion.to_reference_date`` support ``<`` under the stub."""
     mod = sys.modules["dpmcore.services.scope_calculator"]
     mod.ModuleVersion.to_reference_date.__lt__ = MagicMock(return_value=True)
 
@@ -2064,13 +2043,7 @@ class TestMergeCrossDeps:
         assert existing[0]["affected_operations"] == ["v1"]
 
     def test_same_uri_and_period_different_windows_split(self):
-        """Differing version_windows keep entries apart.
-
-        Two operations can share ``(URI, ref_period)`` yet land on
-        different substitution outcomes for the shifted date each one
-        needs — merging them would silently apply one operation's
-        outcome to both.
-        """
+        """Differing version_windows keep entries apart."""
         Cls = _load_ast_generator()
         existing = [
             {
