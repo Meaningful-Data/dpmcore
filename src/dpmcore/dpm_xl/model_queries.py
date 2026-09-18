@@ -2771,7 +2771,17 @@ class ViewDatapointsQuery:
             _with_module_windows(data, membership), _TABLE_DATA_COLUMNS
         )
         if len(data) > 0:
-            data = data.sort_values("variable_id", na_position="last")
+            # The sort has one job: push the grey cells last, so a cell
+            # carrying a variable wins over the same cell rendered grey
+            # in another table version. Everything else about it is a
+            # tie -- the rows one cell is fanned out into share their
+            # ``variable_id`` -- and the tie is meant to be broken by
+            # the fan-out order (:func:`_with_module_windows`), so the
+            # sort must not reorder ties. The default ``quicksort``
+            # does, which left the surviving row to a numpy internal.
+            data = data.sort_values(
+                "variable_id", na_position="last", kind="stable"
+            )
             data = data.drop_duplicates(subset=["cell_code"], keep="first")
 
         cls._TABLE_DATA_CACHE[cache_key] = data
