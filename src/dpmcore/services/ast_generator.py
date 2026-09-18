@@ -268,7 +268,7 @@ class ASTGeneratorService:
                     ts=ts,
                     release_id=release_id,
                     resolved_severities=resolved_severities,
-                    from_reference_date=from_reference_date,
+                    from_submission_date=from_reference_date,
                     code_to_precondition_items=code_to_precondition_items,
                     operations=operations,
                     scope_pairs=scope_pairs,
@@ -324,7 +324,7 @@ class ASTGeneratorService:
         ts: Dict[str, List[str]],
         release_id: int,
         resolved_severities: Dict[str, str],
-        from_reference_date: Optional[str],
+        from_submission_date: Optional[str],
         code_to_precondition_items: Dict[str, List[Any]],
         operations: Dict[str, Dict[str, Any]],
         scope_pairs: List[
@@ -398,7 +398,7 @@ class ASTGeneratorService:
             code=code,
             ast_dict=ast_dict,
             severity=resolved_severities[code],
-            reference_date=from_reference_date,
+            reference_date=from_submission_date,
             root_operator_id=root_operator_id,
             operation_vid=operation_vid,
         )
@@ -550,6 +550,7 @@ class ASTGeneratorService:
         ] = None,
         severity: Optional[str] = None,
         severities: Optional[Dict[str, str]] = None,
+        from_submission_dates: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """Generate an engine-ready validations script for a DB-discovered
         module version.
@@ -573,6 +574,12 @@ class ASTGeneratorService:
             mv, release_row: already resolved by the caller
                 (:meth:`script_for_module`), so this doesn't re-resolve
                 them.
+            from_submission_dates: ``{code: FromSubmissionDate}``, from
+                :meth:`_discover_module_validations` — the real
+                per-operation submission date. A code missing here (the
+                column was null) falls back to
+                :meth:`_build_operation_entry`'s own default, same as
+                :meth:`script`'s caller-supplied expressions.
 
         Returns:
             Same shape as :meth:`script`. Unlike :meth:`script`, a
@@ -627,10 +634,7 @@ class ASTGeneratorService:
             gate_failures = self._unsupported_gate_operations(
                 preconditions or []
             )
-
-            from_reference_date = _format_date(
-                mv.from_reference_date, fallback=_DEFAULT_FROM_DATE
-            )
+            from_submission_dates = from_submission_dates or {}
 
             operations: Dict[str, Dict[str, Any]] = {}
             failed_operations: Dict[str, str] = {}
@@ -703,7 +707,7 @@ class ASTGeneratorService:
                     ts=ts,
                     release_id=release_id,
                     resolved_severities=resolved_severities,
-                    from_reference_date=from_reference_date,
+                    from_submission_date=from_submission_dates.get(code),
                     code_to_precondition_items=code_to_precondition_items,
                     operations=operations,
                     scope_pairs=scope_pairs,
@@ -783,9 +787,13 @@ class ASTGeneratorService:
             mv, release_row = self._resolve_release(
                 module_code, module_version, release
             )
-            expressions, operation_vids, preconditions, severities = (
-                self._discover_module_validations(mv, release_row)
-            )
+            (
+                expressions,
+                operation_vids,
+                preconditions,
+                severities,
+                from_submission_dates,
+            ) = self._discover_module_validations(mv, release_row)
         except ValueError as exc:
             return {
                 "success": False,
@@ -801,6 +809,7 @@ class ASTGeneratorService:
             release_row=release_row,
             preconditions=preconditions or None,
             severities=severities or None,
+            from_submission_dates=from_submission_dates or None,
         )
 
     def list_module_versions(
@@ -887,6 +896,7 @@ class ASTGeneratorService:
         Dict[str, int],
         List[Union[Tuple[str, List[str]], Dict[str, Any]]],
         Dict[str, str],
+        Dict[str, str],
     ]:
         """Look up the active ``(expression, code)`` pairs for a module.
 
@@ -914,11 +924,16 @@ class ASTGeneratorService:
         module" — confirmed wrong: a single-module lookup needs it too.
 
         Returns:
-            ``(expressions, operation_vids, preconditions, severities)``
-            ready to pass to :meth:`script`. ``operation_vids`` maps each
-            code to the ``OperationVID`` already resolved by this same
-            query, so callers that want the persisted AST for an
-            operation don't need a second lookup for it.
+            ``(expressions, operation_vids, preconditions, severities,
+            from_submission_dates)`` ready to pass to :meth:`script`.
+            ``operation_vids`` maps each code to the ``OperationVID``
+            already resolved by this same query, so callers that want
+            the persisted AST for an operation don't need a second
+            lookup for it. ``from_submission_dates`` maps each code to
+            its own ``OperationScope.FromSubmissionDate`` (formatted,
+            or absent when the column is null) — the real per-operation
+            date, not the module version's own reference date every
+            operation used to share.
         """
         from sqlalchemy import or_
 
@@ -948,6 +963,7 @@ class ASTGeneratorService:
                 OperationScope.operation_scope_id,
                 OperationVersion.start_release_id,
                 OperationVersion.end_release_id,
+                OperationScope.from_submission_date,
             )
             .join(
                 OperationScope,
@@ -1001,7 +1017,7 @@ class ASTGeneratorService:
 
         # A code can match more than one OperationVersion row; keep the
         # latest (highest OperationVID) per code.
-        _Row = Tuple[int, str, Optional[str], Optional[int]]
+        _Row = Tuple[int, str, Optional[str], Optional[int], Any]
         latest_by_code: Dict[str, _Row] = {}
         for (
             op_vid,
@@ -1012,31 +1028,52 @@ class ASTGeneratorService:
             scope_id,
             _start_rel,
             _end_rel,
+            from_submission_date,
         ) in overlapping:
             if scope_id in phantom_scope_ids:
                 continue
             existing = latest_by_code.get(code)
             if existing is None or op_vid > existing[0]:
-                latest_by_code[code] = (op_vid, expression, severity, prec_vid)
+                latest_by_code[code] = (
+                    op_vid,
+                    expression,
+                    severity,
+                    prec_vid,
+                    from_submission_date,
+                )
 
         expressions: List[Tuple[str, str]] = []
         operation_vids: Dict[str, int] = {}
         severities: Dict[str, str] = {}
+        from_submission_dates: Dict[str, str] = {}
         prec_vid_to_codes: Dict[int, List[str]] = {}
-        for code, (op_vid, expression, severity, prec_vid) in sorted(
-            latest_by_code.items()
-        ):
+        for code, (
+            op_vid,
+            expression,
+            severity,
+            prec_vid,
+            from_submission_date,
+        ) in sorted(latest_by_code.items()):
             expressions.append((expression, code))
             operation_vids[code] = op_vid
             if severity:
                 severities[code] = severity
+            formatted_date = _format_date(from_submission_date)
+            if formatted_date:
+                from_submission_dates[code] = formatted_date
             if prec_vid is not None:
                 prec_vid_to_codes.setdefault(prec_vid, []).append(code)
 
         preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]] = (
             list(self._resolve_preconditions(prec_vid_to_codes))
         )
-        return expressions, operation_vids, preconditions, severities
+        return (
+            expressions,
+            operation_vids,
+            preconditions,
+            severities,
+            from_submission_dates,
+        )
 
     @staticmethod
     def _phantom_paired_scope_ids(
@@ -1660,13 +1697,14 @@ class ASTGeneratorService:
         CRC32 of the expression truncated to four digits, which replaces
         pydpm's non-deterministic ``hash(expression) % 10000``.
 
-        ``reference_date`` is the *module version's* reference date
-        (``ModuleVersion.from_reference_date``), not a genuine
-        per-operation submission date — ``OperationScope`` has its own
-        ``FromSubmissionDate`` column that this doesn't read. The wire
-        key stays ``from_submission_date`` (the established script
-        format contract); only the Python name reflects what it's
-        actually fed from.
+        ``reference_date`` is the real ``OperationScope.FromSubmissionDate``
+        when the caller has it (:meth:`script_from_db`, per operation).
+        Only when unavailable — the column was null, or :meth:`script`'s
+        caller-supplied ``expressions`` have no ``OperationScope`` to
+        read at all — does the wire ``from_submission_date`` fall back to
+        the default below. The wire key stays ``from_submission_date``
+        (the established script format contract); only the Python name
+        reflects what it's actually fed from.
         """
         version_id = (
             operation_vid
