@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -18,6 +19,7 @@ from typing import (
     List,
     Optional,
     Sequence,
+    Set,
     Tuple,
 )
 
@@ -47,6 +49,7 @@ from dpmcore.services.calculations_export.visitors import (
     VarIDDataEnricher,
     unwrap_with_expressions,
 )
+from dpmcore.services.scope_calculator import ScopeCalculatorService
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -84,6 +87,11 @@ class CalculationsExporter:
         """Bind the exporter to ``session``."""
         self.session = session
         self._syntax = SyntaxService()
+        # Reused for the version-window resolution: the
+        # shift/predecessor/substitution machinery is the same one
+        # validations already use, so it is composed in rather
+        # than duplicated.
+        self._scope_calc = ScopeCalculatorService(session)
 
     def export(
         self,
@@ -349,8 +357,106 @@ class CalculationsExporter:
             # validations export's shape), and adding one puts every
             # module with dependencies out of parity with
             # drr_operations.
-            result[dep_uri] = {"tables": dep_info["tables"]}
+            entry: Dict[str, Any] = {"tables": dep_info["tables"]}
+            cross_time_periods = {
+                period
+                for table_code in dep_info["tables"]
+                for period in dependencies.periods.get(table_code, ())
+                if period != "T"
+            }
+            # A dependency never read at a shifted period carries no
+            # `version_windows` at all, matching validations' own
+            # rule of omitting it when ref_period is "T".
+            if cross_time_periods:
+                entry["version_windows"] = (
+                    self._resolve_dependency_version_windows(
+                        dep_info, dependencies.periods, release_id
+                    )
+                )
+            result[dep_uri] = entry
         return result
+
+    def _resolve_dependency_version_windows(
+        self,
+        dep_info: Dict[str, Any],
+        table_periods: Dict[str, Set[str]],
+        release_id: Optional[int],
+    ) -> List[Dict[str, Any]]:
+        """Resolve ``version_windows`` for one dependency module.
+
+        Delegates the shift/predecessor/substitution logic to
+        :meth:`ScopeCalculatorService._find_version_window_candidate`
+        -- the same machinery validations already use -- and builds
+        the entry itself with the additional ``tables`` field a
+        calculations dependency needs, since it has no separate
+        per-instance declaration to resolve them against.
+
+        The substitution test is scoped per period: a table read at
+        ``T``, or at a different ``ref_period``, must not affect
+        whether *this* period's candidate is substitutable -- else an
+        unrelated table's rename or missing variable could block a
+        substitution the tables actually shifted at this period would
+        have passed on their own.
+
+        A dependency module carries one ``version_windows`` list
+        regardless of how many distinct ``ref_periods`` read it, so
+        windows resolved under different periods that land on the same
+        candidate are merged into one entry.
+        """
+        all_tables = dep_info["tables"]
+        ref_periods = {
+            period
+            for table_code in all_tables
+            for period in table_periods.get(table_code, ())
+            if period != "T"
+        }
+        fake_mv = SimpleNamespace(
+            from_reference_date=dep_info["from_date"],
+            module_id=dep_info["module_id"],
+        )
+
+        windows: List[Dict[str, Any]] = []
+        for period in sorted(ref_periods):
+            period_tables = {
+                table_code: table_data
+                for table_code, table_data in all_tables.items()
+                if period in table_periods.get(table_code, ())
+            }
+            period_variables: Dict[str, str] = {
+                var_id: type_code
+                for tbl in period_tables.values()
+                for var_id, type_code in tbl.get("variables", {}).items()
+            }
+            found = self._scope_calc._find_version_window_candidate(
+                mv=fake_mv,
+                ref_period=period,
+                window_from=dep_info["from_date"],
+                window_to=dep_info["to_date"],
+                current_tables=period_tables,
+                current_variables=period_variables,
+            )
+            if found is None:
+                continue
+            entry: Dict[str, Any] = {
+                "URI": found.uri,
+                "from_reference_date": (
+                    str(found.from_reference_date)
+                    if found.from_reference_date
+                    else None
+                ),
+                "to_reference_date": (
+                    str(found.to_reference_date)
+                    if found.to_reference_date
+                    else None
+                ),
+                "tables": _narrow_candidate_tables(
+                    found.tables, period_variables
+                ),
+            }
+            if found.module_version:
+                entry["module_version"] = found.module_version
+            windows.append(entry)
+        return _merge_version_windows(windows)
 
     def _outputs(
         self,
@@ -419,6 +525,101 @@ class CalculationsExporter:
                     str(var_id), "m"
                 )
         return output_variables, output_tables
+
+
+def _narrow_candidate_tables(
+    candidate_tables: Dict[str, Any],
+    current_variables: Dict[str, str],
+) -> Dict[str, Any]:
+    """Group the candidate's own tables by the ``VariableID``s in use.
+
+    Table names are not part of the ``VariableID`` identity test: the
+    candidate Module Version may host the same variable under a
+    different table code, so the grouping is driven by variable
+    membership in the candidate's own taxonomy rather than by matching
+    the current side's table codes.
+    """
+    narrowed: Dict[str, Any] = {}
+    for table_code, table_data in candidate_tables.items():
+        hits = {
+            var_id: type_code
+            for var_id, type_code in table_data.get("variables", {}).items()
+            if var_id in current_variables
+        }
+        if not hits:
+            continue
+        narrowed[table_code] = {
+            "variables": hits,
+            "open_keys": table_data.get("open_keys", {}),
+        }
+    return narrowed
+
+
+def _merge_version_windows(
+    entries: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Union same-candidate entries resolved under different periods.
+
+    A calculations dependency-module entry carries one
+    ``version_windows`` list regardless of how many distinct
+    ``ref_periods`` read it -- unlike validations, which declares one
+    module instance per period and so never needs this. Two periods
+    landing on the same predecessor Module Version merge into one
+    entry (dates unioned, ``tables`` combined) instead of being listed
+    twice.
+    """
+    merged: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for entry in entries:
+        key = (entry["URI"], entry.get("module_version", ""))
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = dict(entry)
+            continue
+        existing["from_reference_date"] = _earliest_date(
+            existing["from_reference_date"], entry["from_reference_date"]
+        )
+        existing["to_reference_date"] = _latest_or_open_date(
+            existing["to_reference_date"], entry["to_reference_date"]
+        )
+        existing["tables"] = _merge_tables(
+            existing.get("tables", {}), entry.get("tables", {})
+        )
+    return list(merged.values())
+
+
+def _earliest_date(a: Optional[str], b: Optional[str]) -> Optional[str]:
+    """The earlier of two ISO date strings; ``None`` on either side wins.
+
+    ``None`` never occurs here in practice (a window's own start is
+    always a concrete date), but is handled rather than assumed away.
+    """
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return min(a, b)
+
+
+def _latest_or_open_date(a: Optional[str], b: Optional[str]) -> Optional[str]:
+    """The later of two ISO date strings; ``None`` (open-ended) wins."""
+    if a is None or b is None:
+        return None
+    return max(a, b)
+
+
+def _merge_tables(
+    left: Dict[str, Any], right: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Union two ``{table_code: {variables, open_keys}}`` maps."""
+    merged = {code: dict(data) for code, data in left.items()}
+    for table_code, table_data in right.items():
+        if table_code not in merged:
+            merged[table_code] = table_data
+            continue
+        merged_vars = dict(merged[table_code].get("variables", {}))
+        merged_vars.update(table_data.get("variables", {}))
+        merged[table_code] = {**merged[table_code], "variables": merged_vars}
+    return merged
 
 
 def _warn_on_default_data_types(

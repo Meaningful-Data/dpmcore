@@ -338,7 +338,9 @@ class DependencyTableExtractor(ASTTemplate):
         self.session = session
         self.release_id = release_id
         self.tables: Dict[str, Dict[str, Any]] = {}
+        self.periods: Dict[str, Set[str]] = {}
         self.all_datapoints: List[int] = []
+        self._current_period = "T"
         # Operands repeat across a module's calculations, and
         # get_filtered_datapoints is uncached: without this, the same
         # selection is resolved once per occurrence, each time reloading
@@ -356,6 +358,19 @@ class DependencyTableExtractor(ASTTemplate):
         tables it depends on.
         """
         self.visit(node.right)
+
+    def visit_TimeShiftOp(self, node: Any) -> None:
+        """Track the ambient reference period while visiting the shift.
+
+        Mirrors ``ASTTemplate``'s own traversal (visit ``node.operand``)
+        so nothing is skipped; the only addition is remembering which
+        period a ``VarID`` reached under is read at, restored on the
+        way back out so a sibling outside the shift is not mislabeled.
+        """
+        prev = self._current_period
+        self._current_period = _time_shift_ref_period(node)
+        self.visit(node.operand)
+        self._current_period = prev
 
     def _variable_ids(self, table: str, node: VarID) -> List[int]:
         """Return the datapoint ids *node* selects, resolved once per key.
@@ -440,6 +455,7 @@ class DependencyTableExtractor(ASTTemplate):
         entry = self.tables[table]
         entry["variables"].update(variable_ids)
         self.all_datapoints.extend(variable_ids)
+        self.periods.setdefault(table, set()).add(self._current_period)
 
 
 class VarIDDataEnricher(ASTTemplate):
@@ -690,6 +706,27 @@ def _shift_number_text(node: Any) -> str:
             "integer literal."
         ),
     )
+
+
+def _time_shift_ref_period(node: Any) -> str:
+    """Return the ``T[+-]<n><indicator>`` period a ``TimeShiftOp`` reads.
+
+    The declared period is the opposite of the shift the expression
+    asks for: ``time_shift(x, A, 1, refPeriod)`` reads the instance at
+    ``T-1A``, ``time_shift(x, Q, -1, refPeriod)`` at ``T+1Q``. Mirrors
+    ``ASTGeneratorService._shift_marker``/``._to_ref_period`` (built the
+    same way for the validations path), reusing :func:`_shift_number_text`
+    rather than re-parsing the shift literal.
+
+    Raises:
+        Invalid: Propagated from :func:`_shift_number_text` when the
+            shift number is not an integer literal.
+    """
+    magnitude = int(_shift_number_text(node.shift_number))
+    if magnitude == 0:
+        return "T"
+    sign = "-" if magnitude > 0 else "+"
+    return f"T{sign}{abs(magnitude)}{node.period_indicator}"
 
 
 def _sole_code(codes: Any) -> Optional[str]:

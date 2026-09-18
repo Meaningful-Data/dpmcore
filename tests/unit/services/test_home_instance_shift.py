@@ -149,11 +149,16 @@ class TestHomeShiftIsCrossInstance:
         assert info["intra_instance_validations"] == ["EGDQ_0896"]
         assert info["cross_instance_dependencies"] == []
 
-    def test_caller_supplied_home_tables_are_used(self, svc):
-        """The pre-computed set spares the per-table lookup (script path)."""
-        svc._get_module_tables = MagicMock(
-            side_effect=AssertionError("should not be queried")
+    def test_caller_supplied_bare_set_still_runs_the_substitution_check(
+        self, svc
+    ):
+        """A bare set of table codes still triggers a real check."""
+        fetch = MagicMock(
+            return_value={
+                "C_48.02": {"variables": {"v1": "m"}, "open_keys": {}}
+            }
         )
+        svc._get_module_tables = fetch
         info = svc.detect_cross_module_dependencies(
             scope_result=ScopeResult(scopes=[_scope([HOME])]),
             primary_module_vid=HOME,
@@ -161,10 +166,10 @@ class TestHomeShiftIsCrossInstance:
             time_shifts={"C_48.02": ["T-1Q"]},
             home_module_tables={"C_48.02"},
         )
-        assert (
-            info["cross_instance_dependencies"][0]["modules"][0]["ref_period"]
-            == "T-1Q"
-        )
+        module_entry = info["cross_instance_dependencies"][0]["modules"][0]
+        assert module_entry["ref_period"] == "T-1Q"
+        assert module_entry["version_windows"] == []
+        fetch.assert_called_once_with(HOME, release_id=None)
 
     def test_home_tables_dict_enables_the_substitution_check(self, svc):
         """A full (not bare-set) home_module_tables resolves a real predecessor."""
