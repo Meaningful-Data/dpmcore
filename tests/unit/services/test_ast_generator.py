@@ -2460,6 +2460,47 @@ class TestScriptFromDb:
         build.assert_called_once_with(svc.session, 555, release_row.release_id)
         svc._semantic.validate.assert_not_called()
 
+    def test_db_path_parameters_reach_the_parameters_block(
+        self, monkeypatch, real_parameter_info
+    ):
+        """A ``ParameterRef`` inside a DB-built ``ast_dict`` still reaches
+        the script's top-level ``parameters`` block (#364 follow-up):
+        extraction reads the AST itself, not which path produced it.
+
+        ``real_parameter_info`` swaps in a real dataclass for
+        ``ParameterInfo`` — ``_accumulate_ast_parameters`` constructs it
+        itself (unlike the text-reparse path, which only merges
+        instances ``SemanticResult.parameters`` already built), so the
+        stubbed-module ``MagicMock`` class from ``_patch_orm`` would
+        otherwise make every instance compare unequal by identity.
+        """
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {
+            "class_name": "BinOp",
+            "op": "+",
+            "left": {"class_name": "VarID", "table": "C_01.00", "data": []},
+            "right": {
+                "class_name": "ParameterRef",
+                "code": "p_x",
+                "param_type": "Number",
+                "default": None,
+            },
+        }
+        build = MagicMock(return_value=(db_ast_dict, 24))
+        self._stub_db_ast(monkeypatch, build)
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        ns = next(iter(out["enriched_ast"].values()))
+        assert ns["parameters"] == {"p_x": "Number"}
+        svc._semantic.validate.assert_not_called()
+
     def test_falls_back_to_text_reparse_when_unsupported(self, monkeypatch):
         build = MagicMock(
             side_effect=_FakeUnsupportedDbAst("unsupported construct")

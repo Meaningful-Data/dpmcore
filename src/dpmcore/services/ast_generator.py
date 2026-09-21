@@ -698,6 +698,18 @@ class ASTGeneratorService:
                     root_operator_id = self._resolve_root_operator_id(
                         ast, session
                     )
+                else:
+                    # Same source script() uses — the AST itself — not
+                    # whether it came from the DB or a re-parse: a
+                    # parameter is self-contained in its own node
+                    # (code/type/default are declared inline, never
+                    # resolved from the DB), so it is read straight off
+                    # the tree db_ast.py already built.
+                    found_parameters: Dict[str, ParameterInfo] = {}
+                    self._accumulate_ast_parameters(
+                        found_parameters, ast_dict
+                    )
+                    parameters = list(found_parameters.values())
 
                 scope_error = self._process_operation(
                     item=item,
@@ -1832,7 +1844,7 @@ class ASTGeneratorService:
                 continue
             precondition_variables.update(gate_variables)
             if referenced_parameters is not None:
-                self._accumulate_precondition_parameters(
+                self._accumulate_ast_parameters(
                     referenced_parameters, gate_ast
                 )
             key, entry = self._build_precondition_entry_from_ast(
@@ -2213,20 +2225,27 @@ class ASTGeneratorService:
         }
 
     @classmethod
-    def _accumulate_precondition_parameters(
+    def _accumulate_ast_parameters(
         cls,
         referenced_parameters: Dict[str, ParameterInfo],
         node: Any,
     ) -> None:
-        """Add every ``ParameterRef`` in the emitted gate to the registry.
+        """Add every ``ParameterRef`` in a serialised AST to the registry.
 
         Reads the type off the serialised node so the shared registry
-        holds the same canonical name the engine binds against. A gate
-        parameter redeclared with another type — in another gate or in an
-        expression — raises ``SemanticError`` ``3-8`` through
-        :func:`~dpmcore.services._parameters.merge_parameters`, exactly
-        as the conflict between two expressions does. ``default`` is a
-        per-reference fallback and stays on the node only.
+        holds the same canonical name the engine binds against. Used
+        both for a precondition gate's emitted AST and for an
+        operation's ``ast_dict`` reconstructed straight from the DB
+        (:meth:`script_from_db`) — a parameter can never survive
+        ``build_ast_dict_from_db`` (it raises ``UnsupportedDbAst``
+        instead), so this walk costs nothing there today, but ties
+        ``parameters`` extraction to the AST itself rather than to
+        which path produced it. A parameter redeclared with another
+        type — in a gate, an expression, or both — raises
+        ``SemanticError`` ``3-8`` through
+        :func:`~dpmcore.services._parameters.merge_parameters`.
+        ``default`` is a per-reference fallback and stays on the node
+        only: the script-level registry is type-only.
         """
         if isinstance(node, dict):
             if node.get("class_name") == "ParameterRef":
@@ -2245,13 +2264,13 @@ class ASTGeneratorService:
                     )
             for value in node.values():
                 if isinstance(value, (dict, list)):
-                    cls._accumulate_precondition_parameters(
+                    cls._accumulate_ast_parameters(
                         referenced_parameters, value
                     )
         elif isinstance(node, list):
             for item in node:
                 if isinstance(item, (dict, list)):
-                    cls._accumulate_precondition_parameters(
+                    cls._accumulate_ast_parameters(
                         referenced_parameters, item
                     )
 
