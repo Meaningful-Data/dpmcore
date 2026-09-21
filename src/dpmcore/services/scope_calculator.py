@@ -694,13 +694,25 @@ _discover_module_validations`.
         # intra-instance reading even if cross-instance scopes also exist
         # for other modules. Only when the primary appears *solely* in
         # multi-module scopes is it a genuine cross-instance dependency.
-        primary_has_intra = not scope_result.has_error and any(
-            {
-                c.module_vid
-                for c in getattr(s, "operation_scope_compositions", [])
-            }
-            == {primary_module_vid}
-            for s in scope_result.scopes or []
+        #
+        # A single-module scope isn't the only signal for that: a
+        # DB-native scope_result's OperationScope rows can omit a
+        # genuine single-module combination (dpmcore#364), so also check
+        # table ownership directly, mirroring mdpm's own is_intra_operation.
+        primary_has_intra = not scope_result.has_error and (
+            any(
+                {
+                    c.module_vid
+                    for c in getattr(s, "operation_scope_compositions", [])
+                }
+                == {primary_module_vid}
+                for s in scope_result.scopes or []
+            )
+            or bool(
+                referenced_tables
+                and home_module_tables is not None
+                and referenced_tables <= home_module_tables
+            )
         )
 
         if scope_result.has_error or not is_cross or primary_has_intra:

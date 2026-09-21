@@ -99,3 +99,81 @@ class TestPreferIntra:
             for m in c["modules"]
         ]
         assert "uri/10" in uris
+
+    def test_missing_single_module_scope_still_intra_via_table_ownership(
+        self, svc
+    ):
+        """Regression for dpmcore#364 (IF_CLASS2-1.4.0/v09808_m): a
+        DB-native ``scope_result`` built from persisted ``OperationScope``
+        rows can omit a genuine single-module combination the live engine
+        would have found — only the cross scope [10, 20] was ever
+        persisted, even though 10 hosts every table the operation
+        references and can evaluate it alone. Table ownership overrides
+        the missing scope row, mirroring mdpm's ``is_intra_operation``.
+        """
+        sr = ScopeResult(
+            scopes=[_scope([10, 20])],
+            is_cross_module=True,
+        )
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+            operation_code="v1",
+            referenced_tables={"T_01"},
+            home_module_tables={"T_01"},
+        )
+        assert info["intra_instance_validations"] == ["v1"]
+        assert info["cross_instance_dependencies"] == []
+
+    def test_partial_table_ownership_stays_cross(self, svc):
+        """The primary must host *every* referenced table, not just
+        some — a partial overlap is still a genuine dependency.
+        """
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.code = "IF"
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+        svc.session.query.return_value.filter.return_value.all.return_value = [
+            mv
+        ]
+        sr = ScopeResult(
+            scopes=[_scope([10, 20])],
+            is_cross_module=True,
+        )
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+            operation_code="v1",
+            referenced_tables={"T_01", "T_02"},
+            home_module_tables={"T_01"},
+        )
+        assert info["intra_instance_validations"] == []
+
+    def test_no_referenced_tables_leaves_missing_scope_as_cross(self, svc):
+        """Without ``referenced_tables``/``home_module_tables`` (the
+        common case for every caller that predates dpmcore#364's
+        DB-native scope), a missing single-module scope row stays a
+        genuine cross-instance dependency — the ownership check never
+        fires on ``None``/empty inputs.
+        """
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.code = "IF"
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+        svc.session.query.return_value.filter.return_value.all.return_value = [
+            mv
+        ]
+        sr = ScopeResult(
+            scopes=[_scope([10, 20])],
+            is_cross_module=True,
+        )
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+            operation_code="v1",
+        )
+        assert info["intra_instance_validations"] == []
