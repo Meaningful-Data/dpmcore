@@ -31,6 +31,20 @@ _INLINE_CODE = "v1313_m"
 _WITH_CLAUSE_CODE = "v1226_m"
 _EXPECTED_REF_PERIOD = "T-1A"
 
+# FINREP9 3.3.0's own D0 precedes the shifted date, so the predecessor
+# version (3.1.0) substitutes for it.
+_EXPECTED_VERSION_WINDOWS = [
+    {
+        "URI": (
+            "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/finrep/"
+            "its-005-2020/2022-06-01/mod/finrep9"
+        ),
+        "module_version": "3.1.0",
+        "from_reference_date": "2025-03-31",
+        "to_reference_date": "2026-03-30",
+    }
+]
+
 
 def _latest_expression(session, code: str) -> str:
     operation_id = session.execute(
@@ -79,6 +93,7 @@ def test_home_shift_is_declared_as_a_cross_instance_dependency(
             "URI": namespace,
             "ref_period": _EXPECTED_REF_PERIOD,
             "module_version": _MODULE_VERSION,
+            "version_windows": _EXPECTED_VERSION_WINDOWS,
         }
     ]
 
