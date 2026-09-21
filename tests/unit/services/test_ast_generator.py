@@ -17,9 +17,25 @@ from dpmcore import errors
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
+class _FakeUnsupportedDbScope(Exception):
+    """Stand-in for ``scope_calculator.UnsupportedDbScope``.
+
+    ``dpmcore.services.scope_calculator`` is stubbed wholesale by
+    ``_patch_orm``, so ``script_from_db``'s local ``from
+    dpmcore.services.scope_calculator import UnsupportedDbScope``
+    would otherwise bind to a bare ``MagicMock`` attribute — not a
+    valid exception class, so its own ``except UnsupportedDbScope:``
+    would raise ``TypeError`` the moment anything tried to raise
+    through it. Installed as that attribute here so the except clause
+    binds to a real class throughout this file.
+    """
+
+
 @pytest.fixture(autouse=True)
 def _patch_orm(monkeypatch):
     """Stub heavy imports so the module loads on Python 3.10 in unit tests."""
+    scope_calculator_stub = MagicMock()
+    scope_calculator_stub.UnsupportedDbScope = _FakeUnsupportedDbScope
     stubs = {
         "dpmcore.orm": MagicMock(),
         "dpmcore.orm.infrastructure": MagicMock(),
@@ -31,7 +47,7 @@ def _patch_orm(monkeypatch):
         "dpmcore.loaders": MagicMock(),
         "dpmcore.loaders.migration": MagicMock(),
         "dpmcore.dpm_xl.model_queries": MagicMock(),
-        "dpmcore.services.scope_calculator": MagicMock(),
+        "dpmcore.services.scope_calculator": scope_calculator_stub,
         "dpmcore.services.semantic": MagicMock(),
         "dpmcore.services.syntax": MagicMock(),
     }
@@ -2389,6 +2405,12 @@ class TestScriptFromDb:
         svc._scope_calc.calculate_from_expression.return_value = (
             SimpleNamespace(has_error=False, scopes=[])
         )
+        # No persisted scope in this fixture by default: every existing
+        # test exercises the calculate_from_expression fallback exactly
+        # as before. Tests for the DB-native scope path override this.
+        svc._scope_calc.build_scope_result_from_db.side_effect = (
+            _FakeUnsupportedDbScope("no persisted scope in fixture")
+        )
         svc._scope_calc.detect_cross_module_dependencies.return_value = {
             "intra_instance_validations": ["v1"],
             "cross_instance_dependencies": [],
@@ -2500,6 +2522,92 @@ class TestScriptFromDb:
         ns = next(iter(out["enriched_ast"].values()))
         assert ns["parameters"] == {"p_x": "Number"}
         svc._semantic.validate.assert_not_called()
+
+    def test_db_native_scope_used_and_reparse_skipped(self, monkeypatch):
+        """When ``build_scope_result_from_db`` succeeds,
+        ``calculate_from_expression`` must never run for that operation
+        (dpmcore#364 follow-up: the persisted scope is reused instead
+        of re-parsing the expression and re-validating every operand
+        against live table data).
+        """
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
+        build = MagicMock(return_value=(db_ast_dict, 24))
+        self._stub_db_ast(monkeypatch, build)
+
+        svc._scope_calc.build_scope_result_from_db.side_effect = None
+        svc._scope_calc.build_scope_result_from_db.return_value = (
+            SimpleNamespace(has_error=False, scopes=[])
+        )
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        svc._scope_calc.build_scope_result_from_db.assert_called_once_with(
+            555, mv.module_vid
+        )
+        svc._scope_calc.calculate_from_expression.assert_not_called()
+        ns = next(iter(out["enriched_ast"].values()))
+        assert "v1" in ns["operations"]
+
+    def test_db_native_scope_falls_back_when_unsupported(self, monkeypatch):
+        """``UnsupportedDbScope`` falls back to
+        ``calculate_from_expression`` for that operation's scope only —
+        the AST can still come from the DB independently.
+        """
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
+        build = MagicMock(return_value=(db_ast_dict, 24))
+        self._stub_db_ast(monkeypatch, build)
+        # _build_svc's default already raises _FakeUnsupportedDbScope.
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        svc._scope_calc.build_scope_result_from_db.assert_called_once_with(
+            555, mv.module_vid
+        )
+        svc._scope_calc.calculate_from_expression.assert_called_once()
+        ns = next(iter(out["enriched_ast"].values()))
+        assert "v1" in ns["operations"]
+
+    def test_db_native_scope_error_excludes_only_that_operation(
+        self, monkeypatch
+    ):
+        """A ``has_error`` persisted-scope result rejects that one
+        operation without ever falling back to re-parsing it.
+        """
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
+        build = MagicMock(return_value=(db_ast_dict, 24))
+        self._stub_db_ast(monkeypatch, build)
+
+        svc._scope_calc.build_scope_result_from_db.side_effect = None
+        svc._scope_calc.build_scope_result_from_db.return_value = (
+            SimpleNamespace(has_error=True, error_message="boom")
+        )
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        assert "v1" in out["failed_operations"]
+        assert "boom" in out["failed_operations"]["v1"]
+        svc._scope_calc.calculate_from_expression.assert_not_called()
 
     def test_falls_back_to_text_reparse_when_unsupported(self, monkeypatch):
         build = MagicMock(

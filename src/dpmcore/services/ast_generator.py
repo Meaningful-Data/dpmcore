@@ -338,6 +338,7 @@ class ASTGeneratorService:
         referenced_table_codes: set[str],
         referenced_parameters: Dict[str, ParameterInfo],
         operation_vid: Optional[int] = None,
+        scope_result: Optional["ScopeResult"] = None,
     ) -> Optional[str]:
         """Fold one operation's already-resolved AST into the script's
         accumulators (``operations``, ``scope_pairs``,
@@ -347,8 +348,6 @@ class ASTGeneratorService:
         Independent of how ``ast_dict``/``parameters``/``root_operator_id``
         were obtained — re-parsed from text, or reshaped from the
         persisted ``OperationNode`` tree — this is the same regardless.
-        Only ``expr``/``code`` (from *item*) reach the scope calculator,
-        which always works from the raw expression text.
 
         ``operation_vid`` is the real ``OperationVID`` this operation was
         discovered under, when the caller has one (:meth:`script_from_db`
@@ -358,6 +357,15 @@ class ASTGeneratorService:
         ``--expressions`` file) — in which case
         :meth:`_build_operation_entry` falls back to its deterministic
         hash. See dpmcore#364.
+
+        ``scope_result`` lets the caller supply an already-computed
+        ``ScopeResult`` (:meth:`script_from_db` passes one built
+        straight from the persisted ``OperationScope`` rows, when
+        available) instead of having ``expr`` re-parsed here. ``None``
+        falls back to :meth:`ScopeCalculatorService.calculate_from_expression`
+        — :meth:`script`'s caller-supplied ``expressions`` always take
+        this path, since they have no ``operation_vid`` to read a
+        persisted scope from.
 
         Returns the scope-calculation error message on failure (callers
         decide whether that aborts the whole script or just excludes
@@ -370,7 +378,7 @@ class ASTGeneratorService:
         """
         expr, code = item[0], item[1]
 
-        sr = self._scope_calc.calculate_from_expression(
+        sr = scope_result or self._scope_calc.calculate_from_expression(
             expression=expr,
             release_id=release_id,
             precondition_items=code_to_precondition_items.get(
@@ -611,6 +619,7 @@ class ASTGeneratorService:
                 build_ast_dict_from_db,
             )
             from dpmcore.dpm_xl.utils.serialization import serialize_ast
+            from dpmcore.services.scope_calculator import UnsupportedDbScope
 
             primary_module_vid: int = mv.module_vid
             release_id: int = release_row.release_id
@@ -711,6 +720,20 @@ class ASTGeneratorService:
                     )
                     parameters = list(found_parameters.values())
 
+                scope_result: Optional["ScopeResult"] = None
+                if operation_vid is not None:
+                    # Same rationale as the AST: the scope is already
+                    # persisted, so re-deriving it via re-parse+re-validate
+                    # only risks a spurious rejection (e.g. grey cells).
+                    try:
+                        scope_result = (
+                            self._scope_calc.build_scope_result_from_db(
+                                operation_vid, primary_module_vid
+                            )
+                        )
+                    except UnsupportedDbScope:
+                        scope_result = None
+
                 scope_error = self._process_operation(
                     item=item,
                     ast_dict=ast_dict,
@@ -726,6 +749,7 @@ class ASTGeneratorService:
                     referenced_table_codes=referenced_table_codes,
                     referenced_parameters=referenced_parameters,
                     operation_vid=operation_vid,
+                    scope_result=scope_result,
                 )
                 if scope_error is not None:
                     # Unlike script()'s text-reparse path (#122), a scope
@@ -1022,7 +1046,9 @@ class ASTGeneratorService:
 
         scope_ids = {row[5] for row in overlapping}
         phantom_scope_ids = (
-            self._phantom_paired_scope_ids(session, scope_ids, mv.module_vid)
+            self._scope_calc._phantom_paired_scope_ids(
+                session, scope_ids, mv.module_vid
+            )
             if scope_ids
             else set()
         )
@@ -1086,52 +1112,6 @@ class ASTGeneratorService:
             severities,
             from_submission_dates,
         )
-
-    @staticmethod
-    def _phantom_paired_scope_ids(
-        session: Session, scope_ids: set[int], module_vid: int
-    ) -> set[int]:
-        """``OperationScopeID``s whose only *other* composed module
-        versions (besides *module_vid*) are all phantom.
-
-        Mirrors mdpm's ``is_phantom_module_op``. A scope shared with no
-        other module at all is never phantom here — this only voids a
-        cross-framework pairing whose counterpart turned out to be
-        phantom, not a plain single-module scope.
-        """
-        from dpmcore.orm.operations import OperationScopeComposition
-        from dpmcore.orm.packaging import ModuleVersion
-
-        rows = (
-            session.query(
-                OperationScopeComposition.operation_scope_id,
-                ModuleVersion.from_reference_date,
-                ModuleVersion.to_reference_date,
-            )
-            .join(
-                ModuleVersion,
-                ModuleVersion.module_vid == OperationScopeComposition.module_vid,
-            )
-            .filter(
-                OperationScopeComposition.operation_scope_id.in_(scope_ids)
-            )
-            .filter(OperationScopeComposition.module_vid != module_vid)
-            .all()
-        )
-        others_by_scope: Dict[int, List[bool]] = {}
-        for scope_id, from_date, to_date in rows:
-            is_phantom = (
-                from_date is not None
-                and to_date is not None
-                and from_date == to_date
-            )
-            others_by_scope.setdefault(scope_id, []).append(is_phantom)
-
-        return {
-            scope_id
-            for scope_id, flags in others_by_scope.items()
-            if flags and all(flags)
-        }
 
     def _resolve_preconditions(
         self, prec_vid_to_codes: Dict[int, List[str]]

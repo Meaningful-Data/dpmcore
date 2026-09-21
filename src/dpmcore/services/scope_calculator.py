@@ -24,6 +24,7 @@ from dpmcore.dpm_xl.utils.scopes_calculator import (
 from dpmcore.errors import SemanticError
 from dpmcore.orm.glossary import Property
 from dpmcore.orm.infrastructure import DataType, Release
+from dpmcore.orm.operations import OperationScope, OperationScopeComposition
 from dpmcore.orm.packaging import (
     ModuleVersion,
     ModuleVersionComposition,
@@ -44,6 +45,15 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+
+class UnsupportedDbScope(Exception):
+    """Raised when no persisted, non-phantom scope exists for an operation.
+
+    Always a request to fall back to
+    :meth:`ScopeCalculatorService.calculate_from_expression` for this
+    one operation — never a signal that the DB data itself is broken.
+    """
 
 
 @dataclass
@@ -448,6 +458,115 @@ class ScopeCalculatorService:
                 has_error=True,
                 error_message=str(exc),
             )
+
+    def build_scope_result_from_db(
+        self, operation_vid: int, primary_module_vid: int
+    ) -> ScopeResult:
+        """Rebuild a ``ScopeResult`` for *operation_vid* from the DB.
+
+        Reads every active ``OperationScope`` row for the operation —
+        each already carrying its ``OperationScopeComposition`` module
+        VIDs via the ORM relationship — instead of recomputing scope
+        by re-parsing the expression text and re-validating every
+        operand against live table data via ``OperandsChecking``. That
+        re-validation is what a genuinely persisted validation's cell
+        references can legitimately fail on (a wildcard/range axis
+        resolved against a table that has since grown grey cells the
+        validation's author never touched, for instance) — none of
+        which mdpm's own export ever sees, since it reads the same
+        persisted scope this reads and never re-validates it against
+        live table data either.
+
+        Excludes any scope that is phantom-paired relative to
+        *primary_module_vid* (see :meth:`_phantom_paired_scope_ids`),
+        matching :meth:`~dpmcore.services.ast_generator.\
+ASTGeneratorService._discover_module_validations`'s own exclusion.
+
+        Raises :class:`UnsupportedDbScope` when nothing usable
+        survives — callers must catch this and fall back to
+        :meth:`calculate_from_expression` instead.
+        """
+        scopes = (
+            self.session.query(OperationScope)
+            .filter(
+                OperationScope.operation_vid == operation_vid,
+                OperationScope.is_active.in_([-1, 1, True]),
+            )
+            .all()
+        )
+        if not scopes:
+            raise UnsupportedDbScope(
+                f"No active OperationScope rows for "
+                f"operation_vid={operation_vid}"
+            )
+
+        scope_ids = {s.operation_scope_id for s in scopes}
+        phantom_ids = self._phantom_paired_scope_ids(
+            self.session, scope_ids, primary_module_vid
+        )
+        filtered = [
+            s for s in scopes if s.operation_scope_id not in phantom_ids
+        ]
+        if not filtered:
+            raise UnsupportedDbScope(
+                f"Every OperationScope for operation_vid={operation_vid} "
+                "is phantom-paired"
+            )
+
+        return ScopeResult(
+            scopes=filtered,
+            total_scopes=len(filtered),
+            is_cross_module=self._compute_cross_module(filtered),
+            module_versions=self._module_vids(filtered),
+        )
+
+    @staticmethod
+    def _phantom_paired_scope_ids(
+        session: "Session", scope_ids: Set[int], module_vid: int
+    ) -> Set[int]:
+        """``OperationScopeID``s whose only *other* composed module
+        versions (besides *module_vid*) are all phantom.
+
+        Mirrors mdpm's ``is_phantom_module_op``. A scope shared with no
+        other module at all is never phantom here — this only voids a
+        cross-framework pairing whose counterpart turned out to be
+        phantom, not a plain single-module scope.
+
+        Shared by :meth:`build_scope_result_from_db` and
+        :meth:`~dpmcore.services.ast_generator.ASTGeneratorService.\
+_discover_module_validations`.
+        """
+        rows = (
+            session.query(
+                OperationScopeComposition.operation_scope_id,
+                ModuleVersion.from_reference_date,
+                ModuleVersion.to_reference_date,
+            )
+            .join(
+                ModuleVersion,
+                ModuleVersion.module_vid
+                == OperationScopeComposition.module_vid,
+            )
+            .filter(
+                OperationScopeComposition.operation_scope_id.in_(scope_ids)
+            )
+            .filter(OperationScopeComposition.module_vid != module_vid)
+            .all()
+        )
+        others_by_scope: Dict[int, List[bool]] = {}
+        for scope_id, from_date, to_date in rows:
+            is_phantom = (
+                from_date is not None
+                and to_date is not None
+                and from_date == to_date
+            )
+            others_by_scope.setdefault(scope_id, []).append(is_phantom)
+
+        return {
+            scope_id
+            for scope_id, flags in others_by_scope.items()
+            if flags and all(flags)
+        }
 
     # ------------------------------------------------------------------ #
     # Cross-module dependency detection (Fix 2)

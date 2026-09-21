@@ -449,6 +449,150 @@ class TestComputeCrossModule:
 
 
 # ------------------------------------------------------------------ #
+# build_scope_result_from_db (dpmcore#364)
+# ------------------------------------------------------------------ #
+
+
+def _op_scope(scope_id, module_vids):
+    """A fake ``OperationScope`` row: id + composed module VIDs."""
+    return SimpleNamespace(
+        operation_scope_id=scope_id,
+        operation_scope_compositions=[
+            SimpleNamespace(module_vid=v) for v in module_vids
+        ],
+    )
+
+
+class TestBuildScopeResultFromDb:
+    """Rebuilding a ``ScopeResult`` from persisted ``OperationScope``
+    rows instead of re-parsing the expression (dpmcore#364).
+    """
+
+    def _make_svc(self):
+        Svc, _ = _load_module()
+        return Svc(MagicMock())
+
+    @staticmethod
+    def _wire_scopes(svc, scopes, phantom_rows=None):
+        """Wire the two distinct query shapes this method issues.
+
+        The scope fetch goes through ``.filter(...).all()``; the
+        phantom check goes through ``.join(...).filter(...)
+        .filter(...).all()`` — a different mock attribute chain, so
+        both are configured independently on the same shared
+        ``session.query`` mock without colliding.
+        """
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = scopes
+        (
+            q.join.return_value.filter.return_value.filter.return_value
+            .all.return_value
+        ) = phantom_rows or []
+
+    def test_single_module_scope(self):
+        svc = self._make_svc()
+        self._wire_scopes(svc, [_op_scope(1, [10])])
+        result = svc.build_scope_result_from_db(
+            operation_vid=100, primary_module_vid=10
+        )
+        assert result.total_scopes == 1
+        assert not result.is_cross_module
+        assert result.module_versions == [10]
+        assert not result.has_error
+
+    def test_cross_module_scope(self):
+        svc = self._make_svc()
+        self._wire_scopes(svc, [_op_scope(1, [10, 20])])
+        result = svc.build_scope_result_from_db(
+            operation_vid=100, primary_module_vid=10
+        )
+        assert result.is_cross_module
+        assert result.module_versions == [10, 20]
+
+    def test_no_active_scope_raises(self):
+        svc = self._make_svc()
+        self._wire_scopes(svc, [])
+        mod = sys.modules["dpmcore.services.scope_calculator"]
+        with pytest.raises(mod.UnsupportedDbScope):
+            svc.build_scope_result_from_db(
+                operation_vid=100, primary_module_vid=10
+            )
+
+    def test_only_phantom_paired_scope_raises(self):
+        """The sole scope pairs the primary with a phantom module
+        version — nothing usable survives the exclusion.
+        """
+        svc = self._make_svc()
+        self._wire_scopes(
+            svc,
+            [_op_scope(1, [10, 20])],
+            phantom_rows=[(1, "2026-01-01", "2026-01-01")],
+        )
+        mod = sys.modules["dpmcore.services.scope_calculator"]
+        with pytest.raises(mod.UnsupportedDbScope):
+            svc.build_scope_result_from_db(
+                operation_vid=100, primary_module_vid=10
+            )
+
+    def test_phantom_scope_excluded_genuine_one_kept(self):
+        svc = self._make_svc()
+        self._wire_scopes(
+            svc,
+            [_op_scope(1, [10, 20]), _op_scope(2, [10, 30])],
+            phantom_rows=[
+                (1, "2026-01-01", "2026-01-01"),
+                (2, "2020-01-01", None),
+            ],
+        )
+        result = svc.build_scope_result_from_db(
+            operation_vid=100, primary_module_vid=10
+        )
+        assert result.total_scopes == 1
+        assert result.module_versions == [10, 30]
+
+
+class TestPhantomPairedScopeIds:
+    """Direct coverage of the exclusion rule ``build_scope_result_from_db``
+    and ``ASTGeneratorService._discover_module_validations`` share.
+    """
+
+    def _make_svc(self):
+        Svc, _ = _load_module()
+        return Svc, Svc(MagicMock())
+
+    @staticmethod
+    def _wire(svc, rows):
+        q = svc.session.query.return_value
+        chain = q.join.return_value.filter.return_value.filter.return_value
+        chain.all.return_value = rows
+
+    def test_scope_with_only_the_primary_module_is_never_phantom(self):
+        Svc, svc = self._make_svc()
+        self._wire(svc, [])
+        result = Svc._phantom_paired_scope_ids(svc.session, {1}, 10)
+        assert result == set()
+
+    def test_scope_whose_only_other_module_is_phantom_is_excluded(self):
+        Svc, svc = self._make_svc()
+        self._wire(svc, [(1, "2026-01-01", "2026-01-01")])
+        result = Svc._phantom_paired_scope_ids(svc.session, {1}, 10)
+        assert result == {1}
+
+    def test_scope_with_one_live_other_module_is_not_excluded(self):
+        """Only void when *every* other module is phantom."""
+        Svc, svc = self._make_svc()
+        self._wire(
+            svc,
+            [
+                (1, "2026-01-01", "2026-01-01"),
+                (1, "2020-01-01", None),
+            ],
+        )
+        result = Svc._phantom_paired_scope_ids(svc.session, {1}, 10)
+        assert result == set()
+
+
+# ------------------------------------------------------------------ #
 # filter_valid_dependency_modules (Fix 2)
 # ------------------------------------------------------------------ #
 
