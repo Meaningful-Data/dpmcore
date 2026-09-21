@@ -564,7 +564,7 @@ class ASTGeneratorService:
         module version.
 
         For each operation, its persisted ``OperationNode`` tree is tried
-        first (:func:`db_ast.build_ast_dict_from_db`) — falling back to
+        first (:func:`db_ast.build_ast_from_db`) — falling back to
         re-parsing its expression text only when that isn't possible
         (an unsupported construct, or the reshaper for it not being
         implemented yet — see dpmcore#364). Shares
@@ -616,7 +616,8 @@ class ASTGeneratorService:
         try:
             from dpmcore.dpm_xl.utils.db_ast import (
                 UnsupportedDbAst,
-                build_ast_dict_from_db,
+                build_ast_from_db,
+                serialize_built_ast,
             )
             from dpmcore.dpm_xl.utils.serialization import serialize_ast
             from dpmcore.services.scope_calculator import UnsupportedDbScope
@@ -671,6 +672,7 @@ class ASTGeneratorService:
                     continue
 
                 ast_dict: Optional[Dict[str, Any]] = None
+                built_ast: Optional[Any] = None
                 parameters: List[ParameterInfo] = []
                 ts: Dict[str, List[str]] = {}
                 root_operator_id: Optional[int] = None
@@ -678,11 +680,13 @@ class ASTGeneratorService:
                 operation_vid = operation_vids.get(code)
                 if operation_vid is not None:
                     try:
-                        ast_dict, root_operator_id = build_ast_dict_from_db(
+                        built_ast, root_operator_id = build_ast_from_db(
                             session, operation_vid, release_id
                         )
+                        ast_dict = serialize_built_ast(built_ast)
                     except UnsupportedDbAst:
                         ast_dict = None
+                        built_ast = None
 
                 if ast_dict is None:
                     # Same resolution script() uses for the text-reparse
@@ -719,6 +723,14 @@ class ASTGeneratorService:
                         found_parameters, ast_dict
                     )
                     parameters = list(found_parameters.values())
+                    # Same reasoning as _prepare_expression's own call:
+                    # a shift whose period cannot be declared must reject
+                    # this one operation, not the whole module.
+                    try:
+                        ts = self._extract_time_shifts(built_ast)
+                    except SemanticError as exc:
+                        failed_operations[code] = str(exc)
+                        continue
 
                 scope_result: Optional["ScopeResult"] = None
                 if operation_vid is not None:
@@ -2217,7 +2229,7 @@ class ASTGeneratorService:
         both for a precondition gate's emitted AST and for an
         operation's ``ast_dict`` reconstructed straight from the DB
         (:meth:`script_from_db`) — a parameter can never survive
-        ``build_ast_dict_from_db`` (it raises ``UnsupportedDbAst``
+        ``build_ast_from_db`` (it raises ``UnsupportedDbAst``
         instead), so this walk costs nothing there today, but ties
         ``parameters`` extraction to the AST itself rather than to
         which path produced it. A parameter redeclared with another
@@ -2867,6 +2879,14 @@ extract_precondition_codes`, shared with
                     time_shifts.setdefault(node.table, set()).add(
                         current_period[0]
                     )
+
+            def visit__DbSubClauseOp(self, node: Any) -> None:
+                # db_ast.py's stand-in for a ``sub`` clause (dpmcore#364)
+                # — not one of ASTTemplate's known node types, so its
+                # generic_visit would raise NotImplementedError instead
+                # of walking past it.
+                self.visit(node.operand)
+                self.visit(node.condition)
 
         try:
             _Extractor().visit(ast)

@@ -25,6 +25,8 @@ from dpmcore.dpm_xl.utils.db_ast import (
     _infer_scalar,
     _normalize_date,
     build_ast_dict_from_db,
+    build_ast_from_db,
+    serialize_built_ast,
 )
 from dpmcore.orm.base import Base
 from dpmcore.orm.glossary import ItemCategory, Property
@@ -383,20 +385,6 @@ class TestClassifyOperators:
         )
 
         with pytest.raises(UnsupportedDbAst):
-            _build(session)
-
-    def test_time_shift_classified_but_excluded(self, session):
-        _add_operator(
-            session,
-            1,
-            name="Time shift",
-            type_="Function",
-            symbol="time_shift",
-            arg_names=["operand", "period_indicator", "shift_number"],
-        )
-        _add_node(session, 1, operator_id=1, is_leaf=False)
-
-        with pytest.raises(UnsupportedDbAst, match="period_indicator"):
             _build(session)
 
     def test_unclassified_operator_raises(self, session):
@@ -1002,6 +990,246 @@ class TestCompositeShapes:
             },
             "clauses": [{"from_component": "OLD", "to_component": "NEW"}],
         }
+
+    def test_time_shift_op_with_reference_period(self, session):
+        args = _add_operator(
+            session,
+            1,
+            name="Time shift",
+            type_="Function",
+            symbol="time_shift",
+            arg_names=[
+                "operand",
+                "period_indicator",
+                "shift_number",
+                "dimension",
+            ],
+        )
+        _add_node(session, 1, operator_id=1, is_leaf=False)
+        _add_node(
+            session,
+            2,
+            parent_node_id=1,
+            argument_id=args["operand"][0],
+            is_leaf=True,
+            scalar="1",
+        )
+        _add_node(
+            session,
+            3,
+            parent_node_id=1,
+            argument_id=args["period_indicator"][0],
+            is_leaf=True,
+            scalar="A",
+        )
+        _add_node(
+            session,
+            4,
+            parent_node_id=1,
+            argument_id=args["shift_number"][0],
+            is_leaf=True,
+            scalar="1",
+        )
+        _add_node(
+            session,
+            5,
+            parent_node_id=1,
+            argument_id=args["dimension"][0],
+            is_leaf=True,
+        )
+        _add_ref(session, 1, node_id=5, kind="refPeriod")
+
+        ast_dict, _ = _build(session)
+        assert ast_dict == {
+            "class_name": "TimeShiftOp",
+            "operand": {
+                "class_name": "Constant",
+                "type_": "Integer",
+                "value": 1,
+            },
+            "period_indicator": {
+                "class_name": "Constant",
+                "type_": "String",
+                "value": "A",
+            },
+            "shift_number": {
+                "class_name": "Constant",
+                "type_": "Integer",
+                "value": 1,
+            },
+            "reference_period": "refPeriod",
+        }
+
+    def test_time_shift_op_without_reference_period(self, session):
+        """The trailing ``propertyCode`` argument is optional in the
+        grammar — no ``dimension`` child at all must serialise to a
+        bare ``None``, not raise.
+        """
+        args = _add_operator(
+            session,
+            1,
+            name="Time shift",
+            type_="Function",
+            symbol="time_shift",
+            arg_names=["operand", "period_indicator", "shift_number"],
+        )
+        _add_node(session, 1, operator_id=1, is_leaf=False)
+        _add_node(
+            session,
+            2,
+            parent_node_id=1,
+            argument_id=args["operand"][0],
+            is_leaf=True,
+            scalar="1",
+        )
+        _add_node(
+            session,
+            3,
+            parent_node_id=1,
+            argument_id=args["period_indicator"][0],
+            is_leaf=True,
+            scalar="Q",
+        )
+        _add_node(
+            session,
+            4,
+            parent_node_id=1,
+            argument_id=args["shift_number"][0],
+            is_leaf=True,
+            scalar="2",
+        )
+
+        ast_dict, _ = _build(session)
+        assert ast_dict["reference_period"] is None
+        assert ast_dict["period_indicator"]["value"] == "Q"
+        assert ast_dict["shift_number"]["value"] == 2
+
+    def test_time_shift_op_preserves_real_operand_reference_id(self, session):
+        """Regression: the shifted operand is a real ``VarID`` built the
+        same way as any other — its ``operand_reference_id`` must be
+        the persisted ``OperandReferenceID``, not a re-parse artifact.
+        """
+        args = _add_operator(
+            session,
+            1,
+            name="Time shift",
+            type_="Function",
+            symbol="time_shift",
+            arg_names=["operand", "period_indicator", "shift_number"],
+        )
+        _add_node(session, 1, operator_id=1, is_leaf=False)
+        _add_variable(session, 700)
+        _add_node(
+            session,
+            2,
+            parent_node_id=1,
+            argument_id=args["operand"][0],
+            is_leaf=True,
+        )
+        _add_ref(session, 42, node_id=2, kind="variable", x=0, variable_id=700)
+        _add_location(session, 42, table="F_01.01", row="r0010")
+        _add_node(
+            session,
+            3,
+            parent_node_id=1,
+            argument_id=args["period_indicator"][0],
+            is_leaf=True,
+            scalar="A",
+        )
+        _add_node(
+            session,
+            4,
+            parent_node_id=1,
+            argument_id=args["shift_number"][0],
+            is_leaf=True,
+            scalar="1",
+        )
+
+        ast_dict, _ = _build(session)
+        operand = ast_dict["operand"]
+        assert operand["class_name"] == "VarID"
+        assert operand["data"][0]["operand_reference_id"] == 42
+
+    def test_time_shift_op_missing_period_indicator_scalar_raises(
+        self, session
+    ):
+        args = _add_operator(
+            session,
+            1,
+            name="Time shift",
+            type_="Function",
+            symbol="time_shift",
+            arg_names=["operand", "period_indicator", "shift_number"],
+        )
+        _add_node(session, 1, operator_id=1, is_leaf=False)
+        _add_node(
+            session,
+            2,
+            parent_node_id=1,
+            argument_id=args["operand"][0],
+            is_leaf=True,
+            scalar="1",
+        )
+        _add_node(
+            session,
+            3,
+            parent_node_id=1,
+            argument_id=args["period_indicator"][0],
+            is_leaf=True,
+        )
+        _add_node(
+            session,
+            4,
+            parent_node_id=1,
+            argument_id=args["shift_number"][0],
+            is_leaf=True,
+            scalar="1",
+        )
+
+        with pytest.raises(UnsupportedDbAst, match="period_indicator"):
+            _build(session)
+
+
+# ------------------------------------------------------------------ #
+# build_ast_from_db / serialize_built_ast (dpmcore#364 follow-up)
+# ------------------------------------------------------------------ #
+
+
+class TestBuildAstFromDb:
+    """``build_ast_dict_from_db`` is a thin ``build_ast_from_db`` +
+    ``serialize_built_ast`` wrapper — callers that also need the raw
+    tree (``ASTGeneratorService._extract_time_shifts``) use the split
+    directly instead of re-deriving it from the serialised dict.
+    """
+
+    def test_returns_the_real_ast_node_not_a_dict(self, session):
+        _add_node(session, 2, is_leaf=True, scalar="1")
+        _wrap_unary(session, 2)
+
+        built, root_operator_id = build_ast_from_db(
+            session, OPERATION_VID, RELEASE_ID
+        )
+
+        assert not isinstance(built, dict)
+        assert built.__class__.__name__ == "UnaryOp"
+        assert root_operator_id == 1
+
+    def test_serialize_built_ast_matches_build_ast_dict_from_db(
+        self, session
+    ):
+        _add_node(session, 2, is_leaf=True, scalar="1")
+        _wrap_unary(session, 2)
+
+        built, root_operator_id = build_ast_from_db(
+            session, OPERATION_VID, RELEASE_ID
+        )
+        ast_dict_from_split = serialize_built_ast(built)
+        ast_dict_from_wrapper, wrapper_root_id = build_ast_dict_from_db(
+            session, OPERATION_VID, RELEASE_ID
+        )
+
+        assert ast_dict_from_split == ast_dict_from_wrapper
+        assert root_operator_id == wrapper_root_id
 
 
 # ------------------------------------------------------------------ #

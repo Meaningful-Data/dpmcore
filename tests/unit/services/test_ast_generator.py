@@ -1705,6 +1705,31 @@ class TestExtractTimeShifts:
 
         assert Cls._extract_time_shifts(Boom()) == {}
 
+    def test_db_sub_clause_op_stand_in_is_walked(self):
+        """dpmcore#364: ``db_ast.py``'s DB-only ``sub`` stand-in
+        (``_DbSubClauseOp``) isn't a real ``dpm_xl.ast.nodes`` class —
+        without its own ``visit_*``, ``ASTTemplate``'s ``generic_visit``
+        would raise ``NotImplementedError`` and silently drop every
+        time shift elsewhere in the same expression, not just the part
+        inside the ``sub`` clause.
+        """
+        _, Cls, _ = _bare_svc()
+        from dpmcore.dpm_xl.ast.nodes import Constant
+
+        class _FakeDbSubClauseOp:
+            def __init__(self, operand, condition):
+                self.operand = operand
+                self.condition = condition
+
+        _FakeDbSubClauseOp.__name__ = "_DbSubClauseOp"
+
+        sn = Constant(type_="Integer", value=1)
+        shifted = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_15"))
+        node = _FakeDbSubClauseOp(
+            operand=shifted, condition=_FakeVarID(table=None)
+        )
+        assert Cls._extract_time_shifts(node) == {"T_15": ["T-1Q"]}
+
 
 # ------------------------------------------------------------------ #
 # _build_precondition_index
@@ -2355,7 +2380,7 @@ class _FakeUnsupportedDbAst(Exception):
     """Stand-in for ``db_ast.UnsupportedDbAst`` in ``script_from_db``
     tests — a distinct exception type ``_stub_db_ast`` installs as both
     the fake module's ``UnsupportedDbAst`` and what a stubbed
-    ``build_ast_dict_from_db`` raises, so ``script_from_db``'s own
+    ``build_ast_from_db`` raises, so ``script_from_db``'s own
     ``except UnsupportedDbAst:`` (bound to this same class via the
     stubbed import) actually catches it.
     """
@@ -2426,17 +2451,22 @@ class TestScriptFromDb:
             sys.modules, "dpmcore.dpm_xl.utils.serialization", ser_mod
         )
 
-    def _stub_db_ast(self, monkeypatch, build_ast_dict_from_db):
+    def _stub_db_ast(self, monkeypatch, build_ast_from_db):
         """Install a fake ``dpmcore.dpm_xl.utils.db_ast`` module.
 
         ``script_from_db`` imports it locally (inside its ``try:``
         block), so it resolves through ``sys.modules`` at call time —
         same mechanism ``_stub_serialize_ast`` relies on for
-        ``dpmcore.dpm_xl.utils.serialization``.
+        ``dpmcore.dpm_xl.utils.serialization``. ``serialize_built_ast``
+        is wired as the identity function: every caller here already
+        passes the desired *ast_dict* as ``build_ast_from_db``'s first
+        return value (standing in for the not-yet-serialised tree), so
+        "serialising" it is a no-op.
         """
         mod = SimpleNamespace(
             UnsupportedDbAst=_FakeUnsupportedDbAst,
-            build_ast_dict_from_db=build_ast_dict_from_db,
+            build_ast_from_db=build_ast_from_db,
+            serialize_built_ast=lambda built: built,
         )
         monkeypatch.setitem(
             sys.modules, "dpmcore.dpm_xl.utils.db_ast", mod
@@ -2457,7 +2487,7 @@ class TestScriptFromDb:
         assert "No database session" in out["error"]
 
     def test_db_path_used_and_text_reparse_skipped(self, monkeypatch):
-        """When ``build_ast_dict_from_db`` succeeds, the text-reparse
+        """When ``build_ast_from_db`` succeeds, the text-reparse
         path (``_semantic.validate``) must never run for that operation.
         """
         svc, mv, release_row, _ = self._build_svc()
@@ -2481,6 +2511,91 @@ class TestScriptFromDb:
         assert op["version_id"] == 555
         build.assert_called_once_with(svc.session, 555, release_row.release_id)
         svc._semantic.validate.assert_not_called()
+
+    def test_db_native_time_shift_reaches_dependency_detection(
+        self, monkeypatch
+    ):
+        """dpmcore#364 follow-up: a ``TimeShiftOp`` built straight from
+        the DB must still feed ``detect_cross_module_dependencies``'s
+        ``time_shifts`` — before ``db_ast.py`` supported ``TimeShiftOp``
+        this never mattered (every such operation fell back to
+        ``_prepare_expression``, which always computed it), but now the
+        DB-native branch has to compute it too, off the raw tree
+        (``ts`` is only meaningful pre-serialisation — see
+        ``_extract_time_shifts``).
+        """
+        from dpmcore.dpm_xl.ast.nodes import Constant
+
+        built_ast = _FakeTimeShiftOp(
+            "Q",
+            Constant(type_="Integer", value=1),
+            _FakeVarID(table="C_01.00"),
+        )
+        build = MagicMock(return_value=(built_ast, 24))
+        mod = SimpleNamespace(
+            UnsupportedDbAst=_FakeUnsupportedDbAst,
+            build_ast_from_db=build,
+            serialize_built_ast=lambda built: {
+                "class_name": "VarID",
+                "table": "C_01.00",
+                "data": [],
+            },
+        )
+        monkeypatch.setitem(sys.modules, "dpmcore.dpm_xl.utils.db_ast", mod)
+        svc, mv, release_row, _ = self._build_svc()
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        call = svc._scope_calc.detect_cross_module_dependencies.call_args
+        assert call.kwargs["time_shifts"] == {"C_01.00": ["T-1Q"]}
+
+    def test_db_native_non_literal_shift_excludes_only_that_operation(
+        self, monkeypatch
+    ):
+        """A shift number that isn't an integer literal names no
+        resolvable instance (#326) — the DB-native branch must reject
+        just this operation, the same way ``_prepare_expression``'s own
+        ``_extract_time_shifts`` call already does for the fallback.
+        """
+        from dpmcore.dpm_xl.ast.nodes import BinOp, Constant
+
+        non_literal_shift = BinOp(
+            op="*",
+            left=Constant(type_="Integer", value=2),
+            right=Constant(type_="Integer", value=2),
+        )
+        built_ast = _FakeTimeShiftOp(
+            "Q", non_literal_shift, _FakeVarID(table="C_01.00")
+        )
+        build = MagicMock(return_value=(built_ast, 24))
+        mod = SimpleNamespace(
+            UnsupportedDbAst=_FakeUnsupportedDbAst,
+            build_ast_from_db=build,
+            serialize_built_ast=lambda built: {
+                "class_name": "VarID",
+                "table": "C_01.00",
+                "data": [],
+            },
+        )
+        monkeypatch.setitem(sys.modules, "dpmcore.dpm_xl.utils.db_ast", mod)
+        svc, mv, release_row, _ = self._build_svc()
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        assert "v1" in out["failed_operations"]
+        svc._scope_calc.calculate_from_expression.assert_not_called()
 
     def test_db_path_parameters_reach_the_parameters_block(
         self, monkeypatch, real_parameter_info
@@ -2697,7 +2812,7 @@ class TestScriptFromDb:
         assert out["success"] is True, out["error"]
         assert out["failed_operations"] == {"v1": "gate not supported"}
         # v1 is skipped before either AST path is even attempted; only
-        # v2 (operation_vid=2) ever reaches build_ast_dict_from_db.
+        # v2 (operation_vid=2) ever reaches build_ast_from_db.
         build.assert_called_once_with(svc.session, 2, release_row.release_id)
 
     def test_per_operation_scope_error_is_non_fatal(self, monkeypatch):

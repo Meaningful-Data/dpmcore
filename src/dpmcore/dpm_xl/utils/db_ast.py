@@ -24,9 +24,9 @@ string or anything from
 this module or fall back to the text-reparse path.
 
 Not everything can be reconstructed from what's persisted today
-(parameters, time shifts, ...). Whenever this module can't safely
-rebuild a node it raises :class:`UnsupportedDbAst` — the caller falls
-back to the text-reparse path. This module never guesses.
+(parameters, ...). Whenever this module can't safely rebuild a node it
+raises :class:`UnsupportedDbAst` — the caller falls back to the
+text-reparse path. This module never guesses.
 """
 
 from __future__ import annotations
@@ -53,6 +53,8 @@ from dpmcore.services.structure import StructureService
 __all__ = [
     "UnsupportedDbAst",
     "build_ast_dict_from_db",
+    "build_ast_from_db",
+    "serialize_built_ast",
     "_load_tree",
     "_root",
 ]
@@ -197,11 +199,6 @@ def _classify_operators(session: Session) -> Dict[int, _OperatorShape]:
         elif row.Name == "RenameNode":
             shapes[op_id] = _OperatorShape("RenameNode")
         elif row.Name == "Time shift":
-            # Excluded: TimeShiftOp's period_indicator is hardcoded to
-            # "Q" at write time (a pre-existing bug in MLGeneration), so
-            # it cannot be trusted from the DB. Classified (not simply
-            # omitted) so build() can report *why* it falls back, rather
-            # than a generic "unclassified operator".
             shapes[op_id] = _OperatorShape("TimeShiftOp")
         elif name_set == {"operand"}:
             shapes[op_id] = _OperatorShape("UnaryOp")
@@ -362,12 +359,6 @@ class _Builder:
             raise UnsupportedDbAst(
                 f"Unsupported or missing OperatorID on node {node.node_id}"
             )
-        if shape.class_name == "TimeShiftOp":
-            raise UnsupportedDbAst(
-                f"TimeShiftOp (node {node.node_id}) is unsupported: its "
-                "period_indicator can't be trusted from the DB"
-            )
-
         children = _children_by_argument(self._tree, node)
         symbol = self._symbol(node)
 
@@ -427,6 +418,8 @@ class _Builder:
                 operand=self.build(_one(children, "operand")),
                 rename_nodes=rename_nodes,
             )
+        if shape.class_name == "TimeShiftOp":
+            return self._build_time_shift(children)
         raise UnsupportedDbAst(
             f"Unhandled shape {shape.class_name!r} for OperatorID={op_id}"
         )
@@ -508,6 +501,36 @@ class _Builder:
         return ast_nodes.RenameNode(
             old_name=self._component_text(old),
             new_name=self._component_text(new),
+        )
+
+    def _build_time_shift(
+        self, children: Dict[str, List[OperationNode]]
+    ) -> Any:
+        """Build a ``TimeShiftOp`` from its persisted arguments.
+
+        ``period_indicator`` is a plain scalar leaf (no ``Constant``
+        wrapper, no ``OperandReference`` — just its raw text, e.g.
+        ``"A"``), read the same way as any other bare ``Scalar``.
+        ``component`` (the optional trailing ``refPeriod``/property
+        argument) is a component leaf, read the same way
+        ``GetClauseOp`` reads its own.
+        """
+        period_node = _one(children, "period_indicator")
+        if period_node.scalar is None:
+            raise UnsupportedDbAst(
+                f"TimeShiftOp period_indicator leaf {period_node.node_id} "
+                "has no scalar text"
+            )
+        component_nodes = children.get("dimension")
+        return ast_nodes.TimeShiftOp(
+            operand=self.build(_one(children, "operand")),
+            period_indicator=period_node.scalar,
+            component=(
+                self._component_text(component_nodes[0])
+                if component_nodes
+                else None
+            ),
+            shift_number=self.build(_one(children, "shift_number")),
         )
 
     # ------------------------------------------------------------- #
@@ -807,11 +830,18 @@ class _Builder:
         return row[0]
 
 
-def build_ast_dict_from_db(
+def build_ast_from_db(
     session: Session, operation_vid: int, release_id: int
-) -> Tuple[Dict[str, Any], int]:
-    """Rebuild ``(ast_dict, root_operator_id)`` for *operation_vid* from
-    the DB, instead of re-parsing its expression text.
+) -> Tuple[Any, int]:
+    """Rebuild ``(built, root_operator_id)`` for *operation_vid* from the
+    DB: the real ``dpm_xl.ast.nodes`` tree, not yet serialised.
+
+    Callers that need the JSON wire shape should use
+    :func:`build_ast_dict_from_db` instead — this is for a caller that
+    also needs to walk the tree itself (e.g. re-deriving time-shifted
+    reference periods with the *same* visitor a re-parsed expression
+    uses, which :func:`~dpmcore.services.ast_generator.\
+ASTGeneratorService._extract_time_shifts` expects a raw tree for).
 
     Raises :class:`UnsupportedDbAst` when the tree contains anything this
     module does not (yet) faithfully reconstruct — callers must catch
@@ -823,5 +853,27 @@ def build_ast_dict_from_db(
         raise UnsupportedDbAst(f"Root node {root.node_id} has no OperatorID")
     builder = _Builder(session, tree, release_id)
     built = builder.build(root)
-    ast_dict = _DbAstToJSONVisitor().visit(built)
-    return ast_dict, root.operator_id
+    return built, root.operator_id
+
+
+def serialize_built_ast(built: Any) -> Dict[str, Any]:
+    """Serialise a tree from :func:`build_ast_from_db` to the JSON wire
+    shape, the same way :func:`build_ast_dict_from_db` does internally.
+    """
+    return _DbAstToJSONVisitor().visit(built)
+
+
+def build_ast_dict_from_db(
+    session: Session, operation_vid: int, release_id: int
+) -> Tuple[Dict[str, Any], int]:
+    """Rebuild ``(ast_dict, root_operator_id)`` for *operation_vid* from
+    the DB, instead of re-parsing its expression text.
+
+    Raises :class:`UnsupportedDbAst` when the tree contains anything this
+    module does not (yet) faithfully reconstruct — callers must catch
+    this and fall back to parsing ``OperationVersion.expression`` instead.
+    """
+    built, root_operator_id = build_ast_from_db(
+        session, operation_vid, release_id
+    )
+    return serialize_built_ast(built), root_operator_id
