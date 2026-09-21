@@ -740,6 +740,15 @@ class TestDetectCrossModuleDependencies:
             f"http://uri/mod_{module_vid}"
         )
         svc._get_module_tables = lambda module_vid, release_id=None: {}
+        # ``_home_mv_and_uri`` resolves the home module via
+        # ``.filter(...).first()`` on this same mocked query chain,
+        # separate from the ``.all()`` most tests configure for the
+        # dependency-module fetch. Defaulting it to "not found" keeps
+        # ``_cross_dep_entry``'s date-narrowing a no-op for every test
+        # that doesn't care about it, instead of comparing a stray
+        # auto-``MagicMock`` against a real date (#380).
+        q = svc.session.query.return_value
+        q.filter.return_value.first.return_value = None
         return svc, SR
 
     def test_intra_module_returns_op_code(self):
