@@ -52,6 +52,14 @@ def svc(monkeypatch):
     service._get_module_tables = lambda module_vid, release_id=None: {
         "T_01": {"variables": {"v1": "x"}, "open_keys": {}},
     }
+    # ``_home_mv_and_uri`` resolves the home module via
+    # ``.filter(...).first()`` on this same mocked query chain,
+    # separate from the ``.all()`` a test configures for the
+    # dependency-module fetch. Defaulting it to "not found" keeps
+    # ``_cross_dep_entry``'s date-narrowing a no-op here instead of
+    # comparing a stray auto-``MagicMock`` against a real date (#380).
+    q = service.session.query.return_value
+    q.filter.return_value.first.return_value = None
     return service
 
 

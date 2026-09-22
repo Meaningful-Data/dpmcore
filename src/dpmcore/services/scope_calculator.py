@@ -672,6 +672,8 @@ class ScopeCalculatorService:
         else:
             primary_tables = home_module_tables
 
+        home_mv, _ = self._home_mv_and_uri(primary_module_vid)
+
         for vid in sorted_vids:
             mv = mv_by_vid.get(vid)
             if not mv:
@@ -685,6 +687,7 @@ class ScopeCalculatorService:
                 referenced_variables=referenced_variables,
                 referenced_tables=referenced_tables,
                 home_module_tables=primary_tables,
+                home_mv=home_mv,
             )
             if entry is None:
                 continue
@@ -768,6 +771,28 @@ class ScopeCalculatorService:
             }
         )
 
+    def _home_mv_and_uri(
+        self, primary_module_vid: int
+    ) -> Tuple[Any, Optional[str]]:
+        """Return (and cache) the home module's row and its URI.
+
+        Memoised in ``_home_module_refs``: callers iterate this once per
+        operation with the same ``primary_module_vid``.
+        """
+        cached = self._home_module_refs.get(primary_module_vid)
+        if cached is None:
+            mv = (
+                self.session.query(ModuleVersion)
+                .filter(ModuleVersion.module_vid == primary_module_vid)
+                .first()
+            )
+            cached = (
+                mv,
+                self._get_module_uri(module_vid=primary_module_vid, mv=mv),
+            )
+            self._home_module_refs[primary_module_vid] = cached
+        return cached
+
     def _build_home_instance_deps(
         self,
         periods: List[str],
@@ -782,26 +807,10 @@ class ScopeCalculatorService:
         ``dependency_modules`` entry accompanies it: the home module's
         tables and variables are already declared at the top level of
         the script, and the shifted instance is the same module version.
-
-        The module version and its URI are memoised in
-        ``_home_module_refs``: the caller iterates this once per
-        operation with the same ``primary_module_vid``.
         """
         if not periods:
             return []
-        cached = self._home_module_refs.get(primary_module_vid)
-        if cached is None:
-            mv = (
-                self.session.query(ModuleVersion)
-                .filter(ModuleVersion.module_vid == primary_module_vid)
-                .first()
-            )
-            cached = (
-                mv,
-                self._get_module_uri(module_vid=primary_module_vid, mv=mv),
-            )
-            self._home_module_refs[primary_module_vid] = cached
-        mv, uri = cached
+        mv, uri = self._home_mv_and_uri(primary_module_vid)
         if not uri:
             return []
         return [
@@ -820,12 +829,19 @@ class ScopeCalculatorService:
         ref_period: str,
         mv: Any,
         operation_code: Optional[str],
+        home_mv: Any = None,
     ) -> Dict[str, Any]:
         """Build one ``cross_instance_dependencies`` entry for *uri*.
 
-        The reference dates are the declared module version's own
-        window, and ``module_version`` is omitted when the row carries
-        no version number.
+        ``module_version`` is omitted when the row carries no version
+        number. The reference dates are the dependency module's own
+        window narrowed to the home module's (``home_mv``) window: the
+        two instances only coexist where both are active, so
+        ``from_reference_date`` is the later of the two starts and
+        ``to_reference_date`` the earlier of the two ends (an unset
+        bound on either side does not narrow). ``home_mv`` is omitted
+        for the home module's own shifted-instance entries (#325),
+        where ``mv`` already is the home module.
         """
         module_entry: Dict[str, Any] = {
             "URI": uri,
@@ -836,6 +852,13 @@ class ScopeCalculatorService:
             module_entry["module_version"] = version_number
         from_date = getattr(mv, "from_reference_date", None)
         to_date = getattr(mv, "to_reference_date", None)
+        if home_mv is not None:
+            home_from = getattr(home_mv, "from_reference_date", None)
+            home_to = getattr(home_mv, "to_reference_date", None)
+            from_candidates = [d for d in (from_date, home_from) if d]
+            from_date = max(from_candidates) if from_candidates else None
+            to_candidates = [d for d in (to_date, home_to) if d]
+            to_date = min(to_candidates) if to_candidates else None
         return {
             "modules": [module_entry],
             "affected_operations": (
@@ -855,6 +878,7 @@ class ScopeCalculatorService:
         referenced_variables: Optional[Dict[str, str]] = None,
         referenced_tables: Optional[Set[str]] = None,
         home_module_tables: Optional[Set[str]] = None,
+        home_mv: Any = None,
     ) -> Optional[Tuple[List[Dict[str, Any]], str, Dict[str, Any]]]:
         """Build the (cross_deps, uri, dependency_module) triple for *vid*.
 
@@ -864,6 +888,11 @@ class ScopeCalculatorService:
         declared twice (#326). ``dependency_modules`` stays keyed by URI
         and carries the union of the tables, exactly as before: the
         table and datapoint definitions do not vary by instance.
+
+        ``home_mv`` is the primary (home) module's own row, passed
+        through to :meth:`_cross_dep_entry` so each entry's reference
+        dates are narrowed to the window the two instances actually
+        share (#380) instead of the dependency's window alone.
 
         Returns ``None`` when the module has no resolvable URI or
         when every one of its tables is variable-less (and therefore
@@ -946,6 +975,7 @@ class ScopeCalculatorService:
                 ref_period=period,
                 mv=mv,
                 operation_code=operation_code,
+                home_mv=home_mv,
             )
             for period in periods
         ]
