@@ -1171,6 +1171,15 @@ class ASTGeneratorService:
         all; it only affects the release-scoped lookups elsewhere in
         the pipeline (``db_ast.py``, dependency info).
 
+        When ``mv`` stands in for a ghost at ``release_row`` the ghost's
+        scopes are read through it as well — see
+        :meth:`_ghosts_represented_by`. Outside that substitution the
+        filter stays on ``mv``'s own ``ModuleVID``, so a module that has
+        both a genuine covering version and a ghost at the same release
+        still does not see the ghost's scopes; no module in the 4.2.1
+        dictionary has that shape, but it is the case to revisit if one
+        appears.
+
         Also drops any candidate whose *only* ``OperationScopeID`` under
         *mv* is shared exclusively with phantom module versions (see
         :meth:`list_module_versions`'s docstring for what "phantom"
@@ -1180,19 +1189,12 @@ class ASTGeneratorService:
         version should not surface here. A previous version of this
         docstring said this guard "only matters when sweeping every
         module" — confirmed wrong: a single-module lookup needs it too.
-        ``OperationScopeComposition``, filtered to this release using
-        dpmcore's point-release model (:func:`filter_by_release`, a window
-        containment check rather than a raw ``StartReleaseID``/
-        ``EndReleaseID`` overlap).
 
-        When ``mv`` stands in for a ghost at ``release_row`` the ghost's
-        scopes are read through it as well — see
-        :meth:`_ghosts_represented_by`. Outside that substitution the
-        filter stays on ``mv``'s own ``ModuleVID``, so a module that has
-        both a genuine covering version and a ghost at the same release
-        still does not see the ghost's scopes; no module in the 4.2.1
-        dictionary has that shape, but it is the case to revisit if one
-        appears.
+        A code can match more than one ``OperationVersion`` row: the
+        ghost substitution above can return one operation twice, once
+        per scope, and the two scope rows may carry different
+        severities — ``mv``'s own scope is ranked above the ghost's so
+        the winner does not depend on join order.
 
         Returns:
             ``(expressions, operation_vids, preconditions, severities,
@@ -1283,11 +1285,11 @@ class ASTGeneratorService:
         overlapping = [
             row
             for row in rows
-            if module_end_sort > sort_order_from(sort_orders, row[6])
-            and _end_sort(row[7]) > module_start_sort
+            if module_end_sort > sort_order_from(sort_orders, row[7])
+            and _end_sort(row[8]) > module_start_sort
         ]
 
-        scope_ids = {row[5] for row in overlapping}
+        scope_ids = {row[6] for row in overlapping}
         phantom_scope_ids = (
             self._scope_calc._phantom_paired_scope_ids(
                 session, scope_ids, mv.module_vid
@@ -1303,9 +1305,7 @@ class ASTGeneratorService:
         # may carry different severities — rank ``mv``'s own scope above
         # the ghost's so the winner does not depend on join order.
         _Rank = Tuple[int, int]
-        _Row = Tuple[_Rank, str, Optional[str], Optional[int]]
-        # latest (highest OperationVID) per code.
-        _Row = Tuple[int, str, Optional[str], Optional[int], Any]
+        _Row = Tuple[_Rank, str, Optional[str], Optional[int], Any]
         latest_by_code: Dict[str, _Row] = {}
         for (
             op_vid,
@@ -1313,15 +1313,7 @@ class ASTGeneratorService:
             expression,
             severity,
             prec_vid,
-            scope_vid,
-        ) in query.all():
-            rank = (op_vid, 1 if scope_vid == mv.module_vid else 0)
-        for (
-            op_vid,
-            code,
-            expression,
-            severity,
-            prec_vid,
+            module_vid,
             scope_id,
             _start_rel,
             _end_rel,
@@ -1329,12 +1321,11 @@ class ASTGeneratorService:
         ) in overlapping:
             if scope_id in phantom_scope_ids:
                 continue
+            rank = (op_vid, 1 if module_vid == mv.module_vid else 0)
             existing = latest_by_code.get(code)
             if existing is None or rank > existing[0]:
-                latest_by_code[code] = (rank, expression, severity, prec_vid)
-            if existing is None or op_vid > existing[0]:
                 latest_by_code[code] = (
-                    op_vid,
+                    rank,
                     expression,
                     severity,
                     prec_vid,
@@ -1347,14 +1338,14 @@ class ASTGeneratorService:
         from_submission_dates: Dict[str, str] = {}
         prec_vid_to_codes: Dict[int, List[str]] = {}
         for code, (
-            op_vid,
+            rank,
             expression,
             severity,
             prec_vid,
             from_submission_date,
         ) in sorted(latest_by_code.items()):
             expressions.append((expression, code))
-            operation_vids[code] = op_vid
+            operation_vids[code] = rank[0]
             if severity:
                 severities[code] = severity
             formatted_date = _format_date(from_submission_date)
