@@ -98,7 +98,11 @@ class TestConstantTrueFixes:
         ast = _constant("Integer", 0)
         changed = fix_operation_ast("v7364_m", ast)
         assert changed is True
-        assert ast == {"class_name": "Constant", "type_": "Boolean", "value": True}
+        assert ast == {
+            "class_name": "Constant",
+            "type_": "Boolean",
+            "value": True,
+        }
 
     def test_predicate_gates_the_flip(self):
         # v8713_m's predicate only fires for an Integer-typed Constant.
@@ -120,7 +124,11 @@ class TestConstantTrueFixes:
         ast = _constant("Boolean", True)
         changed = fix_operation_ast("v10726_m", ast)
         assert changed is False
-        assert ast == {"class_name": "Constant", "type_": "Boolean", "value": True}
+        assert ast == {
+            "class_name": "Constant",
+            "type_": "Boolean",
+            "value": True,
+        }
 
     def test_value_one_gets_flipped_to_real_boolean(self):
         ast = _constant("Integer", 1)
@@ -151,7 +159,11 @@ class TestBinopSiblingFalseFixes:
         ast = _binop(_varid(999), _constant("Integer", 1))
         changed = fix_operation_ast("v6512_m", ast)
         assert changed is False
-        assert ast["right"] == {"class_name": "Constant", "type_": "Integer", "value": 1}
+        assert ast["right"] == {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 1,
+        }
 
     def test_already_false_reports_no_change(self):
         ast = _binop(_varid(418132), _constant("Boolean", False))
@@ -188,7 +200,10 @@ class TestForceIntervalFalse:
         assert ast["right"]["interval"] is False
 
     def test_match_inside_a_list_is_found(self):
-        ast = {"class_name": "FunctionCall", "args": [_varid(1, interval=True)]}
+        ast = {
+            "class_name": "FunctionCall",
+            "args": [_varid(1, interval=True)],
+        }
         changed = fix_operation_ast("v7339_m", ast)
         assert changed is True
         assert ast["args"][0]["interval"] is False
@@ -203,25 +218,19 @@ class TestCondExprChain:
         }
 
     def test_then_expr_flipped_true(self):
-        ast = self._cond_expr(
-            0, {"expression": _constant("Boolean", False)}
-        )
+        ast = self._cond_expr(0, {"expression": _constant("Boolean", False)})
         changed = fix_operation_ast("v6519_c", ast)
         assert changed is True
         assert ast["then_expr"]["expression"]["value"] is True
 
     def test_final_else_expr_flipped_false(self):
-        ast = self._cond_expr(
-            1, {"expression": _constant("Integer", 1)}
-        )
+        ast = self._cond_expr(1, {"expression": _constant("Integer", 1)})
         changed = fix_operation_ast("v6519_c", ast)
         assert changed is True
         assert ast["else_expr"]["expression"]["value"] is False
 
     def test_nested_else_expr_chain_recurses(self):
-        inner = self._cond_expr(
-            0, {"expression": _constant("Boolean", False)}
-        )
+        inner = self._cond_expr(0, {"expression": _constant("Boolean", False)})
         outer = {
             "class_name": "CondExpr",
             "then_expr": {"expression": _constant("Integer", 0)},
@@ -233,18 +242,14 @@ class TestCondExprChain:
         assert inner["then_expr"]["expression"]["value"] is True
 
     def test_already_correct_chain_reports_no_change(self):
-        ast = self._cond_expr(
-            1, {"expression": _constant("Boolean", False)}
-        )
+        ast = self._cond_expr(1, {"expression": _constant("Boolean", False)})
         ast["then_expr"]["expression"]["type_"] = "Boolean"
         ast["then_expr"]["expression"]["value"] = True
         changed = fix_operation_ast("v6519_c", ast)
         assert changed is False
 
     def test_condexpr_inside_a_list_is_found(self):
-        inner = self._cond_expr(
-            0, {"expression": _constant("Boolean", False)}
-        )
+        inner = self._cond_expr(0, {"expression": _constant("Boolean", False)})
         ast = [inner]
         changed = fix_operation_ast("v6519_c", ast)
         assert changed is True

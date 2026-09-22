@@ -50,9 +50,7 @@ class TestFixScriptSingleFile:
 
     def test_no_known_issues_leaves_file_untouched(self, runner, tmp_path):
         path = tmp_path / "script.json"
-        data = _script(
-            {"v0001": {"ast": {"class_name": "VarID", "data": []}}}
-        )
+        data = _script({"v0001": {"ast": {"class_name": "VarID", "data": []}}})
         original_text = json.dumps(data)
         path.write_text(original_text)
 
@@ -77,7 +75,9 @@ class TestFixScriptSingleFile:
         assert "not a .json file" in result.output
 
     def test_directory_without_bulk_flag_rejected(self, runner, tmp_path):
-        result = runner.invoke(main, ["fix-script", "--input-path", str(tmp_path)])
+        result = runner.invoke(
+            main, ["fix-script", "--input-path", str(tmp_path)]
+        )
         assert result.exit_code == 1
         assert "not a .json file" in result.output
 
@@ -120,9 +120,9 @@ class TestFixScriptBulk:
         )
 
         assert result.exit_code == 0, result.output
-        fixed_ast = json.loads(fixed.read_text())[
-            "http://example.org/mod"
-        ]["operations"]["v7364_m"]["ast"]
+        fixed_ast = json.loads(fixed.read_text())["http://example.org/mod"][
+            "operations"
+        ]["v7364_m"]["ast"]
         assert fixed_ast["value"] is True
         assert json.loads(untouched.read_text()) == untouched_data
 

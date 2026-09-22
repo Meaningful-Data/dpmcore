@@ -909,8 +909,7 @@ def _report_skipped_operations(
     "--input-path",
     required=True,
     type=click.Path(exists=True),
-    help="A single script .json file, or a directory of them with "
-    "--bulk.",
+    help="A single script .json file, or a directory of them with --bulk.",
 )
 @click.option(
     "--bulk",
