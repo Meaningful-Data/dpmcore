@@ -718,6 +718,7 @@ class _FakeScopeCalc:
         window_to,
         current_tables,
         current_variables,
+        current_uri=None,
     ):
         self.calls.append(ref_period)
         self.current_tables_by_call.append(current_tables)
@@ -762,7 +763,10 @@ class TestResolveDependencyVersionWindows:
         )
 
         result = exporter._resolve_dependency_version_windows(
-            dep_info, {"A": {"T-1A"}}, release_id=1
+            dep_info,
+            {"A": {"T-1A"}},
+            release_id=1,
+            current_uri="http://uri/current",
         )
 
         assert result == [
@@ -787,7 +791,10 @@ class TestResolveDependencyVersionWindows:
         )
 
         result = exporter._resolve_dependency_version_windows(
-            dep_info, {"A": {"T-1A"}}, release_id=1
+            dep_info,
+            {"A": {"T-1A"}},
+            release_id=1,
+            current_uri="http://uri/current",
         )
 
         assert result == []
@@ -823,7 +830,10 @@ class TestResolveDependencyVersionWindows:
         )
 
         result = exporter._resolve_dependency_version_windows(
-            dep_info, {"A": {"T-1A", "T-2A"}}, release_id=1
+            dep_info,
+            {"A": {"T-1A", "T-2A"}},
+            release_id=1,
+            current_uri="http://uri/current",
         )
 
         assert len(result) == 1
@@ -859,7 +869,10 @@ class TestResolveDependencyVersionWindows:
         exporter._scope_calc = fake
 
         result = exporter._resolve_dependency_version_windows(
-            dep_info, {"A": {"T-1A"}, "B": {"T-4Q"}}, release_id=1
+            dep_info,
+            {"A": {"T-1A"}, "B": {"T-4Q"}},
+            release_id=1,
+            current_uri="http://uri/current",
         )
 
         assert fake.calls == ["T-1A", "T-4Q"]

@@ -365,7 +365,7 @@ class CalculationsExporter:
             if cross_time_periods:
                 entry["version_windows"] = (
                     self._resolve_dependency_version_windows(
-                        dep_info, dependencies.periods, release_id
+                        dep_info, dependencies.periods, release_id, dep_uri
                     )
                 )
             result[dep_uri] = entry
@@ -376,12 +376,14 @@ class CalculationsExporter:
         dep_info: Dict[str, Any],
         table_periods: Dict[str, Set[str]],
         release_id: Optional[int],
+        current_uri: str,
     ) -> List[Dict[str, Any]]:
         """Resolve ``version_windows`` for one dependency module.
 
         Runs the substitution check per period, scoped to only that
         period's own tables so an unrelated table's rename can't block
-        it, then merges same-candidate results into one entry.
+        it, then merges same-candidate results into one entry. A
+        candidate resolving to ``current_uri`` itself is not one.
         """
         all_tables = dep_info["tables"]
         ref_periods = {
@@ -409,6 +411,7 @@ class CalculationsExporter:
                 window_to=dep_info["to_date"],
                 current_tables=period_tables,
                 current_variables=period_variables,
+                current_uri=current_uri,
             )
             if found is None:
                 continue

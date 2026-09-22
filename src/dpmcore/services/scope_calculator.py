@@ -23,7 +23,10 @@ from dateutil.relativedelta import (  # type: ignore[import-untyped]
 )
 
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
-from dpmcore.dpm_xl.utils.filters import resolve_release_id
+from dpmcore.dpm_xl.utils.filters import (
+    exclude_draft_start,
+    resolve_release_id,
+)
 from dpmcore.dpm_xl.utils.scopes_calculator import (
     OperationScopeService,
 )
@@ -926,6 +929,7 @@ class ScopeCalculatorService:
                 window_to=to_date,
                 current_tables=current_tables,
                 current_variables=current_variables,
+                current_uri=uri,
             )
         return {
             "modules": [module_entry],
@@ -942,21 +946,25 @@ class ScopeCalculatorService:
         """Latest ``ModuleVersion`` of module_id ending before before_date.
 
         Only the immediately preceding version is considered, no
-        chained search. A collapsed (ghost) window
-        (``from_reference_date == to_reference_date``) is skipped.
+        chained search. A collapsed or inverted (ghost) window
+        (``to_reference_date <= from_reference_date``) is skipped, as is
+        a version introduced only by a draft release, since it never
+        held reported data.
         """
         candidates = (
-            self.session.query(ModuleVersion)
-            .filter(
-                ModuleVersion.module_id == module_id,
-                ModuleVersion.to_reference_date.isnot(None),
-                ModuleVersion.to_reference_date < before_date,
+            exclude_draft_start(
+                self.session.query(ModuleVersion).filter(
+                    ModuleVersion.module_id == module_id,
+                    ModuleVersion.to_reference_date.isnot(None),
+                    ModuleVersion.to_reference_date < before_date,
+                ),
+                ModuleVersion.start_release_id,
             )
             .order_by(ModuleVersion.to_reference_date.desc())
             .all()
         )
         for candidate in candidates:
-            if candidate.from_reference_date == candidate.to_reference_date:
+            if candidate.to_reference_date <= candidate.from_reference_date:
                 continue
             return candidate
         return None
@@ -967,22 +975,28 @@ class ScopeCalculatorService:
         current_variables: Dict[str, str],
         candidate_tables: Dict[str, Any],
     ) -> bool:
-        """VariableID / open-key identity test between two module versions."""
-        candidate_variables = {
-            var_id
-            for tbl in candidate_tables.values()
-            for var_id in tbl.get("variables", {})
-        }
-        if not set(current_variables) <= candidate_variables:
+        """VariableID / open-key identity test between two module versions.
+
+        Open keys are matched by the variable's own table, not one
+        sharing the current table's code, so a rename doesn't break it.
+        """
+        candidate_open_keys_by_var: Dict[str, List[Set[str]]] = {}
+        for tbl in candidate_tables.values():
+            keys = set(tbl.get("open_keys") or {})
+            for var_id in tbl.get("variables", {}):
+                candidate_open_keys_by_var.setdefault(var_id, []).append(keys)
+
+        if not set(current_variables) <= set(candidate_open_keys_by_var):
             return False
-        for tcode, tdata in current_tables.items():
-            open_keys = tdata.get("open_keys") or {}
+
+        for tdata in current_tables.values():
+            open_keys = set(tdata.get("open_keys") or {})
             if not open_keys:
                 continue
-            candidate_tbl = candidate_tables.get(tcode) or {}
-            candidate_open_keys = candidate_tbl.get("open_keys") or {}
-            if set(open_keys) != set(candidate_open_keys):
-                return False
+            for var_id in tdata.get("variables", {}):
+                candidate_keys = candidate_open_keys_by_var.get(var_id, [])
+                if not any(open_keys == ck for ck in candidate_keys):
+                    return False
         return True
 
     def _find_version_window_candidate(
@@ -993,12 +1007,14 @@ class ScopeCalculatorService:
         window_to: Optional[date],
         current_tables: Dict[str, Any],
         current_variables: Dict[str, str],
+        current_uri: Optional[str],
     ) -> Optional[Dict[str, Any]]:
         """Find the Module Version substituting for ``d0`` under a shift.
 
         Returns ``{"URI", "module_version", "tables",
         "from_reference_date", "to_reference_date"}`` (dates as
-        ``date`` objects), or ``None`` if there is no substitute.
+        ``date`` objects), or ``None`` if there is no substitute. A
+        candidate resolving to ``current_uri`` itself is not one.
         """
         if d0 is None or module_id is None:
             return None
@@ -1017,7 +1033,7 @@ class ScopeCalculatorService:
         candidate_uri = self._get_module_uri(
             module_vid=candidate.module_vid, mv=candidate
         )
-        if not candidate_uri:
+        if not candidate_uri or candidate_uri == current_uri:
             return None
 
         candidate_tables = self._get_module_tables(
@@ -1058,6 +1074,7 @@ class ScopeCalculatorService:
         window_to: Optional[date],
         current_tables: Dict[str, Any],
         current_variables: Dict[str, str],
+        current_uri: Optional[str],
     ) -> List[Dict[str, Any]]:
         """Build ``version_windows`` for one cross-time module reference."""
         found = self._find_version_window_candidate(
@@ -1067,6 +1084,7 @@ class ScopeCalculatorService:
             window_to,
             current_tables,
             current_variables,
+            current_uri,
         )
         if found is None:
             return []

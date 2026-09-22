@@ -369,6 +369,39 @@ def filter_live_only(query: Any, start_col: Any, end_col: Any) -> Any:
         sort_orders, ge=compute_sort_order(None, None)
     )
     query = query.filter(or_(end_col.is_(None), end_col.in_(perpetual_ids)))
+    return exclude_draft_start(query, start_col)
+
+
+def exclude_draft_start(query: Any, start_col: Any) -> Any:
+    """Drop rows introduced only by a draft (perpetual) release.
+
+    The other half of :func:`filter_live_only`, usable on its own for a
+    row that need not still be open -- a superseded row is exactly as
+    much a draft, or as much published, as it was when it was closed.
+
+    Args:
+        query: SQLAlchemy ``Query`` — must be a session-bound ``Query``
+            (i.e. produced by ``Session.query(...)``); see
+            :func:`filter_by_release`.
+        start_col: Column for start release ID (FK to ``Release``).
+
+    Returns:
+        Filtered query.
+
+    Raises:
+        TypeError: If ``query`` is not a session-bound SQLAlchemy
+            ``Query``.
+    """
+    session = getattr(query, "session", None)
+    if session is None:
+        raise TypeError(
+            "exclude_draft_start(query=...) expects a session-bound "
+            "SQLAlchemy Query (Session.query(...))."
+        )
+    sort_orders = load_release_sort_orders(session)
+    perpetual_ids = release_ids_for_sort_order(
+        sort_orders, ge=compute_sort_order(None, None)
+    )
     if not perpetual_ids:
         # No perpetual release in this database: nothing can be a draft,
         # and an empty ``NOT IN ()`` is a tautology SQLAlchemy warns on.
