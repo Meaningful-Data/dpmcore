@@ -1,6 +1,6 @@
 [project]
 name = "dpmcore"
-version = "0.1.2rc13"
+version = "0.2.1rc1"
 description = "Python library for DPM 2.0 Refit regulatory reporting (ORM, services, REST API)"
 license = { text = "Apache-2.0" }
 readme = "README.md"
@@ -49,9 +49,9 @@ documentation = "https://docs.dpmcore.meaningfuldata.eu"
 # ubuntu_test_24_04.yml can install this library with system packages
 # via `pip install --no-dependencies`. Version bumps above these floors
 # should stay within semver compatibility.
-server = ["fastapi>=0.141.1", "uvicorn[standard]>=0.52.1"]
+server = ["fastapi>=0.141.1", "uvicorn[standard]>=0.53.0"]
 django = ["django>=5.2.17", "mssql-django>=1.8.0"]
-postgres = ["psycopg2-binary>=2.9.12,<3.0"]
+postgres = ["psycopg2-binary>=2.9.13,<3.0"]
 sqlserver = ["pyodbc>=5.0"]
 # pandas / numpy ranges mirror vtlengine's published pins so that
 # dpmcore + vtlengine can be co-installed without resolver conflicts.
@@ -61,10 +61,10 @@ cli = ["click>=8.5.0", "rich>=13.7"]
 export = ["openpyxl>=3.1"]
 all = [
     "fastapi>=0.141.1",
-    "uvicorn[standard]>=0.52.1",
+    "uvicorn[standard]>=0.53.0",
     "django>=5.2.17",
     "mssql-django>=1.8.0",
-    "psycopg2-binary>=2.9.12,<3.0",
+    "psycopg2-binary>=2.9.13,<3.0",
     "pyodbc>=5.0",
     "pandas>=2.1.4,<3.0",
     "numpy>=2.2.0,<2.3",
@@ -81,14 +81,14 @@ packages = [{ include = "dpmcore", from = "src" }]
 
 [tool.poetry.group.dev.dependencies]
   coverage = ">=7.16.0,<8.0"
-  ruff = ">=0.16.2"
-mypy = ">=2.3.0"
+  ruff = ">=0.16.7"
+mypy = ">=2.3.1"
 pytest = ">=9.1.1"
 pytest-asyncio = ">=0.24"
 pytest-cov = ">=6.0"
 pyroma = ">=4.2"
 httpx = ">=0.28,<1.0"
-pytest-django = ">=4.13.0"
+pytest-django = ">=4.14.0"
 django-stubs = ">=6.0.9"
 pandas-stubs = ">=2.2.2,<3.0"
 # django and numpy are not imported by the dev tooling directly; they are

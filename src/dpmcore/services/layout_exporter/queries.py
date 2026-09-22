@@ -384,9 +384,11 @@ def _load_member_codes(
         }
         for domain in candidates:
             for category_id in domain_search_order(domain, members_by_domain):
-                code = filed.get(category_id)
-                if code is not None:
-                    codes[(item_id, domain)] = code
+                # A filing without a code names nothing, so the search
+                # goes on to the categories composing the domain.
+                entry = filed.get(category_id)
+                if entry is not None and entry[0]:
+                    codes[(item_id, domain)] = entry[0]
                     break
     return codes
 
@@ -396,14 +398,19 @@ def _load_filed_codes(
     item_ids: set[int],
     filing_category_ids: set[int],
     window: ReleaseWindow,
-) -> dict[int, dict[int, str]]:
-    """Read each item's code in every category it is filed in.
+) -> dict[int, dict[int, tuple[str, str]]]:
+    """Read each item's code and signature in every category it is filed in.
 
     One version of each ``(item, category)`` pair survives — the one in
     force at *window* — so an item recoded during the exported version's
     life is reported under the code it carries there.
 
-    Returns {item_id: {category_id: code}}.
+    A filing with no code of its own is kept: the row still says the
+    item belongs to that category, and it usually carries a signature
+    naming it (EBA files NAMIBIA under ``GA`` with a null code and the
+    signature ``eba_GA:NA``). Callers that need a code skip those.
+
+    Returns {item_id: {category_id: (code, signature)}}.
     """
     from dpmcore.orm.glossary import ItemCategory
 
@@ -418,6 +425,7 @@ def _load_filed_codes(
         ItemCategory.start_release_id,
         ItemCategory.end_release_id,
         ItemCategory.code,
+        ItemCategory.signature,
     )
     rows = [
         r
@@ -425,14 +433,13 @@ def _load_filed_codes(
         if r[1] in filing_category_ids
     ]
     picked = _pick_in_window(
-        [((r[0], r[1]), r[2], r[3], r[4]) for r in rows],
+        [((r[0], r[1]), r[2], r[3], (r[4], r[5] or "")) for r in rows],
         load_release_sort_orders(session),
         window,
     )
-    filed: dict[int, dict[int, str]] = {}
-    for (item_id, category_id), code in picked.items():
-        if code:
-            filed.setdefault(item_id, {})[category_id] = code
+    filed: dict[int, dict[int, tuple[str, str]]] = {}
+    for (item_id, category_id), (code, signature) in picked.items():
+        filed.setdefault(item_id, {})[category_id] = (code or "", signature)
     return filed
 
 
@@ -863,11 +870,11 @@ def load_enumerations(
     from dpmcore.orm.glossary import (
         Category,
         Item,
-        ItemCategory,
         SubCategory,
         SubCategoryItem,
         SubCategoryVersion,
     )
+    from dpmcore.orm.supercategories import load_supercategory_members
 
     info_base = (
         session.query(
@@ -910,31 +917,31 @@ def load_enumerations(
         subcategory_vids,
     )
 
-    # Item codes are per (item, parent category): load the categories
-    # of the requested hierarchies and match in Python, so the chunked
-    # statement binds only one id list.
+    # Item codes are per (item, filing category), and the category a
+    # hierarchy hangs from is not always the one filing its items: a
+    # super-category draws them from the categories composing it, so
+    # those are searched too, the domain's own first (#359).
     category_ids = {row[3] for row in info_rows if row[3]}
     item_ids = {row[1] for row in item_rows}
-    code_base = session.query(
-        ItemCategory.item_id,
-        ItemCategory.category_id,
-        ItemCategory.start_release_id,
-        ItemCategory.end_release_id,
-        ItemCategory.code,
-        ItemCategory.signature,
+    members_by_domain = load_supercategory_members(
+        session,
+        category_ids,
+        release_id=None,
     )
-    code_rows = [
-        r
-        for r in chunked_in(code_base, ItemCategory.item_id, item_ids)
-        if r[1] in category_ids
-    ]
-    codes: dict[tuple[int, int], tuple[str, str]] = _pick_in_window(
-        [
-            ((r[0], r[1]), r[2], r[3], (r[4] or "", r[5] or ""))
-            for r in code_rows
-        ],
-        load_release_sort_orders(session),
+    filing_category_ids = set(category_ids).union(*members_by_domain.values())
+    filed_by_item = _load_filed_codes(
+        session,
+        item_ids,
+        filing_category_ids,
         window,
+    )
+    # A member filed in a composing category names itself with that
+    # category's code, not the super-category's, so the codes of the
+    # categories reached through a composition are needed as well. None
+    # is loaded when no hierarchy hangs from a super-category.
+    category_codes = {row[3]: row[4] or "" for row in info_rows if row[3]}
+    category_codes.update(
+        _load_category_codes(session, filing_category_ids - category_ids),
     )
 
     result: dict[int, Enumeration] = {
@@ -957,17 +964,63 @@ def load_enumerations(
         )
         depths[(svid, item_id)] = depth
         enum = result.get(svid)
-        entry = codes.get((item_id, cat_by_svid.get(svid, 0)))
-        if enum is None or entry is None:
+        filed = _filed_in_domain(
+            filed_by_item.get(item_id, {}),
+            cat_by_svid.get(svid, 0),
+            members_by_domain,
+        )
+        if enum is None or filed is None:
             continue
-        code, signature = entry
+        category_id, (code, signature) = filed
         enum.values.append(
             EnumValue(
                 code=code,
                 label=name or "",
                 depth=depth,
                 signature=signature,
+                category_code=category_codes.get(category_id, ""),
             ),
         )
 
     return result
+
+
+def _filed_in_domain(
+    filed: dict[int, tuple[str, str]],
+    category_id: int,
+    members_by_domain: dict[int, set[int]],
+) -> Optional[tuple[int, tuple[str, str]]]:
+    """The filing of an item that names it for *category_id*.
+
+    The domain's own category is searched first, then the categories
+    composing it, so an item filed in both keeps the domain's own code.
+
+    Returns ``(filing_category_id, (code, signature))``, or ``None``
+    when the item is filed in no category the domain reaches: it is
+    then none of the domain's values.
+    """
+    from dpmcore.orm.supercategories import domain_search_order
+
+    for filing_category_id in domain_search_order(
+        category_id,
+        members_by_domain,
+    ):
+        entry = filed.get(filing_category_id)
+        if entry is not None:
+            return filing_category_id, entry
+    return None
+
+
+def _load_category_codes(
+    session: Session,
+    category_ids: set[int],
+) -> dict[int, str]:
+    """Read ``{category_id: code}`` for a set of categories."""
+    if not category_ids:
+        return {}
+
+    from dpmcore.orm.glossary import Category
+
+    base = session.query(Category.category_id, Category.code)
+    rows = chunked_in(base, Category.category_id, category_ids)
+    return {row[0]: row[1] or "" for row in rows}

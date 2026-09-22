@@ -70,13 +70,6 @@ MIN:                            'min';
 // Belonging
 IN:                     'in';
 
-// Set operators
-SET_OF:                 'set_of';
-UNION:                  'union';
-INTERSECT:              'intersect';
-SETDIFF:                'setdiff';
-SYMDIFF:                'symdiff';
-
 // Punctuation elements
 COMMA:                  ',';
 COLON:                  ':';
@@ -124,6 +117,13 @@ DAY:                    'day';
 
 // Date constructor
 DATE:                   'date';
+
+// Set operators
+SET_OF:                 'set_of';
+UNION:                  'union';
+INTERSECT:              'intersect';
+SETDIFF:                'setdiff';
+SYMDIFF:                'symdiff';
 
 // String
 LEN:                    'len';
@@ -214,25 +214,23 @@ SELECTION_MODE_CURLY_BRACKET_RIGHT:    CURLY_BRACKET_RIGHT -> popMode, type(CURL
 INTERVAL: 'interval';
 DEFAULT: 'default';
 
-// Parameter Selection types ({p_code, <type>}). These keywords MUST precede
-// the SHEET/SHEET_RANGE rules below so ``string`` is not lexed as the SHEET
-// ``s`` + ``tring`` and ``set-number`` is not lexed as a sheet range. The set
-// variants come first so they win over their scalar prefixes on equal length.
-SET_NUMBER:  'set-number';
-SET_INTEGER: 'set-integer';
-SET_STRING:  'set-string';
-SET_DATE:    'set-date';
-SET_BOOLEAN: 'set-boolean';
-SET_ITEM:    'set-item';
+// Parameter data type keywords. STRING must precede the SHEET reference so
+// that the literal `string` is not lexed as `s` + `tring` (sheet ref);
+// likewise the SET_* keywords must precede SHEET_RANGE since e.g.
+// `set-number` would otherwise match `s` + `et` + `-` + `number`.
+SET_NUMBER:            'set-number';
+SET_INTEGER:           'set-integer';
+SET_STRING:            'set-string';
+SET_DATE:              'set-date';
+SET_BOOLEAN:           'set-boolean';
+SET_ITEM:              'set-item';
 
-NUMBER:    'number';
-INTEGER:   'integer';
-STRING:    'string';
-// Named PARAM_DATE (not DATE) to avoid colliding with a future ``date(...)``
-// constructor token; the parser maps it to the ``date`` parameter type.
-PARAM_DATE: 'date';
-BOOLEAN:   'boolean';
-ITEM:      'item';
+NUMBER:                'number';
+INTEGER:               'integer';
+STRING:                'string';
+PARAM_DATE:            'date';
+BOOLEAN:               'boolean';
+ITEM:                  'item';
 
 SELECTION_MODE_NULL_LITERAL: NULL_LITERAL -> type(NULL_LITERAL);
 SELECTION_MODE_BOOLEAN_LITERAL: BOOLEAN_LITERAL -> type(BOOLEAN_LITERAL);
@@ -284,23 +282,16 @@ SHEET:                  SHEET_PREFIX CELL_COMPONENT_CODE;
 SHEET_RANGE:            SHEET_PREFIX CELL_COMPONENT_RANGE;
 SHEET_ALL:              SHEET_PREFIX [*];
 
+// Selection references. The optional `_` after the prefix is a cosmetic
+// separator: `tT1` ≡ `t_T1`, `vfoo` ≡ `v_foo`, etc. To address a code that
+// itself starts with an underscore (or any other character disallowed in
+// the bare code), backtick-escape the code, e.g. `` t`_meta` ``.
 TABLE_REFERENCE:        TABLE_PREFIX ('_'? TABLE_CODE | ESCAPED_IDENTIFIER);
 TABLE_GROUP_REFERENCE:  TABLE_GROUP_PREFIX ('_'? TABLE_CODE | ESCAPED_IDENTIFIER);
 
 VAR_REFERENCE:                VAR_REF_PREFIX ('_'? VAR_CODE | ESCAPED_IDENTIFIER);
 OPERATION_REFERENCE:          OPERATION_REF_PREFIX ('_'? OPERATION_CODE | ESCAPED_IDENTIFIER);
-
-// Parameter reference: ``{p_code, ...}``. The ``'_'?`` makes the underscore a
-// cosmetic separator (``pthreshold`` == ``p_threshold``); a code that itself
-// starts with ``_`` is reached via the backtick-escaped form (``p`_legacy```).
 PARAMETER_REFERENCE:          PARAMETER_REF_PREFIX ('_'? VAR_CODE | ESCAPED_IDENTIFIER);
-
-// Item-typed parameter defaults (``default: [ns:code]``) need item signatures.
-// ``[`` pushes CLAUSE_MODE (as the default-mode ``[`` does) so the signature is
-// lexed there and the matching ``]`` pops back. A bare ITEM_SIGNATURE token in
-// SELECTION_MODE must NOT be added: it would greedily swallow ``default:0`` (no
-// space) as a single ``default:0`` item signature.
-SELECTION_MODE_SQUARE_BRACKET_LEFT:    SQUARE_BRACKET_LEFT -> type(SQUARE_BRACKET_LEFT), pushMode(CLAUSE_MODE);
 
 SELECTION_MODE_INTEGER_LITERAL: INTEGER_LITERAL -> type(INTEGER_LITERAL);
 SELECTION_MODE_DECIMAL_LITERAL: DECIMAL_LITERAL -> type(DECIMAL_LITERAL);
@@ -310,6 +301,12 @@ SELECTION_MODE_STRING_LITERAL: STRING_LITERAL -> type(STRING_LITERAL);
 SELECTION_MODE_EMPTY_LITERAL: EMPTY_LITERAL -> type(EMPTY_LITERAL);
 
 SELECTION_MODE_DATE_LITERAL: DATE_LITERAL -> type(DATE_LITERAL);
+
+// Square brackets and item signatures, used inside selections for
+// `default: [ns:code]` on Item-typed parameters.
+SELECTION_MODE_SQUARE_BRACKET_LEFT:    SQUARE_BRACKET_LEFT -> type(SQUARE_BRACKET_LEFT);
+SELECTION_MODE_SQUARE_BRACKET_RIGHT:   SQUARE_BRACKET_RIGHT -> type(SQUARE_BRACKET_RIGHT);
+SELECTION_MODE_ITEM_SIGNATURE:         ITEM_SIGNATURE -> type(ITEM_SIGNATURE);
 
 SELECTION_MODE_WS:        WS -> channel(2);
 
@@ -473,6 +470,7 @@ GROUPING_ESCAPED_IDENTIFIER: '`' [A-Za-z0-9_.+]+ '`' -> type(ESCAPED_IDENTIFIER)
 
 GROUPING_WS:                     [ \t\r\n\u000C]+ -> channel(2);
 
+
 mode ANALYTIC_CLAUSE_MODE;
 
 // Parenthesis — the closing ')' of the over(...) pops the mode.
@@ -494,6 +492,10 @@ UNBOUNDED:                          'unbounded';
 ASC:                                'asc';
 DESC:                               'desc';
 
+// A time-period code on a `range` bound, e.g. `11 M preceding`. Must precede
+// the property code so that the bare letters are not lexed as identifiers.
+ANALYTIC_TIME_PERIOD:               TIME_PERIOD -> type(TIME_PERIOD);
+
 // Component / property identifiers (mirrors GROUPING_CLAUSE_MODE).
 ANALYTIC_ROW_COMPONENT:             'r' -> type(ROW_COMPONENT);
 ANALYTIC_COL_COMPONENT:             'c' -> type(COL_COMPONENT);
@@ -504,3 +506,27 @@ ANALYTIC_ESCAPED_IDENTIFIER:        '`' [A-Za-z0-9_.+]+ '`' -> type(ESCAPED_IDEN
 ANALYTIC_INTEGER_LITERAL:           INTEGER_LITERAL -> type(INTEGER_LITERAL);
 
 ANALYTIC_WS:                        [ \t\r\n\u000C]+ -> channel(2);
+
+
+mode SET_OPERAND_MODE;
+
+SET_OPERAND_MODE_COMMA:        COMMA -> type(COMMA);
+
+SET_OPERAND_MODE_CURLY_BRACKET_LEFT:     CURLY_BRACKET_LEFT -> type(CURLY_BRACKET_LEFT);
+SET_OPERAND_MODE_CURLY_BRACKET_RIGHT:    CURLY_BRACKET_RIGHT -> popMode, type(CURLY_BRACKET_RIGHT);
+
+SET_OPERAND_MODE_SQUARE_BRACKET_LEFT:    SQUARE_BRACKET_LEFT -> type(SQUARE_BRACKET_LEFT);
+SET_OPERAND_MODE_SQUARE_BRACKET_RIGHT:   SQUARE_BRACKET_RIGHT -> type(SQUARE_BRACKET_RIGHT);
+
+SET_OPERAND_MODE_ITEM_SIGNATURE:             ITEM_SIGNATURE -> type(ITEM_SIGNATURE);
+
+SET_OPERAND_MODE_INTEGER_LITERAL: INTEGER_LITERAL -> type(INTEGER_LITERAL);
+SET_OPERAND_MODE_DECIMAL_LITERAL: DECIMAL_LITERAL -> type(DECIMAL_LITERAL);
+SET_OPERAND_MODE_PERCENT_LITERAL: PERCENT_LITERAL -> type(PERCENT_LITERAL);
+
+SET_OPERAND_MODE_STRING_LITERAL: STRING_LITERAL -> type(STRING_LITERAL);
+SET_OPERAND_MODE_EMPTY_LITERAL: EMPTY_LITERAL -> type(EMPTY_LITERAL);
+
+SET_OPERAND_MODE_DATE_LITERAL: DATE_LITERAL -> type(DATE_LITERAL);
+
+SET_OPERAND_MODE_WS:        WS -> channel(2);

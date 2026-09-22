@@ -1208,9 +1208,12 @@ def _member_signature(enum: Enumeration, value: EnumValue) -> str:
     """Fully qualified member signature, e.g. ``eba_CU:ALL``.
 
     Members imported without a signature fall back to the plain
-    ``domain:code`` pair.
+    ``domain:code`` pair — the domain being the category the member is
+    filed in, which is the hierarchy's own unless it hangs from a
+    super-category.
     """
-    return value.signature or f"{enum.category_code}:{value.code}"
+    domain = value.category_code or enum.category_code
+    return value.signature or f"{domain}:{value.code}"
 
 
 def _fit_tooltip(text: str) -> str:

@@ -1,0 +1,57 @@
+name: Grammar sync with dpm-xl-docs
+
+on:
+  push:
+    branches: ["master", "develop"]
+  pull_request:
+    branches: ["master", "develop"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  grammar-sync:
+    runs-on: ubuntu-latest
+
+    env:
+      DPM_XL_DOCS_RAW_BASE: https://gitlab.com/aollerosr/dpm-xl-docs/-/raw/main/docs/grammar
+      LOCAL_GRAMMAR_DIR: src/dpmcore/dpm_xl/grammar
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Compare grammar with dpm-xl-docs (main branch)
+        run: |
+          set -uo pipefail
+
+          files="dpm_xlLexer.g4 dpm_xlParser.g4"
+          out_of_sync=0
+
+          for file in $files; do
+            remote_file="$(mktemp)"
+
+            if ! curl -fsSL "${DPM_XL_DOCS_RAW_BASE}/${file}" -o "$remote_file"; then
+              echo "::error::Could not download ${file} from dpm-xl-docs (${DPM_XL_DOCS_RAW_BASE}/${file})"
+              out_of_sync=1
+              continue
+            fi
+
+            if ! diff -u "${LOCAL_GRAMMAR_DIR}/${file}" "$remote_file" > "/tmp/${file}.diff"; then
+              echo "::group::${file} is out of sync with dpm-xl-docs"
+              cat "/tmp/${file}.diff"
+              echo "::endgroup::"
+              echo "::error file=${LOCAL_GRAMMAR_DIR}/${file}::${file} does not match the grammar in dpm-xl-docs (main branch)"
+              out_of_sync=1
+            else
+              echo "${file} matches dpm-xl-docs (main branch)."
+            fi
+          done
+
+          if [ "$out_of_sync" -ne 0 ]; then
+            echo ""
+            echo "One or more grammar files are out of sync with dpm-xl-docs."
+            echo "This check only verifies synchronization; update dpm-xl-docs manually to match dpmcore."
+            exit 1
+          fi

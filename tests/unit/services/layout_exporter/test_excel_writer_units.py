@@ -1171,6 +1171,19 @@ def test_format_enumeration_falls_back_to_domain_and_code():
     assert text.splitlines()[1] == "  (qCO:x1) No signature"
 
 
+def test_format_enumeration_falls_back_to_the_filing_category():
+    """A value drawn from a composing category names that category.
+
+    Its code belongs to the category filing it, not to the
+    super-category the hierarchy hangs from.
+    """
+    values = [
+        EnumValue(code="x1", label="From a member", category_code="qFI"),
+    ]
+    text = ew._format_enumeration(_enum(values=values))
+    assert text.splitlines()[1] == "  (qFI:x1) From a member"
+
+
 def test_cell_tooltip_lists_the_possible_values():
     cell_data = CellData(
         row_header_id=1,
