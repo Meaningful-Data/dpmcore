@@ -904,6 +904,110 @@ def _report_skipped_operations(
         )
 
 
+@main.command("fix-script")
+@click.option(
+    "--input-path",
+    required=True,
+    type=click.Path(exists=True),
+    help="A single script .json file, or a directory of them with "
+    "--bulk.",
+)
+@click.option(
+    "--bulk",
+    is_flag=True,
+    default=False,
+    help="Treat --input-path as a directory and fix every .json file "
+    "in it, instead of a single file.",
+)
+def fix_script(input_path: str, bulk: bool) -> None:
+    """Patch known EBA source-data errors into already-generated scripts.
+
+    Rewrites each file in place. Ported from mdpm's
+    ``mdm-fix-json-values.py``: see
+    ``dpmcore.services.script_fixups`` for the fixed validations and
+    why they're wrong at the data level, not a generation bug — EBA
+    doesn't amend past releases, so run this after every
+    ``export-script`` generation, not just once.
+    """
+    try:
+        from rich.console import Console
+    except ImportError:
+        click.echo(
+            "Install 'rich' for pretty output: pip install dpmcore[cli]",
+            err=True,
+        )
+        sys.exit(1)
+
+    console = Console()
+    json_files = _resolve_fix_script_targets(console, input_path, bulk)
+
+    total_fixed = 0
+    for json_file in json_files:
+        total_fixed += _fix_script_file(console, json_file)
+
+    if not total_fixed:
+        console.print("[yellow]No known data-quality issues found.[/yellow]")
+
+
+def _resolve_fix_script_targets(
+    console: Any, input_path: str, bulk: bool
+) -> list[Any]:
+    """Resolve ``fix-script``'s ``--input-path``/``--bulk`` to files."""
+    from pathlib import Path
+
+    path = Path(input_path)
+    if bulk:
+        if not path.is_dir():
+            console.print(
+                f"[red]--bulk requires --input-path to be a "
+                f"directory:[/red] {input_path}"
+            )
+            sys.exit(1)
+        json_files = sorted(path.glob("*.json"))
+        if not json_files:
+            console.print(f"[red]No .json files found in:[/red] {input_path}")
+            sys.exit(1)
+        return json_files
+
+    if not path.is_file() or path.suffix != ".json":
+        console.print(
+            f"[red]--input-path is not a .json file:[/red] {input_path}"
+        )
+        sys.exit(1)
+    return [path]
+
+
+def _fix_script_file(console: Any, json_file: Any) -> int:
+    """Apply known fixups to one script file, rewriting it in place.
+
+    Returns the number of validations changed (0 leaves the file
+    untouched, so an already-fixed file is never rewritten).
+    """
+    import json
+
+    from dpmcore.services.script_fixups import fix_module_operations
+
+    data = json.loads(json_file.read_text(encoding="utf-8"))
+    changed_codes: list[str] = []
+    for module_data in data.values():
+        operations = module_data.get("operations")
+        if operations:
+            changed_codes.extend(fix_module_operations(operations))
+    if not changed_codes:
+        return 0
+
+    json_file.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False, default=str),
+        encoding="utf-8",
+    )
+    console.print(
+        f"[green]Fixed[/green] {json_file} "
+        f"({len(changed_codes)} validations: "
+        f"{', '.join(sorted(set(changed_codes)))})"
+    )
+    return len(changed_codes)
+
+
 def _script_result_counts(result: dict[str, Any]) -> tuple[int, int, int]:
     """Count validations/skipped/dependency modules in a script() result.
 
