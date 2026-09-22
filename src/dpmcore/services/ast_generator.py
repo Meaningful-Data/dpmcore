@@ -1509,7 +1509,8 @@ class ASTGeneratorService:
 
     # The gate contract shared with the engine's precondition evaluator:
     # filing indicators, run-time parameters and boolean literals combined
-    # with these operators (grouping parentheses are unwrapped). A gate
+    # with these operators (grouping parentheses are preserved as
+    # ParExpr, not unwrapped). A gate
     # carrying anything else — a comparison, arithmetic, a cell reference,
     # a non-boolean literal — has no runtime meaning on the engine side, so
     # it stays out of the script and its operations are reported through
@@ -1534,8 +1535,11 @@ class ASTGeneratorService:
         logical operator that connects them (``and`` / ``or`` / ``xor`` /
         ``not``) survives into the emitted tree, so ``{v_A} or {v_B}``
         reaches the engine as a disjunction instead of the ``and``-fold
-        the old regex path produced. Grouping parentheses are unwrapped:
-        the tree shape already carries the precedence.
+        the old regex path produced. Grouping parentheses are rebuilt as
+        a ``ParExpr`` node rather than unwrapped — the spec requires
+        preserving source parenthesisation for reconstruction (§4.10),
+        even though a ``ParExpr`` carries no precedence of its own; see
+        :meth:`_transform_precondition_ast`.
 
         A parameter that appears in a gate is added to
         ``referenced_parameters`` in the same pass, so the script-level

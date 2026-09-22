@@ -537,6 +537,28 @@ class TestBuildPreconditionsBlock:
         assert preconds == {}
         assert vars_ == {}
 
+    def test_parenthesized_unresolved_code_silently_skipped(
+        self, monkeypatch, real_syntax
+    ):
+        """A ``ParExpr`` wrapping an unresolved reference drops too.
+
+        Regression for dpmcore#379: rebuilding the ``ParExpr`` around
+        its transformed inner expression must still collapse to
+        ``None`` (not a ``ParExpr`` around ``None``) when that inner
+        expression is itself unresolved, the same as the unparenthesized
+        case above.
+        """
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        svc._syntax = real_syntax
+        _install_variable_resolver(monkeypatch, {})
+
+        preconds, vars_ = svc._build_preconditions_block(
+            [("({v_unresolved})", ["v1"])], release_id=None
+        )
+        assert preconds == {}
+        assert vars_ == {}
+
     def test_unresolved_and_operand_keeps_the_other_side(
         self, monkeypatch, real_syntax
     ):
