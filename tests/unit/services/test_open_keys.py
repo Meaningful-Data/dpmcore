@@ -109,9 +109,7 @@ class TestGetOpenKeysForTables:
         assert get_open_keys_for_tables(session, []) == {}
 
     def test_unknown_table_code_returns_empty_dict(self, base_table):
-        assert get_open_keys_for_tables(base_table, ["NOPE"]) == {
-            "NOPE": {}
-        }
+        assert get_open_keys_for_tables(base_table, ["NOPE"]) == {"NOPE": {}}
 
     def test_key_header_returns_property_and_type(self, base_table):
         _add_key_header(
