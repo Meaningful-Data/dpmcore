@@ -12,12 +12,15 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+import dpmcore.services.calculations_export.exporter as exporter_mod
 from dpmcore.dpm_xl.ast.nodes import Constant, VarID
 from dpmcore.errors import Invalid
 from dpmcore.services.calculations_export.exporter import (
     CalculationsExporter,
     _build_datapoint_mapping,
     _build_expression,
+    _merge_version_windows,
+    _narrow_candidate_tables,
 )
 from dpmcore.services.calculations_export.visitors import (
     CalculationsJSONVisitor,
@@ -502,3 +505,486 @@ class TestUnresolvableOperands:
 
         assert extractor.tables == {}
         assert extractor.all_datapoints == []
+
+
+class TestDependencyTableExtractorPeriods:
+    """Exercise the ``ref_period`` tracking a ``TimeShiftOp`` needs."""
+
+    @staticmethod
+    def _extractor(monkeypatch, variable_ids=(1,)):
+        from dpmcore.services.calculations_export.visitors import (
+            DependencyTableExtractor,
+        )
+
+        extractor = DependencyTableExtractor(session=None)
+        monkeypatch.setattr(
+            extractor,
+            "_variable_ids",
+            lambda table, node: list(variable_ids),
+        )
+        monkeypatch.setattr(extractor, "_get_open_keys", lambda table: {})
+        return extractor
+
+    def test_plain_reference_is_recorded_as_t(self, monkeypatch):
+        extractor = self._extractor(monkeypatch)
+
+        extractor.visit(_parse("x := {tA, r0010, c0010};"))
+
+        assert extractor.periods == {"A": {"T"}}
+
+    def test_a_shifted_reference_is_recorded_by_its_period(self, monkeypatch):
+        extractor = self._extractor(monkeypatch)
+
+        extractor.visit(
+            _parse("x := time_shift({tA, r0010, c0010}, A, 1, refPeriod);")
+        )
+
+        assert extractor.periods == {"A": {"T-1A"}}
+
+    def test_a_forward_shift_flips_to_a_plus_period(self, monkeypatch):
+        """``time_shift(x, Q, -1, refPeriod)`` needs ``T+1Q``."""
+        extractor = self._extractor(monkeypatch)
+
+        extractor.visit(
+            _parse("x := time_shift({tA, r0010, c0010}, Q, -1, refPeriod);")
+        )
+
+        assert extractor.periods == {"A": {"T+1Q"}}
+
+    def test_same_table_plain_and_shifted_keeps_both_periods(
+        self, monkeypatch
+    ):
+        """One table read at two instances needs both periods (#326)."""
+        extractor = self._extractor(monkeypatch)
+
+        extractor.visit(
+            _parse(
+                "x := {tA, r0010, c0010} + "
+                "time_shift({tA, r0020, c0010}, Q, 1, refPeriod);"
+            )
+        )
+
+        assert extractor.periods == {"A": {"T", "T-1Q"}}
+
+    def test_ambient_period_is_restored_after_the_shift(self, monkeypatch):
+        extractor = self._extractor(monkeypatch)
+
+        extractor.visit(
+            _parse(
+                "x := time_shift({tA, r0010, c0010}, A, 1, refPeriod) + "
+                "{tB, r0010, c0010};"
+            )
+        )
+
+        assert extractor.periods == {"A": {"T-1A"}, "B": {"T"}}
+
+    def test_a_non_literal_shift_is_rejected(self, monkeypatch):
+        extractor = self._extractor(monkeypatch)
+
+        with pytest.raises(Invalid, match="not a literal"):
+            extractor.visit(
+                _parse(
+                    "x := time_shift({tA, r0010, c0010}, Q, 1 + 1, refPeriod);"
+                )
+            )
+
+
+class TestNarrowCandidateTables:
+    """Exercise ``_narrow_candidate_tables``."""
+
+    def test_groups_by_the_candidate_s_own_table(self):
+        """Table name is not part of the identity test."""
+        candidate_tables = {
+            "C_14.00_renamed": {
+                "variables": {"1": "m", "2": "m"},
+                "open_keys": {"qSIC": "c"},
+            }
+        }
+
+        result = _narrow_candidate_tables(candidate_tables, {"1": "m"})
+
+        assert result == {
+            "C_14.00_renamed": {
+                "variables": {"1": "m"},
+                "open_keys": {"qSIC": "c"},
+            }
+        }
+
+    def test_a_table_with_no_matching_variable_is_dropped(self):
+        candidate_tables = {
+            "A": {"variables": {"9": "m"}, "open_keys": {}},
+        }
+
+        assert _narrow_candidate_tables(candidate_tables, {"1": "m"}) == {}
+
+
+class TestMergeVersionWindows:
+    """Exercise ``_merge_version_windows`` (multiple ref_periods)."""
+
+    def test_a_single_entry_passes_through(self):
+        entry = {
+            "URI": "http://uri/old",
+            "module_version": "1.0.0",
+            "from_reference_date": "2025-03-31",
+            "to_reference_date": "2026-03-30",
+            "tables": {"A": {"variables": {"1": "m"}, "open_keys": {}}},
+        }
+
+        assert _merge_version_windows([entry]) == [entry]
+
+    def test_same_candidate_from_two_periods_unions_dates_and_tables(self):
+        older_shift = {
+            "URI": "http://uri/old",
+            "module_version": "1.0.0",
+            "from_reference_date": "2023-03-31",
+            "to_reference_date": "2026-03-30",
+            "tables": {"A": {"variables": {"1": "m"}, "open_keys": {}}},
+        }
+        nearer_shift = {
+            "URI": "http://uri/old",
+            "module_version": "1.0.0",
+            "from_reference_date": "2025-03-31",
+            "to_reference_date": "2026-03-30",
+            "tables": {"A": {"variables": {"2": "m"}, "open_keys": {}}},
+        }
+
+        merged = _merge_version_windows([nearer_shift, older_shift])
+
+        assert merged == [
+            {
+                "URI": "http://uri/old",
+                "module_version": "1.0.0",
+                "from_reference_date": "2023-03-31",
+                "to_reference_date": "2026-03-30",
+                "tables": {
+                    "A": {"variables": {"1": "m", "2": "m"}, "open_keys": {}}
+                },
+            }
+        ]
+
+    def test_an_open_ended_to_date_wins_over_a_concrete_one(self):
+        bounded = {
+            "URI": "http://uri/old",
+            "from_reference_date": "2025-03-31",
+            "to_reference_date": "2026-03-30",
+            "tables": {},
+        }
+        open_ended = {
+            "URI": "http://uri/old",
+            "from_reference_date": "2025-03-31",
+            "to_reference_date": None,
+            "tables": {},
+        }
+
+        merged = _merge_version_windows([bounded, open_ended])
+
+        assert merged[0]["to_reference_date"] is None
+
+    def test_different_candidates_are_kept_apart(self):
+        first = {
+            "URI": "http://uri/a",
+            "from_reference_date": "2025-03-31",
+            "to_reference_date": "2026-03-30",
+            "tables": {},
+        }
+        second = {
+            "URI": "http://uri/b",
+            "from_reference_date": "2024-03-31",
+            "to_reference_date": "2025-03-30",
+            "tables": {},
+        }
+
+        assert _merge_version_windows([first, second]) == [first, second]
+
+
+class _FakeScopeCalc:
+    """Stand-in for ``ScopeCalculatorService._find_version_window_candidate``.
+
+    ``candidate_by_period`` maps a ``ref_period`` to the candidate dict
+    it resolves to (``URI``, ``module_version``, ``tables``,
+    ``from_reference_date``, ``to_reference_date``), or leaves it out
+    for "no candidate found".
+    """
+
+    def __init__(self, candidate_by_period):
+        self.candidate_by_period = candidate_by_period
+        self.calls = []
+        self.current_tables_by_call = []
+
+    def _find_version_window_candidate(
+        self,
+        module_id,
+        d0,
+        ref_period,
+        window_to,
+        current_tables,
+        current_variables,
+        current_uri=None,
+    ):
+        self.calls.append(ref_period)
+        self.current_tables_by_call.append(current_tables)
+        return self.candidate_by_period.get(ref_period)
+
+
+class TestResolveDependencyVersionWindows:
+    """Exercise ``CalculationsExporter._resolve_dependency_version_windows``."""
+
+    @staticmethod
+    def _dep_info(tables):
+        from datetime import date
+
+        return {
+            "tables": tables,
+            "from_date": date(2026, 3, 31),
+            "to_date": None,
+            "module_id": 7,
+        }
+
+    def test_one_period_resolves_a_window_with_narrowed_tables(self):
+        from datetime import date
+
+        candidate_tables = {
+            "A_old": {"variables": {"1": "m", "9": "m"}, "open_keys": {}}
+        }
+        fake = _FakeScopeCalc(
+            {
+                "T-1A": {
+                    "URI": "http://uri/old",
+                    "module_version": "1.0.0",
+                    "tables": candidate_tables,
+                    "from_reference_date": date(2025, 3, 31),
+                    "to_reference_date": date(2026, 3, 30),
+                }
+            }
+        )
+        exporter = CalculationsExporter.__new__(CalculationsExporter)
+        exporter._scope_calc = fake
+        dep_info = self._dep_info(
+            {"A": {"variables": {"1": "m"}, "open_keys": {}}}
+        )
+
+        result = exporter._resolve_dependency_version_windows(
+            dep_info,
+            {"A": {"T-1A"}},
+            release_id=1,
+            current_uri="http://uri/current",
+        )
+
+        assert result == [
+            {
+                "URI": "http://uri/old",
+                "module_version": "1.0.0",
+                "from_reference_date": "2025-03-31",
+                "to_reference_date": "2026-03-30",
+                "tables": {
+                    "A_old": {"variables": {"1": "m"}, "open_keys": {}}
+                },
+            }
+        ]
+        assert fake.calls == ["T-1A"]
+
+    def test_a_period_with_no_candidate_contributes_nothing(self):
+        fake = _FakeScopeCalc({})
+        exporter = CalculationsExporter.__new__(CalculationsExporter)
+        exporter._scope_calc = fake
+        dep_info = self._dep_info(
+            {"A": {"variables": {"1": "m"}, "open_keys": {}}}
+        )
+
+        result = exporter._resolve_dependency_version_windows(
+            dep_info,
+            {"A": {"T-1A"}},
+            release_id=1,
+            current_uri="http://uri/current",
+        )
+
+        assert result == []
+
+    def test_two_periods_on_the_same_candidate_are_merged(self):
+        from datetime import date
+
+        candidate_tables = {
+            "A_old": {"variables": {"1": "m"}, "open_keys": {}}
+        }
+        fake = _FakeScopeCalc(
+            {
+                "T-1A": {
+                    "URI": "http://uri/old",
+                    "module_version": "1.0.0",
+                    "tables": candidate_tables,
+                    "from_reference_date": date(2025, 3, 31),
+                    "to_reference_date": date(2026, 3, 30),
+                },
+                "T-2A": {
+                    "URI": "http://uri/old",
+                    "module_version": "1.0.0",
+                    "tables": candidate_tables,
+                    "from_reference_date": date(2024, 3, 31),
+                    "to_reference_date": date(2026, 3, 30),
+                },
+            }
+        )
+        exporter = CalculationsExporter.__new__(CalculationsExporter)
+        exporter._scope_calc = fake
+        dep_info = self._dep_info(
+            {"A": {"variables": {"1": "m"}, "open_keys": {}}}
+        )
+
+        result = exporter._resolve_dependency_version_windows(
+            dep_info,
+            {"A": {"T-1A", "T-2A"}},
+            release_id=1,
+            current_uri="http://uri/current",
+        )
+
+        assert len(result) == 1
+        assert result[0]["from_reference_date"] == "2024-03-31"
+        assert fake.calls == ["T-1A", "T-2A"]
+
+    def test_a_table_read_at_a_different_period_does_not_contaminate(self):
+        """A table read at a different period must not reach this check."""
+        from datetime import date
+
+        dep_info = self._dep_info(
+            {
+                "A": {"variables": {"1": "m"}, "open_keys": {}},
+                "B": {"variables": {"2": "m"}, "open_keys": {"SIC": "c"}},
+            }
+        )
+        fake = _FakeScopeCalc(
+            {
+                "T-1A": {
+                    "URI": "http://uri/old",
+                    "module_version": "1.0.0",
+                    "tables": {
+                        "A_old": {"variables": {"1": "m"}, "open_keys": {}}
+                    },
+                    "from_reference_date": date(2025, 3, 31),
+                    "to_reference_date": date(2026, 3, 30),
+                }
+                # No candidate for T-4Q: B's shift resolves nothing,
+                # but must not prevent A's from resolving either.
+            }
+        )
+        exporter = CalculationsExporter.__new__(CalculationsExporter)
+        exporter._scope_calc = fake
+
+        result = exporter._resolve_dependency_version_windows(
+            dep_info,
+            {"A": {"T-1A"}, "B": {"T-4Q"}},
+            release_id=1,
+            current_uri="http://uri/current",
+        )
+
+        assert fake.calls == ["T-1A", "T-4Q"]
+        tables_seen_per_call = dict(
+            zip(fake.calls, fake.current_tables_by_call, strict=True)
+        )
+        assert set(tables_seen_per_call["T-1A"]) == {"A"}
+        assert set(tables_seen_per_call["T-4Q"]) == {"B"}
+        assert result == [
+            {
+                "URI": "http://uri/old",
+                "module_version": "1.0.0",
+                "from_reference_date": "2025-03-31",
+                "to_reference_date": "2026-03-30",
+                "tables": {
+                    "A_old": {"variables": {"1": "m"}, "open_keys": {}}
+                },
+            }
+        ]
+
+
+class TestDependencyModulesVersionWindows:
+    """Exercise ``_dependency_modules``'s ``version_windows`` wiring."""
+
+    @staticmethod
+    def _extractor_stub(tables, periods):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            tables=tables, all_datapoints=[], periods=periods
+        )
+
+    @staticmethod
+    def _patch_queries(monkeypatch, dep_info):
+        monkeypatch.setattr(exporter_mod, "get_data_types", lambda *a, **k: {})
+        monkeypatch.setattr(
+            exporter_mod,
+            "group_tables_by_module",
+            lambda *a, **k: {"DEP": dep_info},
+        )
+        monkeypatch.setattr(
+            exporter_mod,
+            "get_module_uri",
+            lambda session, module_vid: ("http://uri/dep", "fw"),
+        )
+
+    def test_a_dependency_read_only_at_t_has_no_version_windows_key(
+        self, monkeypatch
+    ):
+        from datetime import date
+
+        dep_info = {
+            "module_vid": 20,
+            "module_id": 2,
+            "from_date": date(2026, 3, 31),
+            "to_date": None,
+            "tables": {"A": {"variables": {"1": "m"}, "open_keys": {}}},
+        }
+        self._patch_queries(monkeypatch, dep_info)
+
+        exporter = CalculationsExporter.__new__(CalculationsExporter)
+        exporter.session = None
+        dependencies = self._extractor_stub(
+            tables={"A": {"variables": {1}, "open_keys": {}}},
+            periods={"A": {"T"}},
+        )
+
+        result = exporter._dependency_modules("HOME", dependencies, 1)
+
+        assert set(result["http://uri/dep"]) == {"tables"}
+
+    def test_a_cross_time_dependency_gets_version_windows(self, monkeypatch):
+        from datetime import date
+
+        dep_info = {
+            "module_vid": 20,
+            "module_id": 2,
+            "from_date": date(2026, 3, 31),
+            "to_date": None,
+            "tables": {"A": {"variables": {"1": "m"}, "open_keys": {}}},
+        }
+        self._patch_queries(monkeypatch, dep_info)
+
+        exporter = CalculationsExporter.__new__(CalculationsExporter)
+        exporter.session = None
+        exporter._scope_calc = _FakeScopeCalc(
+            {
+                "T-1A": {
+                    "URI": "http://uri/dep-old",
+                    "module_version": "1.0.0",
+                    "tables": {
+                        "A": {"variables": {"1": "m"}, "open_keys": {}}
+                    },
+                    "from_reference_date": date(2025, 3, 31),
+                    "to_reference_date": date(2026, 3, 30),
+                }
+            }
+        )
+        dependencies = self._extractor_stub(
+            tables={"A": {"variables": {1}, "open_keys": {}}},
+            periods={"A": {"T-1A"}},
+        )
+
+        result = exporter._dependency_modules("HOME", dependencies, 1)
+
+        assert result["http://uri/dep"]["version_windows"] == [
+            {
+                "URI": "http://uri/dep-old",
+                "module_version": "1.0.0",
+                "from_reference_date": "2025-03-31",
+                "to_reference_date": "2026-03-30",
+                "tables": {"A": {"variables": {"1": "m"}, "open_keys": {}}},
+            }
+        ]

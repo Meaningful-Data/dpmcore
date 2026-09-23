@@ -7,6 +7,7 @@ detect_cross_module_dependencies) and Fix 3
 
 import importlib.util
 import sys
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, PropertyMock
@@ -31,6 +32,22 @@ def _patch_orm(monkeypatch):
     data_stub.get_module_schema_ref = MagicMock(return_value=None)
     monkeypatch.setitem(sys.modules, "dpmcore.data", data_stub)
 
+    # Stub dpmcore.services._open_keys so ``open_keys`` comes back a
+    # real (empty) dict instead of a MagicMock.
+    open_keys_stub = MagicMock()
+    open_keys_stub.get_open_keys_for_tables = MagicMock(return_value={})
+    monkeypatch.setitem(
+        sys.modules, "dpmcore.services._open_keys", open_keys_stub
+    )
+
+    # Register the real submodule so ``chunked_in`` still resolves
+    # despite the stubbed ``dpmcore.orm`` parent package.
+    import dpmcore.orm.query_utils as _real_query_utils
+
+    monkeypatch.setitem(
+        sys.modules, "dpmcore.orm.query_utils", _real_query_utils
+    )
+
     for mod_name in [
         "dpmcore",
         "dpmcore.connection",
@@ -46,9 +63,11 @@ def _patch_orm(monkeypatch):
         "dpmcore.dpm_xl.ast",
         "dpmcore.dpm_xl.ast.operands",
         "dpmcore.dpm_xl.utils",
+        "dpmcore.dpm_xl.utils.filters",
         "dpmcore.dpm_xl.utils.scopes_calculator",
         "dpmcore.services",
         "dpmcore.services.syntax",
+        "dpmcore.services._precondition_codes",
     ]:
         monkeypatch.setitem(sys.modules, mod_name, MagicMock())
 
@@ -925,6 +944,9 @@ class TestDetectCrossModuleDependencies:
 
         q = svc.session.query.return_value
         q.filter.return_value.all.return_value = [mv]
+        # _build_home_instance_deps resolves the home module's own
+        # ModuleVersion via a separate .first() query.
+        q.filter.return_value.first.return_value = mv
 
         sr = SR(
             scopes=[_scope([10, 20])],
@@ -1339,6 +1361,187 @@ class TestDetectCrossModuleDependencies:
         )
         assert info["dependency_modules"] == {}
 
+    # -------------------------------------------------------------- #
+    # version_windows on cross-time module references
+    # -------------------------------------------------------------- #
+
+    def test_ref_period_t_omits_version_windows(self):
+        """No shift, no boundary to cross: version_windows is absent."""
+        svc, SR = self._make_svc()
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "T_01": {"variables": {"v1": "x"}, "open_keys": {}},
+        }
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.version_number = "1.0"
+        mv.from_reference_date = None
+        mv.to_reference_date = None
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [mv]
+
+        sr = SR(scopes=[_scope([10, 20])], is_cross_module=True)
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+            operation_code="v1234",
+        )
+        dep = info["cross_instance_dependencies"][0]
+        assert "version_windows" not in dep["modules"][0]
+
+    def test_cross_time_ref_period_includes_version_windows(self):
+        """A cross-time reference always carries version_windows."""
+        svc, SR = self._make_svc()
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "C_01.00": {"variables": {"100": "m"}, "open_keys": {}},
+        }
+        svc._find_preceding_module_version = MagicMock(return_value=None)
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.module_id = 200
+        mv.version_number = "1.0"
+        mv.from_reference_date = date(2026, 3, 31)
+        mv.to_reference_date = None
+
+        # Date-less mv for the separate home-module lookup, scoping the
+        # assertion below to module 20.
+        home_mv = MagicMock(from_reference_date=None, to_reference_date=None)
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [mv]
+        q.filter.return_value.first.return_value = home_mv
+
+        sr = SR(scopes=[_scope([10, 20])], is_cross_module=True)
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+            operation_code="EGDQ_0559",
+            time_shifts={"C_01.00": ["T-1A"]},
+        )
+        dep = info["cross_instance_dependencies"][0]
+        module_entry = dep["modules"][0]
+        assert module_entry["ref_period"] == "T-1A"
+        assert module_entry["version_windows"] == []
+        svc._find_preceding_module_version.assert_called_once_with(
+            200, date(2026, 3, 31)
+        )
+
+    def test_cross_time_ref_period_resolves_predecessor(self):
+        """A shifted date before D0, with a substitutable predecessor,
+        produces one version_windows entry.
+        """
+        svc, SR = self._make_svc()
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "C_01.00": {"variables": {"100": "m"}, "open_keys": {}},
+        }
+
+        candidate = MagicMock()
+        candidate.module_vid = 19
+        candidate.version_number = "4.0.0"
+        candidate.from_reference_date = date(2025, 3, 31)
+        candidate.to_reference_date = date(2026, 3, 30)
+        candidate.start_release_id = 5
+        svc._find_preceding_module_version = MagicMock(return_value=candidate)
+        svc._get_module_uri = lambda module_vid, mv=None: {
+            10: "http://uri/mod_10",
+            20: "http://uri/mod_20",
+            19: "http://uri/mod_19",
+        }[module_vid]
+
+        real_get_tables = svc._get_module_tables
+
+        def _tables(vid, release_id=None):
+            if vid == 19:
+                return {
+                    "C_01.00": {
+                        "variables": {"100": "m"},
+                        "open_keys": {},
+                    },
+                }
+            return real_get_tables(vid, release_id=release_id)
+
+        svc._get_module_tables = _tables
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.module_id = 200
+        mv.version_number = "4.1.0"
+        mv.from_reference_date = date(2026, 3, 31)
+        mv.to_reference_date = None
+
+        # See test_cross_time_ref_period_includes_version_windows: a
+        # date-less mv for the separate home-module .first() lookup.
+        home_mv = MagicMock(from_reference_date=None, to_reference_date=None)
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [mv]
+        q.filter.return_value.first.return_value = home_mv
+
+        sr = SR(scopes=[_scope([10, 20])], is_cross_module=True)
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+            operation_code="EGDQ_0559",
+            time_shifts={"C_01.00": ["T-1A"]},
+        )
+        dep = info["cross_instance_dependencies"][0]
+        windows = dep["modules"][0]["version_windows"]
+        assert windows == [
+            {
+                "URI": "http://uri/mod_19",
+                "module_version": "4.0.0",
+                "from_reference_date": "2025-03-31",
+                "to_reference_date": "2026-03-30",
+            }
+        ]
+
+    def test_predecessor_sharing_the_current_uri_is_not_a_candidate(self):
+        """A predecessor resolving to the same URI as mv is not a substitute."""
+        svc, SR = self._make_svc()
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "C_01.00": {"variables": {"100": "m"}, "open_keys": {}},
+        }
+
+        candidate = MagicMock()
+        candidate.module_vid = 19
+        candidate.version_number = "4.0.0"
+        candidate.from_reference_date = date(2025, 3, 31)
+        candidate.to_reference_date = date(2026, 3, 30)
+        candidate.start_release_id = 5
+        svc._find_preceding_module_version = MagicMock(return_value=candidate)
+        # The predecessor's own taxonomy did not change: it resolves to
+        # the same URI as the module version it would substitute for.
+        svc._get_module_uri = lambda module_vid, mv=None: {
+            10: "http://uri/mod_10",
+            20: "http://uri/mod_20",
+            19: "http://uri/mod_20",
+        }[module_vid]
+
+        mv = MagicMock()
+        mv.module_vid = 20
+        mv.module_id = 200
+        mv.version_number = "4.1.0"
+        mv.from_reference_date = date(2026, 3, 31)
+        mv.to_reference_date = None
+
+        home_mv = MagicMock(from_reference_date=None, to_reference_date=None)
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [mv]
+        q.filter.return_value.first.return_value = home_mv
+
+        sr = SR(scopes=[_scope([10, 20])], is_cross_module=True)
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+            operation_code="EGDQ_0559",
+            time_shifts={"C_01.00": ["T-1A"]},
+        )
+        dep = info["cross_instance_dependencies"][0]
+        assert dep["modules"][0]["version_windows"] == []
+
 
 class TestCrossDepEntryDates:
     """Unit-test ``_cross_dep_entry``'s date-intersection logic (#380)."""
@@ -1355,11 +1558,14 @@ class TestCrossDepEntryDates:
         """Without ``home_mv`` the dependency's own window is unchanged."""
         Svc, _ = _load_module()
         mv = self._mv("2020-01-01", "2022-12-31")
-        entry = Svc._cross_dep_entry(
+        svc = Svc(MagicMock())
+        entry = svc._cross_dep_entry(
             uri="http://uri/mod_20",
             ref_period="T",
             mv=mv,
             operation_code=None,
+            current_tables={},
+            current_variables={},
         )
         assert entry["from_reference_date"] == "2020-01-01"
         assert entry["to_reference_date"] == "2022-12-31"
@@ -1368,11 +1574,14 @@ class TestCrossDepEntryDates:
         dep_mv = self._mv("2019-01-01", "2023-12-31")
         home_mv = self._mv("2020-06-01", "2021-12-31")
         Svc, _ = _load_module()
-        entry = Svc._cross_dep_entry(
+        svc = Svc(MagicMock())
+        entry = svc._cross_dep_entry(
             uri="http://uri/mod_20",
             ref_period="T",
             mv=dep_mv,
             operation_code=None,
+            current_tables={},
+            current_variables={},
             home_mv=home_mv,
         )
         assert entry["from_reference_date"] == "2020-06-01"
@@ -1383,11 +1592,14 @@ class TestCrossDepEntryDates:
         dep_mv = self._mv("2019-01-01", "2023-12-31")
         home_mv = self._mv(None, None)
         Svc, _ = _load_module()
-        entry = Svc._cross_dep_entry(
+        svc = Svc(MagicMock())
+        entry = svc._cross_dep_entry(
             uri="http://uri/mod_20",
             ref_period="T",
             mv=dep_mv,
             operation_code=None,
+            current_tables={},
+            current_variables={},
             home_mv=home_mv,
         )
         assert entry["from_reference_date"] == "2019-01-01"
@@ -1398,11 +1610,14 @@ class TestCrossDepEntryDates:
         dep_mv = self._mv(None, None)
         home_mv = self._mv("2020-06-01", "2021-12-31")
         Svc, _ = _load_module()
-        entry = Svc._cross_dep_entry(
+        svc = Svc(MagicMock())
+        entry = svc._cross_dep_entry(
             uri="http://uri/mod_20",
             ref_period="T",
             mv=dep_mv,
             operation_code=None,
+            current_tables={},
+            current_variables={},
             home_mv=home_mv,
         )
         assert entry["from_reference_date"] == "2020-06-01"
@@ -1412,11 +1627,14 @@ class TestCrossDepEntryDates:
         dep_mv = self._mv(None, None)
         home_mv = self._mv(None, None)
         Svc, _ = _load_module()
-        entry = Svc._cross_dep_entry(
+        svc = Svc(MagicMock())
+        entry = svc._cross_dep_entry(
             uri="http://uri/mod_20",
             ref_period="T",
             mv=dep_mv,
             operation_code=None,
+            current_tables={},
+            current_variables={},
             home_mv=home_mv,
         )
         assert entry["from_reference_date"] == ""
@@ -1754,13 +1972,257 @@ class TestGetModuleUri:
         assert svc._get_module_uri(10, mv=mv) is None
 
 
+def _load_shift_reference_date():
+    """Load the module-level ``_shift_reference_date`` helper."""
+    _load_module()
+    return sys.modules[
+        "dpmcore.services.scope_calculator"
+    ]._shift_reference_date
+
+
+class TestShiftReferenceDate:
+    """Exercise ``_shift_reference_date``."""
+
+    def test_plain_t_is_unchanged(self):
+        shift = _load_shift_reference_date()
+        assert shift(date(2026, 3, 31), "T") == date(2026, 3, 31)
+
+    def test_annual_shift_moves_back_one_year(self):
+        """2026-03-31 under T-1A is 2025-03-31."""
+        shift = _load_shift_reference_date()
+        assert shift(date(2026, 3, 31), "T-1A") == date(2025, 3, 31)
+
+    def test_quarter_shift_forward(self):
+        shift = _load_shift_reference_date()
+        assert shift(date(2026, 3, 31), "T+1Q") == date(2026, 6, 30)
+
+    def test_leap_day_annual_shift_clamps(self):
+        shift = _load_shift_reference_date()
+        assert shift(date(2024, 2, 29), "T-1A") == date(2023, 2, 28)
+
+    def test_day_and_week_shifts(self):
+        shift = _load_shift_reference_date()
+        assert shift(date(2026, 3, 31), "T-1D") == date(2026, 3, 30)
+        assert shift(date(2026, 3, 31), "T-2W") == date(2026, 3, 17)
+
+
+class TestSubstitutionPossible:
+    """Exercise ``_substitution_possible``."""
+
+    def test_variable_and_open_keys_match(self):
+        Svc, _ = _load_module()
+        current_tables = {
+            "C_14.00": {"variables": {"v1": "x"}, "open_keys": {"SIC": "c"}}
+        }
+        candidate_tables = {
+            "C_14.00": {
+                "variables": {"v1": "x", "v2": "y"},
+                "open_keys": {"SIC": "c"},
+            }
+        }
+        assert Svc._substitution_possible(
+            current_tables, {"v1": "x"}, candidate_tables
+        )
+
+    def test_open_key_rename_fails(self):
+        """SIC -> qSIC rename blocks substitution."""
+        Svc, _ = _load_module()
+        current_tables = {
+            "C_14.00": {"variables": {"v1": "x"}, "open_keys": {"SIC": "c"}}
+        }
+        candidate_tables = {
+            "C_14.00": {"variables": {"v1": "x"}, "open_keys": {"qSIC": "c"}}
+        }
+        assert not Svc._substitution_possible(
+            current_tables, {"v1": "x"}, candidate_tables
+        )
+
+    def test_missing_variable_fails(self):
+        Svc, _ = _load_module()
+        current_tables = {
+            "C_14.00": {"variables": {"v1": "x"}, "open_keys": {}}
+        }
+        candidate_tables = {"C_14.00": {"variables": {}, "open_keys": {}}}
+        assert not Svc._substitution_possible(
+            current_tables, {"v1": "x"}, candidate_tables
+        )
+
+    def test_table_absent_from_candidate_fails_when_open_keys(self):
+        Svc, _ = _load_module()
+        current_tables = {
+            "C_14.00": {"variables": {"v1": "x"}, "open_keys": {"SIC": "c"}}
+        }
+        candidate_tables = {}
+        assert not Svc._substitution_possible(
+            current_tables, {"v1": "x"}, candidate_tables
+        )
+
+    def test_variable_id_identity_ignores_table_name(self):
+        """Table name is not part of the identity test, no open keys."""
+        Svc, _ = _load_module()
+        current_tables = {
+            "C_14.00": {"variables": {"v1": "x"}, "open_keys": {}}
+        }
+        candidate_tables = {
+            "C_14.00_renamed": {"variables": {"v1": "x"}, "open_keys": {}}
+        }
+        assert Svc._substitution_possible(
+            current_tables, {"v1": "x"}, candidate_tables
+        )
+
+    def test_renamed_table_with_matching_open_keys_still_substitutes(self):
+        """A renamed table's open keys are found by variable, not code."""
+        Svc, _ = _load_module()
+        current_tables = {
+            "C_14.00": {"variables": {"v1": "x"}, "open_keys": {"SIC": "c"}}
+        }
+        candidate_tables = {
+            "C_14.00_renamed": {
+                "variables": {"v1": "x"},
+                "open_keys": {"SIC": "c"},
+            }
+        }
+        assert Svc._substitution_possible(
+            current_tables, {"v1": "x"}, candidate_tables
+        )
+
+    def test_renamed_table_with_no_matching_open_keys_fails(self):
+        """A renamed table whose open keys also changed still blocks it."""
+        Svc, _ = _load_module()
+        current_tables = {
+            "C_14.00": {"variables": {"v1": "x"}, "open_keys": {"SIC": "c"}}
+        }
+        candidate_tables = {
+            "C_14.00_renamed": {
+                "variables": {"v1": "x"},
+                "open_keys": {"qSIC": "c"},
+            }
+        }
+        assert not Svc._substitution_possible(
+            current_tables, {"v1": "x"}, candidate_tables
+        )
+
+
+def _patch_module_version_comparison():
+    """Let ``ModuleVersion.to_reference_date`` support ``<`` under the stub."""
+    mod = sys.modules["dpmcore.services.scope_calculator"]
+    mod.ModuleVersion.to_reference_date.__lt__ = MagicMock(return_value=True)
+    # filters module is stubbed wholesale, so exclude_draft_start needs a
+    # pass-through instead of an unconfigured MagicMock.
+    mod.exclude_draft_start = lambda query, start_col: query
+
+
+class TestFindPrecedingModuleVersion:
+    """Exercise ``_find_preceding_module_version``."""
+
+    def test_returns_latest_candidate_before_date(self):
+        Svc, _ = _load_module()
+        _patch_module_version_comparison()
+        svc = Svc(MagicMock())
+
+        older = MagicMock(
+            from_reference_date=date(2024, 3, 31),
+            to_reference_date=date(2025, 3, 30),
+        )
+        closer = MagicMock(
+            from_reference_date=date(2025, 3, 31),
+            to_reference_date=date(2026, 3, 30),
+        )
+        q = svc.session.query.return_value
+        q.filter.return_value.order_by.return_value.all.return_value = [
+            closer,
+            older,
+        ]
+
+        result = svc._find_preceding_module_version(200, date(2026, 3, 31))
+        assert result is closer
+
+    def test_no_candidates_returns_none(self):
+        Svc, _ = _load_module()
+        _patch_module_version_comparison()
+        svc = Svc(MagicMock())
+
+        q = svc.session.query.return_value
+        q.filter.return_value.order_by.return_value.all.return_value = []
+
+        assert (
+            svc._find_preceding_module_version(200, date(2026, 3, 31)) is None
+        )
+
+    def test_collapsed_ghost_row_is_skipped(self):
+        """A ghost row (from == to) is not a genuine predecessor."""
+        Svc, _ = _load_module()
+        _patch_module_version_comparison()
+        svc = Svc(MagicMock())
+
+        ghost = MagicMock(
+            from_reference_date=date(2025, 3, 31),
+            to_reference_date=date(2025, 3, 31),
+        )
+        genuine = MagicMock(
+            from_reference_date=date(2024, 3, 31),
+            to_reference_date=date(2025, 3, 30),
+        )
+        q = svc.session.query.return_value
+        q.filter.return_value.order_by.return_value.all.return_value = [
+            ghost,
+            genuine,
+        ]
+
+        result = svc._find_preceding_module_version(200, date(2026, 3, 31))
+        assert result is genuine
+
+    def test_inverted_window_row_is_skipped(self):
+        """A row ending before it starts is a ghost, not a predecessor."""
+        Svc, _ = _load_module()
+        _patch_module_version_comparison()
+        svc = Svc(MagicMock())
+
+        inverted = MagicMock(
+            from_reference_date=date(2025, 3, 31),
+            to_reference_date=date(2025, 1, 1),
+        )
+        genuine = MagicMock(
+            from_reference_date=date(2024, 3, 31),
+            to_reference_date=date(2025, 3, 30),
+        )
+        q = svc.session.query.return_value
+        q.filter.return_value.order_by.return_value.all.return_value = [
+            inverted,
+            genuine,
+        ]
+
+        result = svc._find_preceding_module_version(200, date(2026, 3, 31))
+        assert result is genuine
+
+    def test_excludes_draft_only_candidates(self):
+        """A candidate introduced only by a draft release is filtered out."""
+        Svc, _ = _load_module()
+        mod = sys.modules["dpmcore.services.scope_calculator"]
+        _patch_module_version_comparison()
+        excluded = MagicMock(name="excluded_query")
+        mod.exclude_draft_start = MagicMock(return_value=excluded)
+        svc = Svc(MagicMock())
+
+        q = svc.session.query.return_value
+        excluded.order_by.return_value.all.return_value = []
+
+        svc._find_preceding_module_version(200, date(2026, 3, 31))
+
+        mod.exclude_draft_start.assert_called_once_with(
+            q.filter.return_value, mod.ModuleVersion.start_release_id
+        )
+
+
 def _load_ast_generator():
     """Load ASTGeneratorService bypassing ORM chain."""
     # Need extra stubs for ast_generator imports
     for mod_name in [
         "dpmcore.dpm_xl.utils.serialization",
+        "dpmcore.dpm_xl.utils.tokens",
         "dpmcore.services.scope_calculator",
         "dpmcore.services.semantic",
+        "dpmcore.services._parameters",
     ]:
         if mod_name not in sys.modules:
             sys.modules[mod_name] = MagicMock()
@@ -1848,3 +2310,78 @@ class TestMergeCrossDeps:
         ]
         Cls._merge_cross_deps(existing, new)
         assert existing[0]["affected_operations"] == ["v1"]
+
+    def test_same_uri_and_period_different_windows_split(self):
+        """Differing version_windows keep entries apart."""
+        Cls = _load_ast_generator()
+        existing = [
+            {
+                "modules": [
+                    {
+                        "URI": "http://a",
+                        "ref_period": "T-1A",
+                        "version_windows": [
+                            {
+                                "URI": "http://a-old",
+                                "module_version": "4.0.0",
+                                "from_reference_date": "2025-03-31",
+                                "to_reference_date": "2026-03-30",
+                            }
+                        ],
+                    }
+                ],
+                "affected_operations": ["EGDQ_0559"],
+            }
+        ]
+        new = [
+            {
+                "modules": [
+                    {
+                        "URI": "http://a",
+                        "ref_period": "T-1A",
+                        "version_windows": [],
+                    }
+                ],
+                "affected_operations": ["EGDQ_0572"],
+            }
+        ]
+        Cls._merge_cross_deps(existing, new)
+        assert len(existing) == 2
+        assert existing[0]["affected_operations"] == ["EGDQ_0559"]
+        assert existing[1]["affected_operations"] == ["EGDQ_0572"]
+
+    def test_same_uri_and_period_same_windows_merges(self):
+        Cls = _load_ast_generator()
+        window = {
+            "URI": "http://a-old",
+            "module_version": "4.0.0",
+            "from_reference_date": "2025-03-31",
+            "to_reference_date": "2026-03-30",
+        }
+        existing = [
+            {
+                "modules": [
+                    {
+                        "URI": "http://a",
+                        "ref_period": "T-1A",
+                        "version_windows": [dict(window)],
+                    }
+                ],
+                "affected_operations": ["OP1"],
+            }
+        ]
+        new = [
+            {
+                "modules": [
+                    {
+                        "URI": "http://a",
+                        "ref_period": "T-1A",
+                        "version_windows": [dict(window)],
+                    }
+                ],
+                "affected_operations": ["OP2"],
+            }
+        ]
+        Cls._merge_cross_deps(existing, new)
+        assert len(existing) == 1
+        assert existing[0]["affected_operations"] == ["OP1", "OP2"]

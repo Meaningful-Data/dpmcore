@@ -596,8 +596,9 @@ def group_tables_by_module(
         release_id: Release to resolve the table and module versions at.
 
     Returns:
-        ``{module_code: {module_vid, from_date, to_date, tables}}``,
-        carrying each table's variables and open keys through unchanged.
+        ``{module_code: {module_vid, module_id, from_date, to_date,
+        tables}}``, carrying each table's variables and open keys
+        through unchanged.
     """
     module_tables: Dict[str, Dict[str, Any]] = {}
     if not tables:
@@ -633,6 +634,7 @@ def group_tables_by_module(
                 row.module_code,
                 {
                     "module_vid": row.module_vid,
+                    "module_id": row.module_id,
                     "from_date": row.from_date,
                     "to_date": row.to_date,
                     "tables": {},
@@ -716,12 +718,14 @@ def _modules_of_table_vids(
 
     Returns:
         ``{table_vid: [row, ...]}`` where each row carries
-        ``module_vid``, ``module_code``, ``from_date`` and ``to_date``.
+        ``module_vid``, ``module_id``, ``module_code``, ``from_date``
+        and ``to_date``.
     """
     query: Any = (
         session.query(
             ModuleVersionComposition.table_vid.label("table_vid"),
             ModuleVersionComposition.module_vid.label("module_vid"),
+            ModuleVersion.module_id.label("module_id"),
             ModuleVersion.code.label("module_code"),
             ModuleVersion.from_reference_date.label("from_date"),
             ModuleVersion.to_reference_date.label("to_date"),

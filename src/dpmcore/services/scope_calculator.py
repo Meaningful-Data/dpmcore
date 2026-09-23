@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -16,8 +18,15 @@ from typing import (
     Union,
 )
 
+from dateutil.relativedelta import (  # type: ignore[import-untyped]
+    relativedelta,
+)
+
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
-from dpmcore.dpm_xl.utils.filters import resolve_release_id
+from dpmcore.dpm_xl.utils.filters import (
+    exclude_draft_start,
+    resolve_release_id,
+)
 from dpmcore.dpm_xl.utils.scopes_calculator import (
     OperationScopeService,
 )
@@ -44,6 +53,37 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+# ``ref_period`` marker format produced by
+# ``ASTGeneratorService._to_ref_period``: ``T``, or ``T`` followed by a
+# sign, a magnitude and one of the DPM-XL period indicators.
+_REF_PERIOD_RE = re.compile(r"^T(?:([+-])(\d+)([ASQMWD]))?$")
+
+
+def _shift_reference_date(reference_date: date, ref_period: str) -> date:
+    """Shift *reference_date* by a ``T[+-]<n><A|S|Q|M|W|D>`` marker.
+
+    The sign is already inverted from the shift the expression asks
+    for, so ``T-1A`` moves back one year. ``"T"`` returns
+    reference_date unchanged.
+    """
+    match = _REF_PERIOD_RE.match(ref_period)
+    if not match or match.group(1) is None:
+        return reference_date
+    sign_char, magnitude_str, indicator = match.groups()
+    magnitude = int(magnitude_str)
+    delta = -magnitude if sign_char == "-" else magnitude
+    if indicator == "A":
+        return reference_date + relativedelta(years=delta)
+    if indicator == "S":
+        return reference_date + relativedelta(months=delta * 6)
+    if indicator == "Q":
+        return reference_date + relativedelta(months=delta * 3)
+    if indicator == "M":
+        return reference_date + relativedelta(months=delta)
+    if indicator == "W":
+        return reference_date + relativedelta(weeks=delta)
+    return reference_date + relativedelta(days=delta)  # "D"
 
 
 @dataclass
@@ -486,7 +526,7 @@ class ScopeCalculatorService:
         release_code: Optional[str] = None,
         referenced_variables: Optional[Dict[str, str]] = None,
         referenced_tables: Optional[Set[str]] = None,
-        home_module_tables: Optional[Set[str]] = None,
+        home_module_tables: Optional[Union[Set[str], Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Build dependency information for a scope result.
 
@@ -519,14 +559,17 @@ class ScopeCalculatorService:
                 narrows each dependency module's declaration to the
                 subset the operation uses (#250); omit both to declare
                 the dependency modules whole.
-            home_module_tables: Optional pre-computed set of table codes
-                owned by the primary (home) module — the same set this
-                method would derive from :meth:`_get_module_tables`.
-                Callers that iterate this method with a fixed
-                ``primary_module_vid`` (per-op dependency detection
-                over a script's operations) should pass a single
-                pre-computed set to avoid re-running the per-table
-                variable/open-key fetch on every iteration.
+            home_module_tables: Optional pre-computed table codes owned
+                by the primary (home) module, either as a bare set or
+                as the full ``{code: {variables, open_keys}}`` dict
+                :meth:`_get_module_tables` returns. Callers with a
+                fixed ``primary_module_vid`` should pass one of these
+                to avoid re-running the per-table fetch for the plain
+                membership checks. A shifted home instance's
+                version-window substitution check always needs the
+                full dict regardless: passing a bare set here only
+                saves the fetch for those membership checks, not for
+                that one.
 
         Returns a dict with:
         - ``intra_instance_validations``
@@ -607,6 +650,10 @@ class ScopeCalculatorService:
                     periods=home_periods,
                     primary_module_vid=primary_module_vid,
                     operation_code=operation_code,
+                    release_id=release_id,
+                    referenced_variables=referenced_variables,
+                    referenced_tables=referenced_tables,
+                    home_module_tables=home_module_tables,
                 )
                 if primary_has_intra
                 else []
@@ -663,11 +710,10 @@ class ScopeCalculatorService:
         # recompute when this method runs inside a loop with a fixed
         # ``primary_module_vid`` (the query is a per-table variable/
         # open-key fetch, not a code-only lookup).
+        primary_tables: Union[Set[str], Dict[str, Any]]
         if home_module_tables is None:
-            primary_tables = set(
-                self._get_module_tables(
-                    primary_module_vid, release_id=release_id
-                ).keys()
+            primary_tables = self._get_module_tables(
+                primary_module_vid, release_id=release_id
             )
         else:
             primary_tables = home_module_tables
@@ -704,6 +750,10 @@ class ScopeCalculatorService:
                 periods=home_periods,
                 primary_module_vid=primary_module_vid,
                 operation_code=operation_code,
+                release_id=release_id,
+                referenced_variables=referenced_variables,
+                referenced_tables=referenced_tables,
+                home_module_tables=primary_tables,
             )
         )
 
@@ -730,7 +780,7 @@ class ScopeCalculatorService:
         ts: Dict[str, List[str]],
         primary_module_vid: int,
         release_id: Optional[int],
-        home_module_tables: Optional[Set[str]] = None,
+        home_module_tables: Optional[Union[Set[str], Dict[str, Any]]] = None,
     ) -> List[str]:
         """Return the reference periods shifted *within* the home module.
 
@@ -798,6 +848,10 @@ class ScopeCalculatorService:
         periods: List[str],
         primary_module_vid: int,
         operation_code: Optional[str],
+        release_id: Optional[int] = None,
+        referenced_variables: Optional[Dict[str, str]] = None,
+        referenced_tables: Optional[Set[str]] = None,
+        home_module_tables: Optional[Union[Set[str], Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         """Build the cross-instance entries for shifted home instances.
 
@@ -807,41 +861,77 @@ class ScopeCalculatorService:
         ``dependency_modules`` entry accompanies it: the home module's
         tables and variables are already declared at the top level of
         the script, and the shifted instance is the same module version.
+
+        The module version and its URI are memoised in
+        ``_home_module_refs``: the caller iterates this once per
+        operation with the same ``primary_module_vid``.
+
+        The version-window substitution check needs the full
+        ``{code: {variables, open_keys}}`` detail: fetched here when
+        ``home_module_tables`` isn't already such a dict.
         """
         if not periods:
             return []
         mv, uri = self._home_mv_and_uri(primary_module_vid)
         if not uri:
             return []
+
+        tables_dict_full = (
+            home_module_tables
+            if isinstance(home_module_tables, dict)
+            else self._get_module_tables(
+                primary_module_vid, release_id=release_id
+            )
+        )
+        narrowed = self._narrow_dependency_tables(
+            tables_dict_full, referenced_tables, referenced_variables
+        )
+        current_tables = narrowed or tables_dict_full
+        current_variables: Dict[str, str] = {
+            k: v
+            for tbl in current_tables.values()
+            for k, v in tbl.get("variables", {}).items()
+        }
+        for var_id, type_code in sorted((referenced_variables or {}).items()):
+            current_variables.setdefault(var_id, type_code)
+
         return [
             self._cross_dep_entry(
                 uri=uri,
                 ref_period=period,
                 mv=mv,
                 operation_code=operation_code,
+                current_tables=current_tables,
+                current_variables=current_variables,
             )
             for period in periods
         ]
 
-    @staticmethod
     def _cross_dep_entry(
+        self,
         uri: str,
         ref_period: str,
         mv: Any,
         operation_code: Optional[str],
+        current_tables: Dict[str, Any],
+        current_variables: Dict[str, str],
         home_mv: Any = None,
     ) -> Dict[str, Any]:
         """Build one ``cross_instance_dependencies`` entry for *uri*.
 
         ``module_version`` is omitted when the row carries no version
-        number. The reference dates are the dependency module's own
-        window narrowed to the home module's (``home_mv``) window: the
-        two instances only coexist where both are active, so
-        ``from_reference_date`` is the later of the two starts and
-        ``to_reference_date`` the earlier of the two ends (an unset
-        bound on either side does not narrow). ``home_mv`` is omitted
-        for the home module's own shifted-instance entries (#325),
-        where ``mv`` already is the home module.
+        number. The reference dates start as the declared module
+        version's own window, narrowed to the home module's
+        (``home_mv``) window when given: the two instances only
+        coexist where both are active, so ``from_reference_date`` is
+        the later of the two starts and ``to_reference_date`` the
+        earlier of the two ends (an unset bound on either side does
+        not narrow). ``home_mv`` is omitted for the home module's own
+        shifted-instance entries (#325), where ``mv`` already is the
+        home module.
+
+        Also resolves ``version_windows`` off the (possibly narrowed)
+        window when ``ref_period != "T"``, omitted otherwise.
         """
         module_entry: Dict[str, Any] = {
             "URI": uri,
@@ -859,6 +949,16 @@ class ScopeCalculatorService:
             from_date = max(from_candidates) if from_candidates else None
             to_candidates = [d for d in (to_date, home_to) if d]
             to_date = min(to_candidates) if to_candidates else None
+        if ref_period != "T":
+            module_entry["version_windows"] = self._resolve_version_windows(
+                module_id=getattr(mv, "module_id", None),
+                d0=from_date,
+                ref_period=ref_period,
+                window_to=to_date,
+                current_tables=current_tables,
+                current_variables=current_variables,
+                current_uri=uri,
+            )
         return {
             "modules": [module_entry],
             "affected_operations": (
@@ -867,6 +967,172 @@ class ScopeCalculatorService:
             "from_reference_date": (str(from_date) if from_date else ""),
             "to_reference_date": (str(to_date) if to_date else ""),
         }
+
+    def _find_preceding_module_version(
+        self, module_id: int, before_date: date
+    ) -> Optional[Any]:
+        """Latest ``ModuleVersion`` of module_id ending before before_date.
+
+        Only the immediately preceding version is considered, no
+        chained search. A collapsed or inverted (ghost) window
+        (``to_reference_date <= from_reference_date``) is skipped, as is
+        a version introduced only by a draft release, since it never
+        held reported data.
+        """
+        candidates = (
+            exclude_draft_start(
+                self.session.query(ModuleVersion).filter(
+                    ModuleVersion.module_id == module_id,
+                    ModuleVersion.to_reference_date.isnot(None),
+                    ModuleVersion.to_reference_date < before_date,
+                ),
+                ModuleVersion.start_release_id,
+            )
+            .order_by(ModuleVersion.to_reference_date.desc())
+            .all()
+        )
+        for candidate in candidates:
+            if candidate.to_reference_date <= candidate.from_reference_date:
+                continue
+            return candidate
+        return None
+
+    @staticmethod
+    def _substitution_possible(
+        current_tables: Dict[str, Any],
+        current_variables: Dict[str, str],
+        candidate_tables: Dict[str, Any],
+    ) -> bool:
+        """VariableID / open-key identity test between two module versions.
+
+        Open keys are matched by the variable's own table, not one
+        sharing the current table's code, so a rename doesn't break it.
+        """
+        candidate_open_keys_by_var: Dict[str, List[Set[str]]] = {}
+        for tbl in candidate_tables.values():
+            keys = set(tbl.get("open_keys") or {})
+            for var_id in tbl.get("variables", {}):
+                candidate_open_keys_by_var.setdefault(var_id, []).append(keys)
+
+        if not set(current_variables) <= set(candidate_open_keys_by_var):
+            return False
+
+        for tdata in current_tables.values():
+            open_keys = set(tdata.get("open_keys") or {})
+            if not open_keys:
+                continue
+            for var_id in tdata.get("variables", {}):
+                candidate_keys = candidate_open_keys_by_var.get(var_id, [])
+                if not any(open_keys == ck for ck in candidate_keys):
+                    return False
+        return True
+
+    def _find_version_window_candidate(
+        self,
+        module_id: Optional[int],
+        d0: Optional[date],
+        ref_period: str,
+        window_to: Optional[date],
+        current_tables: Dict[str, Any],
+        current_variables: Dict[str, str],
+        current_uri: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
+        """Find the Module Version substituting for ``d0`` under a shift.
+
+        Returns ``{"URI", "module_version", "tables",
+        "from_reference_date", "to_reference_date"}`` (dates as
+        ``date`` objects), or ``None`` if there is no substitute. A
+        candidate resolving to ``current_uri`` itself is not one.
+        """
+        if d0 is None or module_id is None:
+            return None
+
+        shifted_from = _shift_reference_date(d0, ref_period)
+        shifted_to = (
+            _shift_reference_date(window_to, ref_period) if window_to else None
+        )
+        if shifted_from >= d0:
+            return None  # the shifted window never precedes D0
+
+        candidate = self._find_preceding_module_version(module_id, d0)
+        if candidate is None:
+            return None
+
+        candidate_uri = self._get_module_uri(
+            module_vid=candidate.module_vid, mv=candidate
+        )
+        if not candidate_uri or candidate_uri == current_uri:
+            return None
+
+        candidate_tables = self._get_module_tables(
+            candidate.module_vid, release_id=candidate.start_release_id
+        )
+        if not self._substitution_possible(
+            current_tables, current_variables, candidate_tables
+        ):
+            return None
+
+        candidate_from = candidate.from_reference_date
+        if candidate_from is not None:
+            candidate_from = max(candidate_from, shifted_from)
+
+        day_before_d0 = d0 - timedelta(days=1)
+        candidate_to = candidate.to_reference_date
+        candidate_to = (
+            day_before_d0
+            if candidate_to is None
+            else min(candidate_to, day_before_d0)
+        )
+        if shifted_to is not None:
+            candidate_to = min(candidate_to, shifted_to)
+
+        return {
+            "URI": candidate_uri,
+            "module_version": getattr(candidate, "version_number", None),
+            "tables": candidate_tables,
+            "from_reference_date": candidate_from,
+            "to_reference_date": candidate_to,
+        }
+
+    def _resolve_version_windows(
+        self,
+        module_id: Optional[int],
+        d0: Optional[date],
+        ref_period: str,
+        window_to: Optional[date],
+        current_tables: Dict[str, Any],
+        current_variables: Dict[str, str],
+        current_uri: Optional[str],
+    ) -> List[Dict[str, Any]]:
+        """Build ``version_windows`` for one cross-time module reference."""
+        found = self._find_version_window_candidate(
+            module_id,
+            d0,
+            ref_period,
+            window_to,
+            current_tables,
+            current_variables,
+            current_uri,
+        )
+        if found is None:
+            return []
+
+        entry: Dict[str, Any] = {
+            "URI": found["URI"],
+            "from_reference_date": (
+                str(found["from_reference_date"])
+                if found["from_reference_date"]
+                else None
+            ),
+            "to_reference_date": (
+                str(found["to_reference_date"])
+                if found["to_reference_date"]
+                else None
+            ),
+        }
+        if found["module_version"]:
+            entry["module_version"] = found["module_version"]
+        return [entry]
 
     def _build_dependency_entry(
         self,
@@ -877,7 +1143,7 @@ class ScopeCalculatorService:
         operation_code: Optional[str],
         referenced_variables: Optional[Dict[str, str]] = None,
         referenced_tables: Optional[Set[str]] = None,
-        home_module_tables: Optional[Set[str]] = None,
+        home_module_tables: Optional[Union[Set[str], Dict[str, Any]]] = None,
         home_mv: Any = None,
     ) -> Optional[Tuple[List[Dict[str, Any]], str, Dict[str, Any]]]:
         """Build the (cross_deps, uri, dependency_module) triple for *vid*.
@@ -968,17 +1234,6 @@ class ScopeCalculatorService:
                 for tcode, tdata in tables_dict.items()
                 if tcode not in home_module_tables
             }
-
-        cross_deps = [
-            self._cross_dep_entry(
-                uri=uri,
-                ref_period=period,
-                mv=mv,
-                operation_code=operation_code,
-                home_mv=home_mv,
-            )
-            for period in periods
-        ]
         variables: Dict[str, str] = {
             k: v
             for tbl in tables_dict.values()
@@ -993,6 +1248,19 @@ class ScopeCalculatorService:
         # own definition of a datapoint wins over the referencing AST's.
         for var_id, type_code in sorted((referenced_variables or {}).items()):
             variables.setdefault(var_id, type_code)
+
+        cross_deps = [
+            self._cross_dep_entry(
+                uri=uri,
+                ref_period=period,
+                mv=mv,
+                operation_code=operation_code,
+                current_tables=tables_dict,
+                current_variables=variables,
+                home_mv=home_mv,
+            )
+            for period in periods
+        ]
         dep_module = {
             "tables": tables_dict,
             "variables": variables,

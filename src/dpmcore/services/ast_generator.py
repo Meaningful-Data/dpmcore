@@ -2363,15 +2363,17 @@ extract_precondition_codes`, shared with
         all_dep_modules: Dict[str, Any] = {}
         all_scope_results: List["ScopeResult"] = []
 
-        # The home-module table set is a per-script constant (the
-        # primary module never changes across this loop), and computing
-        # it inside ``detect_cross_module_dependencies`` would repeat a
+        # The home-module tables are a per-script constant (the primary
+        # module never changes across this loop), and computing them
+        # inside ``detect_cross_module_dependencies`` would repeat a
         # per-table variable/open-key fetch on every iteration. Compute
-        # it once here and thread it through.
-        home_module_tables: Set[str] = set(
+        # them once here and thread the full dict through
+        # It also lets a shifted home instance run the version-window
+        # substitution check without an extra fetch.
+        home_module_tables: Dict[str, Any] = (
             self._scope_calc._get_module_tables(
                 primary_module_vid, release_id=release_id
-            ).keys()
+            )
         )
 
         for item, sr, ts, refs in scope_pairs:
@@ -2426,9 +2428,9 @@ extract_precondition_codes`, shared with
     ) -> None:
         """Merge *new* cross-instance deps into *existing*.
 
-        Deduplicates by the set of ``(module URI, reference period)``
-        pairs. When a duplicate is found, its ``affected_operations``
-        are merged instead.
+        Deduplicates by the set of ``(module URI, reference period,
+        version_windows)`` triples. When a duplicate is found, its
+        ``affected_operations`` are merged instead.
 
         The reference period is part of the key because two operations
         can need the *same* module at *different* instances — one at
@@ -2436,15 +2438,43 @@ extract_precondition_codes`, shared with
         reachable for the home module). Keying on the URI alone merged
         them into a single entry whose period was whichever operation
         came first, silently sending the other to the wrong instance.
+
+        ``version_windows`` is part of the key too: it is computed per
+        operation, so two operations sharing ``(URI, ref_period)`` can
+        still land on different substitution outcomes and must stay in
+        separate entries.
         """
 
-        def _uri_key(dep: Dict[str, Any]) -> Tuple[Tuple[str, str], ...]:
+        def _windows_key(
+            module: Dict[str, Any],
+        ) -> Tuple[Tuple[str, str, str, str], ...]:
+            windows = module.get("version_windows")
+            if not windows:
+                return ()
+            return tuple(
+                sorted(
+                    (
+                        w.get("URI", ""),
+                        w.get("module_version", ""),
+                        w.get("from_reference_date") or "",
+                        w.get("to_reference_date") or "",
+                    )
+                    for w in windows
+                    if isinstance(w, dict)
+                )
+            )
+
+        def _uri_key(dep: Dict[str, Any]) -> Tuple[Tuple[Any, ...], ...]:
             modules = dep.get("modules", [])
             return tuple(
                 sorted(
-                    (m.get("URI", ""), m.get("ref_period", ""))
+                    (
+                        m.get("URI", ""),
+                        m.get("ref_period", ""),
+                        _windows_key(m),
+                    )
                     if isinstance(m, dict)
-                    else (str(m), "")
+                    else (str(m), "", ())
                     for m in modules
                 )
             )
