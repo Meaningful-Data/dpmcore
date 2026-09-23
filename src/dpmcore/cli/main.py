@@ -184,7 +184,8 @@ def export_csv(source: str, output_dir: str) -> None:
     "--source-dir",
     type=click.Path(exists=True, file_okay=False, path_type=str),
     default=None,
-    help="Directory containing exported CSV tables. Defaults to data/DPM.",
+    help="Directory containing exported CSV tables. Required unless "
+    "--access-file is given.",
 )
 @click.option(
     "--access-file",
@@ -192,7 +193,8 @@ def export_csv(source: str, output_dir: str) -> None:
     default=None,
     help=(
         "Access .accdb / .mdb file. Exported to a temporary"
-        " CSV directory before building."
+        " CSV directory before building. Required unless --source-dir "
+        "is given."
     ),
 )
 @click.option(
@@ -268,7 +270,14 @@ def build_meili_json(
     "--access-file",
     type=click.Path(exists=True, dir_okay=False, path_type=str),
     default=None,
-    help="Optional Access file. If omitted, data/DPM CSVs are used.",
+    help="Access file. Required unless --source-dir is given.",
+)
+@click.option(
+    "--source-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=str),
+    default=None,
+    help="Directory containing exported CSV tables. Required unless "
+    "--access-file is given.",
 )
 @click.option(
     "--ecb-validations-file",
@@ -291,6 +300,7 @@ def build_meili_json(
 def update_db(
     target: str,
     access_file: str | None,
+    source_dir: str | None,
     ecb_validations_file: str | None,
     dry_run: bool,
     keep_staging: bool,
@@ -317,13 +327,17 @@ def update_db(
             f"Updating [cyan]{target}[/cyan] from Access file "
             f"[cyan]{access_file}[/cyan]..."
         )
-    else:
-        console.print(f"Updating [cyan]{target}[/cyan] from data/DPM CSVs...")
+    elif source_dir is not None:
+        console.print(
+            f"Updating [cyan]{target}[/cyan] from CSV directory "
+            f"[cyan]{source_dir}[/cyan]..."
+        )
 
     try:
         result = DatabaseUpdateService().update(
             target=target,
             access_file=access_file,
+            source_dir=source_dir,
             ecb_validations_file=ecb_validations_file,
             dry_run=dry_run,
             keep_staging=keep_staging,
@@ -346,7 +360,7 @@ def update_db(
     if result.used_access_file:
         console.print("[green]Source loaded from Access file[/green]")
     else:
-        console.print("[green]Source loaded from data/DPM CSVs[/green]")
+        console.print("[green]Source loaded from CSV directory[/green]")
 
     if result.ecb_validations_imported:
         console.print("[green]ECB validations imported[/green]")

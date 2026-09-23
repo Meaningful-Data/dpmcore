@@ -48,7 +48,7 @@ class DatabaseUpdateService:
         target: str,
         access_file: str | None = None,
         ecb_validations_file: str | None = None,
-        source_dir: str = "data/DPM",
+        source_dir: str | None = None,
         dry_run: bool = False,
         keep_staging: bool = False,
     ) -> DatabaseUpdateResult:
@@ -59,9 +59,13 @@ class DatabaseUpdateService:
             raise DatabaseUpdateError(
                 f"Target type '{target_type}' is not supported."
             )
+        if access_file is None and source_dir is None:
+            raise DatabaseUpdateError(
+                "Provide either access_file or source_dir."
+            )
 
         with tempfile.TemporaryDirectory(prefix="dpmcore-update-") as tmp:
-            csv_dir = Path(source_dir)
+            csv_dir = Path(source_dir) if source_dir else Path(tmp)
             source = str(csv_dir)
             used_access_file = access_file is not None
 

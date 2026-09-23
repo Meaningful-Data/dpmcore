@@ -120,7 +120,8 @@ database is left untouched.
 
 .. code-block:: text
 
-   dpmcore update-db --target <url_or_path> [options]
+   dpmcore update-db --target <url_or_path>
+                     (--access-file PATH | --source-dir PATH) [options]
 
 **Options:**
 
@@ -139,7 +140,10 @@ database is left untouched.
    * - ``--access-file PATH``
      - Path to an Access ``.accdb`` or ``.mdb`` file. When provided, the
        Access file is exported to CSV automatically before loading.
-       If omitted, CSV files are read directly from ``data/DPM/``.
+       Required unless ``--source-dir`` is given.
+   * - ``--source-dir PATH``
+     - Directory containing pre-exported CSV tables. Required unless
+       ``--access-file`` is given.
    * - ``--ecb-validations-file PATH``
      - Path to an ECB validations CSV file. When provided, the file is
        imported after the main migration and before final validation.
@@ -155,11 +159,11 @@ database is left untouched.
 
 .. code-block:: bash
 
-   # Update a SQLite database from the default CSV directory (data/DPM/)
-   dpmcore update-db --target dpm.db
+   # Update a SQLite database from a pre-exported CSV directory
+   dpmcore update-db --target dpm.db --source-dir ./csv_export
 
    # Update using a SQLite URL
-   dpmcore update-db --target sqlite:///path/to/dpm.db
+   dpmcore update-db --target sqlite:///path/to/dpm.db --source-dir ./csv_export
 
    # Update from an Access file
    dpmcore update-db \
@@ -169,22 +173,26 @@ database is left untouched.
    # Include ECB validations
    dpmcore update-db \
        --target dpm.db \
+       --source-dir ./csv_export \
        --ecb-validations-file ecb_validations.csv
 
    # Dry run — validate only, do not replace active database
-   dpmcore update-db --target dpm.db --dry-run
+   dpmcore update-db --target dpm.db --source-dir ./csv_export --dry-run
 
    # Dry run keeping the staging file for inspection
-   dpmcore update-db --target dpm.db --dry-run --keep-staging
+   dpmcore update-db \
+       --target dpm.db --source-dir ./csv_export --dry-run --keep-staging
 
    # Update a PostgreSQL database
    dpmcore update-db \
        --target postgresql://user:pass@localhost:5432/dpm \
+       --source-dir ./csv_export \
        --ecb-validations-file ecb_validations.csv
 
    # Update a SQL Server database
    dpmcore update-db \
-       --target "mssql+pyodbc://user:pass@server/dpm?driver=ODBC+Driver+17+for+SQL+Server"
+       --target "mssql+pyodbc://user:pass@server/dpm?driver=ODBC+Driver+17+for+SQL+Server" \
+       --source-dir ./csv_export
 
 **Exit codes:**
 
@@ -253,7 +261,7 @@ must be supplied.
    * - Option
      - Description
    * - ``--source-dir PATH``
-     - Directory containing pre-exported CSV tables (e.g. ``data/DPM``).
+     - Directory containing pre-exported CSV tables.
        Mutually exclusive with ``--access-file``.
    * - ``--access-file PATH``
      - Path to an Access ``.accdb`` or ``.mdb`` file. The file is exported
@@ -270,7 +278,7 @@ must be supplied.
 .. code-block:: bash
 
    # From a pre-exported CSV directory
-   dpmcore build-meili-json --source-dir data/DPM --output operations.json
+   dpmcore build-meili-json --source-dir ./csv_export --output operations.json
 
    # Directly from an Access file (CSV export handled transparently)
    dpmcore build-meili-json \

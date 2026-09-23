@@ -239,7 +239,7 @@ anything fails the original database is left intact.
 
    result = DatabaseUpdateService().update(
        target="sqlite:///dpm.db",          # SQLite path/URL, PostgreSQL/SQL Server URL
-       access_file="/path/to/dpm.accdb",   # optional; omit to read from data/DPM/
+       access_file="/path/to/dpm.accdb",   # or source_dir="..." for pre-exported CSVs
        ecb_validations_file="ecb.csv",     # optional
        dry_run=False,
        keep_staging=False,
@@ -252,8 +252,8 @@ Or from the command line:
 
 .. code-block:: bash
 
-   # Update a SQLite database from data/DPM/ CSV files
-   dpmcore update-db --target dpm.db
+   # Update a SQLite database from a pre-exported CSV directory
+   dpmcore update-db --target dpm.db --source-dir ./csv_export
 
    # Update from an Access file
    dpmcore update-db --target dpm.db --access-file /path/to/DPM_v4_2_1.accdb
@@ -311,7 +311,7 @@ transparently when ``access_file`` is supplied).
    # From a directory of pre-exported CSV tables
    result = MeiliBuildService().build(
        output_file="operations.json",
-       source_dir="data/DPM",
+       source_dir="./csv_export",
    )
    print(f"Wrote {result.operations_written} operations to {result.output_file}")
 
@@ -327,7 +327,7 @@ Or from the command line:
 .. code-block:: bash
 
    # From a pre-exported CSV directory
-   dpmcore build-meili-json --source-dir data/DPM --output operations.json
+   dpmcore build-meili-json --source-dir ./csv_export --output operations.json
 
    # Directly from an Access file
    dpmcore build-meili-json --access-file /path/to/dpm.accdb --output operations.json

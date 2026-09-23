@@ -435,7 +435,9 @@ class TestUpdateDispatchEdgeCases:
             service, "_update_sqlite", return_value=MagicMock()
         ) as mock_update:
             service.update(
-                target=str(target), ecb_validations_file=str(ecb_file)
+                target=str(target),
+                source_dir=str(tmp_path),
+                ecb_validations_file=str(ecb_file),
             )
 
         assert mock_update.call_args.kwargs["ecb_validations_file"] == str(
@@ -448,7 +450,7 @@ class TestUpdateDispatchEdgeCases:
         with patch.object(
             service, "_update_sqlite", return_value=MagicMock()
         ) as mock_update:
-            service.update(target=str(target))
+            service.update(target=str(target), source_dir=str(tmp_path))
 
         assert mock_update.call_args.kwargs["ecb_validations_file"] is None
 
@@ -893,7 +895,9 @@ class TestUpdateDispatchStagedDatabase:
             service, "_update_staged_database", return_value=MagicMock()
         ) as mock_staged:
             service.update(
-                target="postgresql://host/db", ecb_validations_file=str(ecb)
+                target="postgresql://host/db",
+                source_dir=str(tmp_path),
+                ecb_validations_file=str(ecb),
             )
 
         kw = mock_staged.call_args.kwargs

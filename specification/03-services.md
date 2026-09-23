@@ -742,12 +742,13 @@ from dpmcore.services.database_update import DatabaseUpdateService, DatabaseUpda
 
 result: DatabaseUpdateResult = DatabaseUpdateService().update(
     target="sqlite:///dpm.db",           # or PostgreSQL / SQL Server URL
-    access_file=None,                    # optional: path to .accdb/.mdb
+    access_file=None,                    # path to .accdb/.mdb, or...
+    source_dir="./csv_export",           # ...a pre-exported CSV directory
     ecb_validations_file=None,           # optional: path to ECB CSV
-    source_dir="data/DPM",              # CSV source directory (default)
     dry_run=False,                       # validate only, no swap
     keep_staging=False,                  # keep staging artefact on finish
 )
+# Exactly one of access_file / source_dir must be given.
 ```
 
 **Result type:**
