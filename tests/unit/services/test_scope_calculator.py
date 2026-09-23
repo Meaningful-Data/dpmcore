@@ -1558,11 +1558,14 @@ class TestCrossDepEntryDates:
         """Without ``home_mv`` the dependency's own window is unchanged."""
         Svc, _ = _load_module()
         mv = self._mv("2020-01-01", "2022-12-31")
-        entry = Svc._cross_dep_entry(
+        svc = Svc(MagicMock())
+        entry = svc._cross_dep_entry(
             uri="http://uri/mod_20",
             ref_period="T",
             mv=mv,
             operation_code=None,
+            current_tables={},
+            current_variables={},
         )
         assert entry["from_reference_date"] == "2020-01-01"
         assert entry["to_reference_date"] == "2022-12-31"
@@ -1571,11 +1574,14 @@ class TestCrossDepEntryDates:
         dep_mv = self._mv("2019-01-01", "2023-12-31")
         home_mv = self._mv("2020-06-01", "2021-12-31")
         Svc, _ = _load_module()
-        entry = Svc._cross_dep_entry(
+        svc = Svc(MagicMock())
+        entry = svc._cross_dep_entry(
             uri="http://uri/mod_20",
             ref_period="T",
             mv=dep_mv,
             operation_code=None,
+            current_tables={},
+            current_variables={},
             home_mv=home_mv,
         )
         assert entry["from_reference_date"] == "2020-06-01"
@@ -1586,11 +1592,14 @@ class TestCrossDepEntryDates:
         dep_mv = self._mv("2019-01-01", "2023-12-31")
         home_mv = self._mv(None, None)
         Svc, _ = _load_module()
-        entry = Svc._cross_dep_entry(
+        svc = Svc(MagicMock())
+        entry = svc._cross_dep_entry(
             uri="http://uri/mod_20",
             ref_period="T",
             mv=dep_mv,
             operation_code=None,
+            current_tables={},
+            current_variables={},
             home_mv=home_mv,
         )
         assert entry["from_reference_date"] == "2019-01-01"
@@ -1601,11 +1610,14 @@ class TestCrossDepEntryDates:
         dep_mv = self._mv(None, None)
         home_mv = self._mv("2020-06-01", "2021-12-31")
         Svc, _ = _load_module()
-        entry = Svc._cross_dep_entry(
+        svc = Svc(MagicMock())
+        entry = svc._cross_dep_entry(
             uri="http://uri/mod_20",
             ref_period="T",
             mv=dep_mv,
             operation_code=None,
+            current_tables={},
+            current_variables={},
             home_mv=home_mv,
         )
         assert entry["from_reference_date"] == "2020-06-01"
@@ -1615,11 +1627,14 @@ class TestCrossDepEntryDates:
         dep_mv = self._mv(None, None)
         home_mv = self._mv(None, None)
         Svc, _ = _load_module()
-        entry = Svc._cross_dep_entry(
+        svc = Svc(MagicMock())
+        entry = svc._cross_dep_entry(
             uri="http://uri/mod_20",
             ref_period="T",
             mv=dep_mv,
             operation_code=None,
+            current_tables={},
+            current_variables={},
             home_mv=home_mv,
         )
         assert entry["from_reference_date"] == ""
