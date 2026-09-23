@@ -140,10 +140,10 @@ database is left untouched.
    * - ``--access-file PATH``
      - Path to an Access ``.accdb`` or ``.mdb`` file. When provided, the
        Access file is exported to CSV automatically before loading.
-       Required unless ``--source-dir`` is given.
+       Mutually exclusive with ``--source-dir``; one is required.
    * - ``--source-dir PATH``
-     - Directory containing pre-exported CSV tables. Required unless
-       ``--access-file`` is given.
+     - Directory containing pre-exported CSV tables. Mutually exclusive
+       with ``--access-file``; one is required.
    * - ``--ecb-validations-file PATH``
      - Path to an ECB validations CSV file. When provided, the file is
        imported after the main migration and before final validation.

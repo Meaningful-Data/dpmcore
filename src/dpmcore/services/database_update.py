@@ -59,6 +59,10 @@ class DatabaseUpdateService:
             raise DatabaseUpdateError(
                 f"Target type '{target_type}' is not supported."
             )
+        if access_file is not None and source_dir is not None:
+            raise DatabaseUpdateError(
+                "Use either access_file or source_dir, not both."
+            )
         if access_file is None and source_dir is None:
             raise DatabaseUpdateError(
                 "Provide either access_file or source_dir."

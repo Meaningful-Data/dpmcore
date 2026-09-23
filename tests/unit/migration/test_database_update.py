@@ -107,6 +107,25 @@ class TestUpdateDispatch:
         with pytest.raises(DatabaseUpdateError, match="Could not detect"):
             service.update(target="oracle://host/db")
 
+    def test_neither_access_file_nor_source_dir_raises(
+        self, service, tmp_path
+    ):
+        target = tmp_path / "out.sqlite"
+        with pytest.raises(DatabaseUpdateError, match="Provide either"):
+            service.update(target=str(target))
+
+    def test_both_access_file_and_source_dir_raises(self, service, tmp_path):
+        target = tmp_path / "out.sqlite"
+        access_file = tmp_path / "source.accdb"
+        access_file.touch()
+
+        with pytest.raises(DatabaseUpdateError, match="not both"):
+            service.update(
+                target=str(target),
+                access_file=str(access_file),
+                source_dir=str(tmp_path),
+            )
+
     def test_calls_update_sqlite_from_csv_dir(self, service, tmp_path):
         target = tmp_path / "out.sqlite"
         with patch.object(

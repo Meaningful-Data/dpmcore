@@ -270,14 +270,15 @@ def build_meili_json(
     "--access-file",
     type=click.Path(exists=True, dir_okay=False, path_type=str),
     default=None,
-    help="Access file. Required unless --source-dir is given.",
+    help="Access file. Mutually exclusive with --source-dir; one is "
+    "required.",
 )
 @click.option(
     "--source-dir",
     type=click.Path(exists=True, file_okay=False, path_type=str),
     default=None,
-    help="Directory containing exported CSV tables. Required unless "
-    "--access-file is given.",
+    help="Directory containing exported CSV tables. Mutually exclusive "
+    "with --access-file; one is required.",
 )
 @click.option(
     "--ecb-validations-file",

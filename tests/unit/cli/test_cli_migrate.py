@@ -478,6 +478,28 @@ class TestUpdateDbCli:
         r.staging_location = staging_location
         return r
 
+    def test_rejects_access_file_and_source_dir_together(
+        self, runner, tmp_path
+    ):
+        access_file = tmp_path / "source.accdb"
+        access_file.touch()
+
+        result = runner.invoke(
+            main,
+            [
+                "update-db",
+                "--target",
+                "data/dpm.sqlite",
+                "--access-file",
+                str(access_file),
+                "--source-dir",
+                str(tmp_path),
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "not both" in result.output
+
     def test_success_from_csv_dir_prints_startup_message(self, runner):
         with patch(
             "dpmcore.services.database_update.DatabaseUpdateService.update",
