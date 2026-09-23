@@ -12,6 +12,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+import dpmcore.services.calculations_export.exporter as exporter_mod
 from dpmcore.dpm_xl.ast.nodes import Constant, VarID
 from dpmcore.errors import Invalid
 from dpmcore.services.calculations_export.exporter import (
@@ -907,8 +908,6 @@ class TestDependencyModulesVersionWindows:
 
     @staticmethod
     def _patch_queries(monkeypatch, dep_info):
-        import dpmcore.services.calculations_export.exporter as exporter_mod
-
         monkeypatch.setattr(exporter_mod, "get_data_types", lambda *a, **k: {})
         monkeypatch.setattr(
             exporter_mod,
