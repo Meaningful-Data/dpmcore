@@ -270,8 +270,7 @@ def build_meili_json(
     "--access-file",
     type=click.Path(exists=True, dir_okay=False, path_type=str),
     default=None,
-    help="Access file. Mutually exclusive with --source-dir; one is "
-    "required.",
+    help="Access file. Mutually exclusive with --source-dir; one is required.",
 )
 @click.option(
     "--source-dir",
