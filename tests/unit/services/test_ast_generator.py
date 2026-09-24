@@ -2851,6 +2851,37 @@ class TestScriptFromDb:
         assert op["version_id"] == 555
         assert svc._semantic.validate.called
 
+    def test_text_reparse_fallback_semantic_error_excludes_only_that_op(
+        self, monkeypatch
+    ):
+        """``build_ast_from_db`` unsupported *and* the text-reparse
+        fallback itself fails semantic validation: this one operation
+        is excluded (recorded in ``failed_operations``), not the whole
+        module — same non-fatal contract as every other per-operation
+        failure this method has (#122's abort-the-module rule is
+        :meth:`script`'s, not this one's).
+        """
+        build = MagicMock(
+            side_effect=_FakeUnsupportedDbAst("unsupported construct")
+        )
+        self._stub_db_ast(monkeypatch, build)
+        svc, mv, release_row, _ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=False, error_message="bad expr", parameters=()
+        )
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        assert out["failed_operations"] == {"v1": "bad expr"}
+        ns = next(iter(out["enriched_ast"].values()))
+        assert "v1" not in ns["operations"]
+
     def test_no_operation_vid_skips_db_and_uses_crc32(self, monkeypatch):
         """A code with no entry in ``operation_vids`` never even attempts
         the DB path, and its ``version_id`` falls back to the CRC32 hash
@@ -2943,3 +2974,159 @@ class TestScriptFromDb:
         ns = next(iter(out["enriched_ast"].values()))
         assert "v1" not in ns["operations"]
         assert "v2" in ns["operations"]
+
+
+# ------------------------------------------------------------------ #
+# _overlapping_operation_version_rows
+# ------------------------------------------------------------------ #
+
+
+def _version_row(
+    *,
+    op_vid=1,
+    code="v1",
+    scope_id=1,
+    start_release_id=1,
+    end_release_id=None,
+    module_vid=1,
+):
+    """A 10-tuple matching _discover_module_validations's query shape —
+    only indices 5-8 (module_vid, scope_id, start/end release) matter
+    to the two functions under test here. start_release_id/
+    end_release_id default to an arbitrary open-ended window since
+    _latest_operation_by_code ignores both.
+    """
+    return (
+        op_vid,
+        code,
+        "expr",
+        None,
+        None,
+        module_vid,
+        scope_id,
+        start_release_id,
+        end_release_id,
+        None,
+    )
+
+
+class TestOverlappingOperationVersionRows:
+    """``mv``'s own window is [start_release_id, end_release_id) —
+    ``None`` on either side of a row's window means "unbounded", same
+    convention the module's own ``end_release_id`` uses.
+    """
+
+    def _sort_orders(self):
+        # Distinct, ordered sentinel values — real callers get these
+        # from Release.date ordinals, but only relative order matters.
+        return {10: 100, 20: 200, 30: 300, 40: 400, 50: 500}
+
+    def test_keeps_a_row_overlapping_the_module_window(self):
+        _, Cls, _ = _bare_svc()
+        mv = SimpleNamespace(start_release_id=20, end_release_id=40)
+        row = _version_row(start_release_id=10, end_release_id=30)
+        out = Cls._overlapping_operation_version_rows(
+            [row], self._sort_orders(), mv
+        )
+        assert out == [row]
+
+    def test_drops_a_row_entirely_before_the_module_window(self):
+        _, Cls, _ = _bare_svc()
+        mv = SimpleNamespace(start_release_id=20, end_release_id=40)
+        # Ends exactly where the module starts: the half-open windows
+        # touch but do not overlap.
+        row = _version_row(start_release_id=10, end_release_id=20)
+        out = Cls._overlapping_operation_version_rows(
+            [row], self._sort_orders(), mv
+        )
+        assert out == []
+
+    def test_drops_a_row_entirely_after_the_module_window(self):
+        _, Cls, _ = _bare_svc()
+        mv = SimpleNamespace(start_release_id=20, end_release_id=40)
+        row = _version_row(start_release_id=40, end_release_id=50)
+        out = Cls._overlapping_operation_version_rows(
+            [row], self._sort_orders(), mv
+        )
+        assert out == []
+
+    def test_open_ended_row_still_overlaps(self):
+        """A row with no ``end_release_id`` (still active) must be kept
+        whenever it starts before the module's own window ends.
+        """
+        _, Cls, _ = _bare_svc()
+        mv = SimpleNamespace(start_release_id=20, end_release_id=40)
+        row = _version_row(start_release_id=30, end_release_id=None)
+        out = Cls._overlapping_operation_version_rows(
+            [row], self._sort_orders(), mv
+        )
+        assert out == [row]
+
+    def test_open_ended_module_keeps_a_late_row(self):
+        """A module with no ``end_release_id`` of its own (still
+        active) must not exclude a row that starts after every other
+        release in the mapping.
+        """
+        _, Cls, _ = _bare_svc()
+        mv = SimpleNamespace(start_release_id=20, end_release_id=None)
+        row = _version_row(start_release_id=50, end_release_id=None)
+        out = Cls._overlapping_operation_version_rows(
+            [row], self._sort_orders(), mv
+        )
+        assert out == [row]
+
+
+# ------------------------------------------------------------------ #
+# _latest_operation_by_code
+# ------------------------------------------------------------------ #
+
+
+class TestLatestOperationByCode:
+    def test_single_row_kept(self):
+        _, Cls, _ = _bare_svc()
+        row = _version_row(op_vid=5, code="v1", scope_id=1)
+        out = Cls._latest_operation_by_code([row], set(), home_module_vid=1)
+        assert set(out) == {"v1"}
+        assert out["v1"][0] == (5, 1)  # rank: (op_vid, is_home)
+
+    def test_phantom_scope_dropped(self):
+        _, Cls, _ = _bare_svc()
+        row = _version_row(op_vid=5, code="v1", scope_id=99)
+        out = Cls._latest_operation_by_code([row], {99}, home_module_vid=1)
+        assert out == {}
+
+    def test_higher_operation_vid_wins(self):
+        """A code matching two rows (e.g. the ghost-substitution widen)
+        keeps the one with the highest OperationVID, not insertion
+        order.
+        """
+        _, Cls, _ = _bare_svc()
+        older = _version_row(op_vid=5, code="v1", scope_id=1, module_vid=1)
+        newer = _version_row(op_vid=9, code="v1", scope_id=2, module_vid=1)
+        out = Cls._latest_operation_by_code(
+            [older, newer], set(), home_module_vid=1
+        )
+        assert out["v1"][0][0] == 9
+
+    def test_home_module_scope_outranks_ghost_at_equal_op_vid(self):
+        """Same OperationVID reached through two scopes — the home
+        module's own scope must win over a ghost's, independent of
+        which one was iterated first.
+        """
+        _, Cls, _ = _bare_svc()
+        ghost_first = _version_row(
+            op_vid=5, code="v1", scope_id=1, module_vid=99
+        )
+        home_second = _version_row(
+            op_vid=5, code="v1", scope_id=2, module_vid=1
+        )
+        out = Cls._latest_operation_by_code(
+            [ghost_first, home_second], set(), home_module_vid=1
+        )
+        assert out["v1"][0] == (5, 1)
+
+        # Order reversed: the outcome must not depend on it.
+        out_reversed = Cls._latest_operation_by_code(
+            [home_second, ghost_first], set(), home_module_vid=1
+        )
+        assert out_reversed["v1"][0] == (5, 1)

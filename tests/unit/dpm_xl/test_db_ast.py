@@ -410,6 +410,96 @@ class TestClassifyOperators:
         with pytest.raises(UnsupportedDbAst):
             _build(session)
 
+    def test_binop_classified_for_operand_set_args(self, session):
+        """``name_set == {"operand", "set"}`` (e.g. ``in``) is a BinOp
+        whose right side is the "set" slot — distinct from the generic
+        ``{"left", "right"}`` shape.
+        """
+        _add_item_category(session, 700, code="i1", signature="sig1")
+        args = _add_operator(
+            session,
+            1,
+            name="In",
+            type_="Comparison",
+            symbol="in",
+            arg_names=["operand", "set"],
+        )
+        _add_node(session, 1, operator_id=1, is_leaf=False)
+        _add_node(
+            session,
+            2,
+            parent_node_id=1,
+            argument_id=args["operand"][0],
+            is_leaf=True,
+            scalar="1",
+        )
+        _add_node(
+            session,
+            3,
+            parent_node_id=1,
+            argument_id=args["set"][0],
+            is_leaf=True,
+        )
+        _add_ref(session, 1, node_id=3, kind="item", item_id=700)
+
+        ast_dict, _ = _build(session)
+        assert ast_dict["class_name"] == "BinOp"
+        assert ast_dict["op"] == "in"
+        assert ast_dict["left"] == {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 1,
+        }
+        # A single-element set literal in the "set" slot still needs a
+        # Set, not a bare Scalar — ref count alone can't tell them
+        # apart, only the argument slot name can (db_ast.py's
+        # is_set_argument).
+        assert ast_dict["right"]["class_name"] == "Set"
+        assert ast_dict["right"]["children"] == [
+            {"class_name": "Scalar", "item": "sig1", "scalar_type": "Item"}
+        ]
+
+    def test_binop_classified_for_match_characters(self, session):
+        args = _add_operator(
+            session,
+            1,
+            name="Match characters",
+            type_="Comparison",
+            symbol="match",
+            arg_names=["operand", "pattern"],
+        )
+        _add_node(session, 1, operator_id=1, is_leaf=False)
+        _add_node(
+            session,
+            2,
+            parent_node_id=1,
+            argument_id=args["operand"][0],
+            is_leaf=True,
+            scalar="1",
+        )
+        _add_node(
+            session,
+            3,
+            parent_node_id=1,
+            argument_id=args["pattern"][0],
+            is_leaf=True,
+            scalar="2",
+        )
+
+        ast_dict, _ = _build(session)
+        assert ast_dict["class_name"] == "BinOp"
+        assert ast_dict["op"] == "match"
+        assert ast_dict["left"] == {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 1,
+        }
+        assert ast_dict["right"] == {
+            "class_name": "Constant",
+            "type_": "Integer",
+            "value": 2,
+        }
+
 
 # ------------------------------------------------------------------ #
 # Leaves, via a UnaryOp wrapper
@@ -452,6 +542,17 @@ class TestLeaves:
             "item": "sig1",
             "scalar_type": "Item",
         }
+
+    def test_scalar_leaf_unresolvable_item_raises(self, session):
+        """No ``ItemCategory`` row for the referenced item — e.g. one
+        the release window doesn't cover — must fail loudly.
+        """
+        _add_node(session, 2, is_leaf=True)
+        _add_ref(session, 1, node_id=2, kind="item", item_id=700)
+        _wrap_unary(session, 2)
+
+        with pytest.raises(UnsupportedDbAst):
+            _build(session)
 
     def test_set_leaf_with_multiple_items(self, session):
         _add_item_category(session, 700, code="i1", signature="sig1")
@@ -506,6 +607,41 @@ class TestLeaves:
         with pytest.raises(UnsupportedDbAst):
             _build(session)
 
+    def test_var_ref_unresolvable_code_raises(self, session):
+        """A ``variable`` reference with no ``VariableVersion.Code`` row
+        (e.g. a variable the release window can't resolve) must fail
+        loudly rather than emit a ``VarRef`` with no ``variable`` field.
+        """
+        _add_node(session, 2, is_leaf=True)
+        _add_ref(session, 1, node_id=2, kind="variable", variable_id=700)
+        _wrap_unary(session, 2)
+
+        with pytest.raises(UnsupportedDbAst):
+            _build(session)
+
+    def test_multiple_variable_refs_without_location_raises(self, session):
+        """Two ``variable`` references on the same leaf, neither with a
+        persisted location, aren't a single-cell VarID or a plain
+        VarRef — an ambiguous shape this module must not guess at.
+        """
+        _add_variable(session, 700, code="v_a")
+        _add_variable(session, 701, code="v_b")
+        _add_node(session, 2, is_leaf=True)
+        _add_ref(session, 1, node_id=2, kind="variable", variable_id=700)
+        _add_ref(session, 2, node_id=2, kind="variable", variable_id=701)
+        _wrap_unary(session, 2)
+
+        with pytest.raises(UnsupportedDbAst):
+            _build(session)
+
+    def test_unrecognised_discriminator_raises(self, session):
+        _add_node(session, 2, is_leaf=True)
+        _add_ref(session, 1, node_id=2, kind="mystery")
+        _wrap_unary(session, 2)
+
+        with pytest.raises(UnsupportedDbAst):
+            _build(session)
+
 
 # ------------------------------------------------------------------ #
 # VarID
@@ -513,6 +649,20 @@ class TestLeaves:
 
 
 class TestVarId:
+    def test_no_data_type_resolvable_raises(self, session):
+        """A cell whose variable has no resolvable ``DataType`` (no
+        ``VariableVersion``/``Property``/``DataType`` chain — e.g. the
+        release window doesn't cover it) must fail loudly rather than
+        emit a ``VarID`` entry with a missing ``data_type``.
+        """
+        _add_node(session, 2, is_leaf=True, use_interval_arithmetics=False)
+        _add_ref(session, 1, node_id=2, x=0, kind="variable", variable_id=700)
+        _add_location(session, 1, table="F_01.01", row="r0010")
+        _wrap_unary(session, 2)
+
+        with pytest.raises(UnsupportedDbAst):
+            _build(session)
+
     def test_single_cell(self, session):
         _add_variable(session, 700)
         _add_node(
@@ -598,6 +748,39 @@ class TestVarId:
 
         with pytest.raises(UnsupportedDbAst):
             _build(session)
+
+    def test_mixed_refs_one_missing_location_raises(self, session):
+        """One of several ``variable`` refs on the node has a location,
+        so the node is entered as a VarID (``has_location`` is True) —
+        but this particular ref has none, which per-ref must still
+        raise instead of silently dropping the cell.
+        """
+        _add_variable(session, 700)
+        _add_variable(session, 701)
+        _add_node(session, 2, is_leaf=True, use_interval_arithmetics=False)
+        _add_ref(session, 1, node_id=2, x=0, kind="variable", variable_id=700)
+        _add_location(session, 1, table="F_01.01", row="r0010")
+        _add_ref(session, 2, node_id=2, x=1, kind="variable", variable_id=701)
+        _wrap_unary(session, 2)
+
+        with pytest.raises(UnsupportedDbAst):
+            _build(session)
+
+    def test_non_numeric_fallback_value_becomes_empty_string(self, session):
+        _add_variable(session, 700)
+        _add_node(
+            session,
+            2,
+            is_leaf=True,
+            fallback_value="N/A",
+            use_interval_arithmetics=False,
+        )
+        _add_ref(session, 1, node_id=2, x=0, kind="variable", variable_id=700)
+        _add_location(session, 1, table="F_01.01", row="r0010")
+        _wrap_unary(session, 2)
+
+        ast_dict, _ = _build(session)
+        assert ast_dict["operand"]["default"] == ""
 
 
 # ------------------------------------------------------------------ #
@@ -932,6 +1115,36 @@ class TestCompositeShapes:
             "class_name": "GroupingClause",
             "components": ["r", "BASE"],
         }
+
+    def test_aggregation_without_grouping_clause(self, session):
+        """The common case: the operator declares a ``grouping_clause``
+        argument slot (needed for classification), but this particular
+        operation instance has no child there — ``grouping_clause``
+        must stay ``None``, not raise or fabricate an empty clause.
+        """
+        agg_args = _add_operator(
+            session,
+            1,
+            name="Sum",
+            type_="Aggregate",
+            symbol="sum",
+            arg_names=["operand", "grouping_clause"],
+        )
+        _add_node(session, 1, operator_id=1, is_leaf=False)
+        _add_node(
+            session,
+            2,
+            parent_node_id=1,
+            argument_id=agg_args["operand"][0],
+            is_leaf=True,
+            scalar="1",
+        )
+
+        ast_dict, _ = _build(session)
+        assert ast_dict["class_name"] == "AggregationOp"
+        assert ast_dict["op"] == "sum"
+        assert ast_dict["grouping_clause"] is None
+        assert ast_dict["analytic_clause"] is None
 
     def test_rename_op(self, session):
         """Kept for future use (not yet exercised by real DPM data —
