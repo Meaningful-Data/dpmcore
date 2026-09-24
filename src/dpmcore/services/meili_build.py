@@ -47,12 +47,14 @@ class MeiliBuildService:
             raise MeiliBuildError(
                 "Use either '--access-file' or '--source-dir', not both."
             )
-
-        resolved_source_dir = Path(source_dir or "data/DPM")
+        if not access_file and not source_dir:
+            raise MeiliBuildError(
+                "Provide either '--access-file' or '--source-dir'."
+            )
 
         with tempfile.TemporaryDirectory(prefix="dpmcore-meili-") as temp_root:
             temp_root_path = Path(temp_root)
-            csv_dir = resolved_source_dir
+            csv_dir = Path(source_dir) if source_dir else temp_root_path
             used_access_file = access_file is not None
 
             if access_file is not None:
