@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from sqlalchemy.orm import Session
 
@@ -157,13 +157,19 @@ def _classify_operators(session: Session) -> Dict[int, _OperatorShape]:
     operators = OperatorQuery.get_operators(session)
     arguments = OperatorQuery.get_arguments(session)
 
+    # pandas-stubs types itertuples() fields as a wide Hashable union
+    # (it can't know a DataFrame's actual dtypes statically) — these two
+    # columns are genuinely int/str, straight off the query, so cast
+    # rather than suppress the whole line.
     arg_names_by_op: Dict[int, List[str]] = {}
     for row in arguments.itertuples():
-        arg_names_by_op.setdefault(int(row.OperatorID), []).append(row.Name)
+        arg_names_by_op.setdefault(
+            cast(int, row.OperatorID), []
+        ).append(cast(str, row.Name))
 
     shapes: Dict[int, _OperatorShape] = {}
     for row in operators.itertuples():
-        op_id = int(row.OperatorID)
+        op_id = cast(int, row.OperatorID)
         name_set = set(arg_names_by_op.get(op_id, []))
 
         if row.Type == "Conditional" and name_set == {
@@ -311,7 +317,7 @@ class _DbAstToJSONVisitor(ASTToJSONVisitor):
         (dpmcore#364). :meth:`_Builder._build_varid` already built the
         correct dict; this just returns it.
         """
-        return node._db_ast_dict  # type: ignore[attr-defined]
+        return node._db_ast_dict
 
     def visit_VarRef(self, node: Any) -> Dict[str, Any]:
         """``ASTToJSONVisitor`` has no ``visit_VarRef``; ``generic_visit``
@@ -367,6 +373,10 @@ class _Builder:
                 op=symbol, operand=self.build(_one(children, "operand"))
             )
         if shape.class_name == "BinOp":
+            if shape.binop_args is None:
+                raise UnsupportedDbAst(
+                    f"BinOp shape missing binop_args on node {node.node_id}"
+                )
             left_name, right_name = shape.binop_args
             return ast_nodes.BinOp(
                 left=self.build(_one(children, left_name)),
@@ -449,7 +459,8 @@ class _Builder:
         )
 
     def _build_grouping_clause(self, node: OperationNode) -> Optional[Any]:
-        shape = self._shapes.get(node.operator_id)
+        op_id = node.operator_id
+        shape = self._shapes.get(op_id) if op_id is not None else None
         if shape is None or shape.class_name != "GroupingClause":
             raise UnsupportedDbAst("Expected a GroupingClause node")
         component_nodes = sorted(
@@ -477,7 +488,10 @@ class _Builder:
                 and ref.property_id is not None
             ):
                 return self._item_category_code(ref.property_id)
-            if ref.operand_reference != "property":
+            if (
+                ref.operand_reference is not None
+                and ref.operand_reference != "property"
+            ):
                 return ref.operand_reference
         if node.scalar is not None:
             return node.scalar
@@ -497,7 +511,8 @@ class _Builder:
         )
 
     def _build_rename_node(self, node: OperationNode) -> Any:
-        shape = self._shapes.get(node.operator_id)
+        op_id = node.operator_id
+        shape = self._shapes.get(op_id) if op_id is not None else None
         if shape is None or shape.class_name != "RenameNode":
             raise UnsupportedDbAst("Expected a RenameNode")
         children = _children_by_argument(self._tree, node)
@@ -569,11 +584,16 @@ class _Builder:
             if has_location:
                 return self._build_varid(node, refs)
             if len(refs) == 1:
-                code = self._variable_code(refs[0].variable_id)
+                variable_id = refs[0].variable_id
+                if variable_id is None:
+                    raise UnsupportedDbAst(
+                        f"Leaf node {node.node_id}: 'variable' reference "
+                        "has no VariableID"
+                    )
+                code = self._variable_code(variable_id)
                 if code is None:
                     raise UnsupportedDbAst(
-                        f"No VariableVersion.Code for variable "
-                        f"{refs[0].variable_id}"
+                        f"No VariableVersion.Code for variable {variable_id}"
                     )
                 return ast_nodes.VarRef(variable=code)
             raise UnsupportedDbAst(
@@ -865,7 +885,10 @@ def serialize_built_ast(built: Any) -> Dict[str, Any]:
     """Serialise a tree from :func:`build_ast_from_db` to the JSON wire
     shape, the same way :func:`build_ast_dict_from_db` does internally.
     """
-    return _DbAstToJSONVisitor().visit(built)
+    # ``visit()`` is typed for any node (a leaf can serialise to a bare
+    # scalar), but ``built`` is always a tree's root here, which the
+    # wire format always renders as an object.
+    return cast(Dict[str, Any], _DbAstToJSONVisitor().visit(built))
 
 
 def build_ast_dict_from_db(

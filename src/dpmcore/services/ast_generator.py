@@ -18,6 +18,7 @@ from typing import (
     Set,
     Tuple,
     Union,
+    cast,
 )
 
 from dpmcore.dpm_xl.utils.tokens import (
@@ -279,7 +280,11 @@ class ASTGeneratorService:
                     failed_operations[code] = prepared.error
                     continue
                 result, ast, ts = prepared.result, prepared.ast, prepared.ts
-                ast_dict = serialize_ast(ast)
+                # serialize_ast() is typed for any node (a leaf can
+                # serialise to a bare scalar), but `ast` is always a
+                # root expression here, which the wire format always
+                # renders as an object.
+                ast_dict = cast(Dict[str, Any], serialize_ast(ast))
                 root_operator_id = self._resolve_root_operator_id(ast, session)
 
                 scope_error = self._process_operation(
@@ -401,6 +406,12 @@ class ASTGeneratorService:
         """
         expr, code = item[0], item[1]
 
+        if self._scope_calc is None:
+            raise InternalError(
+                "ScopeCalculatorService not initialised",
+                "_process_operation requires a live DB session.",
+            )
+
         sr = scope_result or self._scope_calc.calculate_from_expression(
             expression=expr,
             release_id=release_id,
@@ -469,6 +480,11 @@ class ASTGeneratorService:
         :meth:`script`'s body — no behaviour changed, only where the
         code lives.
         """
+        if self._scope_calc is None:
+            raise InternalError(
+                "ScopeCalculatorService not initialised",
+                "_assemble_script requires a live DB session.",
+            )
         primary_tables_full = self._scope_calc._get_module_tables(
             primary_module_vid, release_id=release_id
         )
@@ -594,6 +610,12 @@ class ASTGeneratorService:
         — a non-``None`` ``error`` means the operation failed and the
         other fields should be ignored.
         """
+        if self._semantic is None:
+            raise InternalError(
+                "SemanticService not initialised",
+                "_resolve_db_operation_ast requires a live DB session.",
+            )
+
         from dpmcore.dpm_xl.utils.db_ast import (
             UnsupportedDbAst,
             build_ast_from_db,
@@ -625,7 +647,9 @@ class ASTGeneratorService:
             if prepared.error is not None:
                 return None, [], {}, None, prepared.error
             result, ast, ts = prepared.result, prepared.ast, prepared.ts
-            ast_dict = serialize_ast(ast)
+            # Same reasoning as script()'s own serialize_ast() call: a
+            # root expression always renders as an object.
+            ast_dict = cast(Dict[str, Any], serialize_ast(ast))
             parameters = result.parameters
             root_operator_id = self._resolve_root_operator_id(ast, session)
             return ast_dict, parameters, ts, root_operator_id, None
@@ -706,9 +730,23 @@ class ASTGeneratorService:
         )
         if resolve_error is not None:
             return resolve_error
+        # A None error means _resolve_db_operation_ast populated every
+        # other field — its own contract, not re-checked field by field.
+        if ast_dict is None or root_operator_id is None:
+            raise InternalError(
+                "Inconsistent _resolve_db_operation_ast result",
+                f"No error for {code!r} but ast_dict/root_operator_id "
+                "is still None.",
+            )
 
         scope_result: Optional["ScopeResult"] = None
         if operation_vid is not None:
+            if self._scope_calc is None:
+                raise InternalError(
+                    "ScopeCalculatorService not initialised",
+                    "_process_db_expression_item requires a live DB "
+                    "session.",
+                )
             # Same rationale as the AST: the scope is already persisted,
             # so re-deriving it via re-parse+re-validate only risks a
             # spurious rejection (e.g. grey cells).
@@ -1296,6 +1334,11 @@ class ASTGeneratorService:
         session = self.session
         if session is None:
             raise ValueError("No database session — cannot generate script.")
+        if self._scope_calc is None:
+            raise InternalError(
+                "ScopeCalculatorService not initialised",
+                "_discover_module_validations requires a live DB session.",
+            )
 
         query = (
             session.query(

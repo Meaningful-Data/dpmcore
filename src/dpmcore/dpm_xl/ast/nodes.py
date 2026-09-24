@@ -964,7 +964,7 @@ class PreconditionItem(AST):
     """
 
     def __init__(
-        self, variable_id: str, variable_code: str | None = None
+        self, variable_id: int, variable_code: str | None = None
     ) -> None:
         super().__init__()
         self.variable_id = variable_id
