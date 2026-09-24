@@ -2058,7 +2058,10 @@ class ASTGeneratorService:
 
         That is a ``PreconditionItem`` or an ``and`` tree whose leaves
         are all ``PreconditionItem`` — the only shape for which the
-        ``p_<sorted vids>`` key alone identifies the gate.
+        ``p_<sorted vids>`` key alone identifies the gate. Called on
+        an already ``ParExpr``-stripped tree (see
+        :meth:`_strip_par_expr`), so grouping parentheses never affect
+        this check.
         """
         if not isinstance(node, dict):
             return False
@@ -2071,6 +2074,26 @@ class ASTGeneratorService:
             and cls._is_conjunction_of_items(node.get("left"))
             and cls._is_conjunction_of_items(node.get("right"))
         )
+
+    @classmethod
+    def _strip_par_expr(cls, node: Any) -> Any:
+        """Return a copy of *node* with every ``ParExpr`` unwrapped.
+
+        Grouping parentheses change how a gate is reconstructed
+        (#379), not what it means, so they must not change its
+        identity (key/version_id) either — otherwise a validation
+        whose source text happens to add non-meaningful parentheses
+        around an otherwise-identical gate would stop merging with
+        one that doesn't. Only used to compute that identity; the
+        emitted ``entry["ast"]`` keeps the real ``ParExpr`` nodes.
+        """
+        if isinstance(node, dict):
+            if node.get("class_name") == "ParExpr":
+                return cls._strip_par_expr(node.get("expression"))
+            return {k: cls._strip_par_expr(v) for k, v in node.items()}
+        if isinstance(node, list):
+            return [cls._strip_par_expr(item) for item in node]
+        return node
 
     @classmethod
     def _strip_precondition_item_vids(cls, node: Any) -> None:
@@ -2116,18 +2139,26 @@ class ASTGeneratorService:
         into ``{v_A} and {v_B}``. ``version_id`` follows the same rule as
         an operation without one: the first vid, or the CRC folded to four
         digits. ``provided_code`` / ``provided_version_id`` override both.
+
+        Both the shape check and the CRC are computed on a
+        ``ParExpr``-stripped copy (:meth:`_strip_par_expr`): grouping
+        parentheses change how the gate is reconstructed, not what it
+        means, so ``({v_A} and {v_B})`` must key and merge exactly like
+        ``{v_A} and {v_B}``. The returned ``ast`` keeps the real
+        ``ParExpr`` nodes.
         """
         item_vids = sorted(cls._collect_precondition_item_vids(gate_ast))
         # Strip the internal ``variable_vid`` field before hashing and
         # emitting; the engine's ``PreconditionItem`` does not carry it.
         cls._strip_precondition_item_vids(gate_ast)
         vids_part = "_".join(str(v) for v in item_vids)
-        if cls._is_conjunction_of_items(gate_ast):
+        identity_ast = cls._strip_par_expr(gate_ast)
+        if cls._is_conjunction_of_items(identity_ast):
             default_key = f"p_{vids_part}"
             default_version_id = item_vids[0]
         else:
             digest = zlib.crc32(
-                json.dumps(gate_ast, sort_keys=True).encode("utf-8")
+                json.dumps(identity_ast, sort_keys=True).encode("utf-8")
             )
             default_key = (
                 f"p_{vids_part}_{digest:08x}"

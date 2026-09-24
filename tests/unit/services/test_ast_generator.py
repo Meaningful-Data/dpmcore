@@ -1081,6 +1081,58 @@ class TestGateParameterPropagation:
         assert preconds[disjunction_key]["affected_operations"] == ["v2"]
         assert preconds[disjunction_key]["ast"]["op"] == "or"
 
+    def test_non_meaningful_parens_do_not_change_the_key(
+        self, monkeypatch, real_syntax
+    ):
+        """Regression: grouping parentheses must not affect the gate's
+        identity (key/version_id/merging), only how it's reconstructed.
+
+        ``ParExpr`` is preserved in the emitted ``ast`` (#379), but
+        ``({v_A} and {v_B})`` must still key and merge exactly like
+        ``{v_A} and {v_B}`` — the two are the same gate, just written
+        differently in the source dictionary.
+        """
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        svc._syntax = real_syntax
+        _install_variable_resolver(
+            monkeypatch,
+            {
+                "A": {"variable_id": 1, "variable_vid": 10},
+                "B": {"variable_id": 2, "variable_vid": 20},
+            },
+        )
+
+        preconds, _vars = svc._build_preconditions_block(
+            [
+                ("{v_A} and {v_B}", ["v1"]),
+                ("({v_A} and {v_B})", ["v2"]),
+                ("{v_A} or {v_B}", ["v3"]),
+                ("({v_A} or {v_B})", ["v4"]),
+            ],
+            release_id=None,
+        )
+
+        # The conjunction keeps the plain p_<vids> key and merges v1/v2.
+        assert preconds["p_10_20"]["affected_operations"] == ["v1", "v2"]
+        assert preconds["p_10_20"]["ast"]["class_name"] == "BinOp"
+
+        # The disjunction's CRC-suffixed key is unaffected by the
+        # parenthesization too, so v3/v4 merge under one key as well.
+        [or_key] = [k for k in preconds if k != "p_10_20"]
+        assert preconds[or_key]["affected_operations"] == ["v3", "v4"]
+
+        # Whichever of v3/v4 was emitted first keeps its own AST shape
+        # in the entry (merging never rewrites an existing entry's
+        # ast) — assert only what both source texts guarantee: the
+        # ParExpr wrapper the #379 fix requires is still there for the
+        # gate that was written with parentheses when it's the one
+        # that ends up stored (single-entry check, order-independent).
+        parenthesized_ast = svc._build_preconditions_block(
+            [("({v_A} and {v_B})", ["v2"])], release_id=None
+        )[0]["p_10_20"]["ast"]
+        assert parenthesized_ast["class_name"] == "ParExpr"
+
 
 class TestUnsupportedGates:
     """A gate outside the engine contract fails its operations explicitly.
