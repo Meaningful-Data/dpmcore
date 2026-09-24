@@ -2009,7 +2009,8 @@ class ASTGeneratorService:
 
     # The gate contract shared with the engine's precondition evaluator:
     # filing indicators, run-time parameters and boolean literals combined
-    # with these operators (grouping parentheses are unwrapped). A gate
+    # with these operators (grouping parentheses are preserved as
+    # ParExpr, not unwrapped). A gate
     # carrying anything else — a comparison, arithmetic, a cell reference,
     # a non-boolean literal — has no runtime meaning on the engine side, so
     # it stays out of the script and its operations are reported through
@@ -2034,8 +2035,11 @@ class ASTGeneratorService:
         logical operator that connects them (``and`` / ``or`` / ``xor`` /
         ``not``) survives into the emitted tree, so ``{v_A} or {v_B}``
         reaches the engine as a disjunction instead of the ``and``-fold
-        the old regex path produced. Grouping parentheses are unwrapped:
-        the tree shape already carries the precedence.
+        the old regex path produced. Grouping parentheses are rebuilt as
+        a ``ParExpr`` node rather than unwrapped — the spec requires
+        preserving source parenthesisation for reconstruction (§4.10),
+        even though a ``ParExpr`` carries no precedence of its own; see
+        :meth:`_transform_precondition_ast`.
 
         A parameter that appears in a gate is added to
         ``referenced_parameters`` in the same pass, so the script-level
@@ -2334,10 +2338,14 @@ class ASTGeneratorService:
         Rewiring an ``or`` — or either side of an ``xor`` — the way an
         ``and`` is rewired would leave a *stricter* gate behind and skip
         validations that should have run, so those cases propagate
-        instead. ``ParExpr`` wrappers are unwrapped; ``BinOp`` /
-        ``UnaryOp`` keep their operator, and a ``not`` flips the polarity
-        the rewiring rule is read at. ``ParameterRef`` and boolean
-        ``Constant`` leaves go through the standard ``serialize_ast`` path,
+        instead. ``ParExpr`` wrappers are rebuilt around their transformed
+        ``expression`` (dropped only when that inner result is itself
+        ``None``) — the spec requires preserving source parenthesisation
+        for reconstruction even though it carries no precedence of its
+        own. ``BinOp``/``UnaryOp`` keep their operator, and a ``not``
+        flips the polarity the rewiring rule is read at. ``ParameterRef``
+        and boolean ``Constant`` leaves go through the standard
+        ``serialize_ast`` path,
         so the gate carries exactly the node shape an expression would
         (``code`` / ``param_type`` / ``default``; ``type_`` / ``value``).
         Any other node is a programming error here: ``_parse_gates`` keeps
@@ -2355,13 +2363,16 @@ class ASTGeneratorService:
         node = cls._unwrap_start(node, ast_nodes)
 
         if isinstance(node, ast_nodes.ParExpr):
-            return cls._transform_precondition_ast(
+            inner = cls._transform_precondition_ast(
                 node.expression,
                 resolved,
                 precondition_variables,
                 serialize_ast,
                 negated,
             )
+            if inner is None:
+                return None
+            return {"class_name": "ParExpr", "expression": inner}
         if isinstance(node, (ast_nodes.VarRef, ast_nodes.PreconditionItem)):
             variable = getattr(node, "variable", None) or getattr(
                 node, "variable_code", None
@@ -2554,7 +2565,10 @@ class ASTGeneratorService:
 
         That is a ``PreconditionItem`` or an ``and`` tree whose leaves
         are all ``PreconditionItem`` — the only shape for which the
-        ``p_<sorted vids>`` key alone identifies the gate.
+        ``p_<sorted vids>`` key alone identifies the gate. Called on
+        an already ``ParExpr``-stripped tree (see
+        :meth:`_strip_par_expr`), so grouping parentheses never affect
+        this check.
         """
         if not isinstance(node, dict):
             return False
@@ -2567,6 +2581,26 @@ class ASTGeneratorService:
             and cls._is_conjunction_of_items(node.get("left"))
             and cls._is_conjunction_of_items(node.get("right"))
         )
+
+    @classmethod
+    def _strip_par_expr(cls, node: Any) -> Any:
+        """Return a copy of *node* with every ``ParExpr`` unwrapped.
+
+        Grouping parentheses change how a gate is reconstructed
+        (#379), not what it means, so they must not change its
+        identity (key/version_id) either — otherwise a validation
+        whose source text happens to add non-meaningful parentheses
+        around an otherwise-identical gate would stop merging with
+        one that doesn't. Only used to compute that identity; the
+        emitted ``entry["ast"]`` keeps the real ``ParExpr`` nodes.
+        """
+        if isinstance(node, dict):
+            if node.get("class_name") == "ParExpr":
+                return cls._strip_par_expr(node.get("expression"))
+            return {k: cls._strip_par_expr(v) for k, v in node.items()}
+        if isinstance(node, list):
+            return [cls._strip_par_expr(item) for item in node]
+        return node
 
     @classmethod
     def _strip_precondition_item_vids(cls, node: Any) -> None:
@@ -2612,18 +2646,26 @@ class ASTGeneratorService:
         into ``{v_A} and {v_B}``. ``version_id`` follows the same rule as
         an operation without one: the first vid, or the CRC folded to four
         digits. ``provided_code`` / ``provided_version_id`` override both.
+
+        Both the shape check and the CRC are computed on a
+        ``ParExpr``-stripped copy (:meth:`_strip_par_expr`): grouping
+        parentheses change how the gate is reconstructed, not what it
+        means, so ``({v_A} and {v_B})`` must key and merge exactly like
+        ``{v_A} and {v_B}``. The returned ``ast`` keeps the real
+        ``ParExpr`` nodes.
         """
         item_vids = sorted(cls._collect_precondition_item_vids(gate_ast))
         # Strip the internal ``variable_vid`` field before hashing and
         # emitting; the engine's ``PreconditionItem`` does not carry it.
         cls._strip_precondition_item_vids(gate_ast)
         vids_part = "_".join(str(v) for v in item_vids)
-        if cls._is_conjunction_of_items(gate_ast):
+        identity_ast = cls._strip_par_expr(gate_ast)
+        if cls._is_conjunction_of_items(identity_ast):
             default_key = f"p_{vids_part}"
             default_version_id = item_vids[0]
         else:
             digest = zlib.crc32(
-                json.dumps(gate_ast, sort_keys=True).encode("utf-8")
+                json.dumps(identity_ast, sort_keys=True).encode("utf-8")
             )
             default_key = (
                 f"p_{vids_part}_{digest:08x}"
