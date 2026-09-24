@@ -524,8 +524,10 @@ ASTGeneratorService._discover_module_validations`'s own exclusion.
     def _phantom_paired_scope_ids(
         session: "Session", scope_ids: Set[int], module_vid: int
     ) -> Set[int]:
-        """``OperationScopeID``s whose only *other* composed module
-        versions (besides *module_vid*) are all phantom.
+        """Return scope ids whose only other composed module is phantom.
+
+        These are the ``OperationScopeID``s whose only *other* composed
+        module versions (besides *module_vid*) are all phantom.
 
         Mirrors mdpm's ``is_phantom_module_op``. A scope shared with no
         other module at all is never phantom here — this only voids a
