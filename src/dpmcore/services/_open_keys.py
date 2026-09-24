@@ -16,8 +16,12 @@ from sqlalchemy import or_
 from dpmcore.orm.glossary import ItemCategory, Property
 from dpmcore.orm.infrastructure import DataType
 from dpmcore.orm.query_utils import chunked_in
-from dpmcore.orm.rendering import TableVersion
-from dpmcore.orm.variables import KeyComposition, VariableVersion
+from dpmcore.orm.rendering import (
+    Header,
+    HeaderVersion,
+    TableVersion,
+    TableVersionHeader,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -30,10 +34,16 @@ def get_open_keys_for_tables(
 ) -> Dict[str, Dict[str, str]]:
     """Return ``{table_code: {property_code: data_type_code}}``.
 
-    Identifies the open-key (compound-key) variables of each table by
-    walking ``TableVersion`` → ``KeyComposition`` → ``VariableVersion``
-    → ``Property`` → ``ItemCategory`` (for the property code) →
-    ``DataType`` (for the type code). When ``release_id`` is given the
+    Identifies the open-key (compound-key) headers of each table by
+    walking ``TableVersion`` → ``TableVersionHeader`` → ``Header``
+    (filtered to ``Header.IsKey``) → ``HeaderVersion`` → ``Property``
+    → ``ItemCategory`` (for the property code) → ``DataType`` (for the
+    type code). ``Header.IsKey`` is the DPM concept for "this axis is a
+    key" — a table's open axis headers, not a ``KeyComposition``/
+    ``VariableVersion`` pairing, which models something else entirely
+    (dpmcore#381). ``TableVersionHeader.header_vid`` is a direct FK to
+    one ``HeaderVersion`` row, so unlike ``ItemCategory`` below it needs
+    no separate release-window filter. When ``release_id`` is given the
     query restricts to ``TableVersion`` rows whose release window
     contains it.
     """
@@ -51,17 +61,19 @@ def get_open_keys_for_tables(
         .join(Property, DataType.data_type_id == Property.data_type_id)
         .join(ItemCategory, Property.property_id == ItemCategory.item_id)
         .join(
-            VariableVersion,
-            ItemCategory.item_id == VariableVersion.property_id,
+            HeaderVersion,
+            ItemCategory.item_id == HeaderVersion.property_id,
         )
         .join(
-            KeyComposition,
-            VariableVersion.variable_vid == KeyComposition.variable_vid,
+            TableVersionHeader,
+            TableVersionHeader.header_vid == HeaderVersion.header_vid,
         )
+        .join(Header, Header.header_id == TableVersionHeader.header_id)
         .join(
             TableVersion,
-            KeyComposition.key_id == TableVersion.key_id,
+            TableVersionHeader.table_vid == TableVersion.table_vid,
         )
+        .filter(Header.is_key == True)  # noqa: E712
     )
 
     if release_id is not None:
