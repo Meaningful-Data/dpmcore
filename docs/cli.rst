@@ -478,6 +478,54 @@ only rejected validations is dropped from the ``preconditions`` block
 rather than shipped with ``affected_operations`` the script does not
 contain.
 
+``dpmcore fix-script``
+-----------------------
+
+Patches known EBA source-data errors into an already-generated script's
+JSON, in place. A fixed set of ~20 validations reproduce a source-data
+error faithfully -- an empty/zero default that should be absent, a
+literal typed ``Integer`` where the engine expects ``Boolean``, etc. --
+because the underlying DPM database data is wrong for them, not because
+of a generation bug. EBA doesn't amend already-published releases, so
+these stay wrong indefinitely; run ``fix-script`` after every
+``export-script``/``generate-script`` run, not just once. Ported from
+mdpm's ``mdm-fix-json-values.py``; see
+``dpmcore.services.script_fixups`` for the exact list of fixed
+validations and why each one is wrong at the data level.
+
+.. code-block:: text
+
+   dpmcore fix-script --input-path <path> [--bulk]
+
+**Options:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Option
+     - Description
+   * - ``--input-path PATH``
+     - A single script ``.json`` file, or a directory of them with
+       ``--bulk``. **(Required)**
+   * - ``--bulk``
+     - Treat ``--input-path`` as a directory and fix every ``.json``
+       file in it, instead of a single file.
+
+**Examples:**
+
+.. code-block:: bash
+
+   # A single script file
+   dpmcore fix-script --input-path ./script.json
+
+   # Every script in a directory (e.g. after a bulk export-script sweep)
+   dpmcore fix-script --input-path ./scripts/ --bulk
+
+Only rewrites a file when something in it actually matched a known
+issue; prints which validations were patched per file, or reports that
+no known issues were found.
+
 ``dpmcore export-calculations``
 -------------------------------
 

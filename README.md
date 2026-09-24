@@ -240,6 +240,28 @@ three are pairwise mutually exclusive — a bare `--release` (no
 single version active at that release, instead of naming a version
 directly.
 
+**Patching known EBA data-quality issues:**
+
+A fixed set of ~20 validations reproduce a source-data error faithfully —
+an empty/zero default that should be absent, a literal typed `Integer`
+where the engine expects `Boolean`, etc. — because the underlying DPM
+database data is wrong for them, not because of a generation bug. EBA
+doesn't amend already-published releases, so these stay wrong
+indefinitely; `fix-script` patches an already-generated script's JSON in
+place. Run it after every `export-script`/`generate-script` run, not
+just once:
+
+```bash
+# A single script file
+dpmcore fix-script --input-path ./script.json
+
+# Every script in a directory (e.g. after a bulk export-script sweep)
+dpmcore fix-script --input-path ./scripts/ --bulk
+```
+
+Only rewrites a file when something in it actually matched a known
+issue; prints which validations were patched per file.
+
 **Calculations export:**
 
 Export a module version's *calculations* — the operations linked to it
@@ -708,7 +730,7 @@ src/dpmcore/
 │   └── routers/           scope, scripts, structure
 ├── django/                Django integration app (models, admin, views)
 ├── cli/
-│   └── main.py            Click CLI (migrate, export-csv, build-meili-json, update-db, serve, generate-script, export-script, export-layout)
+│   └── main.py            Click CLI (migrate, export-csv, build-meili-json, update-db, serve, generate-script, export-script, fix-script, export-layout)
 └── dpm_xl/                DPM-XL engine internals
     ├── grammar/           ANTLR4 grammar + generated parser
     ├── ast/               AST nodes, visitor, operands

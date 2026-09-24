@@ -116,6 +116,12 @@ discovered directly from the database — no ``expressions`` list needed —
 use :meth:`~dpmcore.services.ast_generator.ASTGeneratorService.script_for_module`
 or ``dpmcore export-script``.
 
+A fixed set of validations carry a known EBA source-data error that
+both dpmcore and the reference implementation reproduce faithfully.
+Run ``dpmcore fix-script`` on the generated JSON afterwards to patch
+them — see :doc:`../cli` for the full list and why they're wrong at
+the data level, not a generation bug.
+
 Export table layouts to Excel
 -----------------------------
 
