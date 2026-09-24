@@ -740,6 +740,15 @@ class TestDetectCrossModuleDependencies:
             f"http://uri/mod_{module_vid}"
         )
         svc._get_module_tables = lambda module_vid, release_id=None: {}
+        # ``_home_mv_and_uri`` resolves the home module via
+        # ``.filter(...).first()`` on this same mocked query chain,
+        # separate from the ``.all()`` most tests configure for the
+        # dependency-module fetch. Defaulting it to "not found" keeps
+        # ``_cross_dep_entry``'s date-narrowing a no-op for every test
+        # that doesn't care about it, instead of comparing a stray
+        # auto-``MagicMock`` against a real date (#380).
+        q = svc.session.query.return_value
+        q.filter.return_value.first.return_value = None
         return svc, SR
 
     def test_intra_module_returns_op_code(self):
@@ -1243,6 +1252,47 @@ class TestDetectCrossModuleDependencies:
         }
         assert dep_uris == {"http://uri/mod_20"}
 
+    def test_dep_dates_narrowed_to_home_window(self):
+        """Regression for #380: a cross_instance_dependencies entry's
+        reference dates must reflect the window the home and dependency
+        module instances actually share, not the dependency's own
+        window alone.
+        """
+        svc, SR = self._make_svc()
+        svc._get_module_tables = lambda vid, release_id=None: {
+            "T_01": {"variables": {"v1": "x"}, "open_keys": {}},
+        }
+
+        dep_mv = MagicMock()
+        dep_mv.module_vid = 20
+        dep_mv.version_number = "1.0"
+        dep_mv.from_reference_date = "2019-01-01"
+        dep_mv.to_reference_date = "2021-12-31"
+
+        home_mv = MagicMock()
+        home_mv.module_vid = 10
+        home_mv.from_reference_date = "2020-06-01"
+        home_mv.to_reference_date = None
+
+        q = svc.session.query.return_value
+        q.filter.return_value.all.return_value = [dep_mv]
+        q.filter.return_value.first.return_value = home_mv
+
+        sr = SR(
+            scopes=[_scope([10, 20])],
+            is_cross_module=True,
+        )
+        info = svc.detect_cross_module_dependencies(
+            scope_result=sr,
+            primary_module_vid=10,
+            operation_code="v1234",
+        )
+        dep = info["cross_instance_dependencies"][0]
+        # Later start wins; the home module has no end, so the
+        # dependency's own end survives.
+        assert dep["from_reference_date"] == "2020-06-01"
+        assert dep["to_reference_date"] == "2021-12-31"
+
     def test_module_with_only_variable_less_tables_is_dropped(self):
         """Modules whose tables all have empty ``variables`` are dropped.
 
@@ -1288,6 +1338,89 @@ class TestDetectCrossModuleDependencies:
             primary_module_vid=10,
         )
         assert info["dependency_modules"] == {}
+
+
+class TestCrossDepEntryDates:
+    """Unit-test ``_cross_dep_entry``'s date-intersection logic (#380)."""
+
+    @staticmethod
+    def _mv(from_date, to_date):
+        mv = MagicMock()
+        mv.version_number = "1.0"
+        mv.from_reference_date = from_date
+        mv.to_reference_date = to_date
+        return mv
+
+    def test_no_home_mv_keeps_dep_window(self):
+        """Without ``home_mv`` the dependency's own window is unchanged."""
+        Svc, _ = _load_module()
+        mv = self._mv("2020-01-01", "2022-12-31")
+        entry = Svc._cross_dep_entry(
+            uri="http://uri/mod_20",
+            ref_period="T",
+            mv=mv,
+            operation_code=None,
+        )
+        assert entry["from_reference_date"] == "2020-01-01"
+        assert entry["to_reference_date"] == "2022-12-31"
+
+    def test_later_start_and_earlier_end_win(self):
+        dep_mv = self._mv("2019-01-01", "2023-12-31")
+        home_mv = self._mv("2020-06-01", "2021-12-31")
+        Svc, _ = _load_module()
+        entry = Svc._cross_dep_entry(
+            uri="http://uri/mod_20",
+            ref_period="T",
+            mv=dep_mv,
+            operation_code=None,
+            home_mv=home_mv,
+        )
+        assert entry["from_reference_date"] == "2020-06-01"
+        assert entry["to_reference_date"] == "2021-12-31"
+
+    def test_unset_home_bound_does_not_narrow(self):
+        """A missing home start/end leaves that side of the dep window."""
+        dep_mv = self._mv("2019-01-01", "2023-12-31")
+        home_mv = self._mv(None, None)
+        Svc, _ = _load_module()
+        entry = Svc._cross_dep_entry(
+            uri="http://uri/mod_20",
+            ref_period="T",
+            mv=dep_mv,
+            operation_code=None,
+            home_mv=home_mv,
+        )
+        assert entry["from_reference_date"] == "2019-01-01"
+        assert entry["to_reference_date"] == "2023-12-31"
+
+    def test_unset_dep_bound_takes_home_bound(self):
+        """A missing dep start/end takes the home module's bound."""
+        dep_mv = self._mv(None, None)
+        home_mv = self._mv("2020-06-01", "2021-12-31")
+        Svc, _ = _load_module()
+        entry = Svc._cross_dep_entry(
+            uri="http://uri/mod_20",
+            ref_period="T",
+            mv=dep_mv,
+            operation_code=None,
+            home_mv=home_mv,
+        )
+        assert entry["from_reference_date"] == "2020-06-01"
+        assert entry["to_reference_date"] == "2021-12-31"
+
+    def test_both_unset_yields_empty_strings(self):
+        dep_mv = self._mv(None, None)
+        home_mv = self._mv(None, None)
+        Svc, _ = _load_module()
+        entry = Svc._cross_dep_entry(
+            uri="http://uri/mod_20",
+            ref_period="T",
+            mv=dep_mv,
+            operation_code=None,
+            home_mv=home_mv,
+        )
+        assert entry["from_reference_date"] == ""
+        assert entry["to_reference_date"] == ""
 
 
 class TestGetModuleTables:
