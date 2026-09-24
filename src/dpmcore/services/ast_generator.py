@@ -744,8 +744,7 @@ class ASTGeneratorService:
             if self._scope_calc is None:
                 raise InternalError(
                     "ScopeCalculatorService not initialised",
-                    "_process_db_expression_item requires a live DB "
-                    "session.",
+                    "_process_db_expression_item requires a live DB session.",
                 )
             # Same rationale as the AST: the scope is already persisted,
             # so re-deriving it via re-parse+re-validate only risks a

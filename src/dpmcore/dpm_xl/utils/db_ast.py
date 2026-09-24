@@ -163,9 +163,9 @@ def _classify_operators(session: Session) -> Dict[int, _OperatorShape]:
     # rather than suppress the whole line.
     arg_names_by_op: Dict[int, List[str]] = {}
     for row in arguments.itertuples():
-        arg_names_by_op.setdefault(
-            cast(int, row.OperatorID), []
-        ).append(cast(str, row.Name))
+        arg_names_by_op.setdefault(cast(int, row.OperatorID), []).append(
+            cast(str, row.Name)
+        )
 
     shapes: Dict[int, _OperatorShape] = {}
     for row in operators.itertuples():
