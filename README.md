@@ -205,7 +205,11 @@ dpmcore export-script \
 Severities come from `OperationScope.Severity` in the database rather than
 a manual `--severity` override. `--output` is optional for a single target;
 when omitted, the script is written to
-`<module_code>-<module_version>.json` in the current directory.
+`<module_code>-<module_version>.json` in the current directory. Unlike
+`script()`'s Python return value above, the file `export-script` writes
+holds only `enriched_ast`'s content — `failed_operations` is printed to
+the console instead (skipped-validation reasons, next to the discovered
+count), not written to the file.
 
 **Bulk export (`--all-modules`/`--all-versions`):**
 
