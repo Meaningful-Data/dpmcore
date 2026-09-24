@@ -472,7 +472,10 @@ class _Builder:
         refs = self._tree.refs_by_node.get(node.node_id) or []
         if len(refs) == 1:
             ref = refs[0]
-            if ref.operand_reference == "property" and ref.property_id is not None:
+            if (
+                ref.operand_reference == "property"
+                and ref.property_id is not None
+            ):
                 return self._item_category_code(ref.property_id)
             if ref.operand_reference != "property":
                 return ref.operand_reference
@@ -482,7 +485,9 @@ class _Builder:
             f"Unrecognised component leaf at node {node.node_id}"
         )
 
-    def _build_cond_expr(self, children: Dict[str, List[OperationNode]]) -> Any:
+    def _build_cond_expr(
+        self, children: Dict[str, List[OperationNode]]
+    ) -> Any:
         condition = self.build(_one(children, "condition"))
         then_expr = self.build(_one(children, "then"))
         else_nodes = children.get("else")

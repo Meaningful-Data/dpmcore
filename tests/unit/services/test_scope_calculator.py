@@ -485,8 +485,7 @@ class TestBuildScopeResultFromDb:
         q = svc.session.query.return_value
         q.filter.return_value.all.return_value = scopes
         (
-            q.join.return_value.filter.return_value.filter.return_value
-            .all.return_value
+            q.join.return_value.filter.return_value.filter.return_value.all.return_value
         ) = phantom_rows or []
 
     def test_single_module_scope(self):

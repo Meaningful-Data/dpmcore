@@ -450,7 +450,12 @@ class TestBuildOperationEntry:
         """
         _, Cls, _ = _bare_svc()
         out = Cls._build_operation_entry(
-            "expr", "v1", {"x": 1}, "warning", "2026-03-31", 24,
+            "expr",
+            "v1",
+            {"x": 1},
+            "warning",
+            "2026-03-31",
+            24,
             operation_vid=99999,
         )
         assert out["version_id"] == 99999
@@ -2560,9 +2565,7 @@ class TestScriptFromDb:
             build_ast_from_db=build_ast_from_db,
             serialize_built_ast=lambda built: built,
         )
-        monkeypatch.setitem(
-            sys.modules, "dpmcore.dpm_xl.utils.db_ast", mod
-        )
+        monkeypatch.setitem(sys.modules, "dpmcore.dpm_xl.utils.db_ast", mod)
 
     def test_no_session_returns_error(self):
         svc, _, _mod = _bare_svc()

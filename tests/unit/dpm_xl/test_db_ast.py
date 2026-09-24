@@ -222,7 +222,9 @@ def _add_variable(
     dt_id = 9000 + variable_id
     session.add(
         DataType(
-            data_type_id=dt_id, code=f"DT{variable_id}", name=f"Type{variable_id}"
+            data_type_id=dt_id,
+            code=f"DT{variable_id}",
+            name=f"Type{variable_id}",
         )
     )
     session.add(Property(property_id=variable_id, data_type_id=dt_id))
@@ -251,11 +253,14 @@ def _wrap_unary(session: Session, leaf_node_id: int) -> None:
     requires the root itself to carry an ``OperatorID``.
     """
     args = _add_operator(
-        session, 1, name="Not", type_="Unary", symbol="not", arg_names=["operand"]
+        session,
+        1,
+        name="Not",
+        type_="Unary",
+        symbol="not",
+        arg_names=["operand"],
     )
-    _add_node(
-        session, 1, operator_id=1, argument_id=None, is_leaf=False
-    )
+    _add_node(session, 1, operator_id=1, argument_id=None, is_leaf=False)
     # The leaf itself is re-parented under the wrapper; its argument_id
     # must point at the wrapper's single "operand" slot.
     node = session.get(OperationNode, leaf_node_id)
@@ -541,8 +546,10 @@ class TestVarId:
         entry = var_id["data"][0]
         assert entry["datapoint"] == 700
         assert entry["operand_reference_id"] == 1
-        assert entry["x"] == 0 and entry["row"] == "r0010"
-        assert entry["y"] == 0 and entry["column"] == "c0010"
+        assert entry["x"] == 0
+        assert entry["row"] == "r0010"
+        assert entry["y"] == 0
+        assert entry["column"] == "c0010"
 
     def test_multi_cell_promotes_shared_row_only(self, session):
         """Two cells share the same row but differ in column: ``row`` is
@@ -551,9 +558,13 @@ class TestVarId:
         _add_variable(session, 700)
         _add_variable(session, 701)
         _add_node(session, 2, is_leaf=True, use_interval_arithmetics=False)
-        _add_ref(session, 1, node_id=2, x=0, y=0, kind="variable", variable_id=700)
+        _add_ref(
+            session, 1, node_id=2, x=0, y=0, kind="variable", variable_id=700
+        )
         _add_location(session, 1, table="F_01.01", row="r0010", column="c0010")
-        _add_ref(session, 2, node_id=2, x=0, y=1, kind="variable", variable_id=701)
+        _add_ref(
+            session, 2, node_id=2, x=0, y=1, kind="variable", variable_id=701
+        )
         _add_location(session, 2, table="F_01.01", row="r0010", column="c0020")
         _wrap_unary(session, 2)
 
@@ -958,8 +969,12 @@ class TestCompositeShapes:
         rename_node_args = {"old_name": [3001], "new_name": [3002]}
         session.add_all(
             [
-                OperatorArgument(argument_id=3001, operator_id=2, name="old_name"),
-                OperatorArgument(argument_id=3002, operator_id=2, name="new_name"),
+                OperatorArgument(
+                    argument_id=3001, operator_id=2, name="old_name"
+                ),
+                OperatorArgument(
+                    argument_id=3002, operator_id=2, name="new_name"
+                ),
             ]
         )
         session.flush()
@@ -1214,9 +1229,7 @@ class TestBuildAstFromDb:
         assert built.__class__.__name__ == "UnaryOp"
         assert root_operator_id == 1
 
-    def test_serialize_built_ast_matches_build_ast_dict_from_db(
-        self, session
-    ):
+    def test_serialize_built_ast_matches_build_ast_dict_from_db(self, session):
         _add_node(session, 2, is_leaf=True, scalar="1")
         _wrap_unary(session, 2)
 
@@ -1243,7 +1256,9 @@ class TestTreeErrors:
             _build(session)
 
     def test_multiple_roots_raises(self, session):
-        _add_operator(session, 1, name="Not", type_="Unary", arg_names=["operand"])
+        _add_operator(
+            session, 1, name="Not", type_="Unary", arg_names=["operand"]
+        )
         _add_node(session, 1, operator_id=1, is_leaf=False)
         _add_node(session, 2, operator_id=1, is_leaf=False)
 
@@ -1257,7 +1272,9 @@ class TestTreeErrors:
             _build(session)
 
     def test_child_without_argument_raises(self, session):
-        _add_operator(session, 1, name="Not", type_="Unary", arg_names=["operand"])
+        _add_operator(
+            session, 1, name="Not", type_="Unary", arg_names=["operand"]
+        )
         _add_node(session, 1, operator_id=1, is_leaf=False)
         # Child has no argument_id at all -> operator_argument is None.
         _add_node(session, 2, parent_node_id=1, is_leaf=True, scalar="1")

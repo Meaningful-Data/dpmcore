@@ -362,10 +362,11 @@ class ASTGeneratorService:
         operation_vid: Optional[int] = None,
         scope_result: Optional["ScopeResult"] = None,
     ) -> Optional[str]:
-        """Fold one operation's already-resolved AST into the script's
-        accumulators (``operations``, ``scope_pairs``,
-        ``referenced_table_codes``, ``referenced_parameters`` — all
-        mutated in place).
+        """Fold one operation's already-resolved AST into the script.
+
+        Adds to the script's accumulators (``operations``,
+        ``scope_pairs``, ``referenced_table_codes``,
+        ``referenced_parameters`` — all mutated in place).
 
         Independent of how ``ast_dict``/``parameters``/``root_operator_id``
         were obtained — re-parsed from text, or reshaped from the
@@ -403,9 +404,7 @@ class ASTGeneratorService:
         sr = scope_result or self._scope_calc.calculate_from_expression(
             expression=expr,
             release_id=release_id,
-            precondition_items=code_to_precondition_items.get(
-                code, []
-            ),
+            precondition_items=code_to_precondition_items.get(code, []),
         )
         if sr.has_error:
             return (
@@ -540,11 +539,11 @@ class ASTGeneratorService:
             dep_modules = {}
 
         namespace = (
-                self._scope_calc._get_module_uri(
-                    module_vid=primary_module_vid,
-                    mv=mv,
-                )
-                or _DEFAULT_NAMESPACE
+            self._scope_calc._get_module_uri(
+                module_vid=primary_module_vid,
+                mv=mv,
+            )
+            or _DEFAULT_NAMESPACE
         )
 
         module_info = self._build_module_info(mv)
@@ -569,6 +568,175 @@ class ASTGeneratorService:
             "failed_operations": failed_operations,
         }
 
+    def _resolve_db_operation_ast(
+        self,
+        *,
+        session: Any,
+        code: str,
+        expr: str,
+        operation_vid: Optional[int],
+        release_id: int,
+    ) -> Tuple[
+        Optional[Dict[str, Any]],
+        List[ParameterInfo],
+        Dict[str, List[str]],
+        Optional[int],
+        Optional[str],
+    ]:
+        """Resolve one operation's ast_dict/parameters/ts/root_operator_id.
+
+        Tries the persisted ``OperationNode`` tree first
+        (:func:`db_ast.build_ast_from_db`), falling back to re-parsing
+        *expr* when that isn't possible. Used by :meth:`script_from_db`,
+        split out to keep its own branching within the complexity limit.
+
+        Returns ``(ast_dict, parameters, ts, root_operator_id, error)``
+        — a non-``None`` ``error`` means the operation failed and the
+        other fields should be ignored.
+        """
+        from dpmcore.dpm_xl.utils.db_ast import (
+            UnsupportedDbAst,
+            build_ast_from_db,
+            serialize_built_ast,
+        )
+        from dpmcore.dpm_xl.utils.serialization import serialize_ast
+
+        ast_dict: Optional[Dict[str, Any]] = None
+        built_ast: Optional[Any] = None
+        root_operator_id: Optional[int] = None
+
+        if operation_vid is not None:
+            try:
+                built_ast, root_operator_id = build_ast_from_db(
+                    session, operation_vid, release_id
+                )
+                ast_dict = serialize_built_ast(built_ast)
+            except UnsupportedDbAst:
+                ast_dict = None
+                built_ast = None
+
+        if ast_dict is None:
+            # Same resolution script() uses for the text-reparse path —
+            # duplicated rather than shared, it's a handful of lines
+            # (see dpmcore#364).
+            prepared = self._prepare_expression(
+                self._semantic, expr, release_id, gate_failure=None
+            )
+            if prepared.error is not None:
+                return None, [], {}, None, prepared.error
+            result, ast, ts = prepared.result, prepared.ast, prepared.ts
+            ast_dict = serialize_ast(ast)
+            parameters = result.parameters
+            root_operator_id = self._resolve_root_operator_id(ast, session)
+            return ast_dict, parameters, ts, root_operator_id, None
+
+        # Same source script() uses — the AST itself — not whether it
+        # came from the DB or a re-parse: a parameter is self-contained
+        # in its own node (code/type/default are declared inline, never
+        # resolved from the DB), so it is read straight off the tree
+        # db_ast.py already built.
+        found_parameters: Dict[str, ParameterInfo] = {}
+        self._accumulate_ast_parameters(found_parameters, ast_dict)
+        parameters = list(found_parameters.values())
+        # Same reasoning as _prepare_expression's own call: a shift
+        # whose period cannot be declared must reject this one
+        # operation, not the whole module.
+        try:
+            ts = self._extract_time_shifts(built_ast)
+        except SemanticError as exc:
+            return None, [], {}, None, str(exc)
+        return ast_dict, parameters, ts, root_operator_id, None
+
+    def _process_db_expression_item(
+        self,
+        *,
+        item: Tuple[str, str],
+        session: Any,
+        gate_failures: Dict[str, str],
+        operation_vids: Dict[str, int],
+        primary_module_vid: int,
+        release_id: int,
+        resolved_severities: Dict[str, str],
+        from_submission_dates: Dict[str, str],
+        code_to_precondition_items: Dict[str, List[Any]],
+        operations: Dict[str, Dict[str, Any]],
+        scope_pairs: List[
+            Tuple[
+                Tuple[str, str],
+                "ScopeResult",
+                Dict[str, List[str]],
+                _OperandRefs,
+            ]
+        ],
+        referenced_table_codes: set[str],
+        referenced_parameters: Dict[str, ParameterInfo],
+    ) -> Optional[str]:
+        """Resolve and fold one :meth:`script_from_db` expression item.
+
+        Returns the failure reason to record in ``failed_operations``
+        for this item's code, or ``None`` on success. Split out to keep
+        :meth:`script_from_db`'s own branching within the complexity
+        limit.
+        """
+        from dpmcore.services.scope_calculator import UnsupportedDbScope
+
+        expr, code = item[0], item[1]
+
+        # Checked once, up front, for both resolution paths below — a
+        # precondition the engine cannot evaluate must reject the
+        # operation regardless of whether its own AST would otherwise
+        # resolve from the DB or from re-parsed text.
+        gate_failure = gate_failures.get(code)
+        if gate_failure is not None:
+            return gate_failure
+
+        operation_vid = operation_vids.get(code)
+        (
+            ast_dict,
+            parameters,
+            ts,
+            root_operator_id,
+            resolve_error,
+        ) = self._resolve_db_operation_ast(
+            session=session,
+            code=code,
+            expr=expr,
+            operation_vid=operation_vid,
+            release_id=release_id,
+        )
+        if resolve_error is not None:
+            return resolve_error
+
+        scope_result: Optional["ScopeResult"] = None
+        if operation_vid is not None:
+            # Same rationale as the AST: the scope is already persisted,
+            # so re-deriving it via re-parse+re-validate only risks a
+            # spurious rejection (e.g. grey cells).
+            try:
+                scope_result = self._scope_calc.build_scope_result_from_db(
+                    operation_vid, primary_module_vid
+                )
+            except UnsupportedDbScope:
+                scope_result = None
+
+        return self._process_operation(
+            item=item,
+            ast_dict=ast_dict,
+            parameters=parameters,
+            root_operator_id=root_operator_id,
+            ts=ts,
+            release_id=release_id,
+            resolved_severities=resolved_severities,
+            from_submission_date=from_submission_dates.get(code),
+            code_to_precondition_items=code_to_precondition_items,
+            operations=operations,
+            scope_pairs=scope_pairs,
+            referenced_table_codes=referenced_table_codes,
+            referenced_parameters=referenced_parameters,
+            operation_vid=operation_vid,
+            scope_result=scope_result,
+        )
+
     def script_from_db(
         self,
         expressions: List[Tuple[str, str]],
@@ -582,8 +750,7 @@ class ASTGeneratorService:
         severities: Optional[Dict[str, str]] = None,
         from_submission_dates: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
-        """Generate an engine-ready validations script for a DB-discovered
-        module version.
+        """Generate a DB-discovered module version's validations script.
 
         For each operation, its persisted ``OperationNode`` tree is tried
         first (:func:`db_ast.build_ast_from_db`) — falling back to
@@ -596,14 +763,18 @@ class ASTGeneratorService:
         ``root_operator_id`` are obtained.
 
         Args:
-            expressions, preconditions, severity, severities: same as
-                :meth:`script`.
+            expressions: same as :meth:`script`.
             operation_vids: ``{code: OperationVID}``, from
                 :meth:`_discover_module_validations` — which operations
                 have a persisted AST to try first.
-            mv, release_row: already resolved by the caller
+            mv: already resolved by the caller (:meth:`script_for_module`),
+                so this doesn't re-resolve it.
+            release_row: already resolved by the caller
                 (:meth:`script_for_module`), so this doesn't re-resolve
-                them.
+                it.
+            preconditions: same as :meth:`script`.
+            severity: same as :meth:`script`.
+            severities: same as :meth:`script`.
             from_submission_dates: ``{code: FromSubmissionDate}``, from
                 :meth:`_discover_module_validations` — the real
                 per-operation submission date. A code missing here (the
@@ -636,14 +807,6 @@ class ASTGeneratorService:
             }
 
         try:
-            from dpmcore.dpm_xl.utils.db_ast import (
-                UnsupportedDbAst,
-                build_ast_from_db,
-                serialize_built_ast,
-            )
-            from dpmcore.dpm_xl.utils.serialization import serialize_ast
-            from dpmcore.services.scope_calculator import UnsupportedDbScope
-
             primary_module_vid: int = mv.module_vid
             release_id: int = release_row.release_id
 
@@ -682,118 +845,30 @@ class ASTGeneratorService:
             referenced_parameters: Dict[str, ParameterInfo] = {}
 
             for item in expressions:
-                expr, code = item[0], item[1]
-
-                # Checked once, up front, for both resolution paths below
-                # — a precondition the engine cannot evaluate must reject
-                # the operation regardless of whether its own AST would
-                # otherwise resolve from the DB or from re-parsed text.
-                gate_failure = gate_failures.get(code)
-                if gate_failure is not None:
-                    failed_operations[code] = gate_failure
-                    continue
-
-                ast_dict: Optional[Dict[str, Any]] = None
-                built_ast: Optional[Any] = None
-                parameters: List[ParameterInfo] = []
-                ts: Dict[str, List[str]] = {}
-                root_operator_id: Optional[int] = None
-
-                operation_vid = operation_vids.get(code)
-                if operation_vid is not None:
-                    try:
-                        built_ast, root_operator_id = build_ast_from_db(
-                            session, operation_vid, release_id
-                        )
-                        ast_dict = serialize_built_ast(built_ast)
-                    except UnsupportedDbAst:
-                        ast_dict = None
-                        built_ast = None
-
-                if ast_dict is None:
-                    # Same resolution script() uses for the text-reparse
-                    # path — duplicated rather than shared, it's a
-                    # handful of lines (see dpmcore#364).
-                    prepared = self._prepare_expression(
-                        self._semantic,
-                        expr,
-                        release_id,
-                        gate_failure=None,
-                    )
-                    if prepared.error is not None:
-                        failed_operations[code] = prepared.error
-                        continue
-                    result, ast, ts = (
-                        prepared.result,
-                        prepared.ast,
-                        prepared.ts,
-                    )
-                    ast_dict = serialize_ast(ast)
-                    parameters = result.parameters
-                    root_operator_id = self._resolve_root_operator_id(
-                        ast, session
-                    )
-                else:
-                    # Same source script() uses — the AST itself — not
-                    # whether it came from the DB or a re-parse: a
-                    # parameter is self-contained in its own node
-                    # (code/type/default are declared inline, never
-                    # resolved from the DB), so it is read straight off
-                    # the tree db_ast.py already built.
-                    found_parameters: Dict[str, ParameterInfo] = {}
-                    self._accumulate_ast_parameters(
-                        found_parameters, ast_dict
-                    )
-                    parameters = list(found_parameters.values())
-                    # Same reasoning as _prepare_expression's own call:
-                    # a shift whose period cannot be declared must reject
-                    # this one operation, not the whole module.
-                    try:
-                        ts = self._extract_time_shifts(built_ast)
-                    except SemanticError as exc:
-                        failed_operations[code] = str(exc)
-                        continue
-
-                scope_result: Optional["ScopeResult"] = None
-                if operation_vid is not None:
-                    # Same rationale as the AST: the scope is already
-                    # persisted, so re-deriving it via re-parse+re-validate
-                    # only risks a spurious rejection (e.g. grey cells).
-                    try:
-                        scope_result = (
-                            self._scope_calc.build_scope_result_from_db(
-                                operation_vid, primary_module_vid
-                            )
-                        )
-                    except UnsupportedDbScope:
-                        scope_result = None
-
-                scope_error = self._process_operation(
+                code = item[1]
+                # Unlike script()'s text-reparse path (#122), a failure
+                # here excludes just this operation instead of aborting
+                # the whole module: export-script discovers every active
+                # validation for the module by itself, so one bad
+                # operation would otherwise take down a script the
+                # caller never explicitly asked for by name.
+                error = self._process_db_expression_item(
                     item=item,
-                    ast_dict=ast_dict,
-                    parameters=parameters,
-                    root_operator_id=root_operator_id,
-                    ts=ts,
+                    session=session,
+                    gate_failures=gate_failures,
+                    operation_vids=operation_vids,
+                    primary_module_vid=primary_module_vid,
                     release_id=release_id,
                     resolved_severities=resolved_severities,
-                    from_submission_date=from_submission_dates.get(code),
+                    from_submission_dates=from_submission_dates,
                     code_to_precondition_items=code_to_precondition_items,
                     operations=operations,
                     scope_pairs=scope_pairs,
                     referenced_table_codes=referenced_table_codes,
                     referenced_parameters=referenced_parameters,
-                    operation_vid=operation_vid,
-                    scope_result=scope_result,
                 )
-                if scope_error is not None:
-                    # Unlike script()'s text-reparse path (#122), a scope
-                    # failure here excludes just this operation instead of
-                    # aborting the whole module: export-script discovers
-                    # every active validation for the module by itself, so
-                    # one bad operation would otherwise take down a script
-                    # the caller never explicitly asked for by name.
-                    failed_operations[code] = scope_error
-                    continue
+                if error is not None:
+                    failed_operations[code] = error
 
             return self._assemble_script(
                 mv=mv,
@@ -1216,11 +1291,7 @@ class ASTGeneratorService:
             OperationScopeComposition,
             OperationVersion,
         )
-        from dpmcore.orm.release_sort_order import (
-            compute_sort_order,
-            load_release_sort_orders,
-            sort_order_from,
-        )
+        from dpmcore.orm.release_sort_order import load_release_sort_orders
 
         session = self.session
         if session is None:
@@ -1272,22 +1343,9 @@ class ASTGeneratorService:
         rows = query.all()
 
         sort_orders = load_release_sort_orders(session)
-        open_end_sort = compute_sort_order(None, None)
-
-        def _end_sort(release_id: Optional[int]) -> int:
-            if release_id is None:
-                return open_end_sort
-            return sort_order_from(sort_orders, release_id)
-
-        module_start_sort = sort_order_from(sort_orders, mv.start_release_id)
-        module_end_sort = _end_sort(mv.end_release_id)
-
-        overlapping = [
-            row
-            for row in rows
-            if module_end_sort > sort_order_from(sort_orders, row[7])
-            and _end_sort(row[8]) > module_start_sort
-        ]
+        overlapping = self._overlapping_operation_version_rows(
+            rows, sort_orders, mv
+        )
 
         scope_ids = {row[6] for row in overlapping}
         phantom_scope_ids = (
@@ -1298,39 +1356,9 @@ class ASTGeneratorService:
             else set()
         )
 
-        # A code can match more than one OperationVersion row; keep the
-        # latest (highest OperationVID) per code. Widening the scope
-        # filter to the ghosts ``mv`` stands in for can also return one
-        # OperationVersion twice, once per scope, and the two scope rows
-        # may carry different severities — rank ``mv``'s own scope above
-        # the ghost's so the winner does not depend on join order.
-        _Rank = Tuple[int, int]
-        _Row = Tuple[_Rank, str, Optional[str], Optional[int], Any]
-        latest_by_code: Dict[str, _Row] = {}
-        for (
-            op_vid,
-            code,
-            expression,
-            severity,
-            prec_vid,
-            module_vid,
-            scope_id,
-            _start_rel,
-            _end_rel,
-            from_submission_date,
-        ) in overlapping:
-            if scope_id in phantom_scope_ids:
-                continue
-            rank = (op_vid, 1 if module_vid == mv.module_vid else 0)
-            existing = latest_by_code.get(code)
-            if existing is None or rank > existing[0]:
-                latest_by_code[code] = (
-                    rank,
-                    expression,
-                    severity,
-                    prec_vid,
-                    from_submission_date,
-                )
+        latest_by_code = self._latest_operation_by_code(
+            overlapping, phantom_scope_ids, mv.module_vid
+        )
 
         expressions: List[Tuple[str, str]] = []
         operation_vids: Dict[str, int] = {}
@@ -1364,6 +1392,91 @@ class ASTGeneratorService:
             severities,
             from_submission_dates,
         )
+
+    @staticmethod
+    def _overlapping_operation_version_rows(
+        rows: List[Tuple[Any, ...]],
+        sort_orders: Dict[int, int],
+        mv: Any,
+    ) -> List[Tuple[Any, ...]]:
+        """Rows whose ``OperationVersion`` window overlaps *mv*'s own.
+
+        Mirrors mdpm's ``get_active_operations``, using
+        :mod:`dpmcore.orm.release_sort_order` instead of raw
+        ``ReleaseID`` comparison so a non-monotonic release ID can't
+        misorder the overlap check. Split out of
+        :meth:`_discover_module_validations` to keep its own branching
+        within the complexity limit.
+        """
+        from dpmcore.orm.release_sort_order import (
+            compute_sort_order,
+            sort_order_from,
+        )
+
+        open_end_sort = compute_sort_order(None, None)
+
+        def _end_sort(release_id: Optional[int]) -> int:
+            if release_id is None:
+                return open_end_sort
+            return sort_order_from(sort_orders, release_id)
+
+        module_start_sort = sort_order_from(sort_orders, mv.start_release_id)
+        module_end_sort = _end_sort(mv.end_release_id)
+
+        return [
+            row
+            for row in rows
+            if module_end_sort > sort_order_from(sort_orders, row[7])
+            and _end_sort(row[8]) > module_start_sort
+        ]
+
+    @staticmethod
+    def _latest_operation_by_code(
+        overlapping: List[Tuple[Any, ...]],
+        phantom_scope_ids: Set[int],
+        home_module_vid: int,
+    ) -> Dict[
+        str, Tuple[Tuple[int, int], str, Optional[str], Optional[int], Any]
+    ]:
+        """Keep the latest (highest ``OperationVID``) row per code.
+
+        A code can match more than one ``OperationVersion`` row: the
+        ghost substitution in :meth:`_discover_module_validations` can
+        return one operation twice, once per scope, and the two scope
+        rows may carry different severities — ``mv``'s own scope is
+        ranked above the ghost's so the winner does not depend on join
+        order. Split out to keep the caller's own branching within the
+        complexity limit.
+        """
+        latest_by_code: Dict[
+            str,
+            Tuple[Tuple[int, int], str, Optional[str], Optional[int], Any],
+        ] = {}
+        for (
+            op_vid,
+            code,
+            expression,
+            severity,
+            prec_vid,
+            module_vid,
+            scope_id,
+            _start_rel,
+            _end_rel,
+            from_submission_date,
+        ) in overlapping:
+            if scope_id in phantom_scope_ids:
+                continue
+            rank = (op_vid, 1 if module_vid == home_module_vid else 0)
+            existing = latest_by_code.get(code)
+            if existing is None or rank > existing[0]:
+                latest_by_code[code] = (
+                    rank,
+                    expression,
+                    severity,
+                    prec_vid,
+                    from_submission_date,
+                )
+        return latest_by_code
 
     def _ghosts_represented_by(
         self, session: "Session", mv: Any, release_row: Any
@@ -2555,9 +2668,7 @@ class ASTGeneratorService:
         elif isinstance(node, list):
             for item in node:
                 if isinstance(item, (dict, list)):
-                    cls._accumulate_ast_parameters(
-                        referenced_parameters, item
-                    )
+                    cls._accumulate_ast_parameters(referenced_parameters, item)
 
     @classmethod
     def _is_conjunction_of_items(cls, node: Any) -> bool:
