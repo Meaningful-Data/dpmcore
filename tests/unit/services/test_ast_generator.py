@@ -537,6 +537,28 @@ class TestBuildPreconditionsBlock:
         assert preconds == {}
         assert vars_ == {}
 
+    def test_parenthesized_unresolved_code_silently_skipped(
+        self, monkeypatch, real_syntax
+    ):
+        """A ``ParExpr`` wrapping an unresolved reference drops too.
+
+        Regression for dpmcore#379: rebuilding the ``ParExpr`` around
+        its transformed inner expression must still collapse to
+        ``None`` (not a ``ParExpr`` around ``None``) when that inner
+        expression is itself unresolved, the same as the unparenthesized
+        case above.
+        """
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        svc._syntax = real_syntax
+        _install_variable_resolver(monkeypatch, {})
+
+        preconds, vars_ = svc._build_preconditions_block(
+            [("({v_unresolved})", ["v1"])], release_id=None
+        )
+        assert preconds == {}
+        assert vars_ == {}
+
     def test_unresolved_and_operand_keeps_the_other_side(
         self, monkeypatch, real_syntax
     ):
@@ -794,18 +816,6 @@ class TestBuildPreconditionsBlock:
 # ------------------------------------------------------------------ #
 
 
-def _collect_class_names(node, acc=None):
-    acc = set() if acc is None else acc
-    if isinstance(node, dict):
-        acc.add(node.get("class_name"))
-        for value in node.values():
-            _collect_class_names(value, acc)
-    elif isinstance(node, list):
-        for item in node:
-            _collect_class_names(item, acc)
-    return acc
-
-
 class TestGateParameterPropagation:
     """A ``{p_*}`` reference in a gate reaches the engine intact.
 
@@ -973,7 +983,17 @@ class TestGateParameterPropagation:
 
     def test_not_xor_and_grouping_preserved(self, monkeypatch, real_syntax):
         """Every operator the engine's evaluator implements survives, and
-        grouping parentheses are unwrapped rather than emitted.
+        grouping parentheses are rebuilt as a ``ParExpr`` node rather
+        than unwrapped — the spec requires preserving source
+        parenthesisation for reconstruction (§4.10), even though a
+        ``ParExpr`` carries no precedence of its own.
+
+        The grouped clause here is the *right* operand of ``or``, not
+        the operand of ``not``: the AST constructor has its own,
+        unrelated special case for ``not (...)`` — it always unwraps
+        that particular ``ParExpr`` (``visitNotExpr`` in
+        ``ast/constructor.py``) — so asserting the wrapper survives
+        needs a grouped clause that case doesn't touch.
         """
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
@@ -988,7 +1008,7 @@ class TestGateParameterPropagation:
         )
 
         preconds, vars_ = svc._build_preconditions_block(
-            [("not ({v_A} xor {v_B}) or {v_C}", ["v1"])], release_id=None
+            [("not {v_A} or ({v_B} xor {v_C})", ["v1"])], release_id=None
         )
 
         [entry] = preconds.values()
@@ -997,17 +1017,31 @@ class TestGateParameterPropagation:
         ast = entry["ast"]
         assert ast["class_name"] == "BinOp"
         assert ast["op"] == "or"
-        assert ast["right"] == {
+
+        negation = ast["left"]
+        assert negation["class_name"] == "UnaryOp"
+        assert negation["op"] == "not"
+        assert negation["operand"] == {
+            "class_name": "PreconditionItem",
+            "variable_id": 1,
+            "variable_code": "A",
+        }
+
+        wrapped = ast["right"]
+        assert wrapped["class_name"] == "ParExpr"
+        xor_node = wrapped["expression"]
+        assert xor_node["class_name"] == "BinOp"
+        assert xor_node["op"] == "xor"
+        assert xor_node["left"] == {
+            "class_name": "PreconditionItem",
+            "variable_id": 2,
+            "variable_code": "B",
+        }
+        assert xor_node["right"] == {
             "class_name": "PreconditionItem",
             "variable_id": 3,
             "variable_code": "C",
         }
-        negation = ast["left"]
-        assert negation["class_name"] == "UnaryOp"
-        assert negation["op"] == "not"
-        assert negation["operand"]["class_name"] == "BinOp"
-        assert negation["operand"]["op"] == "xor"
-        assert "ParExpr" not in _collect_class_names(ast)
         assert vars_ == {"10": "b", "20": "b", "30": "b"}
 
     def test_gates_with_different_shapes_never_share_a_key(
@@ -1046,6 +1080,58 @@ class TestGateParameterPropagation:
         assert disjunction_key.startswith("p_10_20_")
         assert preconds[disjunction_key]["affected_operations"] == ["v2"]
         assert preconds[disjunction_key]["ast"]["op"] == "or"
+
+    def test_non_meaningful_parens_do_not_change_the_key(
+        self, monkeypatch, real_syntax
+    ):
+        """Regression: grouping parentheses must not affect the gate's
+        identity (key/version_id/merging), only how it's reconstructed.
+
+        ``ParExpr`` is preserved in the emitted ``ast`` (#379), but
+        ``({v_A} and {v_B})`` must still key and merge exactly like
+        ``{v_A} and {v_B}`` — the two are the same gate, just written
+        differently in the source dictionary.
+        """
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        svc._syntax = real_syntax
+        _install_variable_resolver(
+            monkeypatch,
+            {
+                "A": {"variable_id": 1, "variable_vid": 10},
+                "B": {"variable_id": 2, "variable_vid": 20},
+            },
+        )
+
+        preconds, _vars = svc._build_preconditions_block(
+            [
+                ("{v_A} and {v_B}", ["v1"]),
+                ("({v_A} and {v_B})", ["v2"]),
+                ("{v_A} or {v_B}", ["v3"]),
+                ("({v_A} or {v_B})", ["v4"]),
+            ],
+            release_id=None,
+        )
+
+        # The conjunction keeps the plain p_<vids> key and merges v1/v2.
+        assert preconds["p_10_20"]["affected_operations"] == ["v1", "v2"]
+        assert preconds["p_10_20"]["ast"]["class_name"] == "BinOp"
+
+        # The disjunction's CRC-suffixed key is unaffected by the
+        # parenthesization too, so v3/v4 merge under one key as well.
+        [or_key] = [k for k in preconds if k != "p_10_20"]
+        assert preconds[or_key]["affected_operations"] == ["v3", "v4"]
+
+        # Whichever of v3/v4 was emitted first keeps its own AST shape
+        # in the entry (merging never rewrites an existing entry's
+        # ast) — assert only what both source texts guarantee: the
+        # ParExpr wrapper the #379 fix requires is still there for the
+        # gate that was written with parentheses when it's the one
+        # that ends up stored (single-entry check, order-independent).
+        parenthesized_ast = svc._build_preconditions_block(
+            [("({v_A} and {v_B})", ["v2"])], release_id=None
+        )[0]["p_10_20"]["ast"]
+        assert parenthesized_ast["class_name"] == "ParExpr"
 
 
 class TestUnsupportedGates:
