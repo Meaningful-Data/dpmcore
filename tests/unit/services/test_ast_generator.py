@@ -3010,6 +3010,61 @@ class TestScriptFromDb:
 
 
 # ------------------------------------------------------------------ #
+# script_for_module — release_was_explicit derivation
+# ------------------------------------------------------------------ #
+
+
+class TestScriptForModuleReleaseWasExplicit:
+    """``release_was_explicit`` (``release is not None``) is the single
+    switch gating the #182 ghost-fallback rescue everywhere downstream
+    (Andrés's review on PR #396). ``TestScriptFromDb``'s
+    ``test_release_was_explicit_threads_through_to_scope_rebuild``
+    pins the value once already computed reaching
+    ``build_scope_result_from_db``; this pins the derivation itself —
+    that a bare ``--module-version``/``--all-versions`` call (``release
+    =None``) computes ``False``, and an explicit ``--release`` computes
+    ``True``.
+    """
+
+    def _build_svc(self):
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        mv = SimpleNamespace(module_vid=10)
+        release_row = SimpleNamespace(release_id=5)
+        svc._resolve_release = MagicMock(return_value=(mv, release_row))
+        svc._discover_module_validations = MagicMock(
+            return_value=([], {}, [], {}, {})
+        )
+        svc.script_from_db = MagicMock(return_value={"success": True})
+        return svc, mv, release_row
+
+    def test_release_none_is_not_explicit(self):
+        svc, mv, release_row = self._build_svc()
+        svc.script_for_module("MOD", "1.0.0", release=None)
+
+        svc._resolve_release.assert_called_once_with("MOD", "1.0.0", None)
+        svc._discover_module_validations.assert_called_once_with(
+            mv, release_row, False
+        )
+        assert (
+            svc.script_from_db.call_args.kwargs["release_was_explicit"]
+            is False
+        )
+
+    def test_release_given_is_explicit(self):
+        svc, mv, release_row = self._build_svc()
+        svc.script_for_module("MOD", "1.0.0", release="4.2")
+
+        svc._resolve_release.assert_called_once_with("MOD", "1.0.0", "4.2")
+        svc._discover_module_validations.assert_called_once_with(
+            mv, release_row, True
+        )
+        assert (
+            svc.script_from_db.call_args.kwargs["release_was_explicit"] is True
+        )
+
+
+# ------------------------------------------------------------------ #
 # _overlapping_operation_version_rows
 # ------------------------------------------------------------------ #
 
@@ -3136,6 +3191,120 @@ class TestOverlappingOperationVersionRows:
             [row], self._sort_orders(), windows
         )
         assert out == []
+
+
+# ------------------------------------------------------------------ #
+# _ghost_windows
+# ------------------------------------------------------------------ #
+
+
+class TestGhostWindows:
+    def test_returns_start_end_tuples_for_ghost_vids(self):
+        _, Cls, _ = _bare_svc()
+        session = MagicMock()
+        session.query.return_value.filter.return_value.all.return_value = [
+            (5, None),
+            (7, 9),
+        ]
+        out = Cls._ghost_windows(session, [401, 488])
+        assert out == [(5, None), (7, 9)]
+
+    def test_no_ghost_vids_returns_empty(self):
+        _, Cls, _ = _bare_svc()
+        session = MagicMock()
+        session.query.return_value.filter.return_value.all.return_value = []
+        assert Cls._ghost_windows(session, []) == []
+
+
+# ------------------------------------------------------------------ #
+# _discover_module_validations — release_was_explicit gating
+# ------------------------------------------------------------------ #
+
+
+class TestDiscoverModuleValidationsGhostGating:
+    """The gating body itself: whether ``_ghost_windows`` gets
+    consulted and ``ghost_fallback_map`` gets populated. The pieces
+    this wires together (``_overlapping_operation_version_rows``,
+    ``_ghost_fallback_map``, ``_phantom_paired_scope_ids``) are each
+    tested in isolation elsewhere; this pins the orchestration
+    (Andrés's review on PR #396 — verified end-to-end against the real
+    DB separately).
+    """
+
+    @staticmethod
+    def _sort_order_rows():
+        # One row per release_id this scenario's windows can reference,
+        # in increasing date order — only relative order matters.
+        return [
+            (1, date(2024, 1, 1), None),
+            (30, date(2024, 6, 1), None),
+            (50, date(2024, 12, 1), None),
+        ]
+
+    def _build_svc(self, monkeypatch, *, ghost_vids):
+        # ``Operation`` comes from the stubbed ``dpmcore.orm.operations``,
+        # so ``Operation.code.startswith(...)`` is a bare MagicMock — the
+        # real ``sqlalchemy.or_`` (imported locally, unstubbed) rejects
+        # that as a clause. The rest of the query chain below is fully
+        # mocked and ignores whatever ``or_`` returns, so a stand-in
+        # that just returns *something* is enough here.
+        monkeypatch.setattr("sqlalchemy.or_", lambda *a, **kw: MagicMock())
+
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        svc._scope_calc = MagicMock()
+        svc._scope_calc._ghost_fallback_map.return_value = {}
+        svc._scope_calc._phantom_paired_scope_ids.return_value = set()
+        svc._release_ghost_fallbacks = MagicMock(
+            return_value=({10: ghost_vids} if ghost_vids else {})
+        )
+        svc._ghost_windows = MagicMock(return_value=[(30, 50)])
+
+        row = _version_row(
+            module_vid=10, scope_id=1, start_release_id=1, end_release_id=None
+        )
+        session = svc.session
+        chain = session.query.return_value.join.return_value.join.return_value.join.return_value.filter.return_value.filter.return_value.filter.return_value
+        chain.all.return_value = [row]
+        session.query.return_value.all.return_value = self._sort_order_rows()
+
+        mv = SimpleNamespace(
+            module_vid=10, start_release_id=1, end_release_id=None
+        )
+        release_row = SimpleNamespace(release_id=5)
+        return svc, mv, release_row
+
+    def test_not_explicit_skips_ghost_window_and_fallback_map(
+        self, monkeypatch
+    ):
+        svc, mv, release_row = self._build_svc(monkeypatch, ghost_vids=[999])
+        svc._discover_module_validations(
+            mv, release_row, release_was_explicit=False
+        )
+        svc._ghost_windows.assert_not_called()
+        svc._scope_calc._ghost_fallback_map.assert_not_called()
+
+    def test_explicit_consults_ghost_window_and_fallback_map(
+        self, monkeypatch
+    ):
+        svc, mv, release_row = self._build_svc(monkeypatch, ghost_vids=[999])
+        svc._discover_module_validations(
+            mv, release_row, release_was_explicit=True
+        )
+        svc._ghost_windows.assert_called_once_with(svc.session, [999])
+        svc._scope_calc._ghost_fallback_map.assert_called_once_with(5)
+
+    def test_explicit_but_no_ghosts_skips_ghost_window(self, monkeypatch):
+        """The window union only ever adds anything when *mv* actually
+        stands in for a ghost at this release — an explicit ``--release``
+        for a module with no #182 involvement must not pay for (or be
+        affected by) a lookup that has nothing to widen.
+        """
+        svc, mv, release_row = self._build_svc(monkeypatch, ghost_vids=[])
+        svc._discover_module_validations(
+            mv, release_row, release_was_explicit=True
+        )
+        svc._ghost_windows.assert_not_called()
 
 
 # ------------------------------------------------------------------ #

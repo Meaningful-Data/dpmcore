@@ -669,6 +669,88 @@ class TestPhantomPairedScopeIds:
         assert result == set()
 
 
+class TestGhostFallbackMap:
+    """Direct coverage of the #182 inversion and its per-release cache."""
+
+    def _make_svc(self):
+        Svc, _ = _load_module()
+        return Svc(MagicMock())
+
+    def test_inverts_a_fallback_covering_several_ghosts(self):
+        """A fallback stands in for more than one ghost — every ghost
+        VID must map back to it (COREP_LE-3.1.0 covers both of its
+        pre-1.0.0-restatement ghost siblings, for instance).
+        """
+        svc = self._make_svc()
+        mq = sys.modules["dpmcore.dpm_xl.model_queries"]
+        mq.ModuleVersionQuery.ghost_fallbacks = MagicMock(
+            return_value={777: [111, 999]}
+        )
+        assert svc._ghost_fallback_map(release_id=5) == {111: 777, 999: 777}
+
+    def test_memoises_per_release_id(self):
+        """A second call for the same release must not re-query —
+        ``build_scope_result_from_db`` and ``_phantom_paired_scope_ids``
+        both call this once per operation, release-wide.
+        """
+        svc = self._make_svc()
+        mq = sys.modules["dpmcore.dpm_xl.model_queries"]
+        mq.ModuleVersionQuery.ghost_fallbacks = MagicMock(
+            return_value={777: [999]}
+        )
+        first = svc._ghost_fallback_map(release_id=5)
+        again = svc._ghost_fallback_map(release_id=5)
+        assert again == first == {999: 777}
+        mq.ModuleVersionQuery.ghost_fallbacks.assert_called_once_with(
+            svc.session, 5
+        )
+
+    def test_different_releases_are_not_conflated(self):
+        svc = self._make_svc()
+        mq = sys.modules["dpmcore.dpm_xl.model_queries"]
+        mq.ModuleVersionQuery.ghost_fallbacks = MagicMock(
+            side_effect=[{777: [999]}, {888: [222]}]
+        )
+        at_five = svc._ghost_fallback_map(release_id=5)
+        at_six = svc._ghost_fallback_map(release_id=6)
+        assert at_five == {999: 777}
+        assert at_six == {222: 888}
+        assert mq.ModuleVersionQuery.ghost_fallbacks.call_count == 2
+
+
+class TestSubstituteGhostCompositions:
+    """Direct coverage of the ``module_vid`` substitution
+    ``build_scope_result_from_db`` applies to a rescued ghost-paired
+    scope (Andrés's review on PR #396).
+    """
+
+    def test_noop_when_no_composition_is_a_ghost(self):
+        Svc, _ = _load_module()
+        scope = _op_scope(1, [10, 20])
+        out = Svc._substitute_ghost_compositions(scope, {999: 777})
+        assert out is scope
+
+    def test_substitutes_only_the_ghost_composition(self):
+        """A scope composed with both the primary module and a ghost
+        gets only the ghost's ``module_vid`` rewritten — the other
+        composition, and the scope's own id, are left alone.
+        """
+        Svc, _ = _load_module()
+        scope = _op_scope(1, [10, 999])
+        out = Svc._substitute_ghost_compositions(scope, {999: 777})
+        assert out is not scope
+        assert out.operation_scope_id == 1
+        vids = [c.module_vid for c in out.operation_scope_compositions]
+        assert vids == [10, 777]
+
+    def test_multiple_ghost_compositions_all_substituted(self):
+        Svc, _ = _load_module()
+        scope = _op_scope(1, [999, 111])
+        out = Svc._substitute_ghost_compositions(scope, {999: 777, 111: 777})
+        vids = [c.module_vid for c in out.operation_scope_compositions]
+        assert vids == [777, 777]
+
+
 # ------------------------------------------------------------------ #
 # filter_valid_dependency_modules (Fix 2)
 # ------------------------------------------------------------------ #
