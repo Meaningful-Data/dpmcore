@@ -31,6 +31,17 @@ def _patch_orm(monkeypatch):
     data_stub.get_module_schema_ref = MagicMock(return_value=None)
     monkeypatch.setitem(sys.modules, "dpmcore.data", data_stub)
 
+    # ghost_fallbacks defaults to "no ghosts this release" so every
+    # test not specifically exercising #182 ghost-fallback handling
+    # sees the old, pre-#182-fix behavior unchanged.
+    model_queries_stub = MagicMock()
+    model_queries_stub.ModuleVersionQuery.ghost_fallbacks = MagicMock(
+        return_value={}
+    )
+    monkeypatch.setitem(
+        sys.modules, "dpmcore.dpm_xl.model_queries", model_queries_stub
+    )
+
     for mod_name in [
         "dpmcore",
         "dpmcore.connection",
@@ -458,7 +469,8 @@ def _op_scope(scope_id, module_vids):
     return SimpleNamespace(
         operation_scope_id=scope_id,
         operation_scope_compositions=[
-            SimpleNamespace(module_vid=v) for v in module_vids
+            SimpleNamespace(operation_scope_id=scope_id, module_vid=v)
+            for v in module_vids
         ],
     )
 
@@ -525,7 +537,7 @@ class TestBuildScopeResultFromDb:
         self._wire_scopes(
             svc,
             [_op_scope(1, [10, 20])],
-            phantom_rows=[(1, "2026-01-01", "2026-01-01")],
+            phantom_rows=[(1, 20, "2026-01-01", "2026-01-01")],
         )
         mod = sys.modules["dpmcore.services.scope_calculator"]
         with pytest.raises(mod.UnsupportedDbScope):
@@ -539,8 +551,8 @@ class TestBuildScopeResultFromDb:
             svc,
             [_op_scope(1, [10, 20]), _op_scope(2, [10, 30])],
             phantom_rows=[
-                (1, "2026-01-01", "2026-01-01"),
-                (2, "2020-01-01", None),
+                (1, 20, "2026-01-01", "2026-01-01"),
+                (2, 30, "2020-01-01", None),
             ],
         )
         result = svc.build_scope_result_from_db(
@@ -548,6 +560,61 @@ class TestBuildScopeResultFromDb:
         )
         assert result.total_scopes == 1
         assert result.module_versions == [10, 30]
+
+    def test_phantom_with_fallback_not_rescued_when_not_explicit(self):
+        """Even when a phantom "other" module has a #182 fallback, the
+        default (``release_was_explicit=False``, matching
+        ``--module-version``/``--all-versions``) still treats it as a
+        dead end — the rescue only applies to an explicit ``--release``
+        lookup (verified against mdpm's reference, which has no #182
+        equivalent at all for either mode).
+        """
+        svc = self._make_svc()
+        self._wire_scopes(
+            svc,
+            [_op_scope(1, [10, 999])],
+            phantom_rows=[(1, 999, "2026-01-01", "2026-01-01")],
+        )
+        mq = sys.modules["dpmcore.dpm_xl.model_queries"]
+        mq.ModuleVersionQuery.ghost_fallbacks = MagicMock(
+            return_value={777: [999]}
+        )
+        mod = sys.modules["dpmcore.services.scope_calculator"]
+        with pytest.raises(mod.UnsupportedDbScope):
+            svc.build_scope_result_from_db(
+                operation_vid=100,
+                primary_module_vid=10,
+                release_id=1,
+                release_was_explicit=False,
+            )
+
+    def test_phantom_with_fallback_rescued_when_explicit(self):
+        """An explicit ``--release`` lookup does rescue a phantom
+        "other" module that has a #182 fallback, and substitutes the
+        composition's ``module_vid`` for the fallback's, since the
+        ghost itself has no table/URI structure to resolve a
+        cross-module dependency against (Andrés's review on PR #396 —
+        COREP_OF 4.0.0 losing v0655_m/v0656_m, paired with ghost
+        COREP_LE 3.2.0).
+        """
+        svc = self._make_svc()
+        self._wire_scopes(
+            svc,
+            [_op_scope(1, [10, 999])],
+            phantom_rows=[(1, 999, "2026-01-01", "2026-01-01")],
+        )
+        mq = sys.modules["dpmcore.dpm_xl.model_queries"]
+        mq.ModuleVersionQuery.ghost_fallbacks = MagicMock(
+            return_value={777: [999]}
+        )
+        result = svc.build_scope_result_from_db(
+            operation_vid=100,
+            primary_module_vid=10,
+            release_id=1,
+            release_was_explicit=True,
+        )
+        assert result.total_scopes == 1
+        assert result.module_versions == [10, 777]
 
 
 class TestPhantomPairedScopeIds:
@@ -568,13 +635,13 @@ class TestPhantomPairedScopeIds:
     def test_scope_with_only_the_primary_module_is_never_phantom(self):
         Svc, svc = self._make_svc()
         self._wire(svc, [])
-        result = Svc._phantom_paired_scope_ids(svc.session, {1}, 10)
+        result = Svc._phantom_paired_scope_ids(svc.session, {1}, 10, {})
         assert result == set()
 
     def test_scope_whose_only_other_module_is_phantom_is_excluded(self):
         Svc, svc = self._make_svc()
-        self._wire(svc, [(1, "2026-01-01", "2026-01-01")])
-        result = Svc._phantom_paired_scope_ids(svc.session, {1}, 10)
+        self._wire(svc, [(1, 20, "2026-01-01", "2026-01-01")])
+        result = Svc._phantom_paired_scope_ids(svc.session, {1}, 10, {})
         assert result == {1}
 
     def test_scope_with_one_live_other_module_is_not_excluded(self):
@@ -583,11 +650,22 @@ class TestPhantomPairedScopeIds:
         self._wire(
             svc,
             [
-                (1, "2026-01-01", "2026-01-01"),
-                (1, "2020-01-01", None),
+                (1, 20, "2026-01-01", "2026-01-01"),
+                (1, 30, "2020-01-01", None),
             ],
         )
-        result = Svc._phantom_paired_scope_ids(svc.session, {1}, 10)
+        result = Svc._phantom_paired_scope_ids(svc.session, {1}, 10, {})
+        assert result == set()
+
+    def test_phantom_other_module_with_fallback_is_not_excluded(self):
+        """A phantom other module isn't a dead end when
+        *ghost_fallback_map* names a fallback for it (Andrés's review
+        on PR #396) — empty by default, so this only fires when the
+        caller (an explicit ``--release`` lookup) supplies one.
+        """
+        Svc, svc = self._make_svc()
+        self._wire(svc, [(1, 20, "2026-01-01", "2026-01-01")])
+        result = Svc._phantom_paired_scope_ids(svc.session, {1}, 10, {20: 777})
         assert result == set()
 
 

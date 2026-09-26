@@ -2759,11 +2759,44 @@ class TestScriptFromDb:
 
         assert out["success"] is True, out["error"]
         svc._scope_calc.build_scope_result_from_db.assert_called_once_with(
-            555, mv.module_vid
+            555, mv.module_vid, release_row.release_id, False
         )
         svc._scope_calc.calculate_from_expression.assert_not_called()
         ns = next(iter(out["enriched_ast"].values()))
         assert "v1" in ns["operations"]
+
+    def test_release_was_explicit_threads_through_to_scope_rebuild(
+        self, monkeypatch
+    ):
+        """``release_was_explicit`` (true only for an explicit
+        ``--release`` lookup — see :meth:`script_for_module`) must
+        reach :meth:`build_scope_result_from_db` unchanged, since that
+        is what gates the #182 ghost-fallback rescue/substitution
+        there (Andrés's review on PR #396). Verified end-to-end against
+        the real DB separately; this pins the threading itself.
+        """
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
+        build = MagicMock(return_value=(db_ast_dict, 24))
+        self._stub_db_ast(monkeypatch, build)
+
+        svc._scope_calc.build_scope_result_from_db.side_effect = None
+        svc._scope_calc.build_scope_result_from_db.return_value = (
+            SimpleNamespace(has_error=False, scopes=[])
+        )
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+            release_was_explicit=True,
+        )
+
+        assert out["success"] is True, out["error"]
+        svc._scope_calc.build_scope_result_from_db.assert_called_once_with(
+            555, mv.module_vid, release_row.release_id, True
+        )
 
     def test_db_native_scope_falls_back_when_unsupported(self, monkeypatch):
         """``UnsupportedDbScope`` falls back to
@@ -2785,7 +2818,7 @@ class TestScriptFromDb:
 
         assert out["success"] is True, out["error"]
         svc._scope_calc.build_scope_result_from_db.assert_called_once_with(
-            555, mv.module_vid
+            555, mv.module_vid, release_row.release_id, False
         )
         svc._scope_calc.calculate_from_expression.assert_called_once()
         ns = next(iter(out["enriched_ast"].values()))
@@ -3011,9 +3044,11 @@ def _version_row(
 
 
 class TestOverlappingOperationVersionRows:
-    """``mv``'s own window is [start_release_id, end_release_id) —
-    ``None`` on either side of a row's window means "unbounded", same
-    convention the module's own ``end_release_id`` uses.
+    """Each window is ``(start_release_id, end_release_id)``, half-open
+    — ``None`` on either side means "unbounded", same convention the
+    module's own ``end_release_id`` uses. A row is kept when it
+    overlaps ANY window in the list — *mv*'s own plus, for an explicit
+    ``--release`` lookup, one per #182 ghost it stands in for.
     """
 
     def _sort_orders(self):
@@ -3023,30 +3058,30 @@ class TestOverlappingOperationVersionRows:
 
     def test_keeps_a_row_overlapping_the_module_window(self):
         _, Cls, _ = _bare_svc()
-        mv = SimpleNamespace(start_release_id=20, end_release_id=40)
+        windows = [(20, 40)]
         row = _version_row(start_release_id=10, end_release_id=30)
         out = Cls._overlapping_operation_version_rows(
-            [row], self._sort_orders(), mv
+            [row], self._sort_orders(), windows
         )
         assert out == [row]
 
     def test_drops_a_row_entirely_before_the_module_window(self):
         _, Cls, _ = _bare_svc()
-        mv = SimpleNamespace(start_release_id=20, end_release_id=40)
+        windows = [(20, 40)]
         # Ends exactly where the module starts: the half-open windows
         # touch but do not overlap.
         row = _version_row(start_release_id=10, end_release_id=20)
         out = Cls._overlapping_operation_version_rows(
-            [row], self._sort_orders(), mv
+            [row], self._sort_orders(), windows
         )
         assert out == []
 
     def test_drops_a_row_entirely_after_the_module_window(self):
         _, Cls, _ = _bare_svc()
-        mv = SimpleNamespace(start_release_id=20, end_release_id=40)
+        windows = [(20, 40)]
         row = _version_row(start_release_id=40, end_release_id=50)
         out = Cls._overlapping_operation_version_rows(
-            [row], self._sort_orders(), mv
+            [row], self._sort_orders(), windows
         )
         assert out == []
 
@@ -3055,10 +3090,10 @@ class TestOverlappingOperationVersionRows:
         whenever it starts before the module's own window ends.
         """
         _, Cls, _ = _bare_svc()
-        mv = SimpleNamespace(start_release_id=20, end_release_id=40)
+        windows = [(20, 40)]
         row = _version_row(start_release_id=30, end_release_id=None)
         out = Cls._overlapping_operation_version_rows(
-            [row], self._sort_orders(), mv
+            [row], self._sort_orders(), windows
         )
         assert out == [row]
 
@@ -3068,12 +3103,39 @@ class TestOverlappingOperationVersionRows:
         release in the mapping.
         """
         _, Cls, _ = _bare_svc()
-        mv = SimpleNamespace(start_release_id=20, end_release_id=None)
+        windows = [(20, None)]
         row = _version_row(start_release_id=50, end_release_id=None)
         out = Cls._overlapping_operation_version_rows(
-            [row], self._sort_orders(), mv
+            [row], self._sort_orders(), windows
         )
         assert out == [row]
+
+    def test_row_outside_fallback_window_kept_via_ghost_window(self):
+        """A row scoped through a #182 ghost, windowed against the
+        ghost's own (later-starting) release — not the fallback's —
+        must still be kept when the fallback's window is unioned with
+        the ghost's, even though it falls outside the fallback's own
+        window alone (regression: ``v903581_m`` for DORA, at an
+        explicit ``--release`` matching its ghost's own window, was
+        wrongly dropped when only the fallback's window was checked).
+        """
+        _, Cls, _ = _bare_svc()
+        fallback_window = (10, 20)
+        ghost_window = (30, 50)
+        row = _version_row(start_release_id=30, end_release_id=40)
+        out = Cls._overlapping_operation_version_rows(
+            [row], self._sort_orders(), [fallback_window, ghost_window]
+        )
+        assert out == [row]
+
+    def test_row_outside_every_window_dropped(self):
+        _, Cls, _ = _bare_svc()
+        windows = [(10, 20), (30, 40)]
+        row = _version_row(start_release_id=40, end_release_id=50)
+        out = Cls._overlapping_operation_version_rows(
+            [row], self._sort_orders(), windows
+        )
+        assert out == []
 
 
 # ------------------------------------------------------------------ #

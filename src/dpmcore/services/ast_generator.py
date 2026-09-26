@@ -694,6 +694,7 @@ class ASTGeneratorService:
         ],
         referenced_table_codes: set[str],
         referenced_parameters: Dict[str, ParameterInfo],
+        release_was_explicit: bool = False,
     ) -> Optional[str]:
         """Resolve and fold one :meth:`script_from_db` expression item.
 
@@ -751,7 +752,10 @@ class ASTGeneratorService:
             # spurious rejection (e.g. grey cells).
             try:
                 scope_result = self._scope_calc.build_scope_result_from_db(
-                    operation_vid, primary_module_vid
+                    operation_vid,
+                    primary_module_vid,
+                    release_id,
+                    release_was_explicit,
                 )
             except UnsupportedDbScope:
                 scope_result = None
@@ -786,6 +790,7 @@ class ASTGeneratorService:
         severity: Optional[str] = None,
         severities: Optional[Dict[str, str]] = None,
         from_submission_dates: Optional[Dict[str, str]] = None,
+        release_was_explicit: bool = False,
     ) -> Dict[str, Any]:
         """Generate a DB-discovered module version's validations script.
 
@@ -818,6 +823,13 @@ class ASTGeneratorService:
                 column was null) falls back to
                 :meth:`_build_operation_entry`'s own default, same as
                 :meth:`script`'s caller-supplied expressions.
+            release_was_explicit: whether the caller named a specific
+                ``--release`` (as opposed to ``--module-version``/
+                ``--all-versions`` resolving one on its own) — see
+                :meth:`ASTGeneratorService._discover_module_validations`
+                and :meth:`~dpmcore.services.scope_calculator.\
+ScopeCalculatorService.build_scope_result_from_db` for what this
+                gates.
 
         Returns:
             Same shape as :meth:`script`. Unlike :meth:`script`, a
@@ -903,6 +915,7 @@ class ASTGeneratorService:
                     scope_pairs=scope_pairs,
                     referenced_table_codes=referenced_table_codes,
                     referenced_parameters=referenced_parameters,
+                    release_was_explicit=release_was_explicit,
                 )
                 if error is not None:
                     failed_operations[code] = error
@@ -965,6 +978,18 @@ class ASTGeneratorService:
                 "failed_operations": {},
             }
 
+        # An explicit --release names a specific point in time the
+        # caller wants this module's state at — the #182 fallback's own
+        # ghost(s) genuinely govern that point, so their scopes widen
+        # discovery. --module-version/--all-versions instead resolve
+        # mv "as itself" toward whatever release is currently
+        # applicable (release=None's own auto-pick, #221) — the ghost
+        # substitution there is incidental to that labeling, not a
+        # request to see the ghost's own broader validation set (a
+        # release=None target verified against mdpm's reference must
+        # not gain the ghost's validations, e.g. COREP_FRTB-3.1.0 stays
+        # at 2 operations, not 233).
+        release_was_explicit = release is not None
         try:
             mv, release_row = self._resolve_release(
                 module_code, module_version, release
@@ -975,7 +1000,9 @@ class ASTGeneratorService:
                 preconditions,
                 severities,
                 from_submission_dates,
-            ) = self._discover_module_validations(mv, release_row)
+            ) = self._discover_module_validations(
+                mv, release_row, release_was_explicit
+            )
         except ValueError as exc:
             return {
                 "success": False,
@@ -992,6 +1019,7 @@ class ASTGeneratorService:
             preconditions=preconditions or None,
             severities=severities or None,
             from_submission_dates=from_submission_dates or None,
+            release_was_explicit=release_was_explicit,
         )
 
     def calculations_for_module(
@@ -1261,6 +1289,7 @@ class ASTGeneratorService:
         self,
         mv: Any,
         release_row: Any,
+        release_was_explicit: bool = False,
     ) -> Tuple[
         List[Tuple[str, str]],
         Dict[str, int],
@@ -1279,9 +1308,7 @@ class ASTGeneratorService:
         (mirrors mdpm's ``get_active_operations``, using
         :mod:`dpmcore.orm.release_sort_order` instead of raw
         ``ReleaseID`` comparison so a non-monotonic release ID can't
-        misorder the overlap check). *release_row* is not used here at
-        all; it only affects the release-scoped lookups elsewhere in
-        the pipeline (``db_ast.py``, dependency info).
+        misorder the overlap check).
 
         When ``mv`` stands in for a ghost at ``release_row`` the ghost's
         scopes are read through it as well — see
@@ -1291,6 +1318,29 @@ class ASTGeneratorService:
         still does not see the ghost's scopes; no module in the 4.2.1
         dictionary has that shape, but it is the case to revisit if one
         appears.
+
+        ``release_was_explicit`` (true only when the caller named a
+        specific ``--release``, never for a bare ``--module-version``/
+        ``--all-versions`` lookup) additionally widens the *window*
+        check itself to the union of *mv*'s own window and each such
+        ghost's own window (see :meth:`_ghost_windows`), and lets the
+        phantom-scope exclusion below treat a phantom "other" module as
+        rescued rather than void when it has its own #182 fallback.
+        Both only make sense when the caller is asking "what does this
+        module look like at this specific release" — the release the
+        ghost itself governs. A ``--module-version``/``--all-versions``
+        lookup resolves *mv* "as itself" toward whatever release is
+        currently applicable (`release=None`'s own auto-pick, #221);
+        the same ``_ghosts_represented_by`` substitution still fires
+        there incidentally, but widening the window in that case pulls
+        in the ghost's own broader validation set spuriously — verified
+        against mdpm's reference, which has no equivalent to #182 at
+        all (it just skips a ghost-only-covered release outright): e.g.
+        ``COREP_FRTB-3.1.0`` must stay at 2 operations, not gain
+        ghost ``3.3.0``'s 231, and ``DORA-1.1.0`` must stay at 49, not
+        69. So this method behaves exactly as it did before #182's
+        release-driven use case existed unless *release_was_explicit*
+        says otherwise.
 
         Also drops any candidate whose *only* ``OperationScopeID`` under
         *mv* is shared exclusively with phantom module versions (see
@@ -1339,6 +1389,8 @@ class ASTGeneratorService:
                 "_discover_module_validations requires a live DB session.",
             )
 
+        ghost_vids = self._ghosts_represented_by(session, mv, release_row)
+
         query = (
             session.query(
                 OperationVersion.operation_vid,
@@ -1367,10 +1419,7 @@ class ASTGeneratorService:
             )
             .filter(
                 OperationScopeComposition.module_vid.in_(
-                    [
-                        mv.module_vid,
-                        *self._ghosts_represented_by(session, mv, release_row),
-                    ]
+                    [mv.module_vid, *ghost_vids]
                 )
             )
             # Access boolean convention: True is stored as -1, not 1.
@@ -1385,18 +1434,25 @@ class ASTGeneratorService:
         rows = query.all()
 
         sort_orders = load_release_sort_orders(session)
+        windows = [(mv.start_release_id, mv.end_release_id)]
+        if release_was_explicit and ghost_vids:
+            windows += self._ghost_windows(session, ghost_vids)
         overlapping = self._overlapping_operation_version_rows(
-            rows, sort_orders, mv
+            rows, sort_orders, windows
         )
 
         scope_ids = {row[6] for row in overlapping}
-        phantom_scope_ids = (
-            self._scope_calc._phantom_paired_scope_ids(
-                session, scope_ids, mv.module_vid
+        if scope_ids:
+            ghost_fallback_map = (
+                self._scope_calc._ghost_fallback_map(release_row.release_id)
+                if release_was_explicit
+                else {}
             )
-            if scope_ids
-            else set()
-        )
+            phantom_scope_ids = self._scope_calc._phantom_paired_scope_ids(
+                session, scope_ids, mv.module_vid, ghost_fallback_map
+            )
+        else:
+            phantom_scope_ids = set()
 
         latest_by_code = self._latest_operation_by_code(
             overlapping, phantom_scope_ids, mv.module_vid
@@ -1439,16 +1495,24 @@ class ASTGeneratorService:
     def _overlapping_operation_version_rows(
         rows: List[Tuple[Any, ...]],
         sort_orders: Dict[int, int],
-        mv: Any,
+        windows: List[Tuple[Optional[int], Optional[int]]],
     ) -> List[Tuple[Any, ...]]:
-        """Rows whose ``OperationVersion`` window overlaps *mv*'s own.
+        """Rows whose ``OperationVersion`` window overlaps any of *windows*.
 
         Mirrors mdpm's ``get_active_operations``, using
         :mod:`dpmcore.orm.release_sort_order` instead of raw
         ``ReleaseID`` comparison so a non-monotonic release ID can't
-        misorder the overlap check. Split out of
-        :meth:`_discover_module_validations` to keep its own branching
-        within the complexity limit.
+        misorder the overlap check. *windows* is normally just *mv*'s
+        own ``(start_release_id, end_release_id)``; an explicit
+        ``--release`` lookup adds one window per #182 ghost ``mv``
+        stands in for (see :meth:`_ghost_windows`) — a ghost's own
+        window can start later than the fallback's, so an
+        ``OperationVersion`` scoped through the ghost and checked only
+        against the fallback's window would be wrongly dropped
+        (confirmed against DORA at an explicit ``--release`` matching
+        its ghost 1.2.0's own window, operation ``v903581_m``). Split
+        out of :meth:`_discover_module_validations` to keep its own
+        branching within the complexity limit.
         """
         from dpmcore.orm.release_sort_order import (
             compute_sort_order,
@@ -1462,14 +1526,19 @@ class ASTGeneratorService:
                 return open_end_sort
             return sort_order_from(sort_orders, release_id)
 
-        module_start_sort = sort_order_from(sort_orders, mv.start_release_id)
-        module_end_sort = _end_sort(mv.end_release_id)
+        sort_windows = [
+            (sort_order_from(sort_orders, start), _end_sort(end))
+            for start, end in windows
+        ]
 
         return [
             row
             for row in rows
-            if module_end_sort > sort_order_from(sort_orders, row[7])
-            and _end_sort(row[8]) > module_start_sort
+            if any(
+                window_end > sort_order_from(sort_orders, row[7])
+                and _end_sort(row[8]) > window_start
+                for window_start, window_end in sort_windows
+            )
         ]
 
     @staticmethod
@@ -1551,6 +1620,29 @@ class ASTGeneratorService:
         return self._release_ghost_fallbacks(
             session, release_row.release_id
         ).get(mv.module_vid, [])
+
+    @staticmethod
+    def _ghost_windows(
+        session: "Session", ghost_vids: List[int]
+    ) -> List[Tuple[Optional[int], Optional[int]]]:
+        """``(start_release_id, end_release_id)`` for each of *ghost_vids*.
+
+        Only meaningful for an explicit ``--release`` lookup (see
+        :meth:`_overlapping_operation_version_rows`) — a ghost's own
+        release window can start later than its fallback's, and an
+        operation genuinely scoped through the ghost is windowed
+        against the ghost, not the fallback.
+        """
+        from dpmcore.orm.packaging import ModuleVersion
+
+        rows = (
+            session.query(
+                ModuleVersion.start_release_id, ModuleVersion.end_release_id
+            )
+            .filter(ModuleVersion.module_vid.in_(ghost_vids))
+            .all()
+        )
+        return [(row[0], row[1]) for row in rows]
 
     def _resolve_preconditions(
         self, prec_vid_to_codes: Dict[int, List[str]]
