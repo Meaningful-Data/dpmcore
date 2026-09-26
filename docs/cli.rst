@@ -480,11 +480,12 @@ neither are validations whose precondition falls outside what the engine
 can evaluate — a gate may only combine filing indicators, parameters and
 boolean literals with ``and`` / ``or`` / ``xor`` / ``not``. The console
 reports how many were skipped next to how many were discovered, and
-lists the reason per validation; the full list is written to
-``failed_operations`` in the output JSON. A precondition left gating
-only rejected validations is dropped from the ``preconditions`` block
-rather than shipped with ``affected_operations`` the script does not
-contain.
+lists the reason per validation; the output JSON file itself carries
+only the enriched script (matching mdpm's own export shape), so the
+console is the only place the skipped-validation reasons are reported.
+A precondition left gating only rejected validations is dropped from
+the ``preconditions`` block rather than shipped with
+``affected_operations`` the script does not contain.
 
 ``dpmcore export-calculations``
 -------------------------------

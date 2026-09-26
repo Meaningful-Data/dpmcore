@@ -98,8 +98,11 @@ class TestExportScriptSuccess:
         assert result.exit_code == 0, result.output
         assert out.exists()
         payload = json.loads(out.read_text())
-        assert payload["success"] is True
-        ns = payload["enriched_ast"][_NS_URI]
+        # The file holds only ``enriched_ast``'s content (the
+        # ``{namespace: ...}`` shape), not the ``success``/``error``/
+        # ``failed_operations`` wrapper ``script_for_module`` returns.
+        assert set(payload) == {_NS_URI}
+        ns = payload[_NS_URI]
         assert "dependency_modules" in ns
         # Rich wraps long lines according to console width, and the tmp_path
         # in the printed line varies in length across runs/machines, so the
@@ -211,6 +214,19 @@ class TestExportScriptSkippedReporting:
         assert "2 skipped" in output
         assert "v0937_m: 3-6: Invalid default type" in output
         assert "v5372_m" in output
+
+    def test_failed_operations_not_written_to_file(self, runner, tmp_path):
+        """The output file holds only ``enriched_ast`` — skipped
+        validations are reported on the console (above), never written
+        to disk.
+        """
+        out = tmp_path / "script.json"
+        result, _ = self._run(
+            runner, out, {"v0937_m": "3-6: Invalid default type"}
+        )
+        assert result.exit_code == 0, result.output
+        payload = json.loads(out.read_text())
+        assert set(payload) == {_NS_URI}
 
     def test_zero_skipped_still_reported(self, runner, tmp_path):
         result, output = self._run(runner, tmp_path / "script.json", {})

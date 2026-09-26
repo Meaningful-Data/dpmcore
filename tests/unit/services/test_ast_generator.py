@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import zlib
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,9 +17,25 @@ from dpmcore import errors
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
+class _FakeUnsupportedDbScope(Exception):
+    """Stand-in for ``scope_calculator.UnsupportedDbScope``.
+
+    ``dpmcore.services.scope_calculator`` is stubbed wholesale by
+    ``_patch_orm``, so ``script_from_db``'s local ``from
+    dpmcore.services.scope_calculator import UnsupportedDbScope``
+    would otherwise bind to a bare ``MagicMock`` attribute — not a
+    valid exception class, so its own ``except UnsupportedDbScope:``
+    would raise ``TypeError`` the moment anything tried to raise
+    through it. Installed as that attribute here so the except clause
+    binds to a real class throughout this file.
+    """
+
+
 @pytest.fixture(autouse=True)
 def _patch_orm(monkeypatch):
     """Stub heavy imports so the module loads on Python 3.10 in unit tests."""
+    scope_calculator_stub = MagicMock()
+    scope_calculator_stub.UnsupportedDbScope = _FakeUnsupportedDbScope
     stubs = {
         "dpmcore.orm": MagicMock(),
         "dpmcore.orm.infrastructure": MagicMock(),
@@ -30,7 +47,7 @@ def _patch_orm(monkeypatch):
         "dpmcore.loaders": MagicMock(),
         "dpmcore.loaders.migration": MagicMock(),
         "dpmcore.dpm_xl.model_queries": MagicMock(),
-        "dpmcore.services.scope_calculator": MagicMock(),
+        "dpmcore.services.scope_calculator": scope_calculator_stub,
         "dpmcore.services.semantic": MagicMock(),
         "dpmcore.services.syntax": MagicMock(),
     }
@@ -425,6 +442,30 @@ class TestBuildOperationEntry:
         assert out["code"] == "v1"
         assert out["from_submission_date"] == "2026-03-31"
         assert out["ast"] == {"x": 1}
+
+    def test_operation_vid_overrides_crc32(self):
+        """dpmcore#364: when the caller knows the real ``OperationVID``
+        (:meth:`script_from_db`), ``version_id`` is that value verbatim
+        — not the CRC32 fallback :meth:`script` uses when it doesn't.
+        """
+        _, Cls, _ = _bare_svc()
+        out = Cls._build_operation_entry(
+            "expr",
+            "v1",
+            {"x": 1},
+            "warning",
+            "2026-03-31",
+            24,
+            operation_vid=99999,
+        )
+        assert out["version_id"] == 99999
+
+    def test_no_operation_vid_falls_back_to_crc32(self):
+        _, Cls, _ = _bare_svc()
+        out = Cls._build_operation_entry(
+            "expr", "v1", {"x": 1}, "warning", "2026-03-31", 24
+        )
+        assert out["version_id"] == zlib.crc32(b"expr") % 10000
 
 
 # ------------------------------------------------------------------ #
@@ -1761,6 +1802,31 @@ class TestExtractTimeShifts:
 
         assert Cls._extract_time_shifts(Boom()) == {}
 
+    def test_db_sub_clause_op_stand_in_is_walked(self):
+        """dpmcore#364: ``db_ast.py``'s DB-only ``sub`` stand-in
+        (``_DbSubClauseOp``) isn't a real ``dpm_xl.ast.nodes`` class —
+        without its own ``visit_*``, ``ASTTemplate``'s ``generic_visit``
+        would raise ``NotImplementedError`` and silently drop every
+        time shift elsewhere in the same expression, not just the part
+        inside the ``sub`` clause.
+        """
+        _, Cls, _ = _bare_svc()
+        from dpmcore.dpm_xl.ast.nodes import Constant
+
+        class _FakeDbSubClauseOp:
+            def __init__(self, operand, condition):
+                self.operand = operand
+                self.condition = condition
+
+        _FakeDbSubClauseOp.__name__ = "_DbSubClauseOp"
+
+        sn = Constant(type_="Integer", value=1)
+        shifted = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_15"))
+        node = _FakeDbSubClauseOp(
+            operand=shifted, condition=_FakeVarID(table=None)
+        )
+        assert Cls._extract_time_shifts(node) == {"T_15": ["T-1Q"]}
+
 
 # ------------------------------------------------------------------ #
 # _build_precondition_index
@@ -2394,3 +2460,904 @@ class TestScript:
         assert svc._semantic.validate.called
         for call in svc._semantic.validate.call_args_list:
             assert "check_scope" not in call.kwargs
+
+
+# ------------------------------------------------------------------ #
+# script_from_db (dpmcore#364) — the DB-native path used by
+# script_for_module/export-script. Shares _process_operation/
+# _assemble_script with TestScript's script(), so only what's specific
+# to this method is exercised here: per-operation DB-vs-text-reparse
+# resolution, the real OperationVID reaching version_id, and the
+# non-fatal (per-operation) scope-error handling that differs from
+# script()'s all-or-nothing behaviour.
+# ------------------------------------------------------------------ #
+
+
+class _FakeUnsupportedDbAst(Exception):
+    """Stand-in for ``db_ast.UnsupportedDbAst`` in ``script_from_db``
+    tests — a distinct exception type ``_stub_db_ast`` installs as both
+    the fake module's ``UnsupportedDbAst`` and what a stubbed
+    ``build_ast_from_db`` raises, so ``script_from_db``'s own
+    ``except UnsupportedDbAst:`` (bound to this same class via the
+    stubbed import) actually catches it.
+    """
+
+
+class TestScriptFromDb:
+    # Deliberately not a subclass of TestScript: that would make pytest
+    # collect and re-run every TestScript test again under this class
+    # name, none of which touch script_from_db at all. The two small
+    # helpers below are an intentional, small duplication instead.
+
+    def _build_svc(self, mv=None, release_row=None):
+        svc, _, mod = _bare_svc()
+        svc.session = MagicMock()
+        svc._semantic = MagicMock()
+        svc._scope_calc = MagicMock()
+        svc._syntax = MagicMock()
+
+        if mv is None:
+            framework = SimpleNamespace(code="COREP")
+            module = SimpleNamespace(framework=framework)
+            mv = SimpleNamespace(
+                module_vid=1,
+                start_release_id=1,
+                end_release_id=None,
+                from_reference_date=date(2026, 3, 31),
+                to_reference_date=None,
+                code="MOD",
+                version_number="1.0",
+                module=module,
+            )
+        if release_row is None:
+            release_row = SimpleNamespace(
+                release_id=2, code="4.2", date=date(2025, 4, 28)
+            )
+
+        svc._resolve_release = lambda mc, mv_, rel: (mv, release_row)
+        svc._resolve_root_operator_id = staticmethod(lambda ast, session: 24)
+
+        svc._scope_calc._get_module_tables.return_value = {
+            "C_01.00": {
+                "variables": {"100": "m"},
+                "open_keys": {"BASE": "e"},
+            }
+        }
+        svc._scope_calc._get_module_uri.return_value = "http://example/mod"
+        svc._scope_calc.calculate_from_expression.return_value = (
+            SimpleNamespace(has_error=False, scopes=[])
+        )
+        # No persisted scope in this fixture by default: every existing
+        # test exercises the calculate_from_expression fallback exactly
+        # as before. Tests for the DB-native scope path override this.
+        svc._scope_calc.build_scope_result_from_db.side_effect = (
+            _FakeUnsupportedDbScope("no persisted scope in fixture")
+        )
+        svc._scope_calc.detect_cross_module_dependencies.return_value = {
+            "intra_instance_validations": ["v1"],
+            "cross_instance_dependencies": [],
+            "dependency_modules": {},
+        }
+        svc._scope_calc.detect_alternative_dependencies.return_value = []
+        return svc, mv, release_row, mod
+
+    def _stub_serialize_ast(self, monkeypatch, return_value):
+        ser_mod = MagicMock()
+        ser_mod.serialize_ast = lambda ast: return_value
+        monkeypatch.setitem(
+            sys.modules, "dpmcore.dpm_xl.utils.serialization", ser_mod
+        )
+
+    def _stub_db_ast(self, monkeypatch, build_ast_from_db):
+        """Install a fake ``dpmcore.dpm_xl.utils.db_ast`` module.
+
+        ``script_from_db`` imports it locally (inside its ``try:``
+        block), so it resolves through ``sys.modules`` at call time —
+        same mechanism ``_stub_serialize_ast`` relies on for
+        ``dpmcore.dpm_xl.utils.serialization``. ``serialize_built_ast``
+        is wired as the identity function: every caller here already
+        passes the desired *ast_dict* as ``build_ast_from_db``'s first
+        return value (standing in for the not-yet-serialised tree), so
+        "serialising" it is a no-op.
+        """
+        mod = SimpleNamespace(
+            UnsupportedDbAst=_FakeUnsupportedDbAst,
+            build_ast_from_db=build_ast_from_db,
+            serialize_built_ast=lambda built: built,
+        )
+        monkeypatch.setitem(sys.modules, "dpmcore.dpm_xl.utils.db_ast", mod)
+
+    def test_no_session_returns_error(self):
+        svc, _, _mod = _bare_svc()
+        svc.session = None
+        svc._semantic = None
+        svc._scope_calc = None
+        out = svc.script_from_db(
+            expressions=[("x", "v1")],
+            operation_vids={"v1": 42},
+            mv=SimpleNamespace(),
+            release_row=SimpleNamespace(),
+        )
+        assert out["success"] is False
+        assert "No database session" in out["error"]
+
+    def test_db_path_used_and_text_reparse_skipped(self, monkeypatch):
+        """When ``build_ast_from_db`` succeeds, the text-reparse
+        path (``_semantic.validate``) must never run for that operation.
+        """
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
+        build = MagicMock(return_value=(db_ast_dict, 24))
+        self._stub_db_ast(monkeypatch, build)
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        ns = next(iter(out["enriched_ast"].values()))
+        op = ns["operations"]["v1"]
+        assert op["ast"] == db_ast_dict
+        # The real OperationVID reaches the wire as version_id (dpm-xl
+        # script-format spec §3.10), not the CRC32 fallback script() uses.
+        assert op["version_id"] == 555
+        build.assert_called_once_with(svc.session, 555, release_row.release_id)
+        svc._semantic.validate.assert_not_called()
+
+    def test_db_native_time_shift_reaches_dependency_detection(
+        self, monkeypatch
+    ):
+        """dpmcore#364 follow-up: a ``TimeShiftOp`` built straight from
+        the DB must still feed ``detect_cross_module_dependencies``'s
+        ``time_shifts`` — before ``db_ast.py`` supported ``TimeShiftOp``
+        this never mattered (every such operation fell back to
+        ``_prepare_expression``, which always computed it), but now the
+        DB-native branch has to compute it too, off the raw tree
+        (``ts`` is only meaningful pre-serialisation — see
+        ``_extract_time_shifts``).
+        """
+        from dpmcore.dpm_xl.ast.nodes import Constant
+
+        built_ast = _FakeTimeShiftOp(
+            "Q",
+            Constant(type_="Integer", value=1),
+            _FakeVarID(table="C_01.00"),
+        )
+        build = MagicMock(return_value=(built_ast, 24))
+        mod = SimpleNamespace(
+            UnsupportedDbAst=_FakeUnsupportedDbAst,
+            build_ast_from_db=build,
+            serialize_built_ast=lambda built: {
+                "class_name": "VarID",
+                "table": "C_01.00",
+                "data": [],
+            },
+        )
+        monkeypatch.setitem(sys.modules, "dpmcore.dpm_xl.utils.db_ast", mod)
+        svc, mv, release_row, _ = self._build_svc()
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        call = svc._scope_calc.detect_cross_module_dependencies.call_args
+        assert call.kwargs["time_shifts"] == {"C_01.00": ["T-1Q"]}
+
+    def test_db_native_non_literal_shift_excludes_only_that_operation(
+        self, monkeypatch
+    ):
+        """A shift number that isn't an integer literal names no
+        resolvable instance (#326) — the DB-native branch must reject
+        just this operation, the same way ``_prepare_expression``'s own
+        ``_extract_time_shifts`` call already does for the fallback.
+        """
+        from dpmcore.dpm_xl.ast.nodes import BinOp, Constant
+
+        non_literal_shift = BinOp(
+            op="*",
+            left=Constant(type_="Integer", value=2),
+            right=Constant(type_="Integer", value=2),
+        )
+        built_ast = _FakeTimeShiftOp(
+            "Q", non_literal_shift, _FakeVarID(table="C_01.00")
+        )
+        build = MagicMock(return_value=(built_ast, 24))
+        mod = SimpleNamespace(
+            UnsupportedDbAst=_FakeUnsupportedDbAst,
+            build_ast_from_db=build,
+            serialize_built_ast=lambda built: {
+                "class_name": "VarID",
+                "table": "C_01.00",
+                "data": [],
+            },
+        )
+        monkeypatch.setitem(sys.modules, "dpmcore.dpm_xl.utils.db_ast", mod)
+        svc, mv, release_row, _ = self._build_svc()
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        assert "v1" in out["failed_operations"]
+        svc._scope_calc.calculate_from_expression.assert_not_called()
+
+    def test_db_path_parameters_reach_the_parameters_block(
+        self, monkeypatch, real_parameter_info
+    ):
+        """A ``ParameterRef`` inside a DB-built ``ast_dict`` still reaches
+        the script's top-level ``parameters`` block (#364 follow-up):
+        extraction reads the AST itself, not which path produced it.
+
+        ``real_parameter_info`` swaps in a real dataclass for
+        ``ParameterInfo`` — ``_accumulate_ast_parameters`` constructs it
+        itself (unlike the text-reparse path, which only merges
+        instances ``SemanticResult.parameters`` already built), so the
+        stubbed-module ``MagicMock`` class from ``_patch_orm`` would
+        otherwise make every instance compare unequal by identity.
+        """
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {
+            "class_name": "BinOp",
+            "op": "+",
+            "left": {"class_name": "VarID", "table": "C_01.00", "data": []},
+            "right": {
+                "class_name": "ParameterRef",
+                "code": "p_x",
+                "param_type": "Number",
+                "default": None,
+            },
+        }
+        build = MagicMock(return_value=(db_ast_dict, 24))
+        self._stub_db_ast(monkeypatch, build)
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        ns = next(iter(out["enriched_ast"].values()))
+        assert ns["parameters"] == {"p_x": "Number"}
+        svc._semantic.validate.assert_not_called()
+
+    def test_db_native_scope_used_and_reparse_skipped(self, monkeypatch):
+        """When ``build_scope_result_from_db`` succeeds,
+        ``calculate_from_expression`` must never run for that operation
+        (dpmcore#364 follow-up: the persisted scope is reused instead
+        of re-parsing the expression and re-validating every operand
+        against live table data).
+        """
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
+        build = MagicMock(return_value=(db_ast_dict, 24))
+        self._stub_db_ast(monkeypatch, build)
+
+        svc._scope_calc.build_scope_result_from_db.side_effect = None
+        svc._scope_calc.build_scope_result_from_db.return_value = (
+            SimpleNamespace(has_error=False, scopes=[])
+        )
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        svc._scope_calc.build_scope_result_from_db.assert_called_once_with(
+            555, mv.module_vid, release_row.release_id, False
+        )
+        svc._scope_calc.calculate_from_expression.assert_not_called()
+        ns = next(iter(out["enriched_ast"].values()))
+        assert "v1" in ns["operations"]
+
+    def test_release_was_explicit_threads_through_to_scope_rebuild(
+        self, monkeypatch
+    ):
+        """``release_was_explicit`` (true only for an explicit
+        ``--release`` lookup — see :meth:`script_for_module`) must
+        reach :meth:`build_scope_result_from_db` unchanged, since that
+        is what gates the #182 ghost-fallback rescue/substitution
+        there (Andrés's review on PR #396). Verified end-to-end against
+        the real DB separately; this pins the threading itself.
+        """
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
+        build = MagicMock(return_value=(db_ast_dict, 24))
+        self._stub_db_ast(monkeypatch, build)
+
+        svc._scope_calc.build_scope_result_from_db.side_effect = None
+        svc._scope_calc.build_scope_result_from_db.return_value = (
+            SimpleNamespace(has_error=False, scopes=[])
+        )
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+            release_was_explicit=True,
+        )
+
+        assert out["success"] is True, out["error"]
+        svc._scope_calc.build_scope_result_from_db.assert_called_once_with(
+            555, mv.module_vid, release_row.release_id, True
+        )
+
+    def test_db_native_scope_falls_back_when_unsupported(self, monkeypatch):
+        """``UnsupportedDbScope`` falls back to
+        ``calculate_from_expression`` for that operation's scope only —
+        the AST can still come from the DB independently.
+        """
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
+        build = MagicMock(return_value=(db_ast_dict, 24))
+        self._stub_db_ast(monkeypatch, build)
+        # _build_svc's default already raises _FakeUnsupportedDbScope.
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        svc._scope_calc.build_scope_result_from_db.assert_called_once_with(
+            555, mv.module_vid, release_row.release_id, False
+        )
+        svc._scope_calc.calculate_from_expression.assert_called_once()
+        ns = next(iter(out["enriched_ast"].values()))
+        assert "v1" in ns["operations"]
+
+    def test_db_native_scope_error_excludes_only_that_operation(
+        self, monkeypatch
+    ):
+        """A ``has_error`` persisted-scope result rejects that one
+        operation without ever falling back to re-parsing it.
+        """
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
+        build = MagicMock(return_value=(db_ast_dict, 24))
+        self._stub_db_ast(monkeypatch, build)
+
+        svc._scope_calc.build_scope_result_from_db.side_effect = None
+        svc._scope_calc.build_scope_result_from_db.return_value = (
+            SimpleNamespace(has_error=True, error_message="boom")
+        )
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        assert "v1" in out["failed_operations"]
+        assert "boom" in out["failed_operations"]["v1"]
+        svc._scope_calc.calculate_from_expression.assert_not_called()
+
+    def test_falls_back_to_text_reparse_when_unsupported(self, monkeypatch):
+        build = MagicMock(
+            side_effect=_FakeUnsupportedDbAst("unsupported construct")
+        )
+        self._stub_db_ast(monkeypatch, build)
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, mv, release_row, _ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        ns = next(iter(out["enriched_ast"].values()))
+        op = ns["operations"]["v1"]
+        # Falls back to the text-reparsed AST...
+        assert op["ast"]["class_name"] == "VarID"
+        # ...but version_id still uses the already-known real
+        # OperationVID — the fallback is per-AST, not per-identity.
+        assert op["version_id"] == 555
+        assert svc._semantic.validate.called
+
+    def test_text_reparse_fallback_semantic_error_excludes_only_that_op(
+        self, monkeypatch
+    ):
+        """``build_ast_from_db`` unsupported *and* the text-reparse
+        fallback itself fails semantic validation: this one operation
+        is excluded (recorded in ``failed_operations``), not the whole
+        module — same non-fatal contract as every other per-operation
+        failure this method has (#122's abort-the-module rule is
+        :meth:`script`'s, not this one's).
+        """
+        build = MagicMock(
+            side_effect=_FakeUnsupportedDbAst("unsupported construct")
+        )
+        self._stub_db_ast(monkeypatch, build)
+        svc, mv, release_row, _ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=False, error_message="bad expr", parameters=()
+        )
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        assert out["failed_operations"] == {"v1": "bad expr"}
+        ns = next(iter(out["enriched_ast"].values()))
+        assert "v1" not in ns["operations"]
+
+    def test_no_operation_vid_skips_db_and_uses_crc32(self, monkeypatch):
+        """A code with no entry in ``operation_vids`` never even attempts
+        the DB path, and its ``version_id`` falls back to the CRC32 hash
+        — same as :meth:`script`'s caller-supplied expressions.
+        """
+        build = MagicMock()
+        self._stub_db_ast(monkeypatch, build)
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, mv, release_row, _ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        build.assert_not_called()
+        ns = next(iter(out["enriched_ast"].values()))
+        op = ns["operations"]["v1"]
+        assert op["version_id"] == zlib.crc32(b"e1") % 10000
+
+    def test_gate_failure_skips_before_any_ast_attempt(self, monkeypatch):
+        build = MagicMock(
+            return_value=(
+                {"class_name": "VarID", "table": "C", "data": []},
+                24,
+            )
+        )
+        self._stub_db_ast(monkeypatch, build)
+        svc, mv, release_row, _ = self._build_svc()
+        # Bypass real gate-text parsing (covered by TestScript already;
+        # not what this test is about): force v1's gate to be
+        # unsupported so we can check the short-circuit in isolation.
+        svc._unsupported_gate_operations = lambda preconditions: {
+            "v1": "gate not supported"
+        }
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1"), ("e2", "v2")],
+            operation_vids={"v1": 1, "v2": 2},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        assert out["failed_operations"] == {"v1": "gate not supported"}
+        # v1 is skipped before either AST path is even attempted; only
+        # v2 (operation_vid=2) ever reaches build_ast_from_db.
+        build.assert_called_once_with(svc.session, 2, release_row.release_id)
+
+    def test_per_operation_scope_error_is_non_fatal(self, monkeypatch):
+        """Unlike :meth:`script` (#122 — a scope error fails the whole
+        module), a scope-calculation error here only excludes that one
+        operation: this method discovers every active validation for the
+        module by itself, so one bad operation must not take the rest
+        down with it.
+        """
+        build = MagicMock(
+            side_effect=[
+                ({"class_name": "VarID", "table": "C", "data": []}, 24),
+                ({"class_name": "VarID", "table": "C", "data": []}, 24),
+            ]
+        )
+        self._stub_db_ast(monkeypatch, build)
+        svc, mv, release_row, _ = self._build_svc()
+        svc._scope_calc.calculate_from_expression.side_effect = [
+            SimpleNamespace(has_error=True, error_message="boom"),
+            SimpleNamespace(has_error=False, scopes=[]),
+        ]
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1"), ("e2", "v2")],
+            operation_vids={"v1": 1, "v2": 2},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        assert "v1" in out["failed_operations"]
+        assert "boom" in out["failed_operations"]["v1"]
+        ns = next(iter(out["enriched_ast"].values()))
+        assert "v1" not in ns["operations"]
+        assert "v2" in ns["operations"]
+
+
+# ------------------------------------------------------------------ #
+# script_for_module — release_was_explicit derivation
+# ------------------------------------------------------------------ #
+
+
+class TestScriptForModuleReleaseWasExplicit:
+    """``release_was_explicit`` (``release is not None``) is the single
+    switch gating the #182 ghost-fallback rescue everywhere downstream
+    (Andrés's review on PR #396). ``TestScriptFromDb``'s
+    ``test_release_was_explicit_threads_through_to_scope_rebuild``
+    pins the value once already computed reaching
+    ``build_scope_result_from_db``; this pins the derivation itself —
+    that a bare ``--module-version``/``--all-versions`` call (``release
+    =None``) computes ``False``, and an explicit ``--release`` computes
+    ``True``.
+    """
+
+    def _build_svc(self):
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        mv = SimpleNamespace(module_vid=10)
+        release_row = SimpleNamespace(release_id=5)
+        svc._resolve_release = MagicMock(return_value=(mv, release_row))
+        svc._discover_module_validations = MagicMock(
+            return_value=([], {}, [], {}, {})
+        )
+        svc.script_from_db = MagicMock(return_value={"success": True})
+        return svc, mv, release_row
+
+    def test_release_none_is_not_explicit(self):
+        svc, mv, release_row = self._build_svc()
+        svc.script_for_module("MOD", "1.0.0", release=None)
+
+        svc._resolve_release.assert_called_once_with("MOD", "1.0.0", None)
+        svc._discover_module_validations.assert_called_once_with(
+            mv, release_row, False
+        )
+        assert (
+            svc.script_from_db.call_args.kwargs["release_was_explicit"]
+            is False
+        )
+
+    def test_release_given_is_explicit(self):
+        svc, mv, release_row = self._build_svc()
+        svc.script_for_module("MOD", "1.0.0", release="4.2")
+
+        svc._resolve_release.assert_called_once_with("MOD", "1.0.0", "4.2")
+        svc._discover_module_validations.assert_called_once_with(
+            mv, release_row, True
+        )
+        assert (
+            svc.script_from_db.call_args.kwargs["release_was_explicit"] is True
+        )
+
+
+# ------------------------------------------------------------------ #
+# _overlapping_operation_version_rows
+# ------------------------------------------------------------------ #
+
+
+def _version_row(
+    *,
+    op_vid=1,
+    code="v1",
+    scope_id=1,
+    start_release_id=1,
+    end_release_id=None,
+    module_vid=1,
+):
+    """A 10-tuple matching _discover_module_validations's query shape —
+    only indices 5-8 (module_vid, scope_id, start/end release) matter
+    to the two functions under test here. start_release_id/
+    end_release_id default to an arbitrary open-ended window since
+    _latest_operation_by_code ignores both.
+    """
+    return (
+        op_vid,
+        code,
+        "expr",
+        None,
+        None,
+        module_vid,
+        scope_id,
+        start_release_id,
+        end_release_id,
+        None,
+    )
+
+
+class TestOverlappingOperationVersionRows:
+    """Each window is ``(start_release_id, end_release_id)``, half-open
+    — ``None`` on either side means "unbounded", same convention the
+    module's own ``end_release_id`` uses. A row is kept when it
+    overlaps ANY window in the list — *mv*'s own plus, for an explicit
+    ``--release`` lookup, one per #182 ghost it stands in for.
+    """
+
+    def _sort_orders(self):
+        # Distinct, ordered sentinel values — real callers get these
+        # from Release.date ordinals, but only relative order matters.
+        return {10: 100, 20: 200, 30: 300, 40: 400, 50: 500}
+
+    def test_keeps_a_row_overlapping_the_module_window(self):
+        _, Cls, _ = _bare_svc()
+        windows = [(20, 40)]
+        row = _version_row(start_release_id=10, end_release_id=30)
+        out = Cls._overlapping_operation_version_rows(
+            [row], self._sort_orders(), windows
+        )
+        assert out == [row]
+
+    def test_drops_a_row_entirely_before_the_module_window(self):
+        _, Cls, _ = _bare_svc()
+        windows = [(20, 40)]
+        # Ends exactly where the module starts: the half-open windows
+        # touch but do not overlap.
+        row = _version_row(start_release_id=10, end_release_id=20)
+        out = Cls._overlapping_operation_version_rows(
+            [row], self._sort_orders(), windows
+        )
+        assert out == []
+
+    def test_drops_a_row_entirely_after_the_module_window(self):
+        _, Cls, _ = _bare_svc()
+        windows = [(20, 40)]
+        row = _version_row(start_release_id=40, end_release_id=50)
+        out = Cls._overlapping_operation_version_rows(
+            [row], self._sort_orders(), windows
+        )
+        assert out == []
+
+    def test_open_ended_row_still_overlaps(self):
+        """A row with no ``end_release_id`` (still active) must be kept
+        whenever it starts before the module's own window ends.
+        """
+        _, Cls, _ = _bare_svc()
+        windows = [(20, 40)]
+        row = _version_row(start_release_id=30, end_release_id=None)
+        out = Cls._overlapping_operation_version_rows(
+            [row], self._sort_orders(), windows
+        )
+        assert out == [row]
+
+    def test_open_ended_module_keeps_a_late_row(self):
+        """A module with no ``end_release_id`` of its own (still
+        active) must not exclude a row that starts after every other
+        release in the mapping.
+        """
+        _, Cls, _ = _bare_svc()
+        windows = [(20, None)]
+        row = _version_row(start_release_id=50, end_release_id=None)
+        out = Cls._overlapping_operation_version_rows(
+            [row], self._sort_orders(), windows
+        )
+        assert out == [row]
+
+    def test_row_outside_fallback_window_kept_via_ghost_window(self):
+        """A row scoped through a #182 ghost, windowed against the
+        ghost's own (later-starting) release — not the fallback's —
+        must still be kept when the fallback's window is unioned with
+        the ghost's, even though it falls outside the fallback's own
+        window alone (regression: ``v903581_m`` for DORA, at an
+        explicit ``--release`` matching its ghost's own window, was
+        wrongly dropped when only the fallback's window was checked).
+        """
+        _, Cls, _ = _bare_svc()
+        fallback_window = (10, 20)
+        ghost_window = (30, 50)
+        row = _version_row(start_release_id=30, end_release_id=40)
+        out = Cls._overlapping_operation_version_rows(
+            [row], self._sort_orders(), [fallback_window, ghost_window]
+        )
+        assert out == [row]
+
+    def test_row_outside_every_window_dropped(self):
+        _, Cls, _ = _bare_svc()
+        windows = [(10, 20), (30, 40)]
+        row = _version_row(start_release_id=40, end_release_id=50)
+        out = Cls._overlapping_operation_version_rows(
+            [row], self._sort_orders(), windows
+        )
+        assert out == []
+
+
+# ------------------------------------------------------------------ #
+# _ghost_windows
+# ------------------------------------------------------------------ #
+
+
+class TestGhostWindows:
+    def test_returns_start_end_tuples_for_ghost_vids(self):
+        _, Cls, _ = _bare_svc()
+        session = MagicMock()
+        session.query.return_value.filter.return_value.all.return_value = [
+            (5, None),
+            (7, 9),
+        ]
+        out = Cls._ghost_windows(session, [401, 488])
+        assert out == [(5, None), (7, 9)]
+
+    def test_no_ghost_vids_returns_empty(self):
+        _, Cls, _ = _bare_svc()
+        session = MagicMock()
+        session.query.return_value.filter.return_value.all.return_value = []
+        assert Cls._ghost_windows(session, []) == []
+
+
+# ------------------------------------------------------------------ #
+# _discover_module_validations — release_was_explicit gating
+# ------------------------------------------------------------------ #
+
+
+class TestDiscoverModuleValidationsGhostGating:
+    """The gating body itself: whether ``_ghost_windows`` gets
+    consulted and ``ghost_fallback_map`` gets populated. The pieces
+    this wires together (``_overlapping_operation_version_rows``,
+    ``_ghost_fallback_map``, ``_phantom_paired_scope_ids``) are each
+    tested in isolation elsewhere; this pins the orchestration
+    (Andrés's review on PR #396 — verified end-to-end against the real
+    DB separately).
+    """
+
+    @staticmethod
+    def _sort_order_rows():
+        # One row per release_id this scenario's windows can reference,
+        # in increasing date order — only relative order matters.
+        return [
+            (1, date(2024, 1, 1), None),
+            (30, date(2024, 6, 1), None),
+            (50, date(2024, 12, 1), None),
+        ]
+
+    def _build_svc(self, monkeypatch, *, ghost_vids):
+        # ``Operation`` comes from the stubbed ``dpmcore.orm.operations``,
+        # so ``Operation.code.startswith(...)`` is a bare MagicMock — the
+        # real ``sqlalchemy.or_`` (imported locally, unstubbed) rejects
+        # that as a clause. The rest of the query chain below is fully
+        # mocked and ignores whatever ``or_`` returns, so a stand-in
+        # that just returns *something* is enough here.
+        monkeypatch.setattr("sqlalchemy.or_", lambda *a, **kw: MagicMock())
+
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        svc._scope_calc = MagicMock()
+        svc._scope_calc._ghost_fallback_map.return_value = {}
+        svc._scope_calc._phantom_paired_scope_ids.return_value = set()
+        svc._release_ghost_fallbacks = MagicMock(
+            return_value=({10: ghost_vids} if ghost_vids else {})
+        )
+        svc._ghost_windows = MagicMock(return_value=[(30, 50)])
+
+        row = _version_row(
+            module_vid=10, scope_id=1, start_release_id=1, end_release_id=None
+        )
+        session = svc.session
+        chain = session.query.return_value.join.return_value.join.return_value.join.return_value.filter.return_value.filter.return_value.filter.return_value
+        chain.all.return_value = [row]
+        session.query.return_value.all.return_value = self._sort_order_rows()
+
+        mv = SimpleNamespace(
+            module_vid=10, start_release_id=1, end_release_id=None
+        )
+        release_row = SimpleNamespace(release_id=5)
+        return svc, mv, release_row
+
+    def test_not_explicit_skips_ghost_window_and_fallback_map(
+        self, monkeypatch
+    ):
+        svc, mv, release_row = self._build_svc(monkeypatch, ghost_vids=[999])
+        svc._discover_module_validations(
+            mv, release_row, release_was_explicit=False
+        )
+        svc._ghost_windows.assert_not_called()
+        svc._scope_calc._ghost_fallback_map.assert_not_called()
+
+    def test_explicit_consults_ghost_window_and_fallback_map(
+        self, monkeypatch
+    ):
+        svc, mv, release_row = self._build_svc(monkeypatch, ghost_vids=[999])
+        svc._discover_module_validations(
+            mv, release_row, release_was_explicit=True
+        )
+        svc._ghost_windows.assert_called_once_with(svc.session, [999])
+        svc._scope_calc._ghost_fallback_map.assert_called_once_with(5)
+
+    def test_explicit_but_no_ghosts_skips_ghost_window(self, monkeypatch):
+        """The window union only ever adds anything when *mv* actually
+        stands in for a ghost at this release — an explicit ``--release``
+        for a module with no #182 involvement must not pay for (or be
+        affected by) a lookup that has nothing to widen.
+        """
+        svc, mv, release_row = self._build_svc(monkeypatch, ghost_vids=[])
+        svc._discover_module_validations(
+            mv, release_row, release_was_explicit=True
+        )
+        svc._ghost_windows.assert_not_called()
+
+
+# ------------------------------------------------------------------ #
+# _latest_operation_by_code
+# ------------------------------------------------------------------ #
+
+
+class TestLatestOperationByCode:
+    def test_single_row_kept(self):
+        _, Cls, _ = _bare_svc()
+        row = _version_row(op_vid=5, code="v1", scope_id=1)
+        out = Cls._latest_operation_by_code([row], set(), home_module_vid=1)
+        assert set(out) == {"v1"}
+        assert out["v1"][0] == (5, 1)  # rank: (op_vid, is_home)
+
+    def test_phantom_scope_dropped(self):
+        _, Cls, _ = _bare_svc()
+        row = _version_row(op_vid=5, code="v1", scope_id=99)
+        out = Cls._latest_operation_by_code([row], {99}, home_module_vid=1)
+        assert out == {}
+
+    def test_higher_operation_vid_wins(self):
+        """A code matching two rows (e.g. the ghost-substitution widen)
+        keeps the one with the highest OperationVID, not insertion
+        order.
+        """
+        _, Cls, _ = _bare_svc()
+        older = _version_row(op_vid=5, code="v1", scope_id=1, module_vid=1)
+        newer = _version_row(op_vid=9, code="v1", scope_id=2, module_vid=1)
+        out = Cls._latest_operation_by_code(
+            [older, newer], set(), home_module_vid=1
+        )
+        assert out["v1"][0][0] == 9
+
+    def test_home_module_scope_outranks_ghost_at_equal_op_vid(self):
+        """Same OperationVID reached through two scopes — the home
+        module's own scope must win over a ghost's, independent of
+        which one was iterated first.
+        """
+        _, Cls, _ = _bare_svc()
+        ghost_first = _version_row(
+            op_vid=5, code="v1", scope_id=1, module_vid=99
+        )
+        home_second = _version_row(
+            op_vid=5, code="v1", scope_id=2, module_vid=1
+        )
+        out = Cls._latest_operation_by_code(
+            [ghost_first, home_second], set(), home_module_vid=1
+        )
+        assert out["v1"][0] == (5, 1)
+
+        # Order reversed: the outcome must not depend on it.
+        out_reversed = Cls._latest_operation_by_code(
+            [home_second, ghost_first], set(), home_module_vid=1
+        )
+        assert out_reversed["v1"][0] == (5, 1)

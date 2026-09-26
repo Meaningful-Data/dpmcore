@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -24,6 +25,7 @@ from dpmcore.dpm_xl.utils.scopes_calculator import (
 from dpmcore.errors import SemanticError
 from dpmcore.orm.glossary import Property
 from dpmcore.orm.infrastructure import DataType, Release
+from dpmcore.orm.operations import OperationScope, OperationScopeComposition
 from dpmcore.orm.packaging import (
     ModuleVersion,
     ModuleVersionComposition,
@@ -44,6 +46,15 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+
+class UnsupportedDbScope(Exception):
+    """Raised when no persisted, non-phantom scope exists for an operation.
+
+    Always a request to fall back to
+    :meth:`ScopeCalculatorService.calculate_from_expression` for this
+    one operation — never a signal that the DB data itself is broken.
+    """
 
 
 @dataclass
@@ -89,6 +100,12 @@ class ScopeCalculatorService:
         # operation that shifts a home table. Both are keyed by VID
         # alone and neither varies with the release being generated.
         self._home_module_refs: Dict[int, Tuple[Any, Optional[str]]] = {}
+        # {release_id: {ghost_module_vid: fallback_module_vid}} (#182),
+        # release-wide like ast_generator.py's own
+        # ``_ghost_fallback_cache`` — :meth:`build_scope_result_from_db`
+        # computes it once per *operation*, so memoising matters here
+        # too.
+        self._ghost_fallback_map_cache: Dict[int, Dict[int, int]] = {}
 
     def _check_release_exists(self, release_id: Optional[int]) -> None:
         """Raise SemanticError if *release_id* does not exist."""
@@ -449,6 +466,227 @@ class ScopeCalculatorService:
                 error_message=str(exc),
             )
 
+    def build_scope_result_from_db(
+        self,
+        operation_vid: int,
+        primary_module_vid: int,
+        release_id: Optional[int] = None,
+        release_was_explicit: bool = False,
+    ) -> ScopeResult:
+        """Rebuild a ``ScopeResult`` for *operation_vid* from the DB.
+
+        Reads every active ``OperationScope`` row for the operation —
+        each already carrying its ``OperationScopeComposition`` module
+        VIDs via the ORM relationship — instead of recomputing scope
+        by re-parsing the expression text and re-validating every
+        operand against live table data via ``OperandsChecking``. That
+        re-validation is what a genuinely persisted validation's cell
+        references can legitimately fail on (a wildcard/range axis
+        resolved against a table that has since grown grey cells the
+        validation's author never touched, for instance) — none of
+        which mdpm's own export ever sees, since it reads the same
+        persisted scope this reads and never re-validates it against
+        live table data either.
+
+        Excludes any scope whose only *other* composed module (besides
+        *primary_module_vid*) is a #182 ghost with no fallback at
+        *release_id* (see :meth:`_phantom_paired_scope_ids`), matching
+        :meth:`~dpmcore.services.ast_generator.ASTGeneratorService.\
+_discover_module_validations`'s own exclusion. Only relevant when
+        *release_was_explicit* — the caller named a specific
+        ``--release`` this operation's ghost pairing genuinely governs;
+        for the ``--module-version``/``--all-versions`` case (the
+        default) a phantom "other" module stays a dead end regardless
+        of any fallback, and no composition ever gets substituted,
+        exactly as if #182 didn't exist here — verified against mdpm's
+        reference, which has no equivalent to #182 at all.
+
+        When it does apply, a composition naming a ghost that has a
+        fallback is not excluded, but its ``module_vid`` is substituted
+        for the fallback's (see :meth:`_substitute_ghost_compositions`)
+        — the persisted composition names the ghost directly, but the
+        ghost itself has no table/URI structure for downstream
+        dependency resolution to use, only the fallback does.
+
+        Raises :class:`UnsupportedDbScope` when nothing usable
+        survives — callers must catch this and fall back to
+        :meth:`calculate_from_expression` instead.
+        """
+        scopes = (
+            self.session.query(OperationScope)
+            .filter(
+                OperationScope.operation_vid == operation_vid,
+                OperationScope.is_active.in_([-1, 1, True]),
+            )
+            .all()
+        )
+        if not scopes:
+            raise UnsupportedDbScope(
+                f"No active OperationScope rows for "
+                f"operation_vid={operation_vid}"
+            )
+
+        ghost_fallback_map: Dict[int, int] = (
+            self._ghost_fallback_map(release_id)
+            if release_was_explicit and release_id is not None
+            else {}
+        )
+        scope_ids = {s.operation_scope_id for s in scopes}
+        phantom_ids = self._phantom_paired_scope_ids(
+            self.session, scope_ids, primary_module_vid, ghost_fallback_map
+        )
+        filtered = [
+            s for s in scopes if s.operation_scope_id not in phantom_ids
+        ]
+        if not filtered:
+            raise UnsupportedDbScope(
+                f"Every OperationScope for operation_vid={operation_vid} "
+                "is phantom-paired"
+            )
+
+        substituted = (
+            [
+                self._substitute_ghost_compositions(s, ghost_fallback_map)
+                for s in filtered
+            ]
+            if ghost_fallback_map
+            else filtered
+        )
+
+        return ScopeResult(
+            scopes=substituted,
+            total_scopes=len(substituted),
+            is_cross_module=self._compute_cross_module(substituted),
+            module_versions=self._module_vids(substituted),
+        )
+
+    def _ghost_fallback_map(self, release_id: int) -> Dict[int, int]:
+        """``{ghost_module_vid: fallback_module_vid}`` for *release_id*.
+
+        Inverts :func:`ModuleVersionQuery.ghost_fallbacks` (#182): a
+        fallback can stand in for several ghosts, but a ghost has at
+        most one fallback per release, so the inversion is total.
+        Memoised per release — :meth:`build_scope_result_from_db` and
+        :meth:`_phantom_paired_scope_ids` both compute it once per
+        *operation*, and it's release-wide (same reasoning as
+        ast_generator.py's own ``_release_ghost_fallbacks`` cache).
+        """
+        cached = self._ghost_fallback_map_cache.get(release_id)
+        if cached is None:
+            from dpmcore.dpm_xl.model_queries import ModuleVersionQuery
+
+            fallbacks = ModuleVersionQuery.ghost_fallbacks(
+                self.session, release_id
+            )
+            cached = {
+                ghost_vid: fallback_vid
+                for fallback_vid, ghost_vids in fallbacks.items()
+                for ghost_vid in ghost_vids
+            }
+            self._ghost_fallback_map_cache[release_id] = cached
+        return cached
+
+    @staticmethod
+    def _substitute_ghost_compositions(
+        scope: Any, ghost_fallback_map: Dict[int, int]
+    ) -> Any:
+        """Return *scope* with any #182-ghost composition substituted.
+
+        Substitutes a ghost composition's ``module_vid`` for its
+        fallback's. A composition naming a ghost module directly is a real,
+        persisted fact — #182's own ``OperationScopeComposition`` rows
+        are written against the ghost, never against the fallback that
+        represents it later — but the ghost has no table/URI structure
+        of its own for downstream dependency resolution
+        (``_compute_cross_module``, ``_module_vids``,
+        ``filter_valid_dependency_modules``,
+        ``detect_cross_module_dependencies``) to use. Every one of
+        those reads ``operation_scope_compositions`` off a scope via
+        ``getattr`` with a default — already duck-typed — so a
+        lightweight, non-persisted substitute is enough; nothing here
+        touches the real ORM rows or the session.
+        """
+        compositions = getattr(scope, "operation_scope_compositions", [])
+        if not any(c.module_vid in ghost_fallback_map for c in compositions):
+            return scope
+        return SimpleNamespace(
+            operation_scope_id=scope.operation_scope_id,
+            operation_scope_compositions=[
+                SimpleNamespace(
+                    operation_scope_id=c.operation_scope_id,
+                    module_vid=ghost_fallback_map.get(
+                        c.module_vid, c.module_vid
+                    ),
+                    row_guid=getattr(c, "row_guid", None),
+                )
+                for c in compositions
+            ],
+        )
+
+    @staticmethod
+    def _phantom_paired_scope_ids(
+        session: "Session",
+        scope_ids: Set[int],
+        module_vid: int,
+        ghost_fallback_map: Dict[int, int],
+    ) -> Set[int]:
+        """Return scope ids whose only other composed module is a dead end.
+
+        These are the ``OperationScopeID``s whose only *other* composed
+        module versions (besides *module_vid*) are all phantom (#182
+        ghosts — mirrors mdpm's ``is_phantom_module_op``) **and** have
+        no fallback standing in for them in *ghost_fallback_map*. A
+        phantom *with* a fallback there is not void: the fallback
+        substitutes for it (see :meth:`_substitute_ghost_compositions`),
+        so a scope composed with such a ghost is kept.
+        *ghost_fallback_map* is empty whenever the caller isn't in the
+        explicit-``--release`` case, which reduces this to the
+        original rule (every phantom is a dead end). A scope shared
+        with no other module at all is never phantom here — this only
+        voids a cross-framework pairing whose counterpart neither
+        really existed as its own module version, nor has anything
+        current standing in for it.
+
+        Shared by :meth:`build_scope_result_from_db` and
+        :meth:`~dpmcore.services.ast_generator.ASTGeneratorService.\
+_discover_module_validations`.
+        """
+        rows = (
+            session.query(
+                OperationScopeComposition.operation_scope_id,
+                OperationScopeComposition.module_vid,
+                ModuleVersion.from_reference_date,
+                ModuleVersion.to_reference_date,
+            )
+            .join(
+                ModuleVersion,
+                ModuleVersion.module_vid
+                == OperationScopeComposition.module_vid,
+            )
+            .filter(
+                OperationScopeComposition.operation_scope_id.in_(scope_ids)
+            )
+            .filter(OperationScopeComposition.module_vid != module_vid)
+            .all()
+        )
+        others_by_scope: Dict[int, List[bool]] = {}
+        for scope_id, other_module_vid, from_date, to_date in rows:
+            is_phantom = (
+                from_date is not None
+                and to_date is not None
+                and from_date == to_date
+            )
+            is_dead_end = (
+                is_phantom and other_module_vid not in ghost_fallback_map
+            )
+            others_by_scope.setdefault(scope_id, []).append(is_dead_end)
+
+        return {
+            scope_id
+            for scope_id, flags in others_by_scope.items()
+            if flags and all(flags)
+        }
+
     # ------------------------------------------------------------------ #
     # Cross-module dependency detection (Fix 2)
     # ------------------------------------------------------------------ #
@@ -575,13 +813,25 @@ class ScopeCalculatorService:
         # intra-instance reading even if cross-instance scopes also exist
         # for other modules. Only when the primary appears *solely* in
         # multi-module scopes is it a genuine cross-instance dependency.
-        primary_has_intra = not scope_result.has_error and any(
-            {
-                c.module_vid
-                for c in getattr(s, "operation_scope_compositions", [])
-            }
-            == {primary_module_vid}
-            for s in scope_result.scopes or []
+        #
+        # A single-module scope isn't the only signal for that: a
+        # DB-native scope_result's OperationScope rows can omit a
+        # genuine single-module combination (dpmcore#364), so also check
+        # table ownership directly, mirroring mdpm's own is_intra_operation.
+        primary_has_intra = not scope_result.has_error and (
+            any(
+                {
+                    c.module_vid
+                    for c in getattr(s, "operation_scope_compositions", [])
+                }
+                == {primary_module_vid}
+                for s in scope_result.scopes or []
+            )
+            or bool(
+                referenced_tables
+                and home_module_tables is not None
+                and referenced_tables <= home_module_tables
+            )
         )
 
         if scope_result.has_error or not is_cross or primary_has_intra:
