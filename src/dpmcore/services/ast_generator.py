@@ -1526,9 +1526,13 @@ ScopeCalculatorService.build_scope_result_from_db` for what this
                 return open_end_sort
             return sort_order_from(sort_orders, release_id)
 
+        def _start_sort(release_id: Optional[int]) -> int:
+            if release_id is None:
+                return 0  # sorts before every real release's sort order
+            return sort_order_from(sort_orders, release_id)
+
         sort_windows = [
-            (sort_order_from(sort_orders, start), _end_sort(end))
-            for start, end in windows
+            (_start_sort(start), _end_sort(end)) for start, end in windows
         ]
 
         return [

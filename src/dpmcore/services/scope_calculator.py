@@ -590,10 +590,10 @@ _discover_module_validations`'s own exclusion. Only relevant when
     def _substitute_ghost_compositions(
         scope: Any, ghost_fallback_map: Dict[int, int]
     ) -> Any:
-        """Return *scope* with any #182-ghost composition's ``module_vid``
-        substituted for its fallback's.
+        """Return *scope* with any #182-ghost composition substituted.
 
-        A composition naming a ghost module directly is a real,
+        Substitutes a ghost composition's ``module_vid`` for its
+        fallback's. A composition naming a ghost module directly is a real,
         persisted fact — #182's own ``OperationScopeComposition`` rows
         are written against the ghost, never against the fallback that
         represents it later — but the ghost has no table/URI structure
@@ -630,8 +630,7 @@ _discover_module_validations`'s own exclusion. Only relevant when
         module_vid: int,
         ghost_fallback_map: Dict[int, int],
     ) -> Set[int]:
-        """Return scope ids whose only other composed module is a
-        dead-end phantom.
+        """Return scope ids whose only other composed module is a dead end.
 
         These are the ``OperationScopeID``s whose only *other* composed
         module versions (besides *module_vid*) are all phantom (#182
