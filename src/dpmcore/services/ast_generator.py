@@ -1292,28 +1292,37 @@ class ASTGeneratorService:
         dictionary has that shape, but it is the case to revisit if one
         appears.
 
-        The *window* check itself additionally widens to the union of
-        *mv*'s own window and each such ghost's own window (see
-        :meth:`_ghost_windows`), and the phantom-scope exclusion below
-        treats a phantom "other" module as rescued rather than void
-        when it has its own #182 fallback — unconditionally, for any
-        caller (``--module-version``, ``--all-versions`` or an explicit
+        The *filter* above widens across *mv*'s whole ghost chain so a
+        row composed solely against an earlier ghost is fetchable at
+        all (``ghost_vids``, see :meth:`_ghosts_represented_by`), but
+        the *window* check only widens by the **one** ghost (if any)
+        whose own window actually covers ``release_row`` itself — see
+        :meth:`_release_ghost_fallbacks`. Using the whole chain there
+        instead would pull in a later, unrelated ghost's validations
+        for an earlier release entirely (Andrés's review on PR #396:
+        ``COREP_FRTB-3.1.0`` at release ``3.5`` wrongly gained
+        ``v23241_s``/``v23242_s``, which only exist under ghost
+        ``3.3.0``'s own ``4.0``-``4.2`` window, not ``3.2.0``'s — the
+        one that actually covers ``3.5``). The phantom-scope exclusion
+        below treats a phantom "other" module as rescued rather than
+        void when it has its own #182 fallback at this same,
+        release-specific ghost — unconditionally, for any caller
+        (``--module-version``, ``--all-versions`` or an explicit
         ``--release`` alike), per issue #182 itself: "this fallback
         must apply consistently on every path dpmcore uses to resolve
         which module version applies". A ``--module-version``/
         ``--all-versions`` lookup resolves *mv* "as itself" toward
         whatever release is currently applicable (``release=None``'s
         own auto-pick, #221) — when that resolved release is one only
-        a ghost covers, the ghost's validations are exactly what #182
+        a ghost covers, that ghost's validations are exactly what #182
         says must surface there too (``DORA-1.1.0`` needs 67 whether
         reached via ``--module-version`` or an explicit ``--release
-        4.2``; ``COREP_FRTB-3.1.0`` likewise gains ghost ``3.3.0``'s
-        content under ``--module-version`` alone, even though a later,
-        real ``3.4.0`` eventually supersedes it — what superseded it
-        afterwards doesn't change what genuinely applied at the
-        resolved release). mdpm's own reference has no equivalent to
-        #182 in any mode, so it is not a valid comparison for a
-        ghost-involved module version; it still is for one with none.
+        4.2``, since ``1.2.0`` covers both releases). A release *mv*
+        covers on its own resolves no ghost here at all (``COREP_FRTB-
+        3.1.0`` at its own release ``3.4`` stays at its own 2
+        operations). mdpm's own reference has no equivalent to #182 in
+        any mode, so it is not a valid comparison for a ghost-involved
+        release; it still is for one with none.
 
         Also drops any candidate whose *only* ``OperationScopeID`` under
         *mv* is shared exclusively with phantom module versions (see
@@ -1366,7 +1375,29 @@ class ASTGeneratorService:
                 "_discover_module_validations requires a live DB session.",
             )
 
-        ghost_vids = self._ghosts_represented_by(mv)
+        # A release mv covers in its own right needs no ghost at all —
+        # for it, ghost_vids must stay empty even in the *filter* below,
+        # not just the window/phantom-rescue steps: a ghost-composed
+        # row can have its own window happen to overlap mv's own window
+        # too (COREP_FRTB's v22730_s, [1,3) against mv's own [1,2)) purely
+        # by coincidence of how its own OperationVersion was recorded,
+        # which must not leak it into a query about a release that never
+        # needed any ghost involvement to begin with (COREP_FRTB-3.1.0 at
+        # its own release 3.4 must stay at its own 2 operations, not gain
+        # v22730_s and the many other ghost-composed rows whose window
+        # happens to touch release 1 too).
+        sort_orders = load_release_sort_orders(session)
+        target_sort = sort_order_from(sort_orders, release_row.release_id)
+        mv_start_sort = sort_order_from(sort_orders, mv.start_release_id)
+        mv_end_sort = (
+            compute_sort_order(None, None)
+            if mv.end_release_id is None
+            else sort_order_from(sort_orders, mv.end_release_id)
+        )
+        release_needs_ghosts = not (mv_start_sort <= target_sort < mv_end_sort)
+        ghost_vids = (
+            self._ghosts_represented_by(mv) if release_needs_ghosts else []
+        )
 
         query = (
             session.query(
@@ -1410,53 +1441,52 @@ class ASTGeneratorService:
         )
         rows = query.all()
 
-        sort_orders = load_release_sort_orders(session)
-        # mv's own ghost chain only needs to widen anything when the
-        # release actually being resolved isn't already inside mv's own
-        # real window — a release mv covers on its own is answered by mv
-        # alone, ghost siblings or not (confirmed by the pre-existing
-        # #372 fixture: DORA 1.1.0 at its own release 4.1, which no ghost
-        # covers, must not gain any of ghost 1.2.0's validations, while
-        # both an explicit --release 4.2 and release=None's own
-        # auto-resolved release — neither covered by mv's own window —
-        # must, identically).
-        target_sort = sort_order_from(sort_orders, release_row.release_id)
-        mv_start_sort = sort_order_from(sort_orders, mv.start_release_id)
-        mv_end_sort = (
-            compute_sort_order(None, None)
-            if mv.end_release_id is None
-            else sort_order_from(sort_orders, mv.end_release_id)
-        )
-        release_needs_ghosts = bool(ghost_vids) and not (
-            mv_start_sort <= target_sort < mv_end_sort
+        # ghost_vids (mv's whole chain, already gated above to empty when
+        # this release needs no ghost at all) widens the *filter* — it
+        # decides which rows are even fetchable, e.g. a row composed
+        # solely against an earlier ghost with no row of its own for mv
+        # (COREP_FRTB's v22730_s, composed only against 3.2.0). Whether a
+        # fetched row actually *applies* to this release is a window
+        # question, and only the one ghost (if any) whose own window
+        # covers release_row itself is relevant there — using the whole
+        # chain here pulled in a later, unrelated ghost's validations for
+        # an earlier release entirely (Andrés's review on PR #396:
+        # COREP_FRTB 3.1.0 at release 3.5 wrongly gained v23241_s/
+        # v23242_s, which only exist under ghost 3.3.0's own release
+        # 4.0-4.2 window, not 3.2.0's — the one that actually covers 3.5).
+        release_ghost_vids = (
+            self._release_ghost_fallbacks(session, release_row.release_id).get(
+                mv.module_vid, []
+            )
+            if release_needs_ghosts
+            else []
         )
 
         windows = [(mv.start_release_id, mv.end_release_id)]
-        if release_needs_ghosts:
-            windows += self._ghost_windows(session, ghost_vids)
+        if release_ghost_vids:
+            windows += self._ghost_windows(session, release_ghost_vids)
         overlapping = self._overlapping_operation_version_rows(
             rows, sort_orders, windows
         )
 
         scope_ids = {row[6] for row in overlapping}
         if scope_ids:
-            # The release-wide map only recognises a ghost as having a
-            # fallback when the ghost's *own* window covers this exact
-            # release — a chain bridging more than one ghost (COREP_FRTB's
-            # 3.2.0 then 3.3.0) leaves the earlier one unrecognised there,
-            # even though _ghosts_represented_by above already knows mv
-            # stands in for it too. Folding ghost_vids in directly, keyed
-            # to mv's own module_vid, closes that gap without having to
-            # make the release-wide map itself chain-aware — only when
-            # the release actually needs mv's ghosts, same as the window
-            # union above.
+            # Unlike the window check above, the phantom-rescue below
+            # asks a release-independent, structural question — "is
+            # this composition's other module a dead end, or does
+            # something current stand in for it at all" — so it folds
+            # in mv's *whole* chain (ghost_vids), not just the one
+            # ghost specific to this release: a row can be fetched (via
+            # the filter's own use of the whole chain) and pass the
+            # window check through mv's own window directly (not
+            # needing any ghost's window at all, e.g. v22730_s's own
+            # window already overlaps mv's), while still being composed
+            # *only* against an earlier ghost with no row of its own
+            # for mv — that composition is never a dead end as long as
+            # mv is its fallback, regardless of which release resolved.
             ghost_fallback_map = {
                 **self._scope_calc._ghost_fallback_map(release_row.release_id),
-                **(
-                    dict.fromkeys(ghost_vids, mv.module_vid)
-                    if release_needs_ghosts
-                    else {}
-                ),
+                **dict.fromkeys(ghost_vids, mv.module_vid),
             }
             phantom_scope_ids = self._scope_calc._phantom_paired_scope_ids(
                 session, scope_ids, mv.module_vid, ghost_fallback_map

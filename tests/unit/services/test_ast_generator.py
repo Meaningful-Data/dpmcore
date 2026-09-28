@@ -3186,20 +3186,28 @@ class TestGhostWindows:
 
 
 class TestDiscoverModuleValidationsGhostWidening:
-    """The orchestration itself: ``_ghost_windows`` is consulted and
-    mv's own ghost chain gets folded into ``ghost_fallback_map`` only
-    when the release actually being resolved is *not* already covered
-    by mv's own real window — regardless of whether that release was
-    named explicitly or auto-resolved (issue #182: "this fallback must
-    apply consistently on every path..."). A release mv covers on its
-    own must never gain anything from its ghost siblings (the
-    pre-existing #372 fixture, ``test_release_the_version_covers_
-    itself_is_unaffected``, pins exactly this — DORA 1.1.0 at its own
-    release 4.1 must not gain any of ghost 1.2.0's validations). The
-    pieces this wires together (``_overlapping_operation_version_rows``,
-    ``_ghost_fallback_map``, ``_phantom_paired_scope_ids``) are each
-    tested in isolation elsewhere; this pins the orchestration
-    (verified end-to-end against the real DB separately).
+    """The orchestration itself: the SQL filter's ``ghost_vids`` (mv's
+    whole ghost chain, via ``_ghosts_represented_by``) and the window
+    union / local ``ghost_fallback_map`` merge's ``release_ghost_vids``
+    (only the one ghost whose own window covers ``release_row``, via
+    ``_release_ghost_fallbacks``) are both only consulted when the
+    release actually being resolved is *not* already covered by mv's
+    own real window — regardless of whether that release was named
+    explicitly or auto-resolved (issue #182: "this fallback must apply
+    consistently on every path..."). A release mv covers on its own
+    must never gain anything from its ghost siblings (the pre-existing
+    #372 fixture, ``test_release_the_version_covers_itself_is_
+    unaffected``, pins exactly this — DORA 1.1.0 at its own release 4.1
+    must not gain any of ghost 1.2.0's validations), and the window
+    union must only ever use the *release-specific* ghost, not mv's
+    whole chain, or an earlier release wrongly gains a later ghost's
+    validations (Andrés's review on PR #396 — COREP_FRTB 3.1.0 at
+    release 3.5 wrongly gained validations exclusive to ghost 3.3.0's
+    own, later window). The pieces this wires together
+    (``_overlapping_operation_version_rows``, ``_ghost_fallback_map``,
+    ``_phantom_paired_scope_ids``) are each tested in isolation
+    elsewhere; this pins the orchestration (verified end-to-end against
+    the real DB separately).
     """
 
     @staticmethod
@@ -3228,6 +3236,9 @@ class TestDiscoverModuleValidationsGhostWidening:
         svc._scope_calc._ghost_fallback_map.return_value = {}
         svc._scope_calc._phantom_paired_scope_ids.return_value = set()
         svc._ghosts_represented_by = MagicMock(return_value=ghost_vids)
+        svc._release_ghost_fallbacks = MagicMock(
+            return_value=({10: ghost_vids} if ghost_vids else {})
+        )
         svc._ghost_windows = MagicMock(return_value=[(30, 50)])
 
         row = _version_row(
@@ -3252,6 +3263,8 @@ class TestDiscoverModuleValidationsGhostWidening:
             monkeypatch, ghost_vids=[999], release_id=50
         )
         svc._discover_module_validations(mv, release_row)
+        svc._ghosts_represented_by.assert_called_once_with(mv)
+        svc._release_ghost_fallbacks.assert_called_once_with(svc.session, 50)
         svc._ghost_windows.assert_called_once_with(svc.session, [999])
         svc._scope_calc._ghost_fallback_map.assert_called_once_with(50)
 
@@ -3259,11 +3272,15 @@ class TestDiscoverModuleValidationsGhostWidening:
         """Release 10 is inside mv's own [1, 30) window — a release mv
         covers on its own must not gain anything from its ghost
         siblings, even though it has some (the DORA-at-4.1 regression).
+        Neither the filter's nor the window's ghost lookup should even
+        be called — not just skipped once called.
         """
         svc, mv, release_row = self._build_svc(
             monkeypatch, ghost_vids=[999], release_id=10
         )
         svc._discover_module_validations(mv, release_row)
+        svc._ghosts_represented_by.assert_not_called()
+        svc._release_ghost_fallbacks.assert_not_called()
         svc._ghost_windows.assert_not_called()
 
     def test_no_ghosts_skips_ghost_window(self, monkeypatch):
