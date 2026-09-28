@@ -1683,11 +1683,13 @@ _discover_module_validations`.
                 if tvid in variables_by_tvid:
                     variables_by_tvid[tvid][var_id] = type_code
 
-        # Open keys per table_code
+        # Open keys per table_code, pinned to this module version's own
+        # TableVersion rows (not just their codes — see _open_keys.py).
         open_keys_by_code = _get_open_keys_for_tables(
             self.session,
             list(vid_to_code.values()),
             release_id=release_id,
+            table_vids=table_vids,
         )
 
         tables: Dict[str, Any] = {}
