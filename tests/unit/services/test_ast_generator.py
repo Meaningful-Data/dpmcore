@@ -2759,44 +2759,11 @@ class TestScriptFromDb:
 
         assert out["success"] is True, out["error"]
         svc._scope_calc.build_scope_result_from_db.assert_called_once_with(
-            555, mv.module_vid, release_row.release_id, False
+            555, mv.module_vid, release_row.release_id
         )
         svc._scope_calc.calculate_from_expression.assert_not_called()
         ns = next(iter(out["enriched_ast"].values()))
         assert "v1" in ns["operations"]
-
-    def test_release_was_explicit_threads_through_to_scope_rebuild(
-        self, monkeypatch
-    ):
-        """``release_was_explicit`` (true only for an explicit
-        ``--release`` lookup — see :meth:`script_for_module`) must
-        reach :meth:`build_scope_result_from_db` unchanged, since that
-        is what gates the #182 ghost-fallback rescue/substitution
-        there (Andrés's review on PR #396). Verified end-to-end against
-        the real DB separately; this pins the threading itself.
-        """
-        svc, mv, release_row, _ = self._build_svc()
-        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
-        build = MagicMock(return_value=(db_ast_dict, 24))
-        self._stub_db_ast(monkeypatch, build)
-
-        svc._scope_calc.build_scope_result_from_db.side_effect = None
-        svc._scope_calc.build_scope_result_from_db.return_value = (
-            SimpleNamespace(has_error=False, scopes=[])
-        )
-
-        out = svc.script_from_db(
-            expressions=[("e1", "v1")],
-            operation_vids={"v1": 555},
-            mv=mv,
-            release_row=release_row,
-            release_was_explicit=True,
-        )
-
-        assert out["success"] is True, out["error"]
-        svc._scope_calc.build_scope_result_from_db.assert_called_once_with(
-            555, mv.module_vid, release_row.release_id, True
-        )
 
     def test_db_native_scope_falls_back_when_unsupported(self, monkeypatch):
         """``UnsupportedDbScope`` falls back to
@@ -3010,20 +2977,18 @@ class TestScriptFromDb:
 
 
 # ------------------------------------------------------------------ #
-# script_for_module — release_was_explicit derivation
+# script_for_module — release resolution wiring
 # ------------------------------------------------------------------ #
 
 
-class TestScriptForModuleReleaseWasExplicit:
-    """``release_was_explicit`` (``release is not None``) is the single
-    switch gating the #182 ghost-fallback rescue everywhere downstream
-    (Andrés's review on PR #396). ``TestScriptFromDb``'s
-    ``test_release_was_explicit_threads_through_to_scope_rebuild``
-    pins the value once already computed reaching
-    ``build_scope_result_from_db``; this pins the derivation itself —
-    that a bare ``--module-version``/``--all-versions`` call (``release
-    =None``) computes ``False``, and an explicit ``--release`` computes
-    ``True``.
+class TestScriptForModuleReleaseResolution:
+    """``script_for_module`` resolves *mv*/*release_row* once and hands
+    them, unadorned, to ``_discover_module_validations``/
+    ``script_from_db`` — the #182 ghost-fallback rescue applies
+    uniformly there regardless of whether ``release`` was given
+    (issue #182: "this fallback must apply consistently on every path
+    dpmcore uses to resolve which module version applies"), so there is
+    no separate flag left to derive or thread through here.
     """
 
     def _build_svc(self):
@@ -3038,29 +3003,28 @@ class TestScriptForModuleReleaseWasExplicit:
         svc.script_from_db = MagicMock(return_value={"success": True})
         return svc, mv, release_row
 
-    def test_release_none_is_not_explicit(self):
+    def test_release_none_resolves_and_discovers(self):
         svc, mv, release_row = self._build_svc()
         svc.script_for_module("MOD", "1.0.0", release=None)
 
         svc._resolve_release.assert_called_once_with("MOD", "1.0.0", None)
         svc._discover_module_validations.assert_called_once_with(
-            mv, release_row, False
+            mv, release_row
         )
         assert (
-            svc.script_from_db.call_args.kwargs["release_was_explicit"]
-            is False
+            "release_was_explicit" not in svc.script_from_db.call_args.kwargs
         )
 
-    def test_release_given_is_explicit(self):
+    def test_release_given_resolves_and_discovers(self):
         svc, mv, release_row = self._build_svc()
         svc.script_for_module("MOD", "1.0.0", release="4.2")
 
         svc._resolve_release.assert_called_once_with("MOD", "1.0.0", "4.2")
         svc._discover_module_validations.assert_called_once_with(
-            mv, release_row, True
+            mv, release_row
         )
         assert (
-            svc.script_from_db.call_args.kwargs["release_was_explicit"] is True
+            "release_was_explicit" not in svc.script_from_db.call_args.kwargs
         )
 
 
@@ -3217,18 +3181,25 @@ class TestGhostWindows:
 
 
 # ------------------------------------------------------------------ #
-# _discover_module_validations — release_was_explicit gating
+# _discover_module_validations — ghost widening
 # ------------------------------------------------------------------ #
 
 
-class TestDiscoverModuleValidationsGhostGating:
-    """The gating body itself: whether ``_ghost_windows`` gets
-    consulted and ``ghost_fallback_map`` gets populated. The pieces
-    this wires together (``_overlapping_operation_version_rows``,
+class TestDiscoverModuleValidationsGhostWidening:
+    """The orchestration itself: ``_ghost_windows`` is consulted and
+    mv's own ghost chain gets folded into ``ghost_fallback_map`` only
+    when the release actually being resolved is *not* already covered
+    by mv's own real window — regardless of whether that release was
+    named explicitly or auto-resolved (issue #182: "this fallback must
+    apply consistently on every path..."). A release mv covers on its
+    own must never gain anything from its ghost siblings (the
+    pre-existing #372 fixture, ``test_release_the_version_covers_
+    itself_is_unaffected``, pins exactly this — DORA 1.1.0 at its own
+    release 4.1 must not gain any of ghost 1.2.0's validations). The
+    pieces this wires together (``_overlapping_operation_version_rows``,
     ``_ghost_fallback_map``, ``_phantom_paired_scope_ids``) are each
     tested in isolation elsewhere; this pins the orchestration
-    (Andrés's review on PR #396 — verified end-to-end against the real
-    DB separately).
+    (verified end-to-end against the real DB separately).
     """
 
     @staticmethod
@@ -3237,11 +3208,12 @@ class TestDiscoverModuleValidationsGhostGating:
         # in increasing date order — only relative order matters.
         return [
             (1, date(2024, 1, 1), None),
+            (10, date(2024, 3, 1), None),
             (30, date(2024, 6, 1), None),
             (50, date(2024, 12, 1), None),
         ]
 
-    def _build_svc(self, monkeypatch, *, ghost_vids):
+    def _build_svc(self, monkeypatch, *, ghost_vids, release_id):
         # ``Operation`` comes from the stubbed ``dpmcore.orm.operations``,
         # so ``Operation.code.startswith(...)`` is a bare MagicMock — the
         # real ``sqlalchemy.or_`` (imported locally, unstubbed) rejects
@@ -3255,9 +3227,7 @@ class TestDiscoverModuleValidationsGhostGating:
         svc._scope_calc = MagicMock()
         svc._scope_calc._ghost_fallback_map.return_value = {}
         svc._scope_calc._phantom_paired_scope_ids.return_value = set()
-        svc._release_ghost_fallbacks = MagicMock(
-            return_value=({10: ghost_vids} if ghost_vids else {})
-        )
+        svc._ghosts_represented_by = MagicMock(return_value=ghost_vids)
         svc._ghost_windows = MagicMock(return_value=[(30, 50)])
 
         row = _version_row(
@@ -3268,42 +3238,44 @@ class TestDiscoverModuleValidationsGhostGating:
         chain.all.return_value = [row]
         session.query.return_value.all.return_value = self._sort_order_rows()
 
+        # mv's own window is [1, 30) — release_id chosen per test decides
+        # whether the target release falls inside it or not.
         mv = SimpleNamespace(
-            module_vid=10, start_release_id=1, end_release_id=None
+            module_vid=10, start_release_id=1, end_release_id=30
         )
-        release_row = SimpleNamespace(release_id=5)
+        release_row = SimpleNamespace(release_id=release_id)
         return svc, mv, release_row
 
-    def test_not_explicit_skips_ghost_window_and_fallback_map(
-        self, monkeypatch
-    ):
-        svc, mv, release_row = self._build_svc(monkeypatch, ghost_vids=[999])
-        svc._discover_module_validations(
-            mv, release_row, release_was_explicit=False
+    def test_release_outside_own_window_consults_ghosts(self, monkeypatch):
+        """Release 50 is outside mv's own [1, 30) window — widen."""
+        svc, mv, release_row = self._build_svc(
+            monkeypatch, ghost_vids=[999], release_id=50
         )
-        svc._ghost_windows.assert_not_called()
-        svc._scope_calc._ghost_fallback_map.assert_not_called()
-
-    def test_explicit_consults_ghost_window_and_fallback_map(
-        self, monkeypatch
-    ):
-        svc, mv, release_row = self._build_svc(monkeypatch, ghost_vids=[999])
-        svc._discover_module_validations(
-            mv, release_row, release_was_explicit=True
-        )
+        svc._discover_module_validations(mv, release_row)
         svc._ghost_windows.assert_called_once_with(svc.session, [999])
-        svc._scope_calc._ghost_fallback_map.assert_called_once_with(5)
+        svc._scope_calc._ghost_fallback_map.assert_called_once_with(50)
 
-    def test_explicit_but_no_ghosts_skips_ghost_window(self, monkeypatch):
-        """The window union only ever adds anything when *mv* actually
-        stands in for a ghost at this release — an explicit ``--release``
-        for a module with no #182 involvement must not pay for (or be
-        affected by) a lookup that has nothing to widen.
+    def test_release_inside_own_window_skips_ghosts(self, monkeypatch):
+        """Release 10 is inside mv's own [1, 30) window — a release mv
+        covers on its own must not gain anything from its ghost
+        siblings, even though it has some (the DORA-at-4.1 regression).
         """
-        svc, mv, release_row = self._build_svc(monkeypatch, ghost_vids=[])
-        svc._discover_module_validations(
-            mv, release_row, release_was_explicit=True
+        svc, mv, release_row = self._build_svc(
+            monkeypatch, ghost_vids=[999], release_id=10
         )
+        svc._discover_module_validations(mv, release_row)
+        svc._ghost_windows.assert_not_called()
+
+    def test_no_ghosts_skips_ghost_window(self, monkeypatch):
+        """The window union only ever adds anything when *mv* actually
+        stands in for a ghost — a module with no #182 involvement must
+        not pay for (or be affected by) a lookup that has nothing to
+        widen.
+        """
+        svc, mv, release_row = self._build_svc(
+            monkeypatch, ghost_vids=[], release_id=50
+        )
+        svc._discover_module_validations(mv, release_row)
         svc._ghost_windows.assert_not_called()
 
 

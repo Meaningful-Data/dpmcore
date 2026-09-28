@@ -106,6 +106,11 @@ class ScopeCalculatorService:
         # computes it once per *operation*, so memoising matters here
         # too.
         self._ghost_fallback_map_cache: Dict[int, Dict[int, int]] = {}
+        # {module_vid: [ghost_vid, ...]} (#182) — the ghost siblings a
+        # module version's own window bridges, memoised per module_vid
+        # since :meth:`build_scope_result_from_db` recomputes it once
+        # per operation for the same, fixed ``primary_module_vid``.
+        self._ghost_chain_vids_cache: Dict[int, List[int]] = {}
 
     def _check_release_exists(self, release_id: Optional[int]) -> None:
         """Raise SemanticError if *release_id* does not exist."""
@@ -471,7 +476,6 @@ class ScopeCalculatorService:
         operation_vid: int,
         primary_module_vid: int,
         release_id: Optional[int] = None,
-        release_was_explicit: bool = False,
     ) -> ScopeResult:
         """Rebuild a ``ScopeResult`` for *operation_vid* from the DB.
 
@@ -492,21 +496,20 @@ class ScopeCalculatorService:
         *primary_module_vid*) is a #182 ghost with no fallback at
         *release_id* (see :meth:`_phantom_paired_scope_ids`), matching
         :meth:`~dpmcore.services.ast_generator.ASTGeneratorService.\
-_discover_module_validations`'s own exclusion. Only relevant when
-        *release_was_explicit* — the caller named a specific
-        ``--release`` this operation's ghost pairing genuinely governs;
-        for the ``--module-version``/``--all-versions`` case (the
-        default) a phantom "other" module stays a dead end regardless
-        of any fallback, and no composition ever gets substituted,
-        exactly as if #182 didn't exist here — verified against mdpm's
-        reference, which has no equivalent to #182 at all.
+_discover_module_validations`'s own exclusion. Applied whenever a
+        *release_id* is given (whether resolved from an explicit
+        ``--release`` or auto-picked for ``--module-version``/
+        ``--all-versions``) — per issue #182: "this fallback must apply
+        consistently on every path dpmcore uses to resolve which module
+        version applies". mdpm's own reference has no equivalent to
+        #182 in any mode, so it is not a valid comparison here.
 
-        When it does apply, a composition naming a ghost that has a
-        fallback is not excluded, but its ``module_vid`` is substituted
-        for the fallback's (see :meth:`_substitute_ghost_compositions`)
-        — the persisted composition names the ghost directly, but the
-        ghost itself has no table/URI structure for downstream
-        dependency resolution to use, only the fallback does.
+        When a composition names a ghost that has a fallback, it is not
+        excluded, but its ``module_vid`` is substituted for the
+        fallback's (see :meth:`_substitute_ghost_compositions`) — the
+        persisted composition names the ghost directly, but the ghost
+        itself has no table/URI structure for downstream dependency
+        resolution to use, only the fallback does.
 
         Raises :class:`UnsupportedDbScope` when nothing usable
         survives — callers must catch this and fall back to
@@ -526,11 +529,24 @@ _discover_module_validations`'s own exclusion. Only relevant when
                 f"operation_vid={operation_vid}"
             )
 
-        ghost_fallback_map: Dict[int, int] = (
-            self._ghost_fallback_map(release_id)
-            if release_was_explicit and release_id is not None
-            else {}
-        )
+        # The release-wide map only recognises a ghost as having a
+        # fallback when the ghost's *own* window covers this exact
+        # release — a chain bridging more than one ghost (e.g.
+        # COREP_FRTB's 3.2.0 then 3.3.0) leaves an earlier one
+        # unrecognised there even though it genuinely stands in for
+        # primary_module_vid too. Folding primary_module_vid's own
+        # ghost chain in directly closes that gap without making the
+        # release-wide map itself chain-aware.
+        ghost_fallback_map: Dict[int, int] = {
+            **(
+                self._ghost_fallback_map(release_id)
+                if release_id is not None
+                else {}
+            ),
+            **dict.fromkeys(
+                self._ghost_chain_vids(primary_module_vid), primary_module_vid
+            ),
+        }
         scope_ids = {s.operation_scope_id for s in scopes}
         phantom_ids = self._phantom_paired_scope_ids(
             self.session, scope_ids, primary_module_vid, ghost_fallback_map
@@ -586,6 +602,109 @@ _discover_module_validations`'s own exclusion. Only relevant when
             self._ghost_fallback_map_cache[release_id] = cached
         return cached
 
+    def _ghost_chain_vids(self, module_vid: int) -> List[int]:
+        """Every #182 ghost sibling in *module_vid*'s own contiguous chain.
+
+        Mirrors :meth:`~dpmcore.services.ast_generator.\
+ASTGeneratorService._ghosts_represented_by` — the same contiguous run
+        of ghost siblings :meth:`~dpmcore.services.ast_generator.\
+ASTGeneratorService._effective_end_release_id` extends a module
+        version's own window through, not just whichever one ghost a
+        release-wide lookup happens to resolve. Duplicated here rather
+        than shared: the walk only needs ``session`` and a
+        ``ModuleVersion`` row, and this service has no dependency on
+        ``ASTGeneratorService`` otherwise. Memoised per *module_vid*.
+        """
+        cached = self._ghost_chain_vids_cache.get(module_vid)
+        if cached is not None:
+            return cached
+
+        from dpmcore.orm.release_sort_order import resolve_sort_order
+
+        mv = (
+            self.session.query(ModuleVersion)
+            .filter(ModuleVersion.module_vid == module_vid)
+            .one_or_none()
+        )
+        if mv is None or mv.end_release_id is None or mv.module_id is None:
+            self._ghost_chain_vids_cache[module_vid] = []
+            return []
+
+        session = self.session
+        end_sort = resolve_sort_order(
+            session, mv.end_release_id, role="module version end release"
+        )
+        siblings = (
+            session.query(ModuleVersion)
+            .filter(ModuleVersion.module_id == mv.module_id)
+            .filter(ModuleVersion.module_vid != mv.module_vid)
+            .all()
+        )
+        candidates = self._ghost_chain_candidates(siblings, end_sort)
+
+        ghost_vids: List[int] = []
+        boundary = end_sort
+        for start_sort, is_ghost, sibling in candidates:
+            if start_sort > boundary or not is_ghost:
+                break
+            ghost_vids.append(sibling.module_vid)
+            if sibling.end_release_id is None:
+                break
+            sibling_end_sort = resolve_sort_order(
+                session,
+                sibling.end_release_id,
+                role="sibling module version end release",
+            )
+            if sibling_end_sort > boundary:
+                boundary = sibling_end_sort
+
+        self._ghost_chain_vids_cache[module_vid] = ghost_vids
+        return ghost_vids
+
+    def _ghost_chain_candidates(
+        self, siblings: List[Any], end_sort: int
+    ) -> List[Tuple[int, bool, Any]]:
+        """Sibling ``ModuleVersion`` rows past *end_sort*, sorted by start.
+
+        Split out of :meth:`_ghost_chain_vids` to keep its own walk
+        within the complexity limit.
+        """
+        from dpmcore.orm.release_sort_order import resolve_sort_order
+
+        session = self.session
+
+        def sort_or_none(
+            release_id: Optional[int], role: str
+        ) -> Optional[int]:
+            if release_id is None:
+                return None
+            return resolve_sort_order(session, release_id, role=role)
+
+        candidates: List[Tuple[int, bool, Any]] = []
+        for sibling in siblings:
+            sibling_end_sort = sort_or_none(
+                sibling.end_release_id, "sibling module version end release"
+            )
+            if sibling_end_sort is not None and sibling_end_sort <= end_sort:
+                continue
+            sibling_start_sort = sort_or_none(
+                sibling.start_release_id,
+                "sibling module version start release",
+            )
+            effective_start = (
+                end_sort
+                if sibling_start_sort is None
+                else max(sibling_start_sort, end_sort)
+            )
+            is_ghost = (
+                sibling.from_reference_date is not None
+                and sibling.to_reference_date is not None
+                and sibling.from_reference_date == sibling.to_reference_date
+            )
+            candidates.append((effective_start, is_ghost, sibling))
+        candidates.sort(key=lambda item: item[0])
+        return candidates
+
     @staticmethod
     def _substitute_ghost_compositions(
         scope: Any, ghost_fallback_map: Dict[int, int]
@@ -639,10 +758,10 @@ _discover_module_validations`'s own exclusion. Only relevant when
         phantom *with* a fallback there is not void: the fallback
         substitutes for it (see :meth:`_substitute_ghost_compositions`),
         so a scope composed with such a ghost is kept.
-        *ghost_fallback_map* is empty whenever the caller isn't in the
-        explicit-``--release`` case, which reduces this to the
-        original rule (every phantom is a dead end). A scope shared
-        with no other module at all is never phantom here — this only
+        *ghost_fallback_map* is empty whenever no release could be
+        resolved at all, which reduces this to the original rule (every
+        phantom is a dead end). A scope shared with no other module at
+        all is never phantom here — this only
         voids a cross-framework pairing whose counterpart neither
         really existed as its own module version, nor has anything
         current standing in for it.

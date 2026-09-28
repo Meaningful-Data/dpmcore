@@ -694,7 +694,6 @@ class ASTGeneratorService:
         ],
         referenced_table_codes: set[str],
         referenced_parameters: Dict[str, ParameterInfo],
-        release_was_explicit: bool = False,
     ) -> Optional[str]:
         """Resolve and fold one :meth:`script_from_db` expression item.
 
@@ -755,7 +754,6 @@ class ASTGeneratorService:
                     operation_vid,
                     primary_module_vid,
                     release_id,
-                    release_was_explicit,
                 )
             except UnsupportedDbScope:
                 scope_result = None
@@ -790,7 +788,6 @@ class ASTGeneratorService:
         severity: Optional[str] = None,
         severities: Optional[Dict[str, str]] = None,
         from_submission_dates: Optional[Dict[str, str]] = None,
-        release_was_explicit: bool = False,
     ) -> Dict[str, Any]:
         """Generate a DB-discovered module version's validations script.
 
@@ -823,13 +820,6 @@ class ASTGeneratorService:
                 column was null) falls back to
                 :meth:`_build_operation_entry`'s own default, same as
                 :meth:`script`'s caller-supplied expressions.
-            release_was_explicit: whether the caller named a specific
-                ``--release`` (as opposed to ``--module-version``/
-                ``--all-versions`` resolving one on its own) — see
-                :meth:`ASTGeneratorService._discover_module_validations`
-                and :meth:`~dpmcore.services.scope_calculator.\
-ScopeCalculatorService.build_scope_result_from_db` for what this
-                gates.
 
         Returns:
             Same shape as :meth:`script`. Unlike :meth:`script`, a
@@ -915,7 +905,6 @@ ScopeCalculatorService.build_scope_result_from_db` for what this
                     scope_pairs=scope_pairs,
                     referenced_table_codes=referenced_table_codes,
                     referenced_parameters=referenced_parameters,
-                    release_was_explicit=release_was_explicit,
                 )
                 if error is not None:
                     failed_operations[code] = error
@@ -978,18 +967,6 @@ ScopeCalculatorService.build_scope_result_from_db` for what this
                 "failed_operations": {},
             }
 
-        # An explicit --release names a specific point in time the
-        # caller wants this module's state at — the #182 fallback's own
-        # ghost(s) genuinely govern that point, so their scopes widen
-        # discovery. --module-version/--all-versions instead resolve
-        # mv "as itself" toward whatever release is currently
-        # applicable (release=None's own auto-pick, #221) — the ghost
-        # substitution there is incidental to that labeling, not a
-        # request to see the ghost's own broader validation set (a
-        # release=None target verified against mdpm's reference must
-        # not gain the ghost's validations, e.g. COREP_FRTB-3.1.0 stays
-        # at 2 operations, not 233).
-        release_was_explicit = release is not None
         try:
             mv, release_row = self._resolve_release(
                 module_code, module_version, release
@@ -1000,9 +977,7 @@ ScopeCalculatorService.build_scope_result_from_db` for what this
                 preconditions,
                 severities,
                 from_submission_dates,
-            ) = self._discover_module_validations(
-                mv, release_row, release_was_explicit
-            )
+            ) = self._discover_module_validations(mv, release_row)
         except ValueError as exc:
             return {
                 "success": False,
@@ -1019,7 +994,6 @@ ScopeCalculatorService.build_scope_result_from_db` for what this
             preconditions=preconditions or None,
             severities=severities or None,
             from_submission_dates=from_submission_dates or None,
-            release_was_explicit=release_was_explicit,
         )
 
     def calculations_for_module(
@@ -1289,7 +1263,6 @@ ScopeCalculatorService.build_scope_result_from_db` for what this
         self,
         mv: Any,
         release_row: Any,
-        release_was_explicit: bool = False,
     ) -> Tuple[
         List[Tuple[str, str]],
         Dict[str, int],
@@ -1319,28 +1292,28 @@ ScopeCalculatorService.build_scope_result_from_db` for what this
         dictionary has that shape, but it is the case to revisit if one
         appears.
 
-        ``release_was_explicit`` (true only when the caller named a
-        specific ``--release``, never for a bare ``--module-version``/
-        ``--all-versions`` lookup) additionally widens the *window*
-        check itself to the union of *mv*'s own window and each such
-        ghost's own window (see :meth:`_ghost_windows`), and lets the
-        phantom-scope exclusion below treat a phantom "other" module as
-        rescued rather than void when it has its own #182 fallback.
-        Both only make sense when the caller is asking "what does this
-        module look like at this specific release" — the release the
-        ghost itself governs. A ``--module-version``/``--all-versions``
-        lookup resolves *mv* "as itself" toward whatever release is
-        currently applicable (`release=None`'s own auto-pick, #221);
-        the same ``_ghosts_represented_by`` substitution still fires
-        there incidentally, but widening the window in that case pulls
-        in the ghost's own broader validation set spuriously — verified
-        against mdpm's reference, which has no equivalent to #182 at
-        all (it just skips a ghost-only-covered release outright): e.g.
-        ``COREP_FRTB-3.1.0`` must stay at 2 operations, not gain
-        ghost ``3.3.0``'s 231, and ``DORA-1.1.0`` must stay at 49, not
-        69. So this method behaves exactly as it did before #182's
-        release-driven use case existed unless *release_was_explicit*
-        says otherwise.
+        The *window* check itself additionally widens to the union of
+        *mv*'s own window and each such ghost's own window (see
+        :meth:`_ghost_windows`), and the phantom-scope exclusion below
+        treats a phantom "other" module as rescued rather than void
+        when it has its own #182 fallback — unconditionally, for any
+        caller (``--module-version``, ``--all-versions`` or an explicit
+        ``--release`` alike), per issue #182 itself: "this fallback
+        must apply consistently on every path dpmcore uses to resolve
+        which module version applies". A ``--module-version``/
+        ``--all-versions`` lookup resolves *mv* "as itself" toward
+        whatever release is currently applicable (``release=None``'s
+        own auto-pick, #221) — when that resolved release is one only
+        a ghost covers, the ghost's validations are exactly what #182
+        says must surface there too (``DORA-1.1.0`` needs 67 whether
+        reached via ``--module-version`` or an explicit ``--release
+        4.2``; ``COREP_FRTB-3.1.0`` likewise gains ghost ``3.3.0``'s
+        content under ``--module-version`` alone, even though a later,
+        real ``3.4.0`` eventually supersedes it — what superseded it
+        afterwards doesn't change what genuinely applied at the
+        resolved release). mdpm's own reference has no equivalent to
+        #182 in any mode, so it is not a valid comparison for a
+        ghost-involved module version; it still is for one with none.
 
         Also drops any candidate whose *only* ``OperationScopeID`` under
         *mv* is shared exclusively with phantom module versions (see
@@ -1378,7 +1351,11 @@ ScopeCalculatorService.build_scope_result_from_db` for what this
             OperationScopeComposition,
             OperationVersion,
         )
-        from dpmcore.orm.release_sort_order import load_release_sort_orders
+        from dpmcore.orm.release_sort_order import (
+            compute_sort_order,
+            load_release_sort_orders,
+            sort_order_from,
+        )
 
         session = self.session
         if session is None:
@@ -1389,7 +1366,7 @@ ScopeCalculatorService.build_scope_result_from_db` for what this
                 "_discover_module_validations requires a live DB session.",
             )
 
-        ghost_vids = self._ghosts_represented_by(session, mv, release_row)
+        ghost_vids = self._ghosts_represented_by(mv)
 
         query = (
             session.query(
@@ -1434,8 +1411,28 @@ ScopeCalculatorService.build_scope_result_from_db` for what this
         rows = query.all()
 
         sort_orders = load_release_sort_orders(session)
+        # mv's own ghost chain only needs to widen anything when the
+        # release actually being resolved isn't already inside mv's own
+        # real window — a release mv covers on its own is answered by mv
+        # alone, ghost siblings or not (confirmed by the pre-existing
+        # #372 fixture: DORA 1.1.0 at its own release 4.1, which no ghost
+        # covers, must not gain any of ghost 1.2.0's validations, while
+        # both an explicit --release 4.2 and release=None's own
+        # auto-resolved release — neither covered by mv's own window —
+        # must, identically).
+        target_sort = sort_order_from(sort_orders, release_row.release_id)
+        mv_start_sort = sort_order_from(sort_orders, mv.start_release_id)
+        mv_end_sort = (
+            compute_sort_order(None, None)
+            if mv.end_release_id is None
+            else sort_order_from(sort_orders, mv.end_release_id)
+        )
+        release_needs_ghosts = bool(ghost_vids) and not (
+            mv_start_sort <= target_sort < mv_end_sort
+        )
+
         windows = [(mv.start_release_id, mv.end_release_id)]
-        if release_was_explicit and ghost_vids:
+        if release_needs_ghosts:
             windows += self._ghost_windows(session, ghost_vids)
         overlapping = self._overlapping_operation_version_rows(
             rows, sort_orders, windows
@@ -1443,11 +1440,24 @@ ScopeCalculatorService.build_scope_result_from_db` for what this
 
         scope_ids = {row[6] for row in overlapping}
         if scope_ids:
-            ghost_fallback_map = (
-                self._scope_calc._ghost_fallback_map(release_row.release_id)
-                if release_was_explicit
-                else {}
-            )
+            # The release-wide map only recognises a ghost as having a
+            # fallback when the ghost's *own* window covers this exact
+            # release — a chain bridging more than one ghost (COREP_FRTB's
+            # 3.2.0 then 3.3.0) leaves the earlier one unrecognised there,
+            # even though _ghosts_represented_by above already knows mv
+            # stands in for it too. Folding ghost_vids in directly, keyed
+            # to mv's own module_vid, closes that gap without having to
+            # make the release-wide map itself chain-aware — only when
+            # the release actually needs mv's ghosts, same as the window
+            # union above.
+            ghost_fallback_map = {
+                **self._scope_calc._ghost_fallback_map(release_row.release_id),
+                **(
+                    dict.fromkeys(ghost_vids, mv.module_vid)
+                    if release_needs_ghosts
+                    else {}
+                ),
+            }
             phantom_scope_ids = self._scope_calc._phantom_paired_scope_ids(
                 session, scope_ids, mv.module_vid, ghost_fallback_map
             )
@@ -1503,16 +1513,15 @@ ScopeCalculatorService.build_scope_result_from_db` for what this
         :mod:`dpmcore.orm.release_sort_order` instead of raw
         ``ReleaseID`` comparison so a non-monotonic release ID can't
         misorder the overlap check. *windows* is normally just *mv*'s
-        own ``(start_release_id, end_release_id)``; an explicit
-        ``--release`` lookup adds one window per #182 ghost ``mv``
-        stands in for (see :meth:`_ghost_windows`) — a ghost's own
-        window can start later than the fallback's, so an
+        own ``(start_release_id, end_release_id)``; whenever *mv*
+        stands in for a #182 ghost at the resolved release, one window
+        per such ghost is added too (see :meth:`_ghost_windows`) — a
+        ghost's own window can start later than the fallback's, so an
         ``OperationVersion`` scoped through the ghost and checked only
         against the fallback's window would be wrongly dropped
-        (confirmed against DORA at an explicit ``--release`` matching
-        its ghost 1.2.0's own window, operation ``v903581_m``). Split
-        out of :meth:`_discover_module_validations` to keep its own
-        branching within the complexity limit.
+        (confirmed against DORA's ghost 1.2.0, operation ``v903581_m``).
+        Split out of :meth:`_discover_module_validations` to keep its
+        own branching within the complexity limit.
         """
         from dpmcore.orm.release_sort_order import (
             compute_sort_order,
@@ -1593,18 +1602,27 @@ ScopeCalculatorService.build_scope_result_from_db` for what this
                 )
         return latest_by_code
 
-    def _ghosts_represented_by(
-        self, session: "Session", mv: Any, release_row: Any
-    ) -> List[int]:
-        """Ghost module versions ``mv`` stands in for at ``release_row``.
+    def _ghosts_represented_by(self, mv: Any) -> List[int]:
+        """Every #182 ghost sibling in ``mv``'s own contiguous chain.
 
-        When ``mv`` is the #182 fallback for a module whose only
-        release-covering versions are ghosts, the validations active at
-        that release are the ones scoped to those ghosts: their
-        ``OperationScopeComposition`` rows carry the ghost's
-        ``ModuleVID``, which a plain ``mv.module_vid`` filter never sees,
-        so the fallback scripted to 30 of DORA's 67 validations at 4.2
-        (#372).
+        When ``mv`` is the #182 fallback for a module whose own release
+        window is bridged by one or more ghost versions, the
+        validations active across that whole bridged span are the ones
+        scoped to those ghosts: their ``OperationScopeComposition``
+        rows carry the ghost's ``ModuleVID``, which a plain
+        ``mv.module_vid`` filter never sees, so the fallback scripted
+        to 30 of DORA's 67 validations at 4.2 (#372).
+
+        Walks the exact same contiguous run of ghost siblings
+        :meth:`_effective_end_release_id` extends ``mv``'s own window
+        through — every ghost between ``mv`` and the next non-ghost
+        sibling (or indefinitely, if none follows) — rather than only
+        whichever one ghost happens to cover a single resolved release:
+        a chain can bridge more than one ghost (``COREP_FRTB``'s
+        ``3.1.0`` stands in for both ``3.2.0`` and ``3.3.0`` before its
+        real ``3.4.0`` takes over), and a validation scoped only to an
+        earlier ghost in that chain (not the one covering whatever
+        release happened to be resolved) must not be dropped either.
 
         The ghosts' VIDs widen that filter rather than replacing it: a
         validation the fallback carries and the ghost dropped stays in
@@ -1613,17 +1631,49 @@ ScopeCalculatorService.build_scope_result_from_db` for what this
         module (``IF_CLASS3`` at 4.0 and 4.1, one validation).
 
         Args:
-            session: SQLAlchemy session.
             mv: The module version being scripted.
-            release_row: The ``Release`` it is being scripted at.
 
         Returns:
-            The ghost ``ModuleVID``s, empty when ``mv`` covers
-            ``release_row`` in its own right.
+            The ghost ``ModuleVID``s, empty when ``mv`` has no ghost
+            sibling bridging its own window.
         """
-        return self._release_ghost_fallbacks(
-            session, release_row.release_id
-        ).get(mv.module_vid, [])
+        from dpmcore.orm.packaging import ModuleVersion
+        from dpmcore.orm.release_sort_order import resolve_sort_order
+
+        if (
+            mv.end_release_id is None
+            or self.session is None
+            or mv.module_id is None
+        ):
+            return []
+        session = self.session
+        end_sort = resolve_sort_order(
+            session, mv.end_release_id, role="module version end release"
+        )
+        siblings = (
+            session.query(ModuleVersion)
+            .filter(ModuleVersion.module_id == mv.module_id)
+            .filter(ModuleVersion.module_vid != mv.module_vid)
+            .all()
+        )
+        candidates = self._siblings_past_end(siblings, end_sort)
+
+        ghost_vids: List[int] = []
+        boundary = end_sort
+        for start_sort, is_ghost, sibling in candidates:
+            if start_sort > boundary or not is_ghost:
+                break
+            ghost_vids.append(sibling.module_vid)
+            if sibling.end_release_id is None:
+                break
+            sibling_end_sort = resolve_sort_order(
+                session,
+                sibling.end_release_id,
+                role="sibling module version end release",
+            )
+            if sibling_end_sort > boundary:
+                boundary = sibling_end_sort
+        return ghost_vids
 
     @staticmethod
     def _ghost_windows(
@@ -1631,8 +1681,7 @@ ScopeCalculatorService.build_scope_result_from_db` for what this
     ) -> List[Tuple[Optional[int], Optional[int]]]:
         """``(start_release_id, end_release_id)`` for each of *ghost_vids*.
 
-        Only meaningful for an explicit ``--release`` lookup (see
-        :meth:`_overlapping_operation_version_rows`) — a ghost's own
+        See :meth:`_overlapping_operation_version_rows` — a ghost's own
         release window can start later than its fallback's, and an
         operation genuinely scoped through the ghost is windowed
         against the ghost, not the fallback.

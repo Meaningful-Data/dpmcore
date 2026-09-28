@@ -561,13 +561,12 @@ class TestBuildScopeResultFromDb:
         assert result.total_scopes == 1
         assert result.module_versions == [10, 30]
 
-    def test_phantom_with_fallback_not_rescued_when_not_explicit(self):
-        """Even when a phantom "other" module has a #182 fallback, the
-        default (``release_was_explicit=False``, matching
-        ``--module-version``/``--all-versions``) still treats it as a
-        dead end — the rescue only applies to an explicit ``--release``
-        lookup (verified against mdpm's reference, which has no #182
-        equivalent at all for either mode).
+    def test_phantom_with_fallback_not_rescued_without_a_release(self):
+        """No *release_id* at all means no #182 fallback map can be
+        built (there is no release to look ghost-fallbacks up for), so
+        a phantom "other" module still voids the scope — matches the
+        pre-#182 behaviour exactly (mdpm's reference, which has no
+        #182 equivalent, always ends up here).
         """
         svc = self._make_svc()
         self._wire_scopes(
@@ -584,18 +583,18 @@ class TestBuildScopeResultFromDb:
             svc.build_scope_result_from_db(
                 operation_vid=100,
                 primary_module_vid=10,
-                release_id=1,
-                release_was_explicit=False,
             )
 
-    def test_phantom_with_fallback_rescued_when_explicit(self):
-        """An explicit ``--release`` lookup does rescue a phantom
-        "other" module that has a #182 fallback, and substitutes the
-        composition's ``module_vid`` for the fallback's, since the
-        ghost itself has no table/URI structure to resolve a
-        cross-module dependency against (Andrés's review on PR #396 —
-        COREP_OF 4.0.0 losing v0655_m/v0656_m, paired with ghost
-        COREP_LE 3.2.0).
+    def test_phantom_with_fallback_rescued(self):
+        """Given a *release_id*, a phantom "other" module with a #182
+        fallback is rescued, and the composition's ``module_vid`` is
+        substituted for the fallback's, since the ghost itself has no
+        table/URI structure to resolve a cross-module dependency
+        against (Andrés's review on PR #396 — COREP_OF 4.0.0 losing
+        v0655_m/v0656_m, paired with ghost COREP_LE 3.2.0). Applies
+        regardless of whether the caller named an explicit ``--release``
+        or one was auto-resolved — per issue #182, the fallback must
+        apply consistently on every path.
         """
         svc = self._make_svc()
         self._wire_scopes(
@@ -611,7 +610,6 @@ class TestBuildScopeResultFromDb:
             operation_vid=100,
             primary_module_vid=10,
             release_id=1,
-            release_was_explicit=True,
         )
         assert result.total_scopes == 1
         assert result.module_versions == [10, 777]
@@ -660,8 +658,8 @@ class TestPhantomPairedScopeIds:
     def test_phantom_other_module_with_fallback_is_not_excluded(self):
         """A phantom other module isn't a dead end when
         *ghost_fallback_map* names a fallback for it (Andrés's review
-        on PR #396) — empty by default, so this only fires when the
-        caller (an explicit ``--release`` lookup) supplies one.
+        on PR #396) — empty only when no release could be resolved at
+        all, so this fires whenever a release is known, explicit or not.
         """
         Svc, svc = self._make_svc()
         self._wire(svc, [(1, 20, "2026-01-01", "2026-01-01")])
