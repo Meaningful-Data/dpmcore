@@ -1615,6 +1615,7 @@ _discover_module_validations`.
         self,
         module_vid: int,
         release_id: Optional[int] = None,
+        ghost_vids: Optional[List[int]] = None,
     ) -> Dict[str, Any]:
         """Return tables for a module with their variables and open keys.
 
@@ -1624,8 +1625,20 @@ _discover_module_validations`.
                           "open_keys": {property_code: data_type_code}}}
 
         ``release_id`` filters the open-keys query by release window.
+
+        ``ghost_vids`` (see :meth:`_ghost_chain_vids`) additionally
+        unions in the TableVersion/variable rows composed against those
+        #182 ghost module versions. A ghost-rescued operation (see
+        :meth:`_substitute_ghost_compositions`) can reference a
+        variable that only exists on the ghost's own ``TableVersion``,
+        never composed against the fallback's ``module_vid`` — leaving
+        it out of the declared variables map makes the downstream
+        engine unable to build a Scalar for that operand ("Scalar
+        can't be created for this data").
         """
-        # Get table codes + VIDs for this module
+        # Get table codes + VIDs for this module (plus any ghost siblings
+        # whose own table/variable rows the fallback doesn't compose).
+        all_vids = [module_vid, *(ghost_vids or [])]
         tv_rows = (
             self.session.query(
                 TableVersion.code,
@@ -1635,7 +1648,7 @@ _discover_module_validations`.
                 ModuleVersionComposition,
                 TableVersion.table_vid == ModuleVersionComposition.table_vid,
             )
-            .filter(ModuleVersionComposition.module_vid == module_vid)
+            .filter(ModuleVersionComposition.module_vid.in_(all_vids))
             .all()
         )
 
@@ -1685,19 +1698,28 @@ _discover_module_validations`.
 
         # Open keys per table_code, pinned to this module version's own
         # TableVersion rows (not just their codes — see _open_keys.py).
+        # A ghost sibling's TableVersion can share a code with the
+        # fallback's own (see ``ghost_vids`` above), so dedupe codes.
         open_keys_by_code = _get_open_keys_for_tables(
             self.session,
-            list(vid_to_code.values()),
+            sorted(set(vid_to_code.values())),
             release_id=release_id,
             table_vids=table_vids,
         )
 
+        # Union rather than overwrite: a ghost's TableVersion and the
+        # fallback's own can share a code (same conceptual table under
+        # two different rows), each with its own, disjoint variable_ids.
         tables: Dict[str, Any] = {}
         for tvid, code in vid_to_code.items():
-            tables[code] = {
-                "variables": variables_by_tvid.get(tvid, {}),
-                "open_keys": open_keys_by_code.get(code, {}),
-            }
+            entry = tables.setdefault(
+                code,
+                {
+                    "variables": {},
+                    "open_keys": open_keys_by_code.get(code, {}),
+                },
+            )
+            entry["variables"].update(variables_by_tvid.get(tvid, {}))
         return tables
 
     def _get_module_uri(

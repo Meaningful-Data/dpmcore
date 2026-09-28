@@ -486,7 +486,9 @@ class ASTGeneratorService:
                 "_assemble_script requires a live DB session.",
             )
         primary_tables_full = self._scope_calc._get_module_tables(
-            primary_module_vid, release_id=release_id
+            primary_module_vid,
+            release_id=release_id,
+            ghost_vids=self._scope_calc._ghost_chain_vids(primary_module_vid),
         )
         # Seed from every module-composition table that carries
         # variables — i.e. the non-abstract tables; abstract templates
