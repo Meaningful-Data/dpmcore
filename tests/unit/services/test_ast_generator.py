@@ -2785,7 +2785,7 @@ class TestScriptFromDb:
 
         assert out["success"] is True, out["error"]
         svc._scope_calc.build_scope_result_from_db.assert_called_once_with(
-            555, mv.module_vid, release_row.release_id, False
+            555, mv.module_vid, release_row.release_id
         )
         svc._scope_calc.calculate_from_expression.assert_called_once()
         ns = next(iter(out["enriched_ast"].values()))
