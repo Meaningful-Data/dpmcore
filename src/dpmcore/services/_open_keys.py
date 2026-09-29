@@ -16,8 +16,12 @@ from sqlalchemy import or_
 from dpmcore.orm.glossary import ItemCategory, Property
 from dpmcore.orm.infrastructure import DataType
 from dpmcore.orm.query_utils import chunked_in
-from dpmcore.orm.rendering import TableVersion
-from dpmcore.orm.variables import KeyComposition, VariableVersion
+from dpmcore.orm.rendering import (
+    Header,
+    HeaderVersion,
+    TableVersion,
+    TableVersionHeader,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -27,15 +31,32 @@ def get_open_keys_for_tables(
     session: "Session",
     table_codes: List[str],
     release_id: Optional[int] = None,
+    table_vids: Optional[List[int]] = None,
 ) -> Dict[str, Dict[str, str]]:
     """Return ``{table_code: {property_code: data_type_code}}``.
 
-    Identifies the open-key (compound-key) variables of each table by
-    walking ``TableVersion`` → ``KeyComposition`` → ``VariableVersion``
-    → ``Property`` → ``ItemCategory`` (for the property code) →
-    ``DataType`` (for the type code). When ``release_id`` is given the
+    Identifies the open-key (compound-key) headers of each table by
+    walking ``TableVersion`` → ``TableVersionHeader`` → ``Header``
+    (filtered to ``Header.IsKey``) → ``HeaderVersion`` → ``Property``
+    → ``ItemCategory`` (for the property code) → ``DataType`` (for the
+    type code). ``Header.IsKey`` is the DPM concept for "this axis is a
+    key" — a table's open axis headers, not a ``KeyComposition``/
+    ``VariableVersion`` pairing, which models something else entirely
+    (dpmcore#381). ``TableVersionHeader.header_vid`` is a direct FK to
+    one ``HeaderVersion`` row, so unlike ``ItemCategory`` below it needs
+    no separate release-window filter. When ``release_id`` is given the
     query restricts to ``TableVersion`` rows whose release window
     contains it.
+
+    ``table_vids``, when given, pins the lookup to those exact
+    ``TableVersion`` rows (as resolved by the caller from a module
+    version's own ``ModuleVersionComposition``) instead of resolving
+    ``TableVersion`` rows by code + release-window overlap. This
+    matters because two ``TableVersion`` rows can share the same code
+    with both windows "still open" (``EndReleaseID IS NULL``) when an
+    older row was superseded without ever being release-terminated in
+    the source data — resolving by code alone would then merge both
+    rows' open keys under the same table_code.
     """
     result: Dict[str, Dict[str, str]] = {code: {} for code in table_codes}
     if not table_codes:
@@ -51,18 +72,23 @@ def get_open_keys_for_tables(
         .join(Property, DataType.data_type_id == Property.data_type_id)
         .join(ItemCategory, Property.property_id == ItemCategory.item_id)
         .join(
-            VariableVersion,
-            ItemCategory.item_id == VariableVersion.property_id,
+            HeaderVersion,
+            ItemCategory.item_id == HeaderVersion.property_id,
         )
         .join(
-            KeyComposition,
-            VariableVersion.variable_vid == KeyComposition.variable_vid,
+            TableVersionHeader,
+            TableVersionHeader.header_vid == HeaderVersion.header_vid,
         )
+        .join(Header, Header.header_id == TableVersionHeader.header_id)
         .join(
             TableVersion,
-            KeyComposition.key_id == TableVersion.key_id,
+            TableVersionHeader.table_vid == TableVersion.table_vid,
         )
+        .filter(Header.is_key == True)  # noqa: E712
     )
+
+    if table_vids is not None:
+        query = query.filter(TableVersion.table_vid.in_(table_vids))
 
     if release_id is not None:
         # ``ReleaseID`` values are opaque from DPM 4.2.1 onwards — 4.2.1
@@ -88,12 +114,15 @@ def get_open_keys_for_tables(
             )
         start_ids = release_ids_for_sort_order(sort_orders, le=target_sort)
         end_ids = release_ids_for_sort_order(sort_orders, gt=target_sort)
+        if table_vids is None:
+            query = query.filter(
+                TableVersion.start_release_id.in_(start_ids),
+                or_(
+                    TableVersion.end_release_id.is_(None),
+                    TableVersion.end_release_id.in_(end_ids),
+                ),
+            )
         query = query.filter(
-            TableVersion.start_release_id.in_(start_ids),
-            or_(
-                TableVersion.end_release_id.is_(None),
-                TableVersion.end_release_id.in_(end_ids),
-            ),
             # ItemCategory has its own release window: a property can
             # be renamed across releases (e.g. ``LES`` up to release 3,
             # ``qLES`` from release 3 onwards) and both rows share the
@@ -116,7 +145,10 @@ def get_open_keys_for_tables(
         query = query.filter(ItemCategory.end_release_id.is_(None))
 
     query = query.distinct().order_by(TableVersion.code, ItemCategory.code)
-    rows = chunked_in(query, TableVersion.code, table_codes)
+    if table_vids is not None:
+        rows = chunked_in(query, TableVersion.table_vid, table_vids)
+    else:
+        rows = chunked_in(query, TableVersion.code, table_codes)
     for row in rows:
         tcode = row.table_code
         pcode = row.property_code

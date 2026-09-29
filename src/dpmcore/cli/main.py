@@ -184,7 +184,8 @@ def export_csv(source: str, output_dir: str) -> None:
     "--source-dir",
     type=click.Path(exists=True, file_okay=False, path_type=str),
     default=None,
-    help="Directory containing exported CSV tables. Defaults to data/DPM.",
+    help="Directory containing exported CSV tables. Required unless "
+    "--access-file is given.",
 )
 @click.option(
     "--access-file",
@@ -192,7 +193,8 @@ def export_csv(source: str, output_dir: str) -> None:
     default=None,
     help=(
         "Access .accdb / .mdb file. Exported to a temporary"
-        " CSV directory before building."
+        " CSV directory before building. Required unless --source-dir "
+        "is given."
     ),
 )
 @click.option(
@@ -268,7 +270,14 @@ def build_meili_json(
     "--access-file",
     type=click.Path(exists=True, dir_okay=False, path_type=str),
     default=None,
-    help="Optional Access file. If omitted, data/DPM CSVs are used.",
+    help="Access file. Mutually exclusive with --source-dir; one is required.",
+)
+@click.option(
+    "--source-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=str),
+    default=None,
+    help="Directory containing exported CSV tables. Mutually exclusive "
+    "with --access-file; one is required.",
 )
 @click.option(
     "--ecb-validations-file",
@@ -291,6 +300,7 @@ def build_meili_json(
 def update_db(
     target: str,
     access_file: str | None,
+    source_dir: str | None,
     ecb_validations_file: str | None,
     dry_run: bool,
     keep_staging: bool,
@@ -317,13 +327,17 @@ def update_db(
             f"Updating [cyan]{target}[/cyan] from Access file "
             f"[cyan]{access_file}[/cyan]..."
         )
-    else:
-        console.print(f"Updating [cyan]{target}[/cyan] from data/DPM CSVs...")
+    elif source_dir is not None:
+        console.print(
+            f"Updating [cyan]{target}[/cyan] from CSV directory "
+            f"[cyan]{source_dir}[/cyan]..."
+        )
 
     try:
         result = DatabaseUpdateService().update(
             target=target,
             access_file=access_file,
+            source_dir=source_dir,
             ecb_validations_file=ecb_validations_file,
             dry_run=dry_run,
             keep_staging=keep_staging,
@@ -346,7 +360,7 @@ def update_db(
     if result.used_access_file:
         console.print("[green]Source loaded from Access file[/green]")
     else:
-        console.print("[green]Source loaded from data/DPM CSVs[/green]")
+        console.print("[green]Source loaded from CSV directory[/green]")
 
     if result.ecb_validations_imported:
         console.print("[green]ECB validations imported[/green]")
@@ -641,6 +655,12 @@ def export_script(
     ``--all-modules``/``--all-versions`` to sweep many at once.
     ``--release`` on its own (no ``--module-version``/``--all-versions``)
     selects each targeted module's version active at that release instead.
+
+    The output file holds only the ``enriched_ast`` content — the same
+    ``{namespace: ...}`` shape mdpm's own export produces — not the
+    ``success``/``error``/``failed_operations`` wrapper ``script()``
+    returns internally. Skipped validations are reported on the console
+    instead, not written into the file.
     """
     import json
     from pathlib import Path
@@ -721,7 +741,7 @@ def export_script(
 
                 out_path = out_dir / f"{code}-{version}.json"
                 out_path.write_text(
-                    json.dumps(result, indent=2, default=str),
+                    json.dumps(result["enriched_ast"], indent=2, default=str),
                     encoding="utf-8",
                 )
                 n_ops, n_skipped, n_dep = _script_result_counts(result)
@@ -732,6 +752,7 @@ def export_script(
                     f"{n_skipped} skipped, "
                     f"{n_dep} dependency modules)"
                 )
+                _report_skipped_operations(console, result)
                 succeeded.append((code, version))
 
             _print_sweep_summary(
@@ -766,7 +787,8 @@ def export_script(
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(
-        json.dumps(result, indent=2, default=str), encoding="utf-8"
+        json.dumps(result["enriched_ast"], indent=2, default=str),
+        encoding="utf-8",
     )
 
     n_ops, n_skipped, n_dep = _script_result_counts(result)
@@ -867,7 +889,7 @@ def _print_sweep_summary(
     if total_skipped:
         console.print(
             f"[yellow]{total_skipped} validations skipped[/yellow] for "
-            "semantic errors — see 'failed_operations' in each script "
+            "semantic errors — see the per-target detail printed above "
             "for the reason per validation."
         )
 
@@ -877,10 +899,11 @@ def _report_skipped_operations(
 ) -> None:
     """Print why each skipped validation was left out of the script.
 
-    ``failed_operations`` is already written to the output JSON, but a
-    console line that only counts what made it gives no hint that
-    anything was dropped (#355). Long lists are truncated — the file
-    holds all of them.
+    A console line that only counts what made it gives no hint that
+    anything was dropped (#355) — the output file no longer carries
+    ``failed_operations`` for ``export-script`` (only the ``enriched_ast``
+    content, matching mdpm's own script shape), so this is the only place
+    skipped validations are reported for that command.
 
     Reasons are escaped before printing: a message naming an item, e.g.
     ``[eba_AS:x2]``, reads as rich markup and would otherwise be
@@ -898,10 +921,7 @@ def _report_skipped_operations(
     for code, reason in list(failed_ops.items())[:limit]:
         console.print(f"  [yellow]{escape(code)}[/yellow]: {escape(reason)}")
     if len(failed_ops) > limit:
-        console.print(
-            f"  ... and {len(failed_ops) - limit} more — see "
-            "'failed_operations' in the output file."
-        )
+        console.print(f"  ... and {len(failed_ops) - limit} more skipped")
 
 
 @main.command("fix-script")

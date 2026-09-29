@@ -31,7 +31,7 @@ dependencies = [
     # Floor is 1.4.50 to match the python3-sqlalchemy apt package on
     # Ubuntu 24.04 (Noble); the ORM is compatible with both 1.4 and 2.0
     # (see issue #104). 2.0 remains the canonical target for dev/wheel.
-    "sqlalchemy>=2.0.52,<3.0",
+    "sqlalchemy>=2.0.54,<3.0",
     # Runtime must match the ANTLR version used to generate the grammar
     # in src/dpmcore/dpm_xl/grammar/generated/. Regenerating with a newer
     # ANTLR is tracked separately.
@@ -80,8 +80,8 @@ dpmcore = "dpmcore.cli.main:main"
 packages = [{ include = "dpmcore", from = "src" }]
 
 [tool.poetry.group.dev.dependencies]
-  coverage = ">=7.16.0,<8.0"
-  ruff = ">=0.16.7"
+  coverage = ">=7.16.1,<8.0"
+  ruff = ">=0.16.8"
 mypy = ">=2.3.1"
 pytest = ">=9.1.1"
 pytest-asyncio = ">=0.24"
