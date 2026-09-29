@@ -42,6 +42,7 @@ read-only ``db.services`` facade and are used standalone:
    from dpmcore.services.database_update import DatabaseUpdateService
    from dpmcore.services.export_csv import ExportCsvService
    from dpmcore.services.meili_build import MeiliBuildService
+   from dpmcore.services.script_fixups import fix_module_operations
 
 Read-only service references
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -71,3 +72,4 @@ Pipeline and loader references
    database_update
    export_csv
    meili
+   script_fixups
