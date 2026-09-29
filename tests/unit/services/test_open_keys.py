@@ -261,3 +261,64 @@ class TestGetOpenKeysForTables:
         post = get_open_keys_for_tables(base_table, ["T_01.01"], release_id=3)
         assert pre == {"T_01.01": {"LES": "s"}}
         assert post == {"T_01.01": {"qLES": "s"}}
+
+    def test_table_vids_pins_to_the_exact_table_version(self, base_table):
+        """Regression (dpmcore#364): a superseded TableVersion sharing a
+        code with the current one must not leak its key in.
+
+        A second ``TableVersion`` row for the same code, superseded by
+        ``base_table``'s own but never release-terminated in the
+        source data (``EndReleaseID IS NULL``), is exactly what let
+        CODIS-2.1.0's own open key leak into CODIS-3.0.0's output:
+        both rows satisfy the same "still open" release-window filter.
+        Passing ``table_vids`` must pin the lookup to the caller's
+        exact row instead of resolving by code alone.
+        """
+        base_table.add(
+            TableVersion(
+                table_vid=2,
+                table_id=1,
+                code="T_01.01",
+                start_release_id=2,
+                end_release_id=None,
+            )
+        )
+        _add_key_header(
+            base_table,
+            table_vid=1,
+            table_id=1,
+            header_id=1,
+            item_id=100,
+            property_code="qOLD",
+        )
+        _add_key_header(
+            base_table,
+            table_vid=2,
+            table_id=1,
+            header_id=2,
+            item_id=200,
+            property_code="qNEW",
+        )
+        base_table.commit()
+
+        # Code-only resolution: both rows match, so both keys leak in
+        # under the same table_code -- the bug being regression-tested.
+        # Reproduced both without a release filter and with one past
+        # both rows' starts, since both have EndReleaseID IS NULL.
+        leaked_unfiltered = get_open_keys_for_tables(base_table, ["T_01.01"])
+        leaked_at_release = get_open_keys_for_tables(
+            base_table, ["T_01.01"], release_id=3
+        )
+        assert leaked_unfiltered == {"T_01.01": {"qOLD": "s", "qNEW": "s"}}
+        assert leaked_at_release == {"T_01.01": {"qOLD": "s", "qNEW": "s"}}
+
+        # Pinned to the caller's own row: only that row's key surfaces,
+        # with or without a release filter alongside it.
+        pinned_to_1 = get_open_keys_for_tables(
+            base_table, ["T_01.01"], release_id=3, table_vids=[1]
+        )
+        pinned_to_2 = get_open_keys_for_tables(
+            base_table, ["T_01.01"], table_vids=[2]
+        )
+        assert pinned_to_1 == {"T_01.01": {"qOLD": "s"}}
+        assert pinned_to_2 == {"T_01.01": {"qNEW": "s"}}
