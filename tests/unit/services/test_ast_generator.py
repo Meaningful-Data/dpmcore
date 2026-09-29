@@ -1891,6 +1891,7 @@ class TestScript:
         svc._semantic = MagicMock()
         svc._scope_calc = MagicMock()
         svc._syntax = MagicMock()
+        svc._release_ghost_fallbacks = MagicMock(return_value={})
 
         if mv is None:
             framework = SimpleNamespace(code="COREP")
@@ -2495,6 +2496,7 @@ class TestScriptFromDb:
         svc._semantic = MagicMock()
         svc._scope_calc = MagicMock()
         svc._syntax = MagicMock()
+        svc._release_ghost_fallbacks = MagicMock(return_value={})
 
         if mv is None:
             framework = SimpleNamespace(code="COREP")
