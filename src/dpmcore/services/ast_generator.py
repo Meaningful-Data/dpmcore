@@ -480,7 +480,7 @@ class ASTGeneratorService:
         :meth:`script`'s body — no behaviour changed, only where the
         code lives.
         """
-        if self._scope_calc is None:
+        if self._scope_calc is None or self.session is None:
             raise InternalError(
                 "ScopeCalculatorService not initialised",
                 "_assemble_script requires a live DB session.",
