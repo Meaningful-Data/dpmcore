@@ -92,6 +92,24 @@ class TestWrongDefaults:
         assert changed is True
         assert "default" not in ast["args"][0]
 
+    def test_corep_frtb_codes_added_after_the_182_ghost_fix(self):
+        """v22364_m/v22365_m/v22501_m only started surfacing in
+        COREP_FRTB-3.1.0's export after the #182 ghost-fallback fix
+        (dpmcore#364) — their FallbackValue is the same malformed
+        ``'""'`` literal as every other entry here, confirmed directly
+        against the DB.
+        """
+        for code, datapoints in (
+            ("v22364_m", (483485, 483488)),
+            ("v22365_m", (483485, 483489)),
+            ("v22501_m", (487328, 487336)),
+        ):
+            for dp in datapoints:
+                ast = _varid(dp, default="")
+                changed = fix_operation_ast(code, ast)
+                assert changed is True, (code, dp)
+                assert "default" not in ast, (code, dp)
+
 
 class TestConstantTrueFixes:
     def test_unconditional_flip(self):

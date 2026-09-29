@@ -491,7 +491,7 @@ the ``preconditions`` block rather than shipped with
 -----------------------
 
 Patches known EBA source-data errors into an already-generated script's
-JSON, in place. A fixed set of ~20 validations reproduce a source-data
+JSON, in place. A fixed set of ~30 validations reproduce a source-data
 error faithfully -- an empty/zero default that should be absent, a
 literal typed ``Integer`` where the engine expects ``Boolean``, etc. --
 because the underlying DPM database data is wrong for them, not because

@@ -661,6 +661,12 @@ def export_script(
     ``success``/``error``/``failed_operations`` wrapper ``script()``
     returns internally. Skipped validations are reported on the console
     instead, not written into the file.
+
+    Run ``dpmcore fix-script`` on the output afterwards: a fixed set of
+    validations carry a known EBA source-data error that this command
+    faithfully reproduces (it's not a generation bug), and EBA doesn't
+    amend published releases, so it stays wrong indefinitely until
+    patched.
     """
     import json
     from pathlib import Path

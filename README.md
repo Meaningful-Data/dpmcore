@@ -246,7 +246,7 @@ directly.
 
 **Patching known EBA data-quality issues:**
 
-A fixed set of ~20 validations reproduce a source-data error faithfully —
+A fixed set of ~30 validations reproduce a source-data error faithfully —
 an empty/zero default that should be absent, a literal typed `Integer`
 where the engine expects `Boolean`, etc. — because the underlying DPM
 database data is wrong for them, not because of a generation bug. EBA
