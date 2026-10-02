@@ -226,7 +226,7 @@ class ModuleDependencies(ASTTemplate, ABC):
             raise errors.SemanticError("6-3", precondition=node.variable_id)
 
         if not TableVersionQuery.check_table_exists(
-            self.session, node.variable_id, self.release_id
+            self.session, str(node.variable_id), self.release_id
         ):
             raise errors.SemanticError("1-3", variable=node.variable_id)
 

@@ -120,7 +120,8 @@ database is left untouched.
 
 .. code-block:: text
 
-   dpmcore update-db --target <url_or_path> [options]
+   dpmcore update-db --target <url_or_path>
+                     (--access-file PATH | --source-dir PATH) [options]
 
 **Options:**
 
@@ -139,7 +140,10 @@ database is left untouched.
    * - ``--access-file PATH``
      - Path to an Access ``.accdb`` or ``.mdb`` file. When provided, the
        Access file is exported to CSV automatically before loading.
-       If omitted, CSV files are read directly from ``data/DPM/``.
+       Mutually exclusive with ``--source-dir``; one is required.
+   * - ``--source-dir PATH``
+     - Directory containing pre-exported CSV tables. Mutually exclusive
+       with ``--access-file``; one is required.
    * - ``--ecb-validations-file PATH``
      - Path to an ECB validations CSV file. When provided, the file is
        imported after the main migration and before final validation.
@@ -155,11 +159,11 @@ database is left untouched.
 
 .. code-block:: bash
 
-   # Update a SQLite database from the default CSV directory (data/DPM/)
-   dpmcore update-db --target dpm.db
+   # Update a SQLite database from a pre-exported CSV directory
+   dpmcore update-db --target dpm.db --source-dir ./csv_export
 
    # Update using a SQLite URL
-   dpmcore update-db --target sqlite:///path/to/dpm.db
+   dpmcore update-db --target sqlite:///path/to/dpm.db --source-dir ./csv_export
 
    # Update from an Access file
    dpmcore update-db \
@@ -169,22 +173,26 @@ database is left untouched.
    # Include ECB validations
    dpmcore update-db \
        --target dpm.db \
+       --source-dir ./csv_export \
        --ecb-validations-file ecb_validations.csv
 
    # Dry run — validate only, do not replace active database
-   dpmcore update-db --target dpm.db --dry-run
+   dpmcore update-db --target dpm.db --source-dir ./csv_export --dry-run
 
    # Dry run keeping the staging file for inspection
-   dpmcore update-db --target dpm.db --dry-run --keep-staging
+   dpmcore update-db \
+       --target dpm.db --source-dir ./csv_export --dry-run --keep-staging
 
    # Update a PostgreSQL database
    dpmcore update-db \
        --target postgresql://user:pass@localhost:5432/dpm \
+       --source-dir ./csv_export \
        --ecb-validations-file ecb_validations.csv
 
    # Update a SQL Server database
    dpmcore update-db \
-       --target "mssql+pyodbc://user:pass@server/dpm?driver=ODBC+Driver+17+for+SQL+Server"
+       --target "mssql+pyodbc://user:pass@server/dpm?driver=ODBC+Driver+17+for+SQL+Server" \
+       --source-dir ./csv_export
 
 **Exit codes:**
 
@@ -253,7 +261,7 @@ must be supplied.
    * - Option
      - Description
    * - ``--source-dir PATH``
-     - Directory containing pre-exported CSV tables (e.g. ``data/DPM``).
+     - Directory containing pre-exported CSV tables.
        Mutually exclusive with ``--access-file``.
    * - ``--access-file PATH``
      - Path to an Access ``.accdb`` or ``.mdb`` file. The file is exported
@@ -270,7 +278,7 @@ must be supplied.
 .. code-block:: bash
 
    # From a pre-exported CSV directory
-   dpmcore build-meili-json --source-dir data/DPM --output operations.json
+   dpmcore build-meili-json --source-dir ./csv_export --output operations.json
 
    # Directly from an Access file (CSV export handled transparently)
    dpmcore build-meili-json \
@@ -472,11 +480,60 @@ neither are validations whose precondition falls outside what the engine
 can evaluate — a gate may only combine filing indicators, parameters and
 boolean literals with ``and`` / ``or`` / ``xor`` / ``not``. The console
 reports how many were skipped next to how many were discovered, and
-lists the reason per validation; the full list is written to
-``failed_operations`` in the output JSON. A precondition left gating
-only rejected validations is dropped from the ``preconditions`` block
-rather than shipped with ``affected_operations`` the script does not
-contain.
+lists the reason per validation; the output JSON file itself carries
+only the enriched script (matching mdpm's own export shape), so the
+console is the only place the skipped-validation reasons are reported.
+A precondition left gating only rejected validations is dropped from
+the ``preconditions`` block rather than shipped with
+``affected_operations`` the script does not contain.
+
+``dpmcore fix-script``
+-----------------------
+
+Patches known EBA source-data errors into an already-generated script's
+JSON, in place. A fixed set of ~30 validations reproduce a source-data
+error faithfully -- an empty/zero default that should be absent, a
+literal typed ``Integer`` where the engine expects ``Boolean``, etc. --
+because the underlying DPM database data is wrong for them, not because
+of a generation bug. EBA doesn't amend already-published releases, so
+these stay wrong indefinitely; run ``fix-script`` after every
+``export-script``/``generate-script`` run, not just once. Ported from
+mdpm's ``mdm-fix-json-values.py``; see
+``dpmcore.services.script_fixups`` for the exact list of fixed
+validations and why each one is wrong at the data level.
+
+.. code-block:: text
+
+   dpmcore fix-script --input-path <path> [--bulk]
+
+**Options:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Option
+     - Description
+   * - ``--input-path PATH``
+     - A single script ``.json`` file, or a directory of them with
+       ``--bulk``. **(Required)**
+   * - ``--bulk``
+     - Treat ``--input-path`` as a directory and fix every ``.json``
+       file in it, instead of a single file.
+
+**Examples:**
+
+.. code-block:: bash
+
+   # A single script file
+   dpmcore fix-script --input-path ./script.json
+
+   # Every script in a directory (e.g. after a bulk export-script sweep)
+   dpmcore fix-script --input-path ./scripts/ --bulk
+
+Only rewrites a file when something in it actually matched a known
+issue; prints which validations were patched per file, or reports that
+no known issues were found.
 
 ``dpmcore export-calculations``
 -------------------------------

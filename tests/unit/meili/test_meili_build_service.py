@@ -7,29 +7,13 @@ from dpmcore.services.meili_build import MeiliBuildError, MeiliBuildService
 
 
 class TestMeiliBuildService:
-    def test_uses_default_source_dir_when_not_provided(self, tmp_path):
+    def test_raises_when_neither_source_nor_access_file_given(self, tmp_path):
         output_file = tmp_path / "operations.json"
-        fake_result = MagicMock()
-        fake_result.operations_written = 12
-        fake_result.output_file = output_file
 
-        with (
-            patch(
-                "dpmcore.services.meili_build.MigrationService.migrate_from_csv_dir"
-            ) as migrate_csv,
-            patch(
-                "dpmcore.services.meili_build.MeiliJsonService.generate",
-                return_value=fake_result,
-            ),
+        with pytest.raises(
+            MeiliBuildError, match="either '--access-file' or '--source-dir'"
         ):
-            result = MeiliBuildService().build(output_file=str(output_file))
-
-        migrate_csv.assert_called_once()
-        call = migrate_csv.call_args
-        assert call.args[0] == str(Path("data/DPM"))
-        assert result.operations_written == 12
-        assert result.used_access_file is False
-        assert result.ecb_validations_imported is False
+            MeiliBuildService().build(output_file=str(output_file))
 
     def test_access_file_exports_to_temporary_csv_dir(self, tmp_path):
         access_file = tmp_path / "source.accdb"
@@ -86,7 +70,7 @@ class TestMeiliBuildService:
         ):
             result = MeiliBuildService().build(
                 output_file=str(output_file),
-                source_dir="data/DPM",
+                source_dir=str(tmp_path),
                 ecb_validations_file=str(validation_csv),
             )
 
@@ -102,7 +86,7 @@ class TestMeiliBuildService:
         ):
             MeiliBuildService().build(
                 output_file=str(tmp_path / "operations.json"),
-                source_dir="data/DPM",
+                source_dir=str(tmp_path),
                 access_file=str(access_file),
             )
 
@@ -124,7 +108,9 @@ class TestMeiliBuildService:
                 return_value=fake_result,
             ),
         ):
-            result = MeiliBuildService().build(output_file=str(output_file))
+            result = MeiliBuildService().build(
+                output_file=str(output_file), source_dir=str(tmp_path)
+            )
 
         import_validations.assert_not_called()
         assert result.ecb_validations_imported is False
@@ -137,7 +123,9 @@ class TestMeiliBuildService:
             side_effect=Exception("CSV parse failed"),
         ):
             with pytest.raises(MeiliBuildError, match="CSV parse failed"):
-                MeiliBuildService().build(output_file=str(output_file))
+                MeiliBuildService().build(
+                    output_file=str(output_file), source_dir=str(tmp_path)
+                )
 
     def test_custom_source_dir_is_passed_to_migration(self, tmp_path):
         custom_dir = tmp_path / "my_csvs"
@@ -167,25 +155,6 @@ class TestMeiliBuildService:
         assert result.used_access_file is False
         assert result.source_dir == Path(str(custom_dir))
 
-    def test_default_source_dir_stored_in_result(self, tmp_path):
-        output_file = tmp_path / "operations.json"
-        fake_result = MagicMock()
-        fake_result.operations_written = 0
-        fake_result.output_file = output_file
-
-        with (
-            patch(
-                "dpmcore.services.meili_build.MigrationService.migrate_from_csv_dir"
-            ),
-            patch(
-                "dpmcore.services.meili_build.MeiliJsonService.generate",
-                return_value=fake_result,
-            ),
-        ):
-            result = MeiliBuildService().build(output_file=str(output_file))
-
-        assert result.source_dir == Path("data/DPM")
-
     def test_migrate_called_with_output_path_to_prevent_relocation(
         self, tmp_path
     ):
@@ -209,7 +178,9 @@ class TestMeiliBuildService:
                 return_value=fake_result,
             ),
         ):
-            MeiliBuildService().build(output_file=str(output_file))
+            MeiliBuildService().build(
+                output_file=str(output_file), source_dir=str(tmp_path)
+            )
 
         call_kwargs = (
             MockMigration.return_value.migrate_from_csv_dir.call_args.kwargs

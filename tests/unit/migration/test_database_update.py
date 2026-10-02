@@ -107,6 +107,25 @@ class TestUpdateDispatch:
         with pytest.raises(DatabaseUpdateError, match="Could not detect"):
             service.update(target="oracle://host/db")
 
+    def test_neither_access_file_nor_source_dir_raises(
+        self, service, tmp_path
+    ):
+        target = tmp_path / "out.sqlite"
+        with pytest.raises(DatabaseUpdateError, match="Provide either"):
+            service.update(target=str(target))
+
+    def test_both_access_file_and_source_dir_raises(self, service, tmp_path):
+        target = tmp_path / "out.sqlite"
+        access_file = tmp_path / "source.accdb"
+        access_file.touch()
+
+        with pytest.raises(DatabaseUpdateError, match="not both"):
+            service.update(
+                target=str(target),
+                access_file=str(access_file),
+                source_dir=str(tmp_path),
+            )
+
     def test_calls_update_sqlite_from_csv_dir(self, service, tmp_path):
         target = tmp_path / "out.sqlite"
         with patch.object(
@@ -435,7 +454,9 @@ class TestUpdateDispatchEdgeCases:
             service, "_update_sqlite", return_value=MagicMock()
         ) as mock_update:
             service.update(
-                target=str(target), ecb_validations_file=str(ecb_file)
+                target=str(target),
+                source_dir=str(tmp_path),
+                ecb_validations_file=str(ecb_file),
             )
 
         assert mock_update.call_args.kwargs["ecb_validations_file"] == str(
@@ -448,7 +469,7 @@ class TestUpdateDispatchEdgeCases:
         with patch.object(
             service, "_update_sqlite", return_value=MagicMock()
         ) as mock_update:
-            service.update(target=str(target))
+            service.update(target=str(target), source_dir=str(tmp_path))
 
         assert mock_update.call_args.kwargs["ecb_validations_file"] is None
 
@@ -893,7 +914,9 @@ class TestUpdateDispatchStagedDatabase:
             service, "_update_staged_database", return_value=MagicMock()
         ) as mock_staged:
             service.update(
-                target="postgresql://host/db", ecb_validations_file=str(ecb)
+                target="postgresql://host/db",
+                source_dir=str(tmp_path),
+                ecb_validations_file=str(ecb),
             )
 
         kw = mock_staged.call_args.kwargs

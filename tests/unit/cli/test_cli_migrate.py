@@ -257,7 +257,7 @@ class TestExportCsvCli:
 
 
 class TestBuildMeiliJsonCli:
-    def test_build_from_default_source_dir(self, runner, tmp_path):
+    def test_build_success_prints_operation_count(self, runner, tmp_path):
         output_file = tmp_path / "operations.json"
 
         mock_result = MagicMock()
@@ -274,6 +274,8 @@ class TestBuildMeiliJsonCli:
                 main,
                 [
                     "build-meili-json",
+                    "--source-dir",
+                    str(tmp_path),
                     "--output",
                     str(output_file),
                 ],
@@ -361,6 +363,8 @@ class TestBuildMeiliJsonCli:
                 main,
                 [
                     "build-meili-json",
+                    "--source-dir",
+                    str(tmp_path),
                     "--output",
                     str(output_file),
                 ],
@@ -386,6 +390,8 @@ class TestBuildMeiliJsonCli:
                 main,
                 [
                     "build-meili-json",
+                    "--source-dir",
+                    str(tmp_path),
                     "--output",
                     str(output_file),
                 ],
@@ -405,7 +411,13 @@ class TestBuildMeiliJsonCli:
         ):
             result = runner.invoke(
                 main,
-                ["build-meili-json", "--output", str(output_file)],
+                [
+                    "build-meili-json",
+                    "--source-dir",
+                    str(tmp_path),
+                    "--output",
+                    str(output_file),
+                ],
             )
 
         assert result.exit_code == 1
@@ -466,17 +478,46 @@ class TestUpdateDbCli:
         r.staging_location = staging_location
         return r
 
+    def test_rejects_access_file_and_source_dir_together(
+        self, runner, tmp_path
+    ):
+        access_file = tmp_path / "source.accdb"
+        access_file.touch()
+
+        result = runner.invoke(
+            main,
+            [
+                "update-db",
+                "--target",
+                "data/dpm.sqlite",
+                "--access-file",
+                str(access_file),
+                "--source-dir",
+                str(tmp_path),
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "not both" in result.output
+
     def test_success_from_csv_dir_prints_startup_message(self, runner):
         with patch(
             "dpmcore.services.database_update.DatabaseUpdateService.update",
             return_value=self._mock_result(),
         ):
             result = runner.invoke(
-                main, ["update-db", "--target", "data/dpm.sqlite"]
+                main,
+                [
+                    "update-db",
+                    "--target",
+                    "data/dpm.sqlite",
+                    "--source-dir",
+                    ".",
+                ],
             )
 
         assert result.exit_code == 0
-        assert "data/DPM CSVs" in result.output
+        assert "CSV directory" in result.output
 
     def test_success_from_access_file_prints_path_in_startup(
         self, runner, tmp_path
@@ -508,7 +549,14 @@ class TestUpdateDbCli:
             return_value=self._mock_result(),
         ):
             result = runner.invoke(
-                main, ["update-db", "--target", "data/dpm.sqlite"]
+                main,
+                [
+                    "update-db",
+                    "--target",
+                    "data/dpm.sqlite",
+                    "--source-dir",
+                    ".",
+                ],
             )
 
         assert result.exit_code == 0
@@ -544,10 +592,17 @@ class TestUpdateDbCli:
             return_value=self._mock_result(used_access_file=False),
         ):
             result = runner.invoke(
-                main, ["update-db", "--target", "data/dpm.sqlite"]
+                main,
+                [
+                    "update-db",
+                    "--target",
+                    "data/dpm.sqlite",
+                    "--source-dir",
+                    ".",
+                ],
             )
 
-        assert "Source loaded from data/DPM CSVs" in result.output
+        assert "Source loaded from CSV directory" in result.output
 
     def test_ecb_validations_imported_message(self, runner):
         with patch(
@@ -555,7 +610,14 @@ class TestUpdateDbCli:
             return_value=self._mock_result(ecb=True),
         ):
             result = runner.invoke(
-                main, ["update-db", "--target", "data/dpm.sqlite"]
+                main,
+                [
+                    "update-db",
+                    "--target",
+                    "data/dpm.sqlite",
+                    "--source-dir",
+                    ".",
+                ],
             )
 
         assert "ECB validations imported" in result.output
@@ -566,7 +628,14 @@ class TestUpdateDbCli:
             return_value=self._mock_result(warnings=["check column X"]),
         ):
             result = runner.invoke(
-                main, ["update-db", "--target", "data/dpm.sqlite"]
+                main,
+                [
+                    "update-db",
+                    "--target",
+                    "data/dpm.sqlite",
+                    "--source-dir",
+                    ".",
+                ],
             )
 
         assert "check column X" in result.output
@@ -579,7 +648,14 @@ class TestUpdateDbCli:
             side_effect=DatabaseUpdateError("unsupported target"),
         ):
             result = runner.invoke(
-                main, ["update-db", "--target", "data/dpm.sqlite"]
+                main,
+                [
+                    "update-db",
+                    "--target",
+                    "data/dpm.sqlite",
+                    "--source-dir",
+                    ".",
+                ],
             )
 
         assert result.exit_code == 1
@@ -607,6 +683,8 @@ class TestUpdateDbCli:
                     "update-db",
                     "--target",
                     "data/dpm.sqlite",
+                    "--source-dir",
+                    ".",
                     "--ecb-validations-file",
                     str(ecb_file),
                 ],
@@ -652,7 +730,14 @@ class TestUpdateDbCli:
         ) as mock_update:
             result = runner.invoke(
                 main,
-                ["update-db", "--target", "data/dpm.sqlite", "--dry-run"],
+                [
+                    "update-db",
+                    "--target",
+                    "data/dpm.sqlite",
+                    "--source-dir",
+                    ".",
+                    "--dry-run",
+                ],
             )
 
         assert result.exit_code == 0
@@ -665,7 +750,14 @@ class TestUpdateDbCli:
         ) as mock_update:
             result = runner.invoke(
                 main,
-                ["update-db", "--target", "data/dpm.sqlite", "--keep-staging"],
+                [
+                    "update-db",
+                    "--target",
+                    "data/dpm.sqlite",
+                    "--source-dir",
+                    ".",
+                    "--keep-staging",
+                ],
             )
 
         assert result.exit_code == 0
@@ -678,7 +770,13 @@ class TestUpdateDbCli:
         ):
             result = runner.invoke(
                 main,
-                ["update-db", "--target", "data/dpm.sqlite"],
+                [
+                    "update-db",
+                    "--target",
+                    "data/dpm.sqlite",
+                    "--source-dir",
+                    ".",
+                ],
             )
 
         assert "Dry run completed" in result.output
@@ -693,7 +791,13 @@ class TestUpdateDbCli:
         ):
             result = runner.invoke(
                 main,
-                ["update-db", "--target", "data/dpm.sqlite"],
+                [
+                    "update-db",
+                    "--target",
+                    "data/dpm.sqlite",
+                    "--source-dir",
+                    ".",
+                ],
             )
 
         assert "Staging artifact" in result.output
@@ -706,7 +810,13 @@ class TestUpdateDbCli:
         ):
             result = runner.invoke(
                 main,
-                ["update-db", "--target", "data/dpm.sqlite"],
+                [
+                    "update-db",
+                    "--target",
+                    "data/dpm.sqlite",
+                    "--source-dir",
+                    ".",
+                ],
             )
 
         assert "Dry run completed" not in result.output

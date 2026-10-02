@@ -184,7 +184,8 @@ def export_csv(source: str, output_dir: str) -> None:
     "--source-dir",
     type=click.Path(exists=True, file_okay=False, path_type=str),
     default=None,
-    help="Directory containing exported CSV tables. Defaults to data/DPM.",
+    help="Directory containing exported CSV tables. Required unless "
+    "--access-file is given.",
 )
 @click.option(
     "--access-file",
@@ -192,7 +193,8 @@ def export_csv(source: str, output_dir: str) -> None:
     default=None,
     help=(
         "Access .accdb / .mdb file. Exported to a temporary"
-        " CSV directory before building."
+        " CSV directory before building. Required unless --source-dir "
+        "is given."
     ),
 )
 @click.option(
@@ -268,7 +270,14 @@ def build_meili_json(
     "--access-file",
     type=click.Path(exists=True, dir_okay=False, path_type=str),
     default=None,
-    help="Optional Access file. If omitted, data/DPM CSVs are used.",
+    help="Access file. Mutually exclusive with --source-dir; one is required.",
+)
+@click.option(
+    "--source-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=str),
+    default=None,
+    help="Directory containing exported CSV tables. Mutually exclusive "
+    "with --access-file; one is required.",
 )
 @click.option(
     "--ecb-validations-file",
@@ -291,6 +300,7 @@ def build_meili_json(
 def update_db(
     target: str,
     access_file: str | None,
+    source_dir: str | None,
     ecb_validations_file: str | None,
     dry_run: bool,
     keep_staging: bool,
@@ -317,13 +327,17 @@ def update_db(
             f"Updating [cyan]{target}[/cyan] from Access file "
             f"[cyan]{access_file}[/cyan]..."
         )
-    else:
-        console.print(f"Updating [cyan]{target}[/cyan] from data/DPM CSVs...")
+    elif source_dir is not None:
+        console.print(
+            f"Updating [cyan]{target}[/cyan] from CSV directory "
+            f"[cyan]{source_dir}[/cyan]..."
+        )
 
     try:
         result = DatabaseUpdateService().update(
             target=target,
             access_file=access_file,
+            source_dir=source_dir,
             ecb_validations_file=ecb_validations_file,
             dry_run=dry_run,
             keep_staging=keep_staging,
@@ -346,7 +360,7 @@ def update_db(
     if result.used_access_file:
         console.print("[green]Source loaded from Access file[/green]")
     else:
-        console.print("[green]Source loaded from data/DPM CSVs[/green]")
+        console.print("[green]Source loaded from CSV directory[/green]")
 
     if result.ecb_validations_imported:
         console.print("[green]ECB validations imported[/green]")
@@ -641,6 +655,18 @@ def export_script(
     ``--all-modules``/``--all-versions`` to sweep many at once.
     ``--release`` on its own (no ``--module-version``/``--all-versions``)
     selects each targeted module's version active at that release instead.
+
+    The output file holds only the ``enriched_ast`` content — the same
+    ``{namespace: ...}`` shape mdpm's own export produces — not the
+    ``success``/``error``/``failed_operations`` wrapper ``script()``
+    returns internally. Skipped validations are reported on the console
+    instead, not written into the file.
+
+    Run ``dpmcore fix-script`` on the output afterwards: a fixed set of
+    validations carry a known EBA source-data error that this command
+    faithfully reproduces (it's not a generation bug), and EBA doesn't
+    amend published releases, so it stays wrong indefinitely until
+    patched.
     """
     import json
     from pathlib import Path
@@ -721,7 +747,7 @@ def export_script(
 
                 out_path = out_dir / f"{code}-{version}.json"
                 out_path.write_text(
-                    json.dumps(result, indent=2, default=str),
+                    json.dumps(result["enriched_ast"], indent=2, default=str),
                     encoding="utf-8",
                 )
                 n_ops, n_skipped, n_dep = _script_result_counts(result)
@@ -732,6 +758,7 @@ def export_script(
                     f"{n_skipped} skipped, "
                     f"{n_dep} dependency modules)"
                 )
+                _report_skipped_operations(console, result)
                 succeeded.append((code, version))
 
             _print_sweep_summary(
@@ -766,7 +793,8 @@ def export_script(
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(
-        json.dumps(result, indent=2, default=str), encoding="utf-8"
+        json.dumps(result["enriched_ast"], indent=2, default=str),
+        encoding="utf-8",
     )
 
     n_ops, n_skipped, n_dep = _script_result_counts(result)
@@ -867,7 +895,7 @@ def _print_sweep_summary(
     if total_skipped:
         console.print(
             f"[yellow]{total_skipped} validations skipped[/yellow] for "
-            "semantic errors — see 'failed_operations' in each script "
+            "semantic errors — see the per-target detail printed above "
             "for the reason per validation."
         )
 
@@ -877,10 +905,11 @@ def _report_skipped_operations(
 ) -> None:
     """Print why each skipped validation was left out of the script.
 
-    ``failed_operations`` is already written to the output JSON, but a
-    console line that only counts what made it gives no hint that
-    anything was dropped (#355). Long lists are truncated — the file
-    holds all of them.
+    A console line that only counts what made it gives no hint that
+    anything was dropped (#355) — the output file no longer carries
+    ``failed_operations`` for ``export-script`` (only the ``enriched_ast``
+    content, matching mdpm's own script shape), so this is the only place
+    skipped validations are reported for that command.
 
     Reasons are escaped before printing: a message naming an item, e.g.
     ``[eba_AS:x2]``, reads as rich markup and would otherwise be
@@ -898,10 +927,110 @@ def _report_skipped_operations(
     for code, reason in list(failed_ops.items())[:limit]:
         console.print(f"  [yellow]{escape(code)}[/yellow]: {escape(reason)}")
     if len(failed_ops) > limit:
-        console.print(
-            f"  ... and {len(failed_ops) - limit} more — see "
-            "'failed_operations' in the output file."
+        console.print(f"  ... and {len(failed_ops) - limit} more skipped")
+
+
+@main.command("fix-script")
+@click.option(
+    "--input-path",
+    required=True,
+    type=click.Path(exists=True),
+    help="A single script .json file, or a directory of them with --bulk.",
+)
+@click.option(
+    "--bulk",
+    is_flag=True,
+    default=False,
+    help="Treat --input-path as a directory and fix every .json file "
+    "in it, instead of a single file.",
+)
+def fix_script(input_path: str, bulk: bool) -> None:
+    """Patch known EBA source-data errors into already-generated scripts.
+
+    Rewrites each file in place. Ported from mdpm's
+    ``mdm-fix-json-values.py``: see
+    ``dpmcore.services.script_fixups`` for the fixed validations and
+    why they're wrong at the data level, not a generation bug — EBA
+    doesn't amend past releases, so run this after every
+    ``export-script`` generation, not just once.
+    """
+    try:
+        from rich.console import Console
+    except ImportError:
+        click.echo(
+            "Install 'rich' for pretty output: pip install dpmcore[cli]",
+            err=True,
         )
+        sys.exit(1)
+
+    console = Console()
+    json_files = _resolve_fix_script_targets(console, input_path, bulk)
+
+    total_fixed = 0
+    for json_file in json_files:
+        total_fixed += _fix_script_file(console, json_file)
+
+    if not total_fixed:
+        console.print("[yellow]No known data-quality issues found.[/yellow]")
+
+
+def _resolve_fix_script_targets(
+    console: Any, input_path: str, bulk: bool
+) -> list[Any]:
+    """Resolve ``fix-script``'s ``--input-path``/``--bulk`` to files."""
+    from pathlib import Path
+
+    path = Path(input_path)
+    if bulk:
+        if not path.is_dir():
+            console.print(
+                f"[red]--bulk requires --input-path to be a "
+                f"directory:[/red] {input_path}"
+            )
+            sys.exit(1)
+        json_files = sorted(path.glob("*.json"))
+        if not json_files:
+            console.print(f"[red]No .json files found in:[/red] {input_path}")
+            sys.exit(1)
+        return json_files
+
+    if not path.is_file() or path.suffix != ".json":
+        console.print(
+            f"[red]--input-path is not a .json file:[/red] {input_path}"
+        )
+        sys.exit(1)
+    return [path]
+
+
+def _fix_script_file(console: Any, json_file: Any) -> int:
+    """Apply known fixups to one script file, rewriting it in place.
+
+    Returns the number of validations changed (0 leaves the file
+    untouched, so an already-fixed file is never rewritten).
+    """
+    import json
+
+    from dpmcore.services.script_fixups import fix_module_operations
+
+    data = json.loads(json_file.read_text(encoding="utf-8"))
+    changed_codes: list[str] = []
+    for module_data in data.values():
+        operations = module_data.get("operations")
+        if operations:
+            changed_codes.extend(fix_module_operations(operations))
+    if not changed_codes:
+        return 0
+
+    json_file.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False, default=str),
+        encoding="utf-8",
+    )
+    console.print(
+        f"[green]Fixed[/green] {json_file} "
+        f"({len(changed_codes)} validations: "
+        f"{', '.join(sorted(set(changed_codes)))})"
+    )
+    return len(changed_codes)
 
 
 def _script_result_counts(result: dict[str, Any]) -> tuple[int, int, int]:

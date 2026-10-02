@@ -18,6 +18,7 @@ from typing import (
     Set,
     Tuple,
     Union,
+    cast,
 )
 
 from dpmcore.dpm_xl.utils.tokens import (
@@ -244,7 +245,7 @@ class ASTGeneratorService:
                 preconditions or []
             )
 
-            from_submission_date = _format_date(
+            from_reference_date = _format_date(
                 mv.from_reference_date, fallback=_DEFAULT_FROM_DATE
             )
 
@@ -279,150 +280,651 @@ class ASTGeneratorService:
                     failed_operations[code] = prepared.error
                     continue
                 result, ast, ts = prepared.result, prepared.ast, prepared.ts
-                ast_dict = serialize_ast(ast)
-                # Operand refs come off the *raw* serialisation: cleaning
-                # strips the ``data_type`` each datapoint is typed by.
-                op_refs = _OperandRefs(
-                    tables=self._extract_referenced_tables(ast_dict),
-                    variables=self._extract_operand_datapoints(ast_dict),
-                )
-                self._clean_ast_data_entries(ast_dict)
-                referenced_table_codes.update(op_refs.tables)
-                self._accumulate_parameters(
-                    referenced_parameters, result.parameters
-                )
-
+                # serialize_ast() is typed for any node (a leaf can
+                # serialise to a bare scalar), but `ast` is always a
+                # root expression here, which the wire format always
+                # renders as an object.
+                ast_dict = cast(Dict[str, Any], serialize_ast(ast))
                 root_operator_id = self._resolve_root_operator_id(ast, session)
 
-                operations[code] = self._build_operation_entry(
-                    expression=expr,
-                    code=code,
+                scope_error = self._process_operation(
+                    item=item,
                     ast_dict=ast_dict,
-                    severity=resolved_severities[code],
-                    submission_date=from_submission_date,
+                    parameters=result.parameters,
                     root_operator_id=root_operator_id,
-                )
-
-                sr = self._scope_calc.calculate_from_expression(
-                    expression=expr,
+                    ts=ts,
                     release_id=release_id,
-                    precondition_items=code_to_precondition_items.get(
-                        code, []
-                    ),
+                    resolved_severities=resolved_severities,
+                    from_submission_date=from_reference_date,
+                    code_to_precondition_items=code_to_precondition_items,
+                    operations=operations,
+                    scope_pairs=scope_pairs,
+                    referenced_table_codes=referenced_table_codes,
+                    referenced_parameters=referenced_parameters,
                 )
-                if sr.has_error:
+                if scope_error is not None:
                     # A script whose dependency block is silently missing
                     # is structurally valid but semantically wrong (#122),
                     # so a scope failure fails the whole generation.
                     return {
                         "success": False,
                         "enriched_ast": None,
-                        "error": (
-                            f"Scope calculation failed for operation "
-                            f"'{code}': {sr.error_message}"
-                        ),
+                        "error": scope_error,
                         "failed_operations": failed_operations,
                     }
-                scope_pairs.append((item, sr, ts, op_refs))
 
-            primary_tables_full = self._scope_calc._get_module_tables(
-                primary_module_vid, release_id=release_id
-            )
-            # Seed from every module-composition table that carries
-            # variables — i.e. the non-abstract tables; abstract templates
-            # have no cells, and the engine schema forbids an empty
-            # variables map — then union in anything the expressions
-            # reference. MDPM lists all such tables even when no validation
-            # touches them (#158). The union keeps this additive: a
-            # referenced table is never dropped.
-            seed_codes = {
-                code
-                for code, data in primary_tables_full.items()
-                if data.get("variables")
-            }
-            seed_codes |= {
-                code
-                for code in referenced_table_codes
-                if code in primary_tables_full
-            }
-            tables_block: Dict[str, Any] = {
-                code: primary_tables_full[code] for code in sorted(seed_codes)
-            }
-            variables_block: Dict[str, str] = {}
-            for tbl in tables_block.values():
-                variables_block.update(tbl.get("variables", {}))
-
-            # ``emitted_operations`` is the script's own ``operations``,
-            # not the harvested list: anything that landed in
-            # ``failed_operations`` must not be left gated (#355).
-            preconditions_block, precondition_variables_block = (
-                self._build_preconditions_block(
-                    preconditions or [],
-                    release_id=release_id,
-                    referenced_parameters=referenced_parameters,
-                    emitted_operations=set(operations),
-                )
-            )
-
-            # Runtime-binding contract: the declared type of every parameter
-            # this script needs, keyed by code. This is the scope-wide
-            # invariant. ``is_set`` is recoverable from the ``set-`` prefix
-            # and ``default`` is a per-reference fallback the engine binds
-            # per scope, so neither belongs in this registry. Built after
-            # the gates so a parameter that only appears in a gate is
-            # declared alongside the ones the expressions reference.
-            parameters_block: Dict[str, str] = {
-                prm_code: prm.declared_type
-                for prm_code, prm in sorted(referenced_parameters.items())
-            }
-
-            dependency_info = self._build_dependency_info(
-                scope_pairs=scope_pairs,
+            return self._assemble_script(
+                mv=mv,
+                release_row=release_row,
                 primary_module_vid=primary_module_vid,
                 release_id=release_id,
-            )
-            dep_information: Dict[str, Any]
-            dep_modules: Dict[str, Any]
-            if dependency_info is not None:
-                dep_information = dependency_info["dependency_information"]
-                dep_modules = dependency_info["dependency_modules"]
-            else:
-                dep_information = {
-                    "intra_instance_validations": [],
-                    "cross_instance_dependencies": [],
-                    "alternative_dependencies": [],
-                }
-                dep_modules = {}
-
-            namespace = (
-                self._scope_calc._get_module_uri(
-                    module_vid=primary_module_vid,
-                    mv=mv,
-                )
-                or _DEFAULT_NAMESPACE
+                preconditions=preconditions,
+                operations=operations,
+                failed_operations=failed_operations,
+                scope_pairs=scope_pairs,
+                referenced_table_codes=referenced_table_codes,
+                referenced_parameters=referenced_parameters,
             )
 
-            module_info = self._build_module_info(mv)
-            ns_block: Dict[str, Any] = {
-                **module_info,
-                "dpm_release": self._build_release_info(release_row),
-                "dates": self._build_dates(mv),
-                "operations": operations,
-                "variables": variables_block,
-                "tables": tables_block,
-                "parameters": parameters_block,
-                "preconditions": preconditions_block,
-                "precondition_variables": precondition_variables_block,
-                "dependency_information": dep_information,
-                "dependency_modules": dep_modules,
-            }
-
+        except ValueError as exc:
             return {
-                "success": True,
-                "enriched_ast": {namespace: ns_block},
-                "error": None,
-                "failed_operations": failed_operations,
+                "success": False,
+                "enriched_ast": None,
+                "error": str(exc),
+                "failed_operations": {},
             }
+        except Exception as exc:
+            return {
+                "success": False,
+                "enriched_ast": None,
+                "error": str(exc),
+                "failed_operations": {},
+            }
+
+    def _process_operation(
+        self,
+        *,
+        item: Tuple[str, str],
+        ast_dict: Dict[str, Any],
+        parameters: List[ParameterInfo],
+        root_operator_id: int,
+        ts: Dict[str, List[str]],
+        release_id: int,
+        resolved_severities: Dict[str, str],
+        from_submission_date: Optional[str],
+        code_to_precondition_items: Dict[str, List[Any]],
+        operations: Dict[str, Dict[str, Any]],
+        scope_pairs: List[
+            Tuple[
+                Tuple[str, str],
+                "ScopeResult",
+                Dict[str, List[str]],
+                _OperandRefs,
+            ]
+        ],
+        referenced_table_codes: set[str],
+        referenced_parameters: Dict[str, ParameterInfo],
+        operation_vid: Optional[int] = None,
+        scope_result: Optional["ScopeResult"] = None,
+    ) -> Optional[str]:
+        """Fold one operation's already-resolved AST into the script.
+
+        Adds to the script's accumulators (``operations``,
+        ``scope_pairs``, ``referenced_table_codes``,
+        ``referenced_parameters`` — all mutated in place).
+
+        Independent of how ``ast_dict``/``parameters``/``root_operator_id``
+        were obtained — re-parsed from text, or reshaped from the
+        persisted ``OperationNode`` tree — this is the same regardless.
+
+        ``operation_vid`` is the real ``OperationVID`` this operation was
+        discovered under, when the caller has one (:meth:`script_from_db`
+        always does, from :meth:`_discover_module_validations`). ``None``
+        for :meth:`script`'s caller-supplied ``expressions`` — those
+        codes may not even be real DB operations (e.g. an
+        ``--expressions`` file) — in which case
+        :meth:`_build_operation_entry` falls back to its deterministic
+        hash. See dpmcore#364.
+
+        ``scope_result`` lets the caller supply an already-computed
+        ``ScopeResult`` (:meth:`script_from_db` passes one built
+        straight from the persisted ``OperationScope`` rows, when
+        available) instead of having ``expr`` re-parsed here. ``None``
+        falls back to :meth:`ScopeCalculatorService.calculate_from_expression`
+        — :meth:`script`'s caller-supplied ``expressions`` always take
+        this path, since they have no ``operation_vid`` to read a
+        persisted scope from.
+
+        Returns the scope-calculation error message on failure (callers
+        decide whether that aborts the whole script or just excludes
+        this operation), or ``None`` on success. Nothing is added to
+        ``operations``/``referenced_table_codes``/``referenced_parameters``/
+        ``scope_pairs`` until the scope calculation has actually
+        succeeded — a failed operation must leave no trace in them,
+        since a script whose dependency block is silently missing is
+        structurally valid but semantically wrong (#122).
+        """
+        expr, code = item[0], item[1]
+
+        if self._scope_calc is None:
+            raise InternalError(
+                "ScopeCalculatorService not initialised",
+                "_process_operation requires a live DB session.",
+            )
+
+        sr = scope_result or self._scope_calc.calculate_from_expression(
+            expression=expr,
+            release_id=release_id,
+            precondition_items=code_to_precondition_items.get(code, []),
+        )
+        if sr.has_error:
+            return (
+                f"Scope calculation failed for operation "
+                f"'{code}': {sr.error_message}"
+            )
+
+        # Operand refs come off the *raw* serialisation: cleaning
+        # strips the ``data_type`` each datapoint is typed by.
+        op_refs = _OperandRefs(
+            tables=self._extract_referenced_tables(ast_dict),
+            variables=self._extract_operand_datapoints(ast_dict),
+        )
+        self._clean_ast_data_entries(ast_dict)
+        referenced_table_codes.update(op_refs.tables)
+        self._accumulate_parameters(referenced_parameters, parameters)
+
+        operations[code] = self._build_operation_entry(
+            expression=expr,
+            code=code,
+            ast_dict=ast_dict,
+            severity=resolved_severities[code],
+            reference_date=from_submission_date,
+            root_operator_id=root_operator_id,
+            operation_vid=operation_vid,
+        )
+        scope_pairs.append((item, sr, ts, op_refs))
+        return None
+
+    def _assemble_script(
+        self,
+        *,
+        mv: Any,
+        release_row: Any,
+        primary_module_vid: int,
+        release_id: int,
+        preconditions: Optional[
+            List[Union[Tuple[str, List[str]], Dict[str, Any]]]
+        ],
+        operations: Dict[str, Dict[str, Any]],
+        failed_operations: Dict[str, str],
+        scope_pairs: List[
+            Tuple[
+                Tuple[str, str],
+                "ScopeResult",
+                Dict[str, List[str]],
+                _OperandRefs,
+            ]
+        ],
+        referenced_table_codes: set[str],
+        referenced_parameters: Dict[str, ParameterInfo],
+    ) -> Dict[str, Any]:
+        """Assemble the final script dict from already-resolved operations.
+
+        Everything here is independent of how each operation's AST was
+        obtained (re-parsed from text, or reshaped from the persisted
+        ``OperationNode`` tree) — it only reads what the per-operation
+        loop already produced. Shared by :meth:`script` (the
+        text-reparse path) and the DB-native path.
+
+        This is a verbatim extraction of what used to be the tail of
+        :meth:`script`'s body — no behaviour changed, only where the
+        code lives.
+        """
+        if self._scope_calc is None or self.session is None:
+            raise InternalError(
+                "ScopeCalculatorService not initialised",
+                "_assemble_script requires a live DB session.",
+            )
+        primary_tables_full = self._scope_calc._get_module_tables(
+            primary_module_vid,
+            release_id=release_id,
+            ghost_vids=self._release_ghost_fallbacks(
+                self.session, release_id
+            ).get(primary_module_vid, []),
+        )
+        # Seed from every module-composition table that carries
+        # variables — i.e. the non-abstract tables; abstract templates
+        # have no cells, and the engine schema forbids an empty
+        # variables map — then union in anything the expressions
+        # reference. MDPM lists all such tables even when no validation
+        # touches them (#158). The union keeps this additive: a
+        # referenced table is never dropped.
+        seed_codes = {
+            code
+            for code, data in primary_tables_full.items()
+            if data.get("variables")
+        }
+        seed_codes |= {
+            code
+            for code in referenced_table_codes
+            if code in primary_tables_full
+        }
+        tables_block: Dict[str, Any] = {
+            code: primary_tables_full[code] for code in sorted(seed_codes)
+        }
+        variables_block: Dict[str, str] = {}
+        for tbl in tables_block.values():
+            variables_block.update(tbl.get("variables", {}))
+
+        # ``emitted_operations`` is the script's own ``operations``,
+        # not the harvested list: anything that landed in
+        # ``failed_operations`` must not be left gated (#355).
+        preconditions_block, precondition_variables_block = (
+            self._build_preconditions_block(
+                preconditions or [],
+                release_id=release_id,
+                referenced_parameters=referenced_parameters,
+                emitted_operations=set(operations),
+            )
+        )
+
+        # Runtime-binding contract: the declared type of every parameter
+        # this script needs, keyed by code. This is the scope-wide
+        # invariant. ``is_set`` is recoverable from the ``set-`` prefix
+        # and ``default`` is a per-reference fallback the engine binds
+        # per scope, so neither belongs in this registry. Built after
+        # the gates so a parameter that only appears in a gate is
+        # declared alongside the ones the expressions reference.
+        parameters_block: Dict[str, str] = {
+            prm_code: prm.declared_type
+            for prm_code, prm in sorted(referenced_parameters.items())
+        }
+
+        dependency_info = self._build_dependency_info(
+            scope_pairs=scope_pairs,
+            primary_module_vid=primary_module_vid,
+            release_id=release_id,
+        )
+        dep_information: Dict[str, Any]
+        dep_modules: Dict[str, Any]
+        if dependency_info is not None:
+            dep_information = dependency_info["dependency_information"]
+            dep_modules = dependency_info["dependency_modules"]
+        else:
+            dep_information = {
+                "intra_instance_validations": [],
+                "cross_instance_dependencies": [],
+                "alternative_dependencies": [],
+            }
+            dep_modules = {}
+
+        namespace = (
+            self._scope_calc._get_module_uri(
+                module_vid=primary_module_vid,
+                mv=mv,
+            )
+            or _DEFAULT_NAMESPACE
+        )
+
+        module_info = self._build_module_info(mv)
+        ns_block: Dict[str, Any] = {
+            **module_info,
+            "dpm_release": self._build_release_info(release_row),
+            "dates": self._build_dates(mv),
+            "operations": operations,
+            "variables": variables_block,
+            "tables": tables_block,
+            "parameters": parameters_block,
+            "preconditions": preconditions_block,
+            "precondition_variables": precondition_variables_block,
+            "dependency_information": dep_information,
+            "dependency_modules": dep_modules,
+        }
+
+        return {
+            "success": True,
+            "enriched_ast": {namespace: ns_block},
+            "error": None,
+            "failed_operations": failed_operations,
+        }
+
+    def _resolve_db_operation_ast(
+        self,
+        *,
+        session: Any,
+        code: str,
+        expr: str,
+        operation_vid: Optional[int],
+        release_id: int,
+    ) -> Tuple[
+        Optional[Dict[str, Any]],
+        List[ParameterInfo],
+        Dict[str, List[str]],
+        Optional[int],
+        Optional[str],
+    ]:
+        """Resolve one operation's ast_dict/parameters/ts/root_operator_id.
+
+        Tries the persisted ``OperationNode`` tree first
+        (:func:`db_ast.build_ast_from_db`), falling back to re-parsing
+        *expr* when that isn't possible. Used by :meth:`script_from_db`,
+        split out to keep its own branching within the complexity limit.
+
+        Returns ``(ast_dict, parameters, ts, root_operator_id, error)``
+        — a non-``None`` ``error`` means the operation failed and the
+        other fields should be ignored.
+        """
+        if self._semantic is None:
+            raise InternalError(
+                "SemanticService not initialised",
+                "_resolve_db_operation_ast requires a live DB session.",
+            )
+
+        from dpmcore.dpm_xl.utils.db_ast import (
+            UnsupportedDbAst,
+            build_ast_from_db,
+            serialize_built_ast,
+        )
+        from dpmcore.dpm_xl.utils.serialization import serialize_ast
+
+        ast_dict: Optional[Dict[str, Any]] = None
+        built_ast: Optional[Any] = None
+        root_operator_id: Optional[int] = None
+
+        if operation_vid is not None:
+            try:
+                built_ast, root_operator_id = build_ast_from_db(
+                    session, operation_vid, release_id
+                )
+                ast_dict = serialize_built_ast(built_ast)
+            except UnsupportedDbAst:
+                ast_dict = None
+                built_ast = None
+
+        if ast_dict is None:
+            # Same resolution script() uses for the text-reparse path —
+            # duplicated rather than shared, it's a handful of lines
+            # (see dpmcore#364).
+            prepared = self._prepare_expression(
+                self._semantic, expr, release_id, gate_failure=None
+            )
+            if prepared.error is not None:
+                return None, [], {}, None, prepared.error
+            result, ast, ts = prepared.result, prepared.ast, prepared.ts
+            # Same reasoning as script()'s own serialize_ast() call: a
+            # root expression always renders as an object.
+            ast_dict = cast(Dict[str, Any], serialize_ast(ast))
+            parameters = result.parameters
+            root_operator_id = self._resolve_root_operator_id(ast, session)
+            return ast_dict, parameters, ts, root_operator_id, None
+
+        # Same source script() uses — the AST itself — not whether it
+        # came from the DB or a re-parse: a parameter is self-contained
+        # in its own node (code/type/default are declared inline, never
+        # resolved from the DB), so it is read straight off the tree
+        # db_ast.py already built.
+        found_parameters: Dict[str, ParameterInfo] = {}
+        self._accumulate_ast_parameters(found_parameters, ast_dict)
+        parameters = list(found_parameters.values())
+        # Same reasoning as _prepare_expression's own call: a shift
+        # whose period cannot be declared must reject this one
+        # operation, not the whole module.
+        try:
+            ts = self._extract_time_shifts(built_ast)
+        except SemanticError as exc:
+            return None, [], {}, None, str(exc)
+        return ast_dict, parameters, ts, root_operator_id, None
+
+    def _process_db_expression_item(
+        self,
+        *,
+        item: Tuple[str, str],
+        session: Any,
+        gate_failures: Dict[str, str],
+        operation_vids: Dict[str, int],
+        primary_module_vid: int,
+        release_id: int,
+        resolved_severities: Dict[str, str],
+        from_submission_dates: Dict[str, str],
+        code_to_precondition_items: Dict[str, List[Any]],
+        operations: Dict[str, Dict[str, Any]],
+        scope_pairs: List[
+            Tuple[
+                Tuple[str, str],
+                "ScopeResult",
+                Dict[str, List[str]],
+                _OperandRefs,
+            ]
+        ],
+        referenced_table_codes: set[str],
+        referenced_parameters: Dict[str, ParameterInfo],
+    ) -> Optional[str]:
+        """Resolve and fold one :meth:`script_from_db` expression item.
+
+        Returns the failure reason to record in ``failed_operations``
+        for this item's code, or ``None`` on success. Split out to keep
+        :meth:`script_from_db`'s own branching within the complexity
+        limit.
+        """
+        from dpmcore.services.scope_calculator import UnsupportedDbScope
+
+        expr, code = item[0], item[1]
+
+        # Checked once, up front, for both resolution paths below — a
+        # precondition the engine cannot evaluate must reject the
+        # operation regardless of whether its own AST would otherwise
+        # resolve from the DB or from re-parsed text.
+        gate_failure = gate_failures.get(code)
+        if gate_failure is not None:
+            return gate_failure
+
+        operation_vid = operation_vids.get(code)
+        (
+            ast_dict,
+            parameters,
+            ts,
+            root_operator_id,
+            resolve_error,
+        ) = self._resolve_db_operation_ast(
+            session=session,
+            code=code,
+            expr=expr,
+            operation_vid=operation_vid,
+            release_id=release_id,
+        )
+        if resolve_error is not None:
+            return resolve_error
+        # A None error means _resolve_db_operation_ast populated every
+        # other field — its own contract, not re-checked field by field.
+        if ast_dict is None or root_operator_id is None:
+            raise InternalError(
+                "Inconsistent _resolve_db_operation_ast result",
+                f"No error for {code!r} but ast_dict/root_operator_id "
+                "is still None.",
+            )
+
+        scope_result: Optional["ScopeResult"] = None
+        if operation_vid is not None:
+            if self._scope_calc is None:
+                raise InternalError(
+                    "ScopeCalculatorService not initialised",
+                    "_process_db_expression_item requires a live DB session.",
+                )
+            # Same rationale as the AST: the scope is already persisted,
+            # so re-deriving it via re-parse+re-validate only risks a
+            # spurious rejection (e.g. grey cells).
+            try:
+                scope_result = self._scope_calc.build_scope_result_from_db(
+                    operation_vid,
+                    primary_module_vid,
+                    release_id,
+                )
+            except UnsupportedDbScope:
+                scope_result = None
+
+        return self._process_operation(
+            item=item,
+            ast_dict=ast_dict,
+            parameters=parameters,
+            root_operator_id=root_operator_id,
+            ts=ts,
+            release_id=release_id,
+            resolved_severities=resolved_severities,
+            from_submission_date=from_submission_dates.get(code),
+            code_to_precondition_items=code_to_precondition_items,
+            operations=operations,
+            scope_pairs=scope_pairs,
+            referenced_table_codes=referenced_table_codes,
+            referenced_parameters=referenced_parameters,
+            operation_vid=operation_vid,
+            scope_result=scope_result,
+        )
+
+    def script_from_db(
+        self,
+        expressions: List[Tuple[str, str]],
+        operation_vids: Dict[str, int],
+        mv: Any,
+        release_row: Any,
+        preconditions: Optional[
+            List[Union[Tuple[str, List[str]], Dict[str, Any]]]
+        ] = None,
+        severity: Optional[str] = None,
+        severities: Optional[Dict[str, str]] = None,
+        from_submission_dates: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, Any]:
+        """Generate a DB-discovered module version's validations script.
+
+        For each operation, its persisted ``OperationNode`` tree is tried
+        first (:func:`db_ast.build_ast_from_db`) — falling back to
+        re-parsing its expression text only when that isn't possible
+        (an unsupported construct, or the reshaper for it not being
+        implemented yet — see dpmcore#364). Shares
+        :meth:`_process_operation`/:meth:`_assemble_script` with
+        :meth:`script`; the only thing that differs between the two is
+        how each operation's ``ast_dict``/``parameters``/``ts``/
+        ``root_operator_id`` are obtained.
+
+        Args:
+            expressions: same as :meth:`script`.
+            operation_vids: ``{code: OperationVID}``, from
+                :meth:`_discover_module_validations` — which operations
+                have a persisted AST to try first.
+            mv: already resolved by the caller (:meth:`script_for_module`),
+                so this doesn't re-resolve it.
+            release_row: already resolved by the caller
+                (:meth:`script_for_module`), so this doesn't re-resolve
+                it.
+            preconditions: same as :meth:`script`.
+            severity: same as :meth:`script`.
+            severities: same as :meth:`script`.
+            from_submission_dates: ``{code: FromSubmissionDate}``, from
+                :meth:`_discover_module_validations` — the real
+                per-operation submission date. A code missing here (the
+                column was null) falls back to
+                :meth:`_build_operation_entry`'s own default, same as
+                :meth:`script`'s caller-supplied expressions.
+
+        Returns:
+            Same shape as :meth:`script`. Unlike :meth:`script`, a
+            per-operation scope-calculation error does not fail the
+            whole result: it is recorded in ``failed_operations`` and
+            that operation is left out, the same as a semantic error or
+            an ungateable precondition. :meth:`script` still aborts on
+            a scope error (#122) — this method discovers every active
+            validation for the module itself, so one bad operation
+            failing the whole discovered set would be a worse surprise
+            here than for a caller-supplied ``expressions`` list.
+        """
+        session = self.session
+        if (
+            self._semantic is None
+            or self._scope_calc is None
+            or session is None
+        ):
+            return {
+                "success": False,
+                "enriched_ast": None,
+                "error": "No database session — cannot generate script.",
+                "failed_operations": {},
+            }
+
+        try:
+            primary_module_vid: int = mv.module_vid
+            release_id: int = release_row.release_id
+
+            validation_codes = [code for _, code in expressions]
+            resolved_severities = self._resolve_severities(
+                severity, severities, validation_codes
+            )
+
+            try:
+                code_to_precondition_items = self._build_precondition_index(
+                    preconditions or []
+                )
+            except ValueError as exc:
+                return {
+                    "success": False,
+                    "enriched_ast": None,
+                    "error": str(exc),
+                    "failed_operations": {},
+                }
+            gate_failures = self._unsupported_gate_operations(
+                preconditions or []
+            )
+            from_submission_dates = from_submission_dates or {}
+
+            operations: Dict[str, Dict[str, Any]] = {}
+            failed_operations: Dict[str, str] = {}
+            scope_pairs: List[
+                Tuple[
+                    Tuple[str, str],
+                    "ScopeResult",
+                    Dict[str, List[str]],
+                    _OperandRefs,
+                ]
+            ] = []
+            referenced_table_codes: set[str] = set()
+            referenced_parameters: Dict[str, ParameterInfo] = {}
+
+            for item in expressions:
+                code = item[1]
+                # Unlike script()'s text-reparse path (#122), a failure
+                # here excludes just this operation instead of aborting
+                # the whole module: export-script discovers every active
+                # validation for the module by itself, so one bad
+                # operation would otherwise take down a script the
+                # caller never explicitly asked for by name.
+                error = self._process_db_expression_item(
+                    item=item,
+                    session=session,
+                    gate_failures=gate_failures,
+                    operation_vids=operation_vids,
+                    primary_module_vid=primary_module_vid,
+                    release_id=release_id,
+                    resolved_severities=resolved_severities,
+                    from_submission_dates=from_submission_dates,
+                    code_to_precondition_items=code_to_precondition_items,
+                    operations=operations,
+                    scope_pairs=scope_pairs,
+                    referenced_table_codes=referenced_table_codes,
+                    referenced_parameters=referenced_parameters,
+                )
+                if error is not None:
+                    failed_operations[code] = error
+
+            return self._assemble_script(
+                mv=mv,
+                release_row=release_row,
+                primary_module_vid=primary_module_vid,
+                release_id=release_id,
+                preconditions=preconditions,
+                operations=operations,
+                failed_operations=failed_operations,
+                scope_pairs=scope_pairs,
+                referenced_table_codes=referenced_table_codes,
+                referenced_parameters=referenced_parameters,
+            )
 
         except ValueError as exc:
             return {
@@ -450,7 +952,7 @@ class ASTGeneratorService:
         No ``expressions``, ``preconditions`` or ``severities`` need to be
         supplied — they are looked up from ``OperationScope`` /
         ``OperationScopeComposition`` / ``OperationVersion`` for this module
-        version, then handed to :meth:`script`.
+        version, then handed to :meth:`script_from_db`.
 
         Args:
             module_code: Code of the module (e.g. ``"COREP_Con"``).
@@ -473,9 +975,13 @@ class ASTGeneratorService:
             mv, release_row = self._resolve_release(
                 module_code, module_version, release
             )
-            expressions, preconditions, severities = (
-                self._discover_module_validations(mv, release_row)
-            )
+            (
+                expressions,
+                operation_vids,
+                preconditions,
+                severities,
+                from_submission_dates,
+            ) = self._discover_module_validations(mv, release_row)
         except ValueError as exc:
             return {
                 "success": False,
@@ -484,13 +990,14 @@ class ASTGeneratorService:
                 "failed_operations": {},
             }
 
-        return self.script(
+        return self.script_from_db(
             expressions=expressions,
-            module_code=module_code,
-            module_version=module_version,
+            operation_vids=operation_vids,
+            mv=mv,
+            release_row=release_row,
             preconditions=preconditions or None,
             severities=severities or None,
-            release=release_row.code,
+            from_submission_dates=from_submission_dates or None,
         )
 
     def calculations_for_module(
@@ -762,17 +1269,23 @@ class ASTGeneratorService:
         release_row: Any,
     ) -> Tuple[
         List[Tuple[str, str]],
+        Dict[str, int],
         List[Union[Tuple[str, List[str]], Dict[str, Any]]],
+        Dict[str, str],
         Dict[str, str],
     ]:
         """Look up the active ``(expression, code)`` pairs for a module.
 
         Resolves the module version's active operations by joining
         ``OperationVersion`` to ``OperationScope`` /
-        ``OperationScopeComposition``, filtered to this release using
-        dpmcore's point-release model (:func:`filter_by_release`, a window
-        containment check rather than a raw ``StartReleaseID``/
-        ``EndReleaseID`` overlap).
+        ``OperationScopeComposition``, restricted to the operations
+        composed into *mv* — but, unlike a single-release point lookup,
+        an ``OperationVersion`` is a candidate whenever its window
+        **overlaps** *mv*'s own ``[start_release_id, end_release_id)``
+        (mirrors mdpm's ``get_active_operations``, using
+        :mod:`dpmcore.orm.release_sort_order` instead of raw
+        ``ReleaseID`` comparison so a non-monotonic release ID can't
+        misorder the overlap check).
 
         When ``mv`` stands in for a ghost at ``release_row`` the ghost's
         scopes are read through it as well — see
@@ -783,23 +1296,112 @@ class ASTGeneratorService:
         dictionary has that shape, but it is the case to revisit if one
         appears.
 
+        The *filter* above widens across *mv*'s whole ghost chain so a
+        row composed solely against an earlier ghost is fetchable at
+        all (``ghost_vids``, see :meth:`_ghosts_represented_by`), but
+        the *window* check only widens by the **one** ghost (if any)
+        whose own window actually covers ``release_row`` itself — see
+        :meth:`_release_ghost_fallbacks`. Using the whole chain there
+        instead would pull in a later, unrelated ghost's validations
+        for an earlier release entirely (Andrés's review on PR #396:
+        ``COREP_FRTB-3.1.0`` at release ``3.5`` wrongly gained
+        ``v23241_s``/``v23242_s``, which only exist under ghost
+        ``3.3.0``'s own ``4.0``-``4.2`` window, not ``3.2.0``'s — the
+        one that actually covers ``3.5``). The phantom-scope exclusion
+        below treats a phantom "other" module as rescued rather than
+        void when it has its own #182 fallback at this same,
+        release-specific ghost — unconditionally, for any caller
+        (``--module-version``, ``--all-versions`` or an explicit
+        ``--release`` alike), per issue #182 itself: "this fallback
+        must apply consistently on every path dpmcore uses to resolve
+        which module version applies". A ``--module-version``/
+        ``--all-versions`` lookup resolves *mv* "as itself" toward
+        whatever release is currently applicable (``release=None``'s
+        own auto-pick, #221) — when that resolved release is one only
+        a ghost covers, that ghost's validations are exactly what #182
+        says must surface there too (``DORA-1.1.0`` needs 67 whether
+        reached via ``--module-version`` or an explicit ``--release
+        4.2``, since ``1.2.0`` covers both releases). A release *mv*
+        covers on its own resolves no ghost here at all (``COREP_FRTB-
+        3.1.0`` at its own release ``3.4`` stays at its own 2
+        operations). mdpm's own reference has no equivalent to #182 in
+        any mode, so it is not a valid comparison for a ghost-involved
+        release; it still is for one with none.
+
+        Also drops any candidate whose *only* ``OperationScopeID`` under
+        *mv* is shared exclusively with phantom module versions (see
+        :meth:`list_module_versions`'s docstring for what "phantom"
+        means) — mirrors mdpm's ``is_phantom_module_op``: a validation
+        reaching this module only through a cross-framework pairing
+        whose counterpart never really existed as its own module
+        version should not surface here. A previous version of this
+        docstring said this guard "only matters when sweeping every
+        module" — confirmed wrong: a single-module lookup needs it too.
+
+        A code can match more than one ``OperationVersion`` row: the
+        ghost substitution above can return one operation twice, once
+        per scope, and the two scope rows may carry different
+        severities — ``mv``'s own scope is ranked above the ghost's so
+        the winner does not depend on join order.
+
         Returns:
-            ``(expressions, preconditions, severities)`` ready to pass to
-            :meth:`script`.
+            ``(expressions, operation_vids, preconditions, severities,
+            from_submission_dates)`` ready to pass to :meth:`script`.
+            ``operation_vids`` maps each code to the ``OperationVID``
+            already resolved by this same query, so callers that want
+            the persisted AST for an operation don't need a second
+            lookup for it. ``from_submission_dates`` maps each code to
+            its own ``OperationScope.FromSubmissionDate`` (formatted,
+            or absent when the column is null) — the real per-operation
+            date, not the module version's own reference date every
+            operation used to share.
         """
         from sqlalchemy import or_
 
-        from dpmcore.dpm_xl.utils.filters import filter_by_release
         from dpmcore.orm.operations import (
             Operation,
             OperationScope,
             OperationScopeComposition,
             OperationVersion,
         )
+        from dpmcore.orm.release_sort_order import (
+            compute_sort_order,
+            load_release_sort_orders,
+            sort_order_from,
+        )
 
         session = self.session
         if session is None:
             raise ValueError("No database session — cannot generate script.")
+        if self._scope_calc is None:
+            raise InternalError(
+                "ScopeCalculatorService not initialised",
+                "_discover_module_validations requires a live DB session.",
+            )
+
+        # A release mv covers in its own right needs no ghost at all —
+        # for it, ghost_vids must stay empty even in the *filter* below,
+        # not just the window/phantom-rescue steps: a ghost-composed
+        # row can have its own window happen to overlap mv's own window
+        # too (COREP_FRTB's v22730_s, [1,3) against mv's own [1,2)) purely
+        # by coincidence of how its own OperationVersion was recorded,
+        # which must not leak it into a query about a release that never
+        # needed any ghost involvement to begin with (COREP_FRTB-3.1.0 at
+        # its own release 3.4 must stay at its own 2 operations, not gain
+        # v22730_s and the many other ghost-composed rows whose window
+        # happens to touch release 1 too).
+        sort_orders = load_release_sort_orders(session)
+        target_sort = sort_order_from(sort_orders, release_row.release_id)
+        mv_start_sort = sort_order_from(sort_orders, mv.start_release_id)
+        mv_end_sort = (
+            compute_sort_order(None, None)
+            if mv.end_release_id is None
+            else sort_order_from(sort_orders, mv.end_release_id)
+        )
+        release_needs_ghosts = not (mv_start_sort <= target_sort < mv_end_sort)
+        ghost_vids = (
+            self._ghosts_represented_by(mv) if release_needs_ghosts else []
+        )
 
         query = (
             session.query(
@@ -809,6 +1411,10 @@ class ASTGeneratorService:
                 OperationScope.severity,
                 OperationVersion.precondition_operation_vid,
                 OperationScopeComposition.module_vid,
+                OperationScope.operation_scope_id,
+                OperationVersion.start_release_id,
+                OperationVersion.end_release_id,
+                OperationScope.from_submission_date,
             )
             .join(
                 OperationScope,
@@ -825,10 +1431,7 @@ class ASTGeneratorService:
             )
             .filter(
                 OperationScopeComposition.module_vid.in_(
-                    [
-                        mv.module_vid,
-                        *self._ghosts_represented_by(session, mv, release_row),
-                    ]
+                    [mv.module_vid, *ghost_vids]
                 )
             )
             # Access boolean convention: True is stored as -1, not 1.
@@ -840,64 +1443,220 @@ class ASTGeneratorService:
                 )
             )
         )
-        query = filter_by_release(
-            query,
-            start_col=OperationVersion.start_release_id,
-            end_col=OperationVersion.end_release_id,
-            release_id=release_row.release_id,
+        rows = query.all()
+
+        # ghost_vids (mv's whole chain, already gated above to empty when
+        # this release needs no ghost at all) widens the *filter* — it
+        # decides which rows are even fetchable, e.g. a row composed
+        # solely against an earlier ghost with no row of its own for mv
+        # (COREP_FRTB's v22730_s, composed only against 3.2.0). Whether a
+        # fetched row actually *applies* to this release is a window
+        # question, and only the one ghost (if any) whose own window
+        # covers release_row itself is relevant there — using the whole
+        # chain here pulled in a later, unrelated ghost's validations for
+        # an earlier release entirely (Andrés's review on PR #396:
+        # COREP_FRTB 3.1.0 at release 3.5 wrongly gained v23241_s/
+        # v23242_s, which only exist under ghost 3.3.0's own release
+        # 4.0-4.2 window, not 3.2.0's — the one that actually covers 3.5).
+        release_ghost_vids = (
+            self._release_ghost_fallbacks(session, release_row.release_id).get(
+                mv.module_vid, []
+            )
+            if release_needs_ghosts
+            else []
         )
 
-        # A code can match more than one OperationVersion row; keep the
-        # latest (highest OperationVID) per code. Widening the scope
-        # filter to the ghosts ``mv`` stands in for can also return one
-        # OperationVersion twice, once per scope, and the two scope rows
-        # may carry different severities — rank ``mv``'s own scope above
-        # the ghost's so the winner does not depend on join order.
-        _Rank = Tuple[int, int]
-        _Row = Tuple[_Rank, str, Optional[str], Optional[int]]
-        latest_by_code: Dict[str, _Row] = {}
-        for (
-            op_vid,
-            code,
+        windows = [(mv.start_release_id, mv.end_release_id)]
+        if release_ghost_vids:
+            windows += self._ghost_windows(session, release_ghost_vids)
+        overlapping = self._overlapping_operation_version_rows(
+            rows, sort_orders, windows
+        )
+
+        scope_ids = {row[6] for row in overlapping}
+        if scope_ids:
+            # Unlike the window check above, the phantom-rescue below
+            # asks a release-independent, structural question — "is
+            # this composition's other module a dead end, or does
+            # something current stand in for it at all" — so it folds
+            # in mv's *whole* chain (ghost_vids), not just the one
+            # ghost specific to this release: a row can be fetched (via
+            # the filter's own use of the whole chain) and pass the
+            # window check through mv's own window directly (not
+            # needing any ghost's window at all, e.g. v22730_s's own
+            # window already overlaps mv's), while still being composed
+            # *only* against an earlier ghost with no row of its own
+            # for mv — that composition is never a dead end as long as
+            # mv is its fallback, regardless of which release resolved.
+            ghost_fallback_map = {
+                **self._scope_calc._ghost_fallback_map(release_row.release_id),
+                **dict.fromkeys(ghost_vids, mv.module_vid),
+            }
+            phantom_scope_ids = self._scope_calc._phantom_paired_scope_ids(
+                session, scope_ids, mv.module_vid, ghost_fallback_map
+            )
+        else:
+            phantom_scope_ids = set()
+
+        latest_by_code = self._latest_operation_by_code(
+            overlapping, phantom_scope_ids, mv.module_vid
+        )
+
+        expressions: List[Tuple[str, str]] = []
+        operation_vids: Dict[str, int] = {}
+        severities: Dict[str, str] = {}
+        from_submission_dates: Dict[str, str] = {}
+        prec_vid_to_codes: Dict[int, List[str]] = {}
+        for code, (
+            rank,
             expression,
             severity,
             prec_vid,
-            scope_vid,
-        ) in query.all():
-            rank = (op_vid, 1 if scope_vid == mv.module_vid else 0)
-            existing = latest_by_code.get(code)
-            if existing is None or rank > existing[0]:
-                latest_by_code[code] = (rank, expression, severity, prec_vid)
-
-        expressions: List[Tuple[str, str]] = []
-        severities: Dict[str, str] = {}
-        prec_vid_to_codes: Dict[int, List[str]] = {}
-        for code, (_, expression, severity, prec_vid) in sorted(
-            latest_by_code.items()
-        ):
+            from_submission_date,
+        ) in sorted(latest_by_code.items()):
             expressions.append((expression, code))
+            operation_vids[code] = rank[0]
             if severity:
                 severities[code] = severity
+            formatted_date = _format_date(from_submission_date)
+            if formatted_date:
+                from_submission_dates[code] = formatted_date
             if prec_vid is not None:
                 prec_vid_to_codes.setdefault(prec_vid, []).append(code)
 
         preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]] = (
             list(self._resolve_preconditions(prec_vid_to_codes))
         )
-        return expressions, preconditions, severities
+        return (
+            expressions,
+            operation_vids,
+            preconditions,
+            severities,
+            from_submission_dates,
+        )
 
-    def _ghosts_represented_by(
-        self, session: "Session", mv: Any, release_row: Any
-    ) -> List[int]:
-        """Ghost module versions ``mv`` stands in for at ``release_row``.
+    @staticmethod
+    def _overlapping_operation_version_rows(
+        rows: List[Tuple[Any, ...]],
+        sort_orders: Dict[int, int],
+        windows: List[Tuple[Optional[int], Optional[int]]],
+    ) -> List[Tuple[Any, ...]]:
+        """Rows whose ``OperationVersion`` window overlaps any of *windows*.
 
-        When ``mv`` is the #182 fallback for a module whose only
-        release-covering versions are ghosts, the validations active at
-        that release are the ones scoped to those ghosts: their
-        ``OperationScopeComposition`` rows carry the ghost's
-        ``ModuleVID``, which a plain ``mv.module_vid`` filter never sees,
-        so the fallback scripted to 30 of DORA's 67 validations at 4.2
-        (#372).
+        Mirrors mdpm's ``get_active_operations``, using
+        :mod:`dpmcore.orm.release_sort_order` instead of raw
+        ``ReleaseID`` comparison so a non-monotonic release ID can't
+        misorder the overlap check. *windows* is normally just *mv*'s
+        own ``(start_release_id, end_release_id)``; whenever *mv*
+        stands in for a #182 ghost at the resolved release, one window
+        per such ghost is added too (see :meth:`_ghost_windows`) — a
+        ghost's own window can start later than the fallback's, so an
+        ``OperationVersion`` scoped through the ghost and checked only
+        against the fallback's window would be wrongly dropped
+        (confirmed against DORA's ghost 1.2.0, operation ``v903581_m``).
+        Split out of :meth:`_discover_module_validations` to keep its
+        own branching within the complexity limit.
+        """
+        from dpmcore.orm.release_sort_order import (
+            compute_sort_order,
+            sort_order_from,
+        )
+
+        open_end_sort = compute_sort_order(None, None)
+
+        def _end_sort(release_id: Optional[int]) -> int:
+            if release_id is None:
+                return open_end_sort
+            return sort_order_from(sort_orders, release_id)
+
+        def _start_sort(release_id: Optional[int]) -> int:
+            if release_id is None:
+                return 0  # sorts before every real release's sort order
+            return sort_order_from(sort_orders, release_id)
+
+        sort_windows = [
+            (_start_sort(start), _end_sort(end)) for start, end in windows
+        ]
+
+        return [
+            row
+            for row in rows
+            if any(
+                window_end > sort_order_from(sort_orders, row[7])
+                and _end_sort(row[8]) > window_start
+                for window_start, window_end in sort_windows
+            )
+        ]
+
+    @staticmethod
+    def _latest_operation_by_code(
+        overlapping: List[Tuple[Any, ...]],
+        phantom_scope_ids: Set[int],
+        home_module_vid: int,
+    ) -> Dict[
+        str, Tuple[Tuple[int, int], str, Optional[str], Optional[int], Any]
+    ]:
+        """Keep the latest (highest ``OperationVID``) row per code.
+
+        A code can match more than one ``OperationVersion`` row: the
+        ghost substitution in :meth:`_discover_module_validations` can
+        return one operation twice, once per scope, and the two scope
+        rows may carry different severities — ``mv``'s own scope is
+        ranked above the ghost's so the winner does not depend on join
+        order. Split out to keep the caller's own branching within the
+        complexity limit.
+        """
+        latest_by_code: Dict[
+            str,
+            Tuple[Tuple[int, int], str, Optional[str], Optional[int], Any],
+        ] = {}
+        for (
+            op_vid,
+            code,
+            expression,
+            severity,
+            prec_vid,
+            module_vid,
+            scope_id,
+            _start_rel,
+            _end_rel,
+            from_submission_date,
+        ) in overlapping:
+            if scope_id in phantom_scope_ids:
+                continue
+            rank = (op_vid, 1 if module_vid == home_module_vid else 0)
+            existing = latest_by_code.get(code)
+            if existing is None or rank > existing[0]:
+                latest_by_code[code] = (
+                    rank,
+                    expression,
+                    severity,
+                    prec_vid,
+                    from_submission_date,
+                )
+        return latest_by_code
+
+    def _ghosts_represented_by(self, mv: Any) -> List[int]:
+        """Every #182 ghost sibling in ``mv``'s own contiguous chain.
+
+        When ``mv`` is the #182 fallback for a module whose own release
+        window is bridged by one or more ghost versions, the
+        validations active across that whole bridged span are the ones
+        scoped to those ghosts: their ``OperationScopeComposition``
+        rows carry the ghost's ``ModuleVID``, which a plain
+        ``mv.module_vid`` filter never sees, so the fallback scripted
+        to 30 of DORA's 67 validations at 4.2 (#372).
+
+        Walks the exact same contiguous run of ghost siblings
+        :meth:`_effective_end_release_id` extends ``mv``'s own window
+        through — every ghost between ``mv`` and the next non-ghost
+        sibling (or indefinitely, if none follows) — rather than only
+        whichever one ghost happens to cover a single resolved release:
+        a chain can bridge more than one ghost (``COREP_FRTB``'s
+        ``3.1.0`` stands in for both ``3.2.0`` and ``3.3.0`` before its
+        real ``3.4.0`` takes over), and a validation scoped only to an
+        earlier ghost in that chain (not the one covering whatever
+        release happened to be resolved) must not be dropped either.
 
         The ghosts' VIDs widen that filter rather than replacing it: a
         validation the fallback carries and the ghost dropped stays in
@@ -906,17 +1665,71 @@ class ASTGeneratorService:
         module (``IF_CLASS3`` at 4.0 and 4.1, one validation).
 
         Args:
-            session: SQLAlchemy session.
             mv: The module version being scripted.
-            release_row: The ``Release`` it is being scripted at.
 
         Returns:
-            The ghost ``ModuleVID``s, empty when ``mv`` covers
-            ``release_row`` in its own right.
+            The ghost ``ModuleVID``s, empty when ``mv`` has no ghost
+            sibling bridging its own window.
         """
-        return self._release_ghost_fallbacks(
-            session, release_row.release_id
-        ).get(mv.module_vid, [])
+        from dpmcore.orm.packaging import ModuleVersion
+        from dpmcore.orm.release_sort_order import resolve_sort_order
+
+        if (
+            mv.end_release_id is None
+            or self.session is None
+            or mv.module_id is None
+        ):
+            return []
+        session = self.session
+        end_sort = resolve_sort_order(
+            session, mv.end_release_id, role="module version end release"
+        )
+        siblings = (
+            session.query(ModuleVersion)
+            .filter(ModuleVersion.module_id == mv.module_id)
+            .filter(ModuleVersion.module_vid != mv.module_vid)
+            .all()
+        )
+        candidates = self._siblings_past_end(siblings, end_sort)
+
+        ghost_vids: List[int] = []
+        boundary = end_sort
+        for start_sort, is_ghost, sibling in candidates:
+            if start_sort > boundary or not is_ghost:
+                break
+            ghost_vids.append(sibling.module_vid)
+            if sibling.end_release_id is None:
+                break
+            sibling_end_sort = resolve_sort_order(
+                session,
+                sibling.end_release_id,
+                role="sibling module version end release",
+            )
+            if sibling_end_sort > boundary:
+                boundary = sibling_end_sort
+        return ghost_vids
+
+    @staticmethod
+    def _ghost_windows(
+        session: "Session", ghost_vids: List[int]
+    ) -> List[Tuple[Optional[int], Optional[int]]]:
+        """``(start_release_id, end_release_id)`` for each of *ghost_vids*.
+
+        See :meth:`_overlapping_operation_version_rows` — a ghost's own
+        release window can start later than its fallback's, and an
+        operation genuinely scoped through the ghost is windowed
+        against the ghost, not the fallback.
+        """
+        from dpmcore.orm.packaging import ModuleVersion
+
+        rows = (
+            session.query(
+                ModuleVersion.start_release_id, ModuleVersion.end_release_id
+            )
+            .filter(ModuleVersion.module_vid.in_(ghost_vids))
+            .all()
+        )
+        return [(row[0], row[1]) for row in rows]
 
     def _resolve_preconditions(
         self, prec_vid_to_codes: Dict[int, List[str]]
@@ -1487,29 +2300,51 @@ class ASTGeneratorService:
         code: str,
         ast_dict: Any,
         severity: str,
-        submission_date: Optional[str],
+        reference_date: Optional[str],
         root_operator_id: int,
+        operation_vid: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Assemble a single ``operations[code]`` entry.
 
-        ``version_id`` is a deterministic CRC32 of the expression
-        truncated to four digits; this replaces pydpm's
-        non-deterministic ``hash(expression) % 10000``.
+        ``version_id`` is the real ``OperationVID`` when the caller has
+        one (:meth:`script_from_db` always does — the wire format's own
+        spec, dpm-xl-docs' ``03-document-sections.md`` §3.10, defines
+        ``version_id`` as exactly that: "OperationVID of this Operation
+        version in the source DPM content"). Only when ``operation_vid``
+        is unavailable (:meth:`script`'s caller-supplied ``expressions``,
+        which may not even name a real DB operation — e.g. an
+        ``--expressions`` file) does this fall back to a deterministic
+        CRC32 of the expression truncated to four digits, which replaces
+        pydpm's non-deterministic ``hash(expression) % 10000``.
+
+        ``reference_date`` is the real ``OperationScope.FromSubmissionDate``
+        when the caller has it (:meth:`script_from_db`, per operation).
+        Only when unavailable — the column was null, or :meth:`script`'s
+        caller-supplied ``expressions`` have no ``OperationScope`` to
+        read at all — does the wire ``from_submission_date`` fall back to
+        the default below. The wire key stays ``from_submission_date``
+        (the established script format contract); only the Python name
+        reflects what it's actually fed from.
         """
-        version_id = zlib.crc32(expression.encode("utf-8")) % 10000
+        version_id = (
+            operation_vid
+            if operation_vid is not None
+            else zlib.crc32(expression.encode("utf-8")) % 10000
+        )
         return {
             "version_id": version_id,
             "code": code,
             "expression": expression,
             "root_operator_id": root_operator_id,
             "ast": ast_dict,
-            "from_submission_date": submission_date or _DEFAULT_FROM_DATE,
+            "from_submission_date": reference_date or _DEFAULT_FROM_DATE,
             "severity": severity,
         }
 
     # The gate contract shared with the engine's precondition evaluator:
     # filing indicators, run-time parameters and boolean literals combined
-    # with these operators (grouping parentheses are unwrapped). A gate
+    # with these operators (grouping parentheses are preserved as
+    # ParExpr, not unwrapped). A gate
     # carrying anything else — a comparison, arithmetic, a cell reference,
     # a non-boolean literal — has no runtime meaning on the engine side, so
     # it stays out of the script and its operations are reported through
@@ -1534,8 +2369,11 @@ class ASTGeneratorService:
         logical operator that connects them (``and`` / ``or`` / ``xor`` /
         ``not``) survives into the emitted tree, so ``{v_A} or {v_B}``
         reaches the engine as a disjunction instead of the ``and``-fold
-        the old regex path produced. Grouping parentheses are unwrapped:
-        the tree shape already carries the precedence.
+        the old regex path produced. Grouping parentheses are rebuilt as
+        a ``ParExpr`` node rather than unwrapped — the spec requires
+        preserving source parenthesisation for reconstruction (§4.10),
+        even though a ``ParExpr`` carries no precedence of its own; see
+        :meth:`_transform_precondition_ast`.
 
         A parameter that appears in a gate is added to
         ``referenced_parameters`` in the same pass, so the script-level
@@ -1618,7 +2456,7 @@ class ASTGeneratorService:
                 continue
             precondition_variables.update(gate_variables)
             if referenced_parameters is not None:
-                self._accumulate_precondition_parameters(
+                self._accumulate_ast_parameters(
                     referenced_parameters, gate_ast
                 )
             key, entry = self._build_precondition_entry_from_ast(
@@ -1834,10 +2672,14 @@ class ASTGeneratorService:
         Rewiring an ``or`` — or either side of an ``xor`` — the way an
         ``and`` is rewired would leave a *stricter* gate behind and skip
         validations that should have run, so those cases propagate
-        instead. ``ParExpr`` wrappers are unwrapped; ``BinOp`` /
-        ``UnaryOp`` keep their operator, and a ``not`` flips the polarity
-        the rewiring rule is read at. ``ParameterRef`` and boolean
-        ``Constant`` leaves go through the standard ``serialize_ast`` path,
+        instead. ``ParExpr`` wrappers are rebuilt around their transformed
+        ``expression`` (dropped only when that inner result is itself
+        ``None``) — the spec requires preserving source parenthesisation
+        for reconstruction even though it carries no precedence of its
+        own. ``BinOp``/``UnaryOp`` keep their operator, and a ``not``
+        flips the polarity the rewiring rule is read at. ``ParameterRef``
+        and boolean ``Constant`` leaves go through the standard
+        ``serialize_ast`` path,
         so the gate carries exactly the node shape an expression would
         (``code`` / ``param_type`` / ``default``; ``type_`` / ``value``).
         Any other node is a programming error here: ``_parse_gates`` keeps
@@ -1855,13 +2697,16 @@ class ASTGeneratorService:
         node = cls._unwrap_start(node, ast_nodes)
 
         if isinstance(node, ast_nodes.ParExpr):
-            return cls._transform_precondition_ast(
+            inner = cls._transform_precondition_ast(
                 node.expression,
                 resolved,
                 precondition_variables,
                 serialize_ast,
                 negated,
             )
+            if inner is None:
+                return None
+            return {"class_name": "ParExpr", "expression": inner}
         if isinstance(node, (ast_nodes.VarRef, ast_nodes.PreconditionItem)):
             variable = getattr(node, "variable", None) or getattr(
                 node, "variable_code", None
@@ -1999,20 +2844,27 @@ class ASTGeneratorService:
         }
 
     @classmethod
-    def _accumulate_precondition_parameters(
+    def _accumulate_ast_parameters(
         cls,
         referenced_parameters: Dict[str, ParameterInfo],
         node: Any,
     ) -> None:
-        """Add every ``ParameterRef`` in the emitted gate to the registry.
+        """Add every ``ParameterRef`` in a serialised AST to the registry.
 
         Reads the type off the serialised node so the shared registry
-        holds the same canonical name the engine binds against. A gate
-        parameter redeclared with another type — in another gate or in an
-        expression — raises ``SemanticError`` ``3-8`` through
-        :func:`~dpmcore.services._parameters.merge_parameters`, exactly
-        as the conflict between two expressions does. ``default`` is a
-        per-reference fallback and stays on the node only.
+        holds the same canonical name the engine binds against. Used
+        both for a precondition gate's emitted AST and for an
+        operation's ``ast_dict`` reconstructed straight from the DB
+        (:meth:`script_from_db`) — a parameter can never survive
+        ``build_ast_from_db`` (it raises ``UnsupportedDbAst``
+        instead), so this walk costs nothing there today, but ties
+        ``parameters`` extraction to the AST itself rather than to
+        which path produced it. A parameter redeclared with another
+        type — in a gate, an expression, or both — raises
+        ``SemanticError`` ``3-8`` through
+        :func:`~dpmcore.services._parameters.merge_parameters`.
+        ``default`` is a per-reference fallback and stays on the node
+        only: the script-level registry is type-only.
         """
         if isinstance(node, dict):
             if node.get("class_name") == "ParameterRef":
@@ -2031,15 +2883,13 @@ class ASTGeneratorService:
                     )
             for value in node.values():
                 if isinstance(value, (dict, list)):
-                    cls._accumulate_precondition_parameters(
+                    cls._accumulate_ast_parameters(
                         referenced_parameters, value
                     )
         elif isinstance(node, list):
             for item in node:
                 if isinstance(item, (dict, list)):
-                    cls._accumulate_precondition_parameters(
-                        referenced_parameters, item
-                    )
+                    cls._accumulate_ast_parameters(referenced_parameters, item)
 
     @classmethod
     def _is_conjunction_of_items(cls, node: Any) -> bool:
@@ -2047,7 +2897,10 @@ class ASTGeneratorService:
 
         That is a ``PreconditionItem`` or an ``and`` tree whose leaves
         are all ``PreconditionItem`` — the only shape for which the
-        ``p_<sorted vids>`` key alone identifies the gate.
+        ``p_<sorted vids>`` key alone identifies the gate. Called on
+        an already ``ParExpr``-stripped tree (see
+        :meth:`_strip_par_expr`), so grouping parentheses never affect
+        this check.
         """
         if not isinstance(node, dict):
             return False
@@ -2060,6 +2913,26 @@ class ASTGeneratorService:
             and cls._is_conjunction_of_items(node.get("left"))
             and cls._is_conjunction_of_items(node.get("right"))
         )
+
+    @classmethod
+    def _strip_par_expr(cls, node: Any) -> Any:
+        """Return a copy of *node* with every ``ParExpr`` unwrapped.
+
+        Grouping parentheses change how a gate is reconstructed
+        (#379), not what it means, so they must not change its
+        identity (key/version_id) either — otherwise a validation
+        whose source text happens to add non-meaningful parentheses
+        around an otherwise-identical gate would stop merging with
+        one that doesn't. Only used to compute that identity; the
+        emitted ``entry["ast"]`` keeps the real ``ParExpr`` nodes.
+        """
+        if isinstance(node, dict):
+            if node.get("class_name") == "ParExpr":
+                return cls._strip_par_expr(node.get("expression"))
+            return {k: cls._strip_par_expr(v) for k, v in node.items()}
+        if isinstance(node, list):
+            return [cls._strip_par_expr(item) for item in node]
+        return node
 
     @classmethod
     def _strip_precondition_item_vids(cls, node: Any) -> None:
@@ -2105,18 +2978,26 @@ class ASTGeneratorService:
         into ``{v_A} and {v_B}``. ``version_id`` follows the same rule as
         an operation without one: the first vid, or the CRC folded to four
         digits. ``provided_code`` / ``provided_version_id`` override both.
+
+        Both the shape check and the CRC are computed on a
+        ``ParExpr``-stripped copy (:meth:`_strip_par_expr`): grouping
+        parentheses change how the gate is reconstructed, not what it
+        means, so ``({v_A} and {v_B})`` must key and merge exactly like
+        ``{v_A} and {v_B}``. The returned ``ast`` keeps the real
+        ``ParExpr`` nodes.
         """
         item_vids = sorted(cls._collect_precondition_item_vids(gate_ast))
         # Strip the internal ``variable_vid`` field before hashing and
         # emitting; the engine's ``PreconditionItem`` does not carry it.
         cls._strip_precondition_item_vids(gate_ast)
         vids_part = "_".join(str(v) for v in item_vids)
-        if cls._is_conjunction_of_items(gate_ast):
+        identity_ast = cls._strip_par_expr(gate_ast)
+        if cls._is_conjunction_of_items(identity_ast):
             default_key = f"p_{vids_part}"
             default_version_id = item_vids[0]
         else:
             digest = zlib.crc32(
-                json.dumps(gate_ast, sort_keys=True).encode("utf-8")
+                json.dumps(identity_ast, sort_keys=True).encode("utf-8")
             )
             default_key = (
                 f"p_{vids_part}_{digest:08x}"
@@ -2684,6 +3565,14 @@ extract_precondition_codes`, shared with
                     time_shifts.setdefault(node.table, set()).add(
                         current_period[0]
                     )
+
+            def visit__DbSubClauseOp(self, node: Any) -> None:
+                # db_ast.py's stand-in for a ``sub`` clause (dpmcore#364)
+                # — not one of ASTTemplate's known node types, so its
+                # generic_visit would raise NotImplementedError instead
+                # of walking past it.
+                self.visit(node.operand)
+                self.visit(node.condition)
 
         try:
             _Extractor().visit(ast)

@@ -205,7 +205,11 @@ dpmcore export-script \
 Severities come from `OperationScope.Severity` in the database rather than
 a manual `--severity` override. `--output` is optional for a single target;
 when omitted, the script is written to
-`<module_code>-<module_version>.json` in the current directory.
+`<module_code>-<module_version>.json` in the current directory. Unlike
+`script()`'s Python return value above, the file `export-script` writes
+holds only `enriched_ast`'s content — `failed_operations` is printed to
+the console instead (skipped-validation reasons, next to the discovered
+count), not written to the file.
 
 **Bulk export (`--all-modules`/`--all-versions`):**
 
@@ -239,6 +243,28 @@ three are pairwise mutually exclusive — a bare `--release` (no
 `--module-version`/`--all-versions`) resolves each selected module to its
 single version active at that release, instead of naming a version
 directly.
+
+**Patching known EBA data-quality issues:**
+
+A fixed set of ~30 validations reproduce a source-data error faithfully —
+an empty/zero default that should be absent, a literal typed `Integer`
+where the engine expects `Boolean`, etc. — because the underlying DPM
+database data is wrong for them, not because of a generation bug. EBA
+doesn't amend already-published releases, so these stay wrong
+indefinitely; `fix-script` patches an already-generated script's JSON in
+place. Run it after every `export-script`/`generate-script` run, not
+just once:
+
+```bash
+# A single script file
+dpmcore fix-script --input-path ./script.json
+
+# Every script in a directory (e.g. after a bulk export-script sweep)
+dpmcore fix-script --input-path ./scripts/ --bulk
+```
+
+Only rewrites a file when something in it actually matched a known
+issue; prints which validations were patched per file.
 
 **Calculations export:**
 
@@ -444,7 +470,7 @@ from dpmcore.services.database_update import DatabaseUpdateService
 
 result = DatabaseUpdateService().update(
     target="sqlite:///dpm.db",          # SQLite path or URL, PostgreSQL/SQL Server URL
-    access_file="/path/to/dpm.accdb",   # optional; omit to read from data/DPM/
+    access_file="/path/to/dpm.accdb",   # or source_dir="..." for pre-exported CSVs
     ecb_validations_file="ecb.csv",     # optional
     dry_run=False,
     keep_staging=False,
@@ -457,8 +483,8 @@ print(f"Updated {result.target_type} database — "
 Or from the command line:
 
 ```bash
-# Update a SQLite database from data/DPM/ CSV files
-dpmcore update-db --target dpm.db
+# Update a SQLite database from a pre-exported CSV directory
+dpmcore update-db --target dpm.db --source-dir ./csv_export
 
 # Update from an Access file
 dpmcore update-db --target dpm.db --access-file /path/to/DPM_v4_2_1.accdb
@@ -514,7 +540,7 @@ from dpmcore.services.meili_build import MeiliBuildService
 # From a directory of pre-exported CSV tables
 result = MeiliBuildService().build(
     output_file="operations.json",
-    source_dir="data/DPM",
+    source_dir="./csv_export",
 )
 print(f"Wrote {result.operations_written} operations to {result.output_file}")
 
@@ -530,7 +556,7 @@ Or from the command line:
 
 ```bash
 # From a pre-exported CSV directory
-dpmcore build-meili-json --source-dir data/DPM --output operations.json
+dpmcore build-meili-json --source-dir ./csv_export --output operations.json
 
 # Directly from an Access file
 dpmcore build-meili-json --access-file /path/to/dpm.accdb --output operations.json
@@ -708,7 +734,7 @@ src/dpmcore/
 │   └── routers/           scope, scripts, structure
 ├── django/                Django integration app (models, admin, views)
 ├── cli/
-│   └── main.py            Click CLI (migrate, export-csv, build-meili-json, update-db, serve, generate-script, export-script, export-layout)
+│   └── main.py            Click CLI (migrate, export-csv, build-meili-json, update-db, serve, generate-script, export-script, fix-script, export-layout)
 └── dpm_xl/                DPM-XL engine internals
     ├── grammar/           ANTLR4 grammar + generated parser
     ├── ast/               AST nodes, visitor, operands

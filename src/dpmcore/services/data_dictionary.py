@@ -222,10 +222,8 @@ class DataDictionaryService:
     ) -> Dict[str, Dict[str, str]]:
         """Return ``{table_code: {property_code: data_type_code}}``.
 
-        Identifies the open-key (compound-key) variables of each table
-        by walking ``TableVersion`` → ``KeyComposition`` →
-        ``VariableVersion`` → ``Property`` → ``ItemCategory`` (for the
-        property code) → ``DataType`` (for the type code).
+        See :func:`dpmcore.services._open_keys.get_open_keys_for_tables`
+        for the join path.
         """
         release_id = resolve_release_id(
             self.session, release_id=release_id, release_code=release_code
