@@ -40,7 +40,7 @@ def _latest_expression(session, code: str) -> str:
 @pytest.mark.parametrize(
     ("code", "module_code", "module_version"),
     [
-        ("v22581_m", "REM_DBM", "2.3.0"),
+        ("v22580_m", "REM_DBM", "2.3.0"),
         ("v8804_m", "DORA", "1.1.0"),
     ],
 )
