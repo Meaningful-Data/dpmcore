@@ -109,11 +109,16 @@ def test_named_classification(
 
 
 def test_primary_hosting_no_tables_is_not_intra(fixture_session):
-    """A module hosting none of a validation's tables is neither intra nor cross."""
+    """A module hosting none of a validation's tables is neither intra nor cross.
+
+    The primary module's ``tables`` block lists every table of the module
+    regardless of what the validation touches (#158), so it is not empty;
+    what matters is that the validation's own tables do not leak into it.
+    """
     result = _classify(fixture_session, "v11120_m", "COREP_OF", "4.1.0")
     assert result["intra"] == []
     assert result["cross"] == 0
-    assert result["tables"] == []
+    assert set(result["tables"]).isdisjoint({"I_04.00", "I_05.00"})
 
 
 def test_shared_table_yields_only_the_intra_scope(fixture_session):
