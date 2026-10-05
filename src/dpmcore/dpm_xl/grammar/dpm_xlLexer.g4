@@ -302,11 +302,9 @@ SELECTION_MODE_EMPTY_LITERAL: EMPTY_LITERAL -> type(EMPTY_LITERAL);
 
 SELECTION_MODE_DATE_LITERAL: DATE_LITERAL -> type(DATE_LITERAL);
 
-// Square brackets and item signatures, used inside selections for
-// `default: [ns:code]` on Item-typed parameters.
-SELECTION_MODE_SQUARE_BRACKET_LEFT:    SQUARE_BRACKET_LEFT -> type(SQUARE_BRACKET_LEFT);
-SELECTION_MODE_SQUARE_BRACKET_RIGHT:   SQUARE_BRACKET_RIGHT -> type(SQUARE_BRACKET_RIGHT);
-SELECTION_MODE_ITEM_SIGNATURE:         ITEM_SIGNATURE -> type(ITEM_SIGNATURE);
+// `default: [ns:code]` items are lexed in CLAUSE_MODE. No ITEM_SIGNATURE in
+// this mode: it would swallow `default:0` as an item.
+SELECTION_MODE_SQUARE_BRACKET_LEFT:    SQUARE_BRACKET_LEFT -> type(SQUARE_BRACKET_LEFT), pushMode(CLAUSE_MODE);
 
 SELECTION_MODE_WS:        WS -> channel(2);
 
