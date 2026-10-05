@@ -877,3 +877,128 @@ class TestWorkingReleaseUri:
 
         assert uri.endswith("/calc_fw/8.0/mod/calc_home")
         assert caplog.text == ""
+
+
+class TestVersionWindows:
+    """A dependency read at another period carries its version chain.
+
+    ``CALC_DEP`` gets an earlier version (``0.9.0``, release ``7.0``)
+    whose ``C_98.00`` holds the cell at r0010 under the same
+    ``VariableID`` but not the one at r0020.
+    """
+
+    EARLIER = 7001
+
+    @pytest.fixture
+    def shifted_session(self, calc_session):
+        session = calc_session
+        session.add(
+            Release(release_id=self.EARLIER, code="7.0", date=date(2024, 1, 1))
+        )
+        session.add(
+            ModuleVersion(
+                module_vid=3,
+                module_id=2,
+                code=DEP_MODULE,
+                version_number="0.9.0",
+                from_reference_date=date(2025, 1, 1),
+                to_reference_date=date(2025, 12, 31),
+                start_release_id=self.EARLIER,
+                end_release_id=RELEASE,
+            )
+        )
+        session.add(
+            TableVersion(
+                table_vid=21,
+                table_id=2,
+                code=DEP_TABLE,
+                start_release_id=self.EARLIER,
+                end_release_id=RELEASE,
+            )
+        )
+        session.add(
+            ModuleVersionComposition(module_vid=3, table_vid=21, table_id=2)
+        )
+        session.add(
+            TableVersionCell(
+                table_vid=21,
+                cell_id=2201,
+                cell_code=f"{{{DEP_TABLE}, r0010, c{COLUMN}}}",
+                variable_vid=22001,
+                is_nullable=True,
+                is_void=False,
+                is_excluded=False,
+            )
+        )
+        _seed_operation(
+            session,
+            operation_id=102,
+            module_vid=1,
+            code="c_0003",
+            expression=(
+                f"{{t{HOME_TABLE}, r0010, c{COLUMN}}} <- "
+                f"time_shift({{t{DEP_TABLE}, r0010, c{COLUMN}}}, A, 1) + "
+                f"time_shift({{t{DEP_TABLE}, r0020, c{COLUMN}}}, A, 1)"
+            ),
+        )
+        session.commit()
+        return session
+
+    def _dependency(self, session):
+        ns = _namespace(
+            ASTGeneratorService(session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+        )
+        (entry,) = ns["dependency_modules"].values()
+        return entry
+
+    def test_a_dependency_read_only_at_t_has_none(self, calc_session):
+        assert "version_windows" not in self._dependency(calc_session)
+
+    def test_the_whole_chain_is_declared_oldest_first(self, shifted_session):
+        windows = self._dependency(shifted_session)["version_windows"]
+
+        assert [
+            (
+                w["URI"],
+                w["module_version"],
+                w["from_reference_date"],
+                w["to_reference_date"],
+            )
+            for w in windows
+        ] == [
+            (
+                "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/calcfw/7.0/"
+                "mod/calc_dep",
+                "0.9.0",
+                "2025-01-01",
+                "2025-12-31",
+            ),
+            (
+                "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/calcfw/8.0/"
+                "mod/calc_dep",
+                "1.0.0",
+                "2026-01-01",
+                "2026-12-31",
+            ),
+        ]
+
+    def test_an_older_version_lists_only_what_differs(self, shifted_session):
+        older, current = self._dependency(shifted_session)["version_windows"]
+
+        # r0020 (22002) is not defined in 0.9.0: the table is listed
+        # with the shifted cells it still holds.
+        assert older["tables"] == {
+            DEP_TABLE: {"variables": {"22001": "m"}, "open_keys": {}}
+        }
+        # The current version holds every shifted cell where declared.
+        assert current["tables"] == {}
+
+    def test_the_declaration_is_unchanged(self, shifted_session):
+        tables = self._dependency(shifted_session)["tables"]
+
+        assert tables[DEP_TABLE]["variables"] == {
+            "22001": "m",
+            "22002": "m",
+        }

@@ -5,7 +5,8 @@ Four walks, in the order the exporter runs them:
 1. :class:`CalculationsOperandsChecking` resolves every operand against
    the dictionary (inherited) *and* the assignment targets.
 2. :class:`DependencyTableExtractor` collects the tables and datapoints
-   the calculations read, and :class:`OutputExtractor` those they write.
+   the calculations read (and which of them are read at another
+   reference period), and :class:`OutputExtractor` those they write.
 3. :class:`VarIDDataEnricher` precomputes each ``VarID``'s ``data``
    array, so operand reference IDs follow visit order.
 4. :class:`CalculationsJSONVisitor` serialises the result.
@@ -36,10 +37,12 @@ from dpmcore.dpm_xl.ast.nodes import (
 )
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
 from dpmcore.dpm_xl.ast.template import ASTTemplate
+from dpmcore.dpm_xl.ast.where_clause import WhereClauseChecker
 from dpmcore.dpm_xl.model_queries import (
     ViewDatapointsQuery,
     ViewKeyComponentsQuery,
 )
+from dpmcore.dpm_xl.utils import tokens
 from dpmcore.dpm_xl.utils.data_handlers import filter_all_data, generate_xyz
 from dpmcore.dpm_xl.utils.serialization import (
     ASTToJSONVisitor,
@@ -320,12 +323,25 @@ class OutputExtractor(ASTTemplate):
             ).extend(var_ids)
 
 
+def _constrains_ref_period(condition: Any) -> bool:
+    """Whether a ``where`` or ``sub`` condition names ``refPeriod``."""
+    if condition is None:
+        return False
+    checker = WhereClauseChecker()
+    checker.visit(condition)
+    return tokens.REF_PERIOD in checker.key_components
+
+
 class DependencyTableExtractor(ASTTemplate):
     """Collect the tables and datapoints the calculations read.
 
     Must run *after* operand resolution: a ``VarID`` inside a ``with``
     block has no table of its own until the with-context has been
     grafted onto it, and would otherwise be skipped silently.
+
+    Also records in ``shifted`` the datapoints read at another
+    reference period: under ``time_shift`` (without component or on
+    ``refPeriod``) or a ``where``/``sub`` on ``refPeriod``.
     """
 
     def __init__(
@@ -339,6 +355,8 @@ class DependencyTableExtractor(ASTTemplate):
         self.release_id = release_id
         self.tables: Dict[str, Dict[str, Any]] = {}
         self.all_datapoints: List[int] = []
+        self.shifted: Dict[str, Set[str]] = {}
+        self._shift_depth = 0
         # Operands repeat across a module's calculations, and
         # get_filtered_datapoints is uncached: without this, the same
         # selection is resolved once per occurrence, each time reloading
@@ -356,6 +374,39 @@ class DependencyTableExtractor(ASTTemplate):
         tables it depends on.
         """
         self.visit(node.right)
+
+    def _visit_operand(self, operand: Any, shifted: bool) -> None:
+        """Visit ``operand``, as read at another period when ``shifted``."""
+        if shifted:
+            self._shift_depth += 1
+            self.visit(operand)
+            self._shift_depth -= 1
+        else:
+            self.visit(operand)
+
+    def visit_TimeShiftOp(self, node: Any) -> None:
+        """A shift without component, or on ``refPeriod``, is shifted."""
+        self._visit_operand(
+            node.operand, node.component in (None, tokens.REF_PERIOD)
+        )
+
+    def visit_WhereClauseOp(self, node: Any) -> None:
+        """A ``where`` constraining ``refPeriod`` reads another period."""
+        self._visit_operand(
+            node.operand, _constrains_ref_period(node.condition)
+        )
+        self.visit(node.condition)
+
+    def visit_SubOp(self, node: Any) -> None:
+        """A ``sub`` on, or constrained by, ``refPeriod`` is shifted."""
+        shifted = any(
+            sub.property_code == tokens.REF_PERIOD
+            or _constrains_ref_period(sub.value)
+            for sub in node.substitutions
+        )
+        self._visit_operand(node.operand, shifted)
+        for sub in node.substitutions:
+            self.visit(sub.value)
 
     def _variable_ids(self, table: str, node: VarID) -> List[int]:
         """Return the datapoint ids *node* selects, resolved once per key.
@@ -440,6 +491,10 @@ class DependencyTableExtractor(ASTTemplate):
         entry = self.tables[table]
         entry["variables"].update(variable_ids)
         self.all_datapoints.extend(variable_ids)
+        if self._shift_depth:
+            self.shifted.setdefault(table, set()).update(
+                str(var_id) for var_id in variable_ids
+            )
 
 
 class VarIDDataEnricher(ASTTemplate):

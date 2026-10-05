@@ -38,6 +38,9 @@ from dpmcore.services.calculations_export.queries import (
     get_release_info,
     group_tables_by_module,
 )
+from dpmcore.services.calculations_export.version_windows import (
+    build_version_windows,
+)
 from dpmcore.services.calculations_export.visitors import (
     CalculationsJSONVisitor,
     CalculationsOperandsChecking,
@@ -90,15 +93,20 @@ class CalculationsExporter:
         module_code: str,
         reference_date: str,
         publication_date: Optional[str] = None,
+        release_id: Optional[int] = None,
     ) -> CalculationsExport:
         """Export ``module_code``'s calculations as of ``reference_date``.
 
         Args:
             module_code: Module code (e.g. ``"KRI"``).
             reference_date: Reference date, ``YYYY-MM-DD``, selecting
-                the module version.
+                the module version, and the version of each dependency
+                module.
             publication_date: Publication date stamped into the
                 ``dpm_release`` block; defaults to today.
+            release_id: Release for the dictionary lookups. ``None``
+                (default) uses the live release. The module's own
+                operations use its start release unless one is given.
 
         Returns:
             The export and its datapoint map.
@@ -116,12 +124,16 @@ class CalculationsExporter:
             session, module_code, reference_date
         )
         module_meta = get_module_metadata(session, module_vid)
-        release_id = module_meta["start_release_id"]
+        start_release_id = module_meta["start_release_id"]
         module_uri, framework_code = get_module_uri(session, module_vid)
-        release_info = get_release_info(session, release_id, publication_date)
+        release_info = get_release_info(
+            session, start_release_id, publication_date
+        )
 
         calculations = self._collect_calculations(
-            module_vid, module_code, release_id
+            module_vid,
+            module_code,
+            release_id if release_id is not None else start_release_id,
         )
         script = _build_expression(calculations)
         ast, operation_codes = self._parse(script, calculations)
@@ -148,7 +160,10 @@ class CalculationsExporter:
         outputs.visit(ast)
 
         dependency_modules = self._dependency_modules(
-            module_code, dependencies, release_id
+            module_code,
+            dependencies,
+            release_id,
+            reference_date,
         )
         output_variables, output_tables = self._outputs(
             module_vid, outputs, release_id
@@ -304,17 +319,23 @@ class CalculationsExporter:
         module_code: str,
         dependencies: DependencyTableExtractor,
         release_id: Optional[int],
+        reference_date: str,
     ) -> Dict[str, Dict[str, Any]]:
         """Resolve the dependency tables into per-module URI entries.
+
+        A module read at another reference period also carries its
+        ``version_windows``.
 
         Args:
             module_code: The exported module, excluded from its own
                 dependencies.
             dependencies: The collected dependency tables.
-            release_id: Release to resolve at.
+            release_id: Release to resolve at, ``None`` for live.
+            reference_date: The export's reference date, selecting the
+                version of each dependency module.
 
         Returns:
-            ``{module_uri: {"tables": {...}, "variables": {...}}}``.
+            ``{module_uri: {"tables": {...}, "version_windows": [...]}}``.
         """
         data_types = get_data_types(
             self.session, dependencies.all_datapoints, release_id
@@ -337,7 +358,7 @@ class CalculationsExporter:
         )
 
         grouped = group_tables_by_module(
-            self.session, resolved_tables, release_id
+            self.session, resolved_tables, release_id, reference_date
         )
         result: Dict[str, Dict[str, Any]] = {}
         for dep_module_code, dep_info in grouped.items():
@@ -349,7 +370,17 @@ class CalculationsExporter:
             # validations export's shape), and adding one puts every
             # module with dependencies out of parity with
             # drr_operations.
-            result[dep_uri] = {"tables": dep_info["tables"]}
+            entry: Dict[str, Any] = {"tables": dep_info["tables"]}
+            shifted = {
+                table_code: ids
+                for table_code, ids in dependencies.shifted.items()
+                if table_code in dep_info["tables"]
+            }
+            if shifted:
+                entry["version_windows"] = build_version_windows(
+                    self.session, dep_info, dep_uri, shifted
+                )
+            result[dep_uri] = entry
         return result
 
     def _outputs(
