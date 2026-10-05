@@ -25,6 +25,7 @@ from dpmcore.services.semantic import (
     SemanticService,
     _module_vids_for,
 )
+from dpmcore.services.syntax import SyntaxService
 
 
 def test_parameters_surfaced_on_result(memory_session):
@@ -154,19 +155,22 @@ def test_cell_set_default_rejected_semantically(fixture_session):
 
 
 def test_cell_single_parameter_set_default_rejected(fixture_session):
-    """A single-parameter set default on a *cell* reference is also 3-9.
+    """A parameter inside a set default does not parse.
 
-    ``default: {p_x, number}`` is a one-element set, which ``visitSetElements``
-    unwraps to a bare ``ParameterRef`` rather than a ``Set``; the cell guard
-    rejects both shapes so it does not slip through and get silently accepted.
+    Set literals hold item references or literals only; ``parameterRef`` was
+    dropped from ``setElements`` when the grammar was aligned with the
+    DPM-XL docs (#192). ``default: {p_x, number}`` is therefore rejected at
+    parse time, before the semantic pass could report ``3-9``. What matters
+    is that it is never silently accepted.
     """
-    svc = SemanticService(fixture_session)
-    result = svc.validate(
-        "{tC_09.02, r0030, c0080, default: {p_x, number}}",
-        release_code="4.2.1",
+    expression = "{tC_09.02, r0030, c0080, default: {p_x, number}}"
+    assert SyntaxService().validate(expression).is_valid is False
+
+    result = SemanticService(fixture_session).validate(
+        expression, release_code="4.2.1"
     )
     assert result.is_valid is False
-    assert result.error_code == "3-9"
+    assert "no viable alternative" in result.error_message
 
 
 def test_cell_item_default_accepted(fixture_session):
