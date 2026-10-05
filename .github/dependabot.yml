@@ -9,6 +9,12 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Only touch pyproject.toml when a new release falls outside the
+    # declared range; otherwise just refresh poetry.lock. The default
+    # strategy rewrote every `>=X` floor to the newest release, which
+    # dropped the Ubuntu 24.04 (apt) versions the floors are meant to
+    # accept.
+    versioning-strategy: "increase-if-necessary"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

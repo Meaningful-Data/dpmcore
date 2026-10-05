@@ -31,7 +31,7 @@ dependencies = [
     # Floor is 1.4.50 to match the python3-sqlalchemy apt package on
     # Ubuntu 24.04 (Noble); the ORM is compatible with both 1.4 and 2.0
     # (see issue #104). 2.0 remains the canonical target for dev/wheel.
-    "sqlalchemy>=2.0.54,<3.0",
+    "sqlalchemy>=1.4.50,<3.0",
     # Runtime must match the ANTLR version used to generate the grammar
     # in src/dpmcore/dpm_xl/grammar/generated/. Regenerating with a newer
     # ANTLR is tracked separately.
@@ -45,30 +45,43 @@ documentation = "https://docs.dpmcore.meaningfuldata.eu"
 "Bug Tracker" = "https://github.com/Meaningful-Data/dpmcore/issues"
 
 [project.optional-dependencies]
-# Floors aligned with Ubuntu 24.04 (Noble) apt package versions so that
-# ubuntu_test_24_04.yml can install this library with system packages
-# via `pip install --no-dependencies`. Version bumps above these floors
-# should stay within semver compatibility.
-server = ["fastapi>=0.141.1", "uvicorn[standard]>=0.54.0"]
-django = ["django>=5.2.17", "mssql-django>=1.8.0"]
-postgres = ["psycopg2-binary>=2.9.13,<3.0"]
+# Floors are the versions Ubuntu 24.04 (Noble) ships as apt packages, so
+# dpmcore can be installed on top of the system Python without pip
+# upgrading them (ubuntu_test_24_04.yml runs the suite against exactly
+# those versions and checks these floors). Newer distros (Debian 13,
+# Ubuntu 26.04) ship newer versions, which the ranges also accept. Do not
+# raise a floor just because a newer release exists: the lock file is
+# what pins the versions CI and development use.
+#
+# pydantic is imported directly by the server (v2 API: field_validator);
+# Noble's apt python3-pydantic is 1.10, so it always comes from pip.
+server = [
+    "fastapi>=0.101",
+    "pydantic>=2.0,<3.0",
+    "uvicorn[standard]>=0.27",
+]
+django = ["django>=4.2", "mssql-django>=1.4"]
+postgres = ["psycopg2-binary>=2.9,<3.0"]
 sqlserver = ["pyodbc>=5.0"]
-# pandas / numpy ranges mirror vtlengine's published pins so that
-# dpmcore + vtlengine can be co-installed without resolver conflicts.
-migration = ["pandas>=2.1.4,<3.0", "numpy>=2.2.0,<2.3"]
-data = ["pandas>=2.1.4,<3.0", "numpy>=2.2.0,<2.3"]
-cli = ["click>=8.5.0", "rich>=13.7"]
+# pandas < 3.0: the 3.0 behaviour changes (copy-on-write, string dtype)
+# have not been validated. numpy 1.26 is Noble's; numpy is imported
+# directly (scope calculator, scalar types) so it is declared here
+# rather than left to pandas.
+migration = ["pandas>=2.1.4,<3.0", "numpy>=1.26,<3.0"]
+data = ["pandas>=2.1.4,<3.0", "numpy>=1.26,<3.0"]
+cli = ["click>=8.1", "rich>=13.7"]
 export = ["openpyxl>=3.1"]
 all = [
-    "fastapi>=0.141.1",
-    "uvicorn[standard]>=0.54.0",
-    "django>=5.2.17",
-    "mssql-django>=1.8.0",
-    "psycopg2-binary>=2.9.13,<3.0",
+    "fastapi>=0.101",
+    "pydantic>=2.0,<3.0",
+    "uvicorn[standard]>=0.27",
+    "django>=4.2",
+    "mssql-django>=1.4",
+    "psycopg2-binary>=2.9,<3.0",
     "pyodbc>=5.0",
     "pandas>=2.1.4,<3.0",
-    "numpy>=2.2.0,<2.3",
-    "click>=8.5.0",
+    "numpy>=1.26,<3.0",
+    "click>=8.1",
     "rich>=13.7",
     "openpyxl>=3.1",
 ]
@@ -97,9 +110,9 @@ pandas-stubs = ">=2.2.2,<3.0"
 # without a cap the dev group resolves the newest release while the `django`
 # and `data`/`migration` extras resolve an older one -- Poetry then locks
 # both with overlapping python markers and installs them over each other
-# (issue #321). The caps mirror what those extras already resolve to:
-# `<6.0` matches the `django>=5.2.17` extra floor, and `<2.3` matches the
-# numpy range the extras pin for vtlengine co-installation.
+# (issue #321). These ranges sit inside the (wider, distro-aligned) extra
+# ranges, so the lock resolves a single version of each; they only steer
+# the lock and are not part of the published metadata.
 django = ">=5.2.17,<6.0"
 numpy = ">=2.2.0,<2.3"
 

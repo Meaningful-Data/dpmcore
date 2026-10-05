@@ -76,6 +76,41 @@ jobs:
             "./dpmcore-$(poetry version -s)-py3-none-any.whl" \
             --no-dependencies --break-system-packages
 
+      - name: Check declared ranges accept the apt versions
+        # The install above uses --no-dependencies, so on its own it
+        # would not notice a floor raised past what Noble ships. Fail if
+        # any dpmcore[all] requirement rejects the installed version.
+        # fastapi/pydantic come from pip (see above) and are skipped;
+        # python3-psycopg2 is the same code as psycopg2-binary under a
+        # different distribution name.
+        run: |
+          python3 - <<'EOF'
+          import sys
+          from importlib.metadata import PackageNotFoundError, requires, version
+          from packaging.requirements import Requirement
+
+          PIP_ONLY = {"fastapi", "pydantic"}
+          ALIASES = {"psycopg2-binary": "psycopg2"}
+          bad = []
+          for line in requires("dpmcore") or []:
+              req = Requirement(line)
+              if req.marker and not req.marker.evaluate({"extra": "all"}):
+                  continue
+              if req.name in PIP_ONLY:
+                  continue
+              dist = ALIASES.get(req.name, req.name)
+              try:
+                  installed = version(dist)
+              except PackageNotFoundError:
+                  print(f"skip  {req}  (not installed from apt)")
+                  continue
+              ok = req.specifier.contains(installed, prereleases=True)
+              print(f"{'ok  ' if ok else 'FAIL'}  {req}  (apt: {installed})")
+              if not ok:
+                  bad.append(req.name)
+          sys.exit(f"ranges reject apt versions: {bad}" if bad else 0)
+          EOF
+
       - name: Run tests
         run: >-
           pytest
