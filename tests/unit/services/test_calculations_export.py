@@ -540,6 +540,10 @@ class TestShiftedReads:
             "time_shift({tA, r0010, c0010}, Q, -1)",
             "{tA, r0010, c0010}[where refPeriod = #2025-12-31#]",
             "{tA, r0010, c0010}[sub refPeriod = #2025-12-31#]",
+            "avg({tA, r0010, c0010} over (order by refPeriod "
+            "data points between 11 preceding and current data point))",
+            "sum({tA, r0010, c0010} over (partition by qEGS "
+            "order by refPeriod desc))",
         ],
     )
     def test_a_read_at_another_period_is_shifted(self, operand):
@@ -552,6 +556,8 @@ class TestShiftedReads:
             "time_shift({tA, r0010, c0010}, A, 1, entityID)",
             "{tA, r0010, c0010}[where qEGS = [eba_GA:x1]]",
             "{tA, r0010, c0010}[get refPeriod]",
+            "sum({tA, r0010, c0010} over (partition by qEGS order by r))",
+            "sum({tA, r0010, c0010} group by refPeriod)",
         ],
     )
     def test_a_read_at_the_instance_s_own_period_is_not(self, operand):

@@ -341,7 +341,8 @@ class DependencyTableExtractor(ASTTemplate):
 
     Also records in ``shifted`` the datapoints read at another
     reference period: under ``time_shift`` (without component or on
-    ``refPeriod``) or a ``where``/``sub`` on ``refPeriod``.
+    ``refPeriod``), a ``where``/``sub`` on ``refPeriod`` or an analytic
+    ordered by ``refPeriod``.
     """
 
     def __init__(
@@ -407,6 +408,14 @@ class DependencyTableExtractor(ASTTemplate):
         self._visit_operand(node.operand, shifted)
         for sub in node.substitutions:
             self.visit(sub.value)
+
+    def visit_AggregationOp(self, node: Any) -> None:
+        """An analytic ordered by ``refPeriod`` reads other periods."""
+        clause = node.analytic_clause
+        shifted = clause is not None and any(
+            item.key_name == tokens.REF_PERIOD for item in clause.order_by
+        )
+        self._visit_operand(node.operand, shifted)
 
     def _variable_ids(self, table: str, node: VarID) -> List[int]:
         """Return the datapoint ids *node* selects, resolved once per key.
