@@ -55,3 +55,30 @@ jobs:
             echo "This check only verifies synchronization; update dpm-xl-docs manually to match dpmcore."
             exit 1
           fi
+
+  generated-parser:
+    runs-on: ubuntu-24.04
+
+    env:
+      LOCAL_GRAMMAR_DIR: src/dpmcore/dpm_xl/grammar
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install ANTLR 4.9.2
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y antlr4
+          antlr4 > antlr4-version.txt
+          grep -q "Version 4.9.2" antlr4-version.txt
+
+      - name: Check the generated parser matches the grammar
+        run: |
+          cd "${LOCAL_GRAMMAR_DIR}"
+          antlr4 -Dlanguage=Python3 -visitor -o generated dpm_xlLexer.g4 dpm_xlParser.g4
+          cd - > /dev/null
+          if ! git diff --exit-code --stat -- "${LOCAL_GRAMMAR_DIR}/generated"; then
+            echo "::error::The generated parser is not the regeneration of the grammar. Run, from ${LOCAL_GRAMMAR_DIR}: antlr4 -Dlanguage=Python3 -visitor -o generated dpm_xlLexer.g4 dpm_xlParser.g4"
+            exit 1
+          fi
