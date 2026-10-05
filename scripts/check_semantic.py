@@ -16,6 +16,14 @@ _DEFAULT_DB = (
     Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "test_data.db"
 )
 
+_KNOWN_FAILURES = (
+    Path(__file__).resolve().parents[1]
+    / "tests"
+    / "integration"
+    / "validation"
+    / "semantic_all_known_failures.csv"
+)
+
 WIDTH = 80
 BAR = "=" * WIDTH
 
@@ -65,6 +73,18 @@ def _load_rows(db_path: Path):
     return rows
 
 
+def _write_known_failures(path: Path, failures) -> None:
+    """Write ``operation_vid,code,error_code`` rows, sorted by VID."""
+    rows = sorted(
+        (operation_vid, label, err_code)
+        for _i, operation_vid, label, _r, _e, err_code, _m in failures
+    )
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh, lineterminator="\n")
+        writer.writerow(["operation_vid", "code", "error_code"])
+        writer.writerows(rows)
+
+
 def main() -> int:
     """Run semantic validation on all OperationVersion rules in the DB."""
     parser = argparse.ArgumentParser(
@@ -85,6 +105,16 @@ def main() -> int:
         help=(
             "Path for the failures CSV output "
             "(default: <db_stem>_failures.csv next to the DB)"
+        ),
+    )
+    parser.add_argument(
+        "--known-failures",
+        type=Path,
+        default=None,
+        help=(
+            "Also write the failures as the known-failures list read by "
+            "tests/integration/validation/test_semantic_all.py "
+            f"(e.g. {_KNOWN_FAILURES})"
         ),
     )
     args = parser.parse_args()
@@ -249,6 +279,11 @@ def main() -> int:
                     ]
                 )
         print(f"\n  CSV written: {csv_path}")
+
+    if args.known_failures:
+        known_path = args.known_failures.resolve()
+        _write_known_failures(known_path, failures)
+        print(f"\n  Known failures written: {known_path}")
 
     return 1 if failures else 0
 
