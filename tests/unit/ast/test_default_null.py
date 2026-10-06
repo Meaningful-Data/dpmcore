@@ -11,6 +11,8 @@ The fix is to materialise ``null`` as an explicit
 ``getattr(node, "default", None) is None`` propagation check.
 """
 
+import pytest
+
 from dpmcore.dpm_xl.ast.nodes import (
     BinOp,
     CondExpr,
@@ -195,3 +197,18 @@ def test_string_literal_null_reproducer_parses_with_warning():
     assert warning is not None
     # Two occurrences of ``"null"`` in the source → two warning lines.
     assert warning.count('"null" string literal') == 2
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "{tA, r0010, default:0}",
+        "{tA, r0010, default: 0}",
+        "{tA, r0010, default:null}",
+        "{tA, r0010, interval:false}",
+        "with {default:0, interval:false}: {tA, r0010}",
+        "{p_x, item, default: [eba_GA:x1]}",
+    ],
+)
+def test_selection_options_parse_with_or_without_a_space(expression):
+    assert SyntaxService().is_valid(expression)

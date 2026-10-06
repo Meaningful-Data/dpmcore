@@ -15,43 +15,89 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      DPM_XL_DOCS_RAW_BASE: https://gitlab.com/aollerosr/dpm-xl-docs/-/raw/main/docs/grammar
+      DPM_XL_DOCS_RAW_ROOT: https://gitlab.com/aollerosr/dpm-xl-docs/-/raw
+      DPM_XL_DOCS_BRANCHES: "dev main"
       LOCAL_GRAMMAR_DIR: src/dpmcore/dpm_xl/grammar
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Compare grammar with dpm-xl-docs (main branch)
+      - name: Compare grammar with dpm-xl-docs (dev or main branch)
         run: |
           set -uo pipefail
 
           files="dpm_xlLexer.g4 dpm_xlParser.g4"
-          out_of_sync=0
+          diff_dir="$(mktemp -d)"
+          matched_branches=""
 
-          for file in $files; do
-            remote_file="$(mktemp)"
+          for branch in $DPM_XL_DOCS_BRANCHES; do
+            branch_ok=1
 
-            if ! curl -fsSL "${DPM_XL_DOCS_RAW_BASE}/${file}" -o "$remote_file"; then
-              echo "::error::Could not download ${file} from dpm-xl-docs (${DPM_XL_DOCS_RAW_BASE}/${file})"
-              out_of_sync=1
-              continue
-            fi
+            for file in $files; do
+              remote_file="$(mktemp)"
+              url="${DPM_XL_DOCS_RAW_ROOT}/${branch}/docs/grammar/${file}"
 
-            if ! diff -u "${LOCAL_GRAMMAR_DIR}/${file}" "$remote_file" > "/tmp/${file}.diff"; then
-              echo "::group::${file} is out of sync with dpm-xl-docs"
-              cat "/tmp/${file}.diff"
-              echo "::endgroup::"
-              echo "::error file=${LOCAL_GRAMMAR_DIR}/${file}::${file} does not match the grammar in dpm-xl-docs (main branch)"
-              out_of_sync=1
+              if ! curl -fsSL "$url" -o "$remote_file"; then
+                echo "::warning::Could not download ${file} from dpm-xl-docs ${branch} branch (${url})"
+                branch_ok=0
+                continue
+              fi
+
+              if ! diff -u "${LOCAL_GRAMMAR_DIR}/${file}" "$remote_file" > "${diff_dir}/${branch}-${file}.diff"; then
+                branch_ok=0
+              fi
+            done
+
+            if [ "$branch_ok" -eq 1 ]; then
+              echo "Grammar matches dpm-xl-docs (${branch} branch)."
+              matched_branches="${matched_branches} ${branch}"
             else
-              echo "${file} matches dpm-xl-docs (main branch)."
+              echo "Grammar does not match dpm-xl-docs (${branch} branch)."
             fi
           done
 
-          if [ "$out_of_sync" -ne 0 ]; then
+          if [ -z "$matched_branches" ]; then
+            for branch in $DPM_XL_DOCS_BRANCHES; do
+              for file in $files; do
+                if [ -s "${diff_dir}/${branch}-${file}.diff" ]; then
+                  echo "::group::${file} differs from dpm-xl-docs (${branch} branch)"
+                  cat "${diff_dir}/${branch}-${file}.diff"
+                  echo "::endgroup::"
+                fi
+              done
+            done
+            echo "::error::Grammar files match neither the dev nor the main branch of dpm-xl-docs"
             echo ""
-            echo "One or more grammar files are out of sync with dpm-xl-docs."
             echo "This check only verifies synchronization; update dpm-xl-docs manually to match dpmcore."
+            exit 1
+          fi
+
+          echo "Grammar is in sync with dpm-xl-docs branch(es):${matched_branches}"
+
+  generated-parser:
+    runs-on: ubuntu-24.04
+
+    env:
+      LOCAL_GRAMMAR_DIR: src/dpmcore/dpm_xl/grammar
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install ANTLR 4.9.2
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y antlr4
+          antlr4 > antlr4-version.txt
+          grep -q "Version 4.9.2" antlr4-version.txt
+
+      - name: Check the generated parser matches the grammar
+        run: |
+          cd "${LOCAL_GRAMMAR_DIR}"
+          antlr4 -Dlanguage=Python3 -visitor -o generated dpm_xlLexer.g4 dpm_xlParser.g4
+          cd - > /dev/null
+          if ! git diff --exit-code --stat -- "${LOCAL_GRAMMAR_DIR}/generated"; then
+            echo "::error::The generated parser is not the regeneration of the grammar. Run, from ${LOCAL_GRAMMAR_DIR}: antlr4 -Dlanguage=Python3 -visitor -o generated dpm_xlLexer.g4 dpm_xlParser.g4"
             exit 1
           fi
