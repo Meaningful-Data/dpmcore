@@ -287,7 +287,7 @@ def test_window_boundary_tojson_includes_its_period():
     )
     window = ast.children[0].toJSON()["analytic_clause"]["window"]
     assert window["start"]["period"] == "M"
-    assert window["end"]["period"] is None
+    assert "period" not in window["end"]
 
 
 def test_rank_payload_matches_sum_over_the_same_clause(serialize_expr):

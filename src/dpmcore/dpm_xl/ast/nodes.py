@@ -546,12 +546,14 @@ class WindowBoundary(AST):
     __repr__ = __str__
 
     def toJSON(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "class_name": self.__class__.__name__,
             "bound_type": self.bound_type,
             "n": self.n,
-            "period": self.period,
         }
+        if self.period is not None:
+            d["period"] = self.period
+        return d
 
 
 class WindowClause(AST):
