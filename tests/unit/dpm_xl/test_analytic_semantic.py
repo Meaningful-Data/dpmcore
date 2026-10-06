@@ -129,7 +129,10 @@ class TestWindowClause:
 
     @staticmethod
     def _range_clause(
-        order_by: str, start: WindowBoundary, frame_type: str = "range"
+        order_by: str,
+        start: WindowBoundary,
+        frame_type: str = "range",
+        end: WindowBoundary | None = None,
     ) -> AnalyticClause:
         return AnalyticClause(
             partition_by=[],
@@ -137,7 +140,7 @@ class TestWindowClause:
             window=WindowClause(
                 frame_type=frame_type,
                 start=start,
-                end=WindowBoundary("current_data_point"),
+                end=end or WindowBoundary("current_data_point"),
             ),
         )
 
@@ -179,6 +182,52 @@ class TestWindowClause:
         )
         with pytest.raises(SemanticError) as exc_info:
             Sum.validate_analytic(_make_rs(key_names=[order_by]), clause)
+        assert exc_info.value.code == "4-4-0-8"
+
+    @pytest.mark.parametrize(
+        ("start", "end"),
+        [
+            (
+                WindowBoundary("n_preceding", 11, "M"),
+                WindowBoundary("n_following", 2),
+            ),
+            (
+                WindowBoundary("n_preceding", 11),
+                WindowBoundary("n_following", 2, "M"),
+            ),
+        ],
+        ids=["end_without_period", "start_without_period"],
+    )
+    def test_range_on_ref_period_needs_a_period_on_both_bounds(
+        self, start: WindowBoundary, end: WindowBoundary
+    ) -> None:
+        clause = self._range_clause("refPeriod", start, end=end)
+        with pytest.raises(SemanticError) as exc_info:
+            Avg.validate_analytic(_make_rs(key_names=["refPeriod"]), clause)
+        assert exc_info.value.code == "4-4-0-7"
+
+    def test_range_on_ref_period_with_periods_on_both_bounds_is_valid(
+        self,
+    ) -> None:
+        clause = self._range_clause(
+            "refPeriod",
+            WindowBoundary("n_preceding", 23, "M"),
+            end=WindowBoundary("n_preceding", 12, "M"),
+        )
+        assert isinstance(
+            Avg.validate_analytic(_make_rs(key_names=["refPeriod"]), clause),
+            RecordSet,
+        )
+
+    def test_a_period_on_the_end_bound_of_data_points_raises(self) -> None:
+        clause = self._range_clause(
+            "refPeriod",
+            WindowBoundary("n_preceding", 2),
+            "data_points",
+            end=WindowBoundary("n_following", 1, "M"),
+        )
+        with pytest.raises(SemanticError) as exc_info:
+            Sum.validate_analytic(_make_rs(key_names=["refPeriod"]), clause)
         assert exc_info.value.code == "4-4-0-8"
 
     def test_n_boundary_stores_value(self) -> None:

@@ -123,6 +123,9 @@ def test_window_clause_frame_types(frame_type, expr):
         ("11 M preceding", "n_preceding", 11, "M"),
         ("2 Q following", "n_following", 2, "Q"),
         ("1 A preceding", "n_preceding", 1, "A"),
+        ("1 S preceding", "n_preceding", 1, "S"),
+        ("1 W following", "n_following", 1, "W"),
+        ("1 D preceding", "n_preceding", 1, "D"),
         ("3 preceding", "n_preceding", 3, None),
     ],
 )
@@ -135,6 +138,30 @@ def test_window_boundary_keeps_its_time_period(bound, bound_type, n, period):
     assert start.bound_type == bound_type
     assert start.n == n
     assert start.period == period
+
+
+@pytest.mark.parametrize(
+    ("bounds", "start", "end"),
+    [
+        (
+            "23 M preceding and 12 M preceding",
+            ("n_preceding", 23, "M"),
+            ("n_preceding", 12, "M"),
+        ),
+        (
+            "11 M preceding and 2 M following",
+            ("n_preceding", 11, "M"),
+            ("n_following", 2, "M"),
+        ),
+    ],
+)
+def test_window_end_boundary_keeps_its_time_period(bounds, start, end):
+    ast = SyntaxService().parse(
+        f"avg({{vRS}} over (order by refPeriod range between {bounds}))"
+    )
+    window = ast.children[0].analytic_clause.window
+    for boundary, expected in ((window.start, start), (window.end, end)):
+        assert (boundary.bound_type, boundary.n, boundary.period) == expected
 
 
 def test_window_clause_unbounded():
@@ -278,6 +305,19 @@ def test_aggregation_serializes_window_period(serialize_expr):
         "period": "M",
     }
     assert window["end"] == {"bound_type": "current_data_point"}
+
+
+def test_aggregation_serializes_end_window_period(serialize_expr):
+    node = serialize_expr(
+        "avg({tT1, r001} over (order by refPeriod "
+        "range between 23 M preceding and 12 M preceding))"
+    )
+    window = node["analytic_clause"]["window"]
+    assert window["end"] == {
+        "bound_type": "n_preceding",
+        "n": 12,
+        "period": "M",
+    }
 
 
 def test_window_boundary_tojson_includes_its_period():
