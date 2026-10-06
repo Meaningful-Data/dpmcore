@@ -186,6 +186,28 @@ class AggregateOperator(Unary):
             raise errors.SemanticError("4-4-0-2", not_present=missing)
 
     @classmethod
+    def _check_window_periods(cls, analytic_clause: AnalyticClause) -> None:
+        """A ``range`` ordered by refPeriod counts periods, not values.
+
+        Its numeric bounds need a time period, and no other window may
+        carry one.
+        """
+        window = analytic_clause.window
+        if window is None:
+            return
+        on_ref_period = window.frame_type == "range" and any(
+            item.key_name == tokens.REF_PERIOD
+            for item in analytic_clause.order_by
+        )
+        for bound in (window.start, window.end):
+            if bound.n is None:
+                continue
+            if on_ref_period and bound.period is None:
+                raise errors.SemanticError("4-4-0-7", op=cls.op)
+            if not on_ref_period and bound.period is not None:
+                raise errors.SemanticError("4-4-0-8", op=cls.op)
+
+    @classmethod
     def validate_analytic(
         cls,
         operand: RecordSet,
@@ -229,6 +251,7 @@ class AggregateOperator(Unary):
         if analytic_clause.window is not None and not analytic_clause.order_by:
             raise errors.SemanticError("4-4-0-5")
 
+        cls._check_window_periods(analytic_clause)
         cls._check_analytic_components(operand, analytic_clause)
 
         if operand.records is not None:

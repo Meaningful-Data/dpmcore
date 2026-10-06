@@ -522,15 +522,26 @@ class WindowBoundary(AST):
     bound_type: 'unbounded_preceding' | 'n_preceding' | 'current_data_point'
                 | 'n_following' | 'unbounded_following'
     n: integer offset for n_preceding / n_following; None otherwise.
+    period: time-period code of a ``range`` offset (``11 M preceding``).
+        None otherwise.
     """
 
-    def __init__(self, bound_type: str, n: int | None = None) -> None:
+    def __init__(
+        self,
+        bound_type: str,
+        n: int | None = None,
+        period: str | None = None,
+    ) -> None:
         super().__init__()
         self.bound_type = bound_type
         self.n = n
+        self.period = period
 
     def __str__(self) -> str:
-        return f"<WindowBoundary(bound_type='{self.bound_type}', n={self.n})>"
+        return (
+            f"<WindowBoundary(bound_type='{self.bound_type}', n={self.n}, "
+            f"period={self.period})>"
+        )
 
     __repr__ = __str__
 
@@ -539,6 +550,7 @@ class WindowBoundary(AST):
             "class_name": self.__class__.__name__,
             "bound_type": self.bound_type,
             "n": self.n,
+            "period": self.period,
         }
 
 

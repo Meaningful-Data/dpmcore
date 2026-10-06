@@ -127,6 +127,60 @@ class TestWindowClause:
             Sum.validate_analytic(_make_rs(key_names=["r"]), clause), RecordSet
         )
 
+    @staticmethod
+    def _range_clause(
+        order_by: str, start: WindowBoundary, frame_type: str = "range"
+    ) -> AnalyticClause:
+        return AnalyticClause(
+            partition_by=[],
+            order_by=[OrderItem(order_by)],
+            window=WindowClause(
+                frame_type=frame_type,
+                start=start,
+                end=WindowBoundary("current_data_point"),
+            ),
+        )
+
+    def test_range_on_ref_period_with_a_period_is_valid(self) -> None:
+        clause = self._range_clause(
+            "refPeriod", WindowBoundary("n_preceding", 11, "M")
+        )
+        assert isinstance(
+            Avg.validate_analytic(_make_rs(key_names=["refPeriod"]), clause),
+            RecordSet,
+        )
+
+    def test_range_on_ref_period_without_a_period_raises(self) -> None:
+        clause = self._range_clause(
+            "refPeriod", WindowBoundary("n_preceding", 11)
+        )
+        with pytest.raises(SemanticError) as exc_info:
+            Avg.validate_analytic(_make_rs(key_names=["refPeriod"]), clause)
+        assert exc_info.value.code == "4-4-0-7"
+
+    def test_unbounded_range_on_ref_period_needs_no_period(self) -> None:
+        clause = self._range_clause(
+            "refPeriod", WindowBoundary("unbounded_preceding")
+        )
+        assert isinstance(
+            Sum.validate_analytic(_make_rs(key_names=["refPeriod"]), clause),
+            RecordSet,
+        )
+
+    @pytest.mark.parametrize(
+        ("order_by", "frame_type"),
+        [("refPeriod", "data_points"), ("r", "range")],
+    )
+    def test_a_period_outside_a_range_on_ref_period_raises(
+        self, order_by: str, frame_type: str
+    ) -> None:
+        clause = self._range_clause(
+            order_by, WindowBoundary("n_preceding", 2, "M"), frame_type
+        )
+        with pytest.raises(SemanticError) as exc_info:
+            Sum.validate_analytic(_make_rs(key_names=[order_by]), clause)
+        assert exc_info.value.code == "4-4-0-8"
+
     def test_n_boundary_stores_value(self) -> None:
         b = WindowBoundary("n_following", 5)
         assert b.bound_type == "n_following"
