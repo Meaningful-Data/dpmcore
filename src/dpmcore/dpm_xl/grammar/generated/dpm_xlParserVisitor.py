@@ -1,4 +1,4 @@
-# Generated from /home/victorp/dpmcore/src/dpmcore/dpm_xl/grammar/dpm_xlParser.g4 by ANTLR 4.9.2
+# Generated from dpm_xlParser.g4 by ANTLR 4.9.2
 from antlr4 import *
 if __name__ is not None and "." in __name__:
     from .dpm_xlParser import dpm_xlParser
@@ -424,16 +424,6 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by dpm_xlParser#parameterRef.
-    def visitParameterRef(self, ctx:dpm_xlParser.ParameterRefContext):
-        return self.visitChildren(ctx)
-
-
-    # Visit a parse tree produced by dpm_xlParser#parameterType.
-    def visitParameterType(self, ctx:dpm_xlParser.ParameterTypeContext):
-        return self.visitChildren(ctx)
-
-
     # Visit a parse tree produced by dpm_xlParser#varID.
     def visitVarID(self, ctx:dpm_xlParser.VarIDContext):
         return self.visitChildren(ctx)
@@ -451,6 +441,16 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by dpm_xlParser#operationRef.
     def visitOperationRef(self, ctx:dpm_xlParser.OperationRefContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#parameterRef.
+    def visitParameterRef(self, ctx:dpm_xlParser.ParameterRefContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by dpm_xlParser#parameterType.
+    def visitParameterType(self, ctx:dpm_xlParser.ParameterTypeContext):
         return self.visitChildren(ctx)
 
 

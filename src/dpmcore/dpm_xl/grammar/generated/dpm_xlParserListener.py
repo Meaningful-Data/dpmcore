@@ -1,4 +1,4 @@
-# Generated from /home/victorp/dpmcore/src/dpmcore/dpm_xl/grammar/dpm_xlParser.g4 by ANTLR 4.9.2
+# Generated from dpm_xlParser.g4 by ANTLR 4.9.2
 from antlr4 import *
 if __name__ is not None and "." in __name__:
     from .dpm_xlParser import dpm_xlParser
@@ -755,24 +755,6 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by dpm_xlParser#parameterRef.
-    def enterParameterRef(self, ctx:dpm_xlParser.ParameterRefContext):
-        pass
-
-    # Exit a parse tree produced by dpm_xlParser#parameterRef.
-    def exitParameterRef(self, ctx:dpm_xlParser.ParameterRefContext):
-        pass
-
-
-    # Enter a parse tree produced by dpm_xlParser#parameterType.
-    def enterParameterType(self, ctx:dpm_xlParser.ParameterTypeContext):
-        pass
-
-    # Exit a parse tree produced by dpm_xlParser#parameterType.
-    def exitParameterType(self, ctx:dpm_xlParser.ParameterTypeContext):
-        pass
-
-
     # Enter a parse tree produced by dpm_xlParser#varID.
     def enterVarID(self, ctx:dpm_xlParser.VarIDContext):
         pass
@@ -806,6 +788,24 @@ class dpm_xlParserListener(ParseTreeListener):
 
     # Exit a parse tree produced by dpm_xlParser#operationRef.
     def exitOperationRef(self, ctx:dpm_xlParser.OperationRefContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#parameterRef.
+    def enterParameterRef(self, ctx:dpm_xlParser.ParameterRefContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#parameterRef.
+    def exitParameterRef(self, ctx:dpm_xlParser.ParameterRefContext):
+        pass
+
+
+    # Enter a parse tree produced by dpm_xlParser#parameterType.
+    def enterParameterType(self, ctx:dpm_xlParser.ParameterTypeContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#parameterType.
+    def exitParameterType(self, ctx:dpm_xlParser.ParameterTypeContext):
         pass
 
 
