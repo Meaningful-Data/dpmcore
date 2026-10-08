@@ -16,22 +16,44 @@ from dpmcore.dpm_xl.symbols import (
     RecordSet,
     Structure,
 )
-from dpmcore.dpm_xl.types.scalar import Integer, Mixed, Number, String
+from dpmcore.dpm_xl.types.scalar import (
+    Boolean,
+    Date,
+    Integer,
+    Mixed,
+    Null,
+    Number,
+    ScalarType,
+    String,
+    TimeInterval,
+)
 from dpmcore.dpm_xl.utils.tokens import STANDARD
 from dpmcore.errors import SemanticError
 
 
-def _make_rs(fact_type=None, key_names: list[str] | None = None) -> RecordSet:
+def _make_rs(
+    fact_type=None,
+    key_names: list[str] | None = None,
+    key_types: dict[str, ScalarType] | None = None,
+) -> RecordSet:
+    """Keys are Number unless ``key_types`` gives them another type."""
     if fact_type is None:
         fact_type = Number()
     if key_names is None:
         key_names = ["r", "c"]
+    key_types = key_types or {}
     components = [
-        KeyComponent(k, Number(), STANDARD, "test") for k in key_names
+        KeyComponent(k, key_types.get(k, Number()), STANDARD, "test")
+        for k in key_names
     ]
     components.append(FactComponent(fact_type, "test"))
     structure = Structure(components)
     return RecordSet(structure, "ds", "ds")
+
+
+def _date_rs(key_name: str) -> RecordSet:
+    """Date keys (``DAT``/``d``) resolve to TimeInterval."""
+    return _make_rs(key_names=[key_name], key_types={key_name: TimeInterval()})
 
 
 def _analytic(
@@ -125,6 +147,183 @@ class TestWindowClause:
         )
         assert isinstance(
             Sum.validate_analytic(_make_rs(key_names=["r"]), clause), RecordSet
+        )
+
+    @staticmethod
+    def _range_clause(
+        order_by: str | list[str],
+        start: WindowBoundary,
+        frame_type: str = "range",
+        end: WindowBoundary | None = None,
+    ) -> AnalyticClause:
+        names = [order_by] if isinstance(order_by, str) else order_by
+        return AnalyticClause(
+            partition_by=[],
+            order_by=[OrderItem(name) for name in names],
+            window=WindowClause(
+                frame_type=frame_type,
+                start=start,
+                end=end or WindowBoundary("current_data_point"),
+            ),
+        )
+
+    @pytest.mark.parametrize(
+        ("order_by", "key_type"),
+        [("refPeriod", TimeInterval()), ("refDate", Date())],
+        ids=["refPeriod", "date"],
+    )
+    def test_range_on_a_date_with_a_period_is_valid(
+        self, order_by: str, key_type: ScalarType
+    ) -> None:
+        clause = self._range_clause(
+            order_by, WindowBoundary("n_preceding", 11, "M")
+        )
+        rs = _make_rs(key_names=[order_by], key_types={order_by: key_type})
+        assert isinstance(Avg.validate_analytic(rs, clause), RecordSet)
+
+    @pytest.mark.parametrize(
+        ("start", "end"),
+        [
+            (WindowBoundary("n_preceding", 11), None),
+            (
+                WindowBoundary("n_preceding", 11, "M"),
+                WindowBoundary("n_following", 2),
+            ),
+            (
+                WindowBoundary("n_preceding", 11),
+                WindowBoundary("n_following", 2, "M"),
+            ),
+        ],
+        ids=["no_period", "end_without_period", "start_without_period"],
+    )
+    def test_range_on_a_date_needs_a_period_on_its_bounds(
+        self, start: WindowBoundary, end: WindowBoundary | None
+    ) -> None:
+        clause = self._range_clause("refDate", start, end=end)
+        with pytest.raises(SemanticError) as exc_info:
+            Avg.validate_analytic(_date_rs("refDate"), clause)
+        assert exc_info.value.code == "4-4-0-7"
+
+    def test_unbounded_range_on_a_date_needs_no_period(self) -> None:
+        clause = self._range_clause(
+            "refPeriod", WindowBoundary("unbounded_preceding")
+        )
+        assert isinstance(
+            Sum.validate_analytic(_date_rs("refPeriod"), clause), RecordSet
+        )
+
+    @pytest.mark.parametrize("key_type", [Number(), Integer()])
+    def test_range_on_a_number_without_a_period_is_valid(
+        self, key_type: ScalarType
+    ) -> None:
+        clause = self._range_clause("yr", WindowBoundary("n_preceding", 2))
+        rs = _make_rs(key_names=["yr"], key_types={"yr": key_type})
+        assert isinstance(Sum.validate_analytic(rs, clause), RecordSet)
+
+    @pytest.mark.parametrize("key_type", [Number(), Integer()])
+    def test_a_period_on_a_range_over_a_number_raises(
+        self, key_type: ScalarType
+    ) -> None:
+        clause = self._range_clause(
+            "yr", WindowBoundary("n_preceding", 2, "M")
+        )
+        rs = _make_rs(key_names=["yr"], key_types={"yr": key_type})
+        with pytest.raises(SemanticError) as exc_info:
+            Sum.validate_analytic(rs, clause)
+        assert exc_info.value.code == "4-4-0-8"
+
+    @pytest.mark.parametrize(
+        ("start", "end"),
+        [
+            (WindowBoundary("n_preceding", 2, "M"), None),
+            (
+                WindowBoundary("n_preceding", 2),
+                WindowBoundary("n_following", 1, "M"),
+            ),
+        ],
+        ids=["start", "end"],
+    )
+    def test_a_period_on_data_points_raises(
+        self, start: WindowBoundary, end: WindowBoundary | None
+    ) -> None:
+        clause = self._range_clause("refDate", start, "data_points", end=end)
+        with pytest.raises(SemanticError) as exc_info:
+            Sum.validate_analytic(_date_rs("refDate"), clause)
+        assert exc_info.value.code == "4-4-0-8"
+
+    def test_range_with_several_order_components_raises(self) -> None:
+        clause = self._range_clause(
+            ["refPeriod", "r"], WindowBoundary("n_preceding", 11, "M")
+        )
+        rs = _make_rs(
+            key_names=["refPeriod", "r"],
+            key_types={"refPeriod": TimeInterval()},
+        )
+        with pytest.raises(SemanticError) as exc_info:
+            Avg.validate_analytic(rs, clause)
+        assert exc_info.value.code == "4-4-0-9"
+
+    def test_data_points_accepts_several_order_components(self) -> None:
+        clause = self._range_clause(
+            ["r", "c"], WindowBoundary("n_preceding", 1), "data_points"
+        )
+        assert isinstance(
+            Sum.validate_analytic(_make_rs(key_names=["r", "c"]), clause),
+            RecordSet,
+        )
+
+    @pytest.mark.parametrize(
+        "key_type",
+        [String(), Boolean(), Null()],
+        ids=["String", "Boolean", "standard_key"],
+    )
+    def test_range_on_a_non_date_non_number_component_raises(
+        self, key_type: ScalarType
+    ) -> None:
+        clause = self._range_clause("r", WindowBoundary("n_preceding", 1))
+        rs = _make_rs(key_names=["r"], key_types={"r": key_type})
+        with pytest.raises(SemanticError) as exc_info:
+            Sum.validate_analytic(rs, clause)
+        assert exc_info.value.code == "4-4-0-10"
+
+    def test_range_on_a_missing_component_reports_it_missing(self) -> None:
+        clause = self._range_clause(
+            "refDate", WindowBoundary("n_preceding", 1)
+        )
+        with pytest.raises(SemanticError) as exc_info:
+            Sum.validate_analytic(_make_rs(key_names=["r"]), clause)
+        assert exc_info.value.code == "4-4-0-2"
+
+    @pytest.mark.parametrize(
+        ("start", "end"),
+        [("M", "D"), ("A", "W"), ("D", "Q")],
+    )
+    def test_range_with_incommensurable_periods_raises(
+        self, start: str, end: str
+    ) -> None:
+        clause = self._range_clause(
+            "refDate",
+            WindowBoundary("n_preceding", 3, start),
+            end=WindowBoundary("n_preceding", 1, end),
+        )
+        with pytest.raises(SemanticError) as exc_info:
+            Avg.validate_analytic(_date_rs("refDate"), clause)
+        assert exc_info.value.code == "4-4-0-11"
+
+    @pytest.mark.parametrize(
+        ("start", "end"),
+        [("M", "M"), ("A", "Q"), ("S", "M"), ("W", "D")],
+    )
+    def test_range_with_commensurable_periods_is_valid(
+        self, start: str, end: str
+    ) -> None:
+        clause = self._range_clause(
+            "refDate",
+            WindowBoundary("n_preceding", 23, start),
+            end=WindowBoundary("n_preceding", 12, end),
+        )
+        assert isinstance(
+            Avg.validate_analytic(_date_rs("refDate"), clause), RecordSet
         )
 
     def test_n_boundary_stores_value(self) -> None:

@@ -13,9 +13,13 @@ from dpmcore.dpm_xl.types.scalar import (
     Number,
     ScalarFactory,
     ScalarType,
+    TimeInterval,
 )
 from dpmcore.dpm_xl.utils import tokens
 from dpmcore.dpm_xl.warning_collector import add_semantic_warning
+
+# Period codes counted in days, a range cannot mix them with months
+DAY_PERIODS = frozenset({"W", "D"})
 
 
 class AggregateOperator(Unary):
@@ -186,6 +190,46 @@ class AggregateOperator(Unary):
             raise errors.SemanticError("4-4-0-2", not_present=missing)
 
     @classmethod
+    def _check_window_periods(
+        cls, operand: RecordSet, analytic_clause: AnalyticClause
+    ) -> None:
+        """Validate the order component and the time periods of a window.
+
+        A ``range`` is ordered by a single Date or numeric component. Over
+        a Date its bounds need periods of the same unit, months or days.
+        Any other window takes no period.
+        """
+        window = analytic_clause.window
+        if window is None:
+            return
+        on_date = False
+        if window.frame_type == "range":
+            if len(analytic_clause.order_by) != 1:
+                raise errors.SemanticError("4-4-0-9", op=cls.op)
+            name = analytic_clause.order_by[0].key_name
+            order_type = operand.structure.components[name].type
+            if not isinstance(order_type, (TimeInterval, Number)):
+                raise errors.SemanticError(
+                    "4-4-0-10", op=cls.op, component=name, type=order_type
+                )
+            on_date = isinstance(order_type, TimeInterval)
+        periods = []
+        for bound in (window.start, window.end):
+            if bound.n is None:
+                continue
+            if on_date and bound.period is None:
+                raise errors.SemanticError("4-4-0-7", op=cls.op)
+            if not on_date and bound.period is not None:
+                raise errors.SemanticError("4-4-0-8", op=cls.op)
+            periods.append(bound.period)
+        if len(periods) == 2 and (
+            (periods[0] in DAY_PERIODS) != (periods[1] in DAY_PERIODS)
+        ):
+            raise errors.SemanticError(
+                "4-4-0-11", op=cls.op, start=periods[0], end=periods[1]
+            )
+
+    @classmethod
     def validate_analytic(
         cls,
         operand: RecordSet,
@@ -230,6 +274,7 @@ class AggregateOperator(Unary):
             raise errors.SemanticError("4-4-0-5")
 
         cls._check_analytic_components(operand, analytic_clause)
+        cls._check_window_periods(operand, analytic_clause)
 
         if operand.records is not None:
             operand.records["data_type"] = final_type  # type: ignore[call-overload]

@@ -410,13 +410,16 @@ class ASTVisitor(dpm_xlParserVisitor):
         elif first == "current data point":
             return WindowBoundary(bound_type="current_data_point")
         else:
-            # INTEGER_LITERAL n preceding|following
+            # INTEGER_LITERAL TIME_PERIOD? preceding|following
             n = int(first)
-            second = self._symbol_text(ctx_list[1])
+            last = self._symbol_text(ctx_list[-1])
             bound_type = (
-                "n_preceding" if second == "preceding" else "n_following"
+                "n_preceding" if last == "preceding" else "n_following"
             )
-            return WindowBoundary(bound_type=bound_type, n=n)
+            period = (
+                self._symbol_text(ctx_list[1]) if len(ctx_list) == 3 else None
+            )
+            return WindowBoundary(bound_type=bound_type, n=n, period=period)
 
     def visitGroupingClause(
         self, ctx: dpm_xlParser.GroupingClauseContext

@@ -538,6 +538,8 @@ class ASTToJSONVisitor(NodeVisitor):
         d: NodeDict = {"bound_type": boundary.bound_type}
         if boundary.n is not None:
             d["n"] = boundary.n
+        if getattr(boundary, "period", None) is not None:
+            d["period"] = boundary.period
         return d
 
     def visit_GroupingClause(self, node: Any) -> NodeDict | None:
