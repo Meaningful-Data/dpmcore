@@ -531,6 +531,63 @@ class TestWithExpressions:
         assert checker.partial_selection is None
 
 
+def _set_expression(session, operation_vid, expression):
+    session.query(OperationVersion).filter(
+        OperationVersion.operation_vid == operation_vid
+    ).update({OperationVersion.expression: expression})
+    session.commit()
+
+
+class TestDependencyOrderBeforeOperandChecking:
+    """The script is sorted before its operands are resolved."""
+
+    def test_an_operation_assigned_by_a_later_version_is_found(
+        self, calc_session
+    ):
+        """``{oX}`` read by c_0001 (VID 100), assigned by VID 101."""
+        _set_expression(
+            calc_session,
+            100,
+            f"{{t{HOME_TABLE}, r0020, c{COLUMN}}} <- {{oX}} + 1",
+        )
+        _set_expression(
+            calc_session,
+            101,
+            f"X := {{t{DEP_TABLE}, r0010, c{COLUMN}}} * 2",
+        )
+
+        ns = _namespace(
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+        )
+
+        assert ns["calculations"]["operation_codes"] == ["c_0002", "c_0001"]
+        # The statements move with their codes
+        assign_x, read_x = ns["calculations"]["ast"]["children"]
+        assert assign_x["class_name"] == "TemporaryAssignment"
+        assert assign_x["left"]["value"] == "X"
+        assert read_x["class_name"] == "PersistentAssignment"
+        assert read_x["left"]["row"] == "0020"
+
+    def test_a_cell_read_through_a_with_context_is_ordered(self, calc_session):
+        """c_0002 reads c_0001's output only through its ``with``."""
+        _set_expression(
+            calc_session,
+            101,
+            f"{{t{HOME_TABLE}, r0030, c{COLUMN}}} <- "
+            f"with {{t{HOME_TABLE}, c{COLUMN}}}: {{r0020}} * 2",
+        )
+
+        ns = _namespace(
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+        )
+
+        assert ns["calculations"]["operation_codes"] == ["c_0001", "c_0002"]
+
+
 class TestOperationVersionWindow:
     """Only the operation version effective at the export's release."""
 

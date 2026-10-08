@@ -9,6 +9,8 @@ need one are covered by
 
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 import pytest
 
@@ -123,7 +125,13 @@ class TestDAGAnalyzer:
             f"{_CELL_A} <- {_CELL_B} + 1;\n{_CELL_B} <- {_CELL_A} + 1;"
         )
 
-        with pytest.raises(Invalid, match="cycle"):
+        with pytest.raises(
+            Invalid,
+            match=re.escape(
+                "Cyclic calculations: The module's calculations depend on "
+                "each other in a cycle, so no evaluation order exists."
+            ),
+        ):
             DAGAnalyzer().create_dag(ast)
 
     def test_assigning_the_same_output_twice_is_reported(self):
@@ -131,7 +139,14 @@ class TestDAGAnalyzer:
             f"{_CELL_A} <- 1;\n{_CELL_A} <- 2;\n{_CELL_B} <- {_CELL_A} + 1;"
         )
 
-        with pytest.raises(Invalid, match="assigned by more than one"):
+        with pytest.raises(
+            Invalid,
+            match=re.escape(
+                "Duplicate calculation output: Output "
+                "tA-['0010']-['0010']-None is assigned by more than one "
+                "calculation."
+            ),
+        ):
             DAGAnalyzer().create_dag(ast)
 
     def test_a_duplicate_output_is_reported_without_any_edge(self):
@@ -143,7 +158,14 @@ class TestDAGAnalyzer:
         """
         ast = _parse(f"{_CELL_A} <- 1;\n{_CELL_A} <- 2;")
 
-        with pytest.raises(Invalid, match="assigned by more than one"):
+        with pytest.raises(
+            Invalid,
+            match=re.escape(
+                "Duplicate calculation output: Output "
+                "tA-['0010']-['0010']-None is assigned by more than one "
+                "calculation."
+            ),
+        ):
             DAGAnalyzer().create_dag(ast)
 
     def test_a_statement_that_assigns_nothing_is_kept(self):
@@ -167,6 +189,62 @@ class TestDAGAnalyzer:
         assert analyzer.dependencies[1]["outputs"] == [
             "tA-['0010']-['0010']-None"
         ]
+
+    def test_a_with_context_completes_the_cells_it_wraps(self):
+        """The DAG runs before operand checking has grafted the context.
+
+        A cell that only names its row inside ``with {tA, c0010}`` is
+        ``{tA, r0020, c0010}``, so it must be linked to the statement
+        assigning that cell.
+        """
+        ast = _parse(
+            f"{_CELL_A} <- with {{tA, c0010}}: {{r0020}} * 2;\n"
+            f"{_CELL_B} <- {_CELL_C} + 1;"
+        )
+
+        DAGAnalyzer().create_dag(ast)
+
+        assert [child.left.rows[0] for child in ast.children] == [
+            "0020",
+            "0010",
+        ]
+
+    def test_the_with_context_is_not_written_into_the_cells(self):
+        """Grafting stays operand checking's job: the AST is untouched."""
+        ast = _parse(f"{_CELL_A} <- with {{tA, c0010}}: {{r0020}} * 2;")
+
+        DAGAnalyzer().create_dag(ast)
+
+        inner = ast.children[0].right.expression.left
+        assert inner.table is None
+        assert inner.cols is None
+
+    def test_the_with_context_ends_with_its_statement(self):
+        ast = _parse(
+            f"{_CELL_A} <- with {{tA, c0010}}: {{r0020}} * 2;\n"
+            f"{_CELL_C} <- {{r0030}};"
+        )
+
+        analyzer = DAGAnalyzer()
+        analyzer.visit(ast)
+
+        assert analyzer.dependencies[2]["inputs"] == [
+            "tNone-['0030']-None-None"
+        ]
+
+    def test_a_forward_operation_reference_is_reordered(self):
+        ast = _parse("t2 := {ot1} + 1;\nt1 := 1;")
+
+        DAGAnalyzer().create_dag(ast)
+
+        assert [child.left.value for child in ast.children] == ["t1", "t2"]
+
+    def test_the_overwrite_check_can_be_left_to_the_caller(self):
+        ast = _parse(f"{_CELL_A} <- 1;\n{_CELL_A} <- 2;")
+
+        DAGAnalyzer().create_dag(ast, check_overwriting=False)
+
+        assert len(ast.children) == 2
 
 
 class TestUnwrapWithExpressions:
