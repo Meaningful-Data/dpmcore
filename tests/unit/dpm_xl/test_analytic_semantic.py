@@ -52,7 +52,7 @@ def _make_rs(
 
 
 def _date_rs(key_name: str) -> RecordSet:
-    """``refPeriod`` is a TimeInterval, the type a Date key resolves to."""
+    """Date keys (``DAT``/``d``) resolve to TimeInterval."""
     return _make_rs(key_names=[key_name], key_types={key_name: TimeInterval()})
 
 
@@ -220,12 +220,16 @@ class TestWindowClause:
         rs = _make_rs(key_names=["yr"], key_types={"yr": key_type})
         assert isinstance(Sum.validate_analytic(rs, clause), RecordSet)
 
-    def test_a_period_on_a_range_over_a_number_raises(self) -> None:
+    @pytest.mark.parametrize("key_type", [Number(), Integer()])
+    def test_a_period_on_a_range_over_a_number_raises(
+        self, key_type: ScalarType
+    ) -> None:
         clause = self._range_clause(
             "yr", WindowBoundary("n_preceding", 2, "M")
         )
+        rs = _make_rs(key_names=["yr"], key_types={"yr": key_type})
         with pytest.raises(SemanticError) as exc_info:
-            Sum.validate_analytic(_make_rs(key_names=["yr"]), clause)
+            Sum.validate_analytic(rs, clause)
         assert exc_info.value.code == "4-4-0-8"
 
     @pytest.mark.parametrize(
@@ -269,7 +273,9 @@ class TestWindowClause:
         )
 
     @pytest.mark.parametrize(
-        "key_type", [String(), Boolean(), Null()], ids=lambda t: str(t)
+        "key_type",
+        [String(), Boolean(), Null()],
+        ids=["String", "Boolean", "standard_key"],
     )
     def test_range_on_a_non_date_non_number_component_raises(
         self, key_type: ScalarType
