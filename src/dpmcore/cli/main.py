@@ -1243,6 +1243,13 @@ def export_layout(
     "(YYYY-MM-DD, default: today).",
 )
 @click.option(
+    "--release",
+    "release_code",
+    default=None,
+    help="Release code for the dictionary lookups (e.g. 4.2; "
+    "default: the live release).",
+)
+@click.option(
     "--database",
     required=True,
     help="SQLAlchemy database URL.",
@@ -1265,6 +1272,7 @@ def export_calculations(
     module_code: str,
     reference_date: datetime,
     publication_date: str | None,
+    release_code: str | None,
     database: str,
     output: str | None,
     datapoints_output: str | None,
@@ -1298,8 +1306,9 @@ def export_calculations(
                 module_code,
                 reference_date.strftime("%Y-%m-%d"),
                 publication_date,
+                release_code,
             )
-    except DpmCoreError as exc:
+    except (DpmCoreError, ValueError) as exc:
         click.echo(f"Calculations export failed: {exc}", err=True)
         sys.exit(1)
 

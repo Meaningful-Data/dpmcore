@@ -9,19 +9,32 @@ need one are covered by
 
 from __future__ import annotations
 
+from datetime import date
+
 import pandas as pd
 import pytest
 
 from dpmcore.dpm_xl.ast.nodes import Constant, VarID
 from dpmcore.errors import Invalid
+from dpmcore.orm.release_sort_order import compute_sort_order
 from dpmcore.services.calculations_export.exporter import (
     CalculationsExporter,
     _build_datapoint_mapping,
     _build_expression,
 )
+from dpmcore.services.calculations_export.queries import (
+    _published_module_uri,
+    pick_module_version_for_date,
+)
+from dpmcore.services.calculations_export.version_windows import (
+    current_window,
+    older_module_versions,
+    older_windows,
+)
 from dpmcore.services.calculations_export.visitors import (
     CalculationsJSONVisitor,
     DAGAnalyzer,
+    DependencyTableExtractor,
     VarIDDataEnricher,
     _constant_value,
     _sole_code,
@@ -502,3 +515,225 @@ class TestUnresolvableOperands:
 
         assert extractor.tables == {}
         assert extractor.all_datapoints == []
+
+
+def _shifted(script):
+    """``DependencyTableExtractor.shifted`` over ``script``, DB-free.
+
+    Each selection resolves to one datapoint whose id is its first row
+    code, so ``{tA, r0010, ...}`` reads datapoint ``10`` of ``A``.
+    """
+    ast = _parse(script)
+    unwrap_with_expressions(ast)
+    extractor = DependencyTableExtractor(session=None)
+    extractor._variable_ids = lambda table, node: [int(node.rows[0])]
+    extractor._get_open_keys = lambda table: {}
+    extractor.visit(ast)
+    return extractor
+
+
+class TestShiftedReads:
+    @pytest.mark.parametrize(
+        "operand",
+        [
+            "time_shift({tA, r0010, c0010}, A, 1, refPeriod)",
+            "time_shift({tA, r0010, c0010}, Q, -1)",
+            "{tA, r0010, c0010}[where refPeriod = #2025-12-31#]",
+            "{tA, r0010, c0010}[sub refPeriod = #2025-12-31#]",
+            "avg({tA, r0010, c0010} over (order by refPeriod "
+            "data points between 11 preceding and current data point))",
+            "sum({tA, r0010, c0010} over (partition by qEGS "
+            "order by refPeriod desc))",
+        ],
+    )
+    def test_a_read_at_another_period_is_shifted(self, operand):
+        assert _shifted(f"x := {operand};").shifted == {"A": {"10"}}
+
+    @pytest.mark.parametrize(
+        "operand",
+        [
+            "{tA, r0010, c0010}",
+            "time_shift({tA, r0010, c0010}, A, 1, entityID)",
+            "{tA, r0010, c0010}[where qEGS = [eba_GA:x1]]",
+            "{tA, r0010, c0010}[get refPeriod]",
+            "sum({tA, r0010, c0010} over (partition by qEGS order by r))",
+            "sum({tA, r0010, c0010} group by refPeriod)",
+        ],
+    )
+    def test_a_read_at_the_instance_s_own_period_is_not(self, operand):
+        extractor = _shifted(f"x := {operand};")
+
+        assert extractor.shifted == {}
+        # Still a dependency, read at T.
+        assert set(extractor.tables) == {"A"}
+
+    def test_only_the_shifted_operand_of_an_expression_is_shifted(self):
+        extractor = _shifted(
+            "x := {tA, r0010, c0010} - "
+            "time_shift({tB, r0020, c0010}, A, 1, refPeriod);"
+        )
+
+        assert extractor.shifted == {"B": {"20"}}
+        assert set(extractor.tables) == {"A", "B"}
+
+    def test_a_with_level_where_on_ref_period_reaches_every_operand(self):
+        """The ``where`` is grafted onto the selections, so it survives
+        the unwrapping of the ``with``.
+        """
+        extractor = _shifted(
+            "x := with {tA, c0010}[where refPeriod = #2025-12-31#]: "
+            "{tA, r0010} + {tB, r0020, c0010};"
+        )
+
+        assert extractor.shifted == {"A": {"10"}, "B": {"20"}}
+
+    def test_tables_keep_the_order_they_are_first_shifted_in(self):
+        extractor = _shifted(
+            "x := time_shift({tB, r0010, c0010}, A, 1) + "
+            "time_shift({tA, r0010, c0010}, A, 1);"
+        )
+
+        assert list(extractor.shifted) == ["B", "A"]
+
+
+def _version(vid, start, end, release=1, number=None):
+    return {
+        "module_vid": vid,
+        "version_number": number or f"{vid}.0.0",
+        "from_date": start,
+        "to_date": end,
+        "start_release_id": release,
+    }
+
+
+# Release 1 to 3 dated in order; 99 is the Playground (no date).
+_SORT_ORDERS = {
+    1: date(2020, 1, 1).toordinal(),
+    2: date(2021, 1, 1).toordinal(),
+    3: date(2022, 1, 1).toordinal(),
+    99: compute_sort_order(None, None),
+}
+
+
+class TestOlderModuleVersions:
+    def test_versions_before_the_current_one_latest_first(self):
+        older = older_module_versions(
+            [
+                _version(1, date(2020, 1, 1), date(2020, 12, 31)),
+                _version(2, date(2021, 1, 1), date(2021, 12, 31)),
+                _version(3, date(2023, 1, 1), None),
+            ],
+            date(2022, 1, 1),
+            _SORT_ORDERS,
+        )
+
+        assert [v["module_vid"] for v in older] == [2, 1]
+
+    def test_a_ghost_version_never_held_data(self):
+        older = older_module_versions(
+            [
+                _version(1, date(2020, 1, 1), date(2020, 12, 31)),
+                _version(2, date(2021, 1, 1), date(2021, 1, 1)),
+                _version(3, date(2021, 6, 1), date(2021, 5, 1)),
+            ],
+            date(2022, 1, 1),
+            _SORT_ORDERS,
+        )
+
+        assert [v["module_vid"] for v in older] == [1]
+
+    def test_a_playground_version_is_ignored(self):
+        older = older_module_versions(
+            [
+                _version(1, date(2020, 1, 1), date(2020, 12, 31)),
+                _version(2, date(2021, 1, 1), None, release=99),
+            ],
+            date(2022, 1, 1),
+            _SORT_ORDERS,
+        )
+
+        assert [v["module_vid"] for v in older] == [1]
+
+    def test_the_latest_release_wins_a_shared_start_date(self):
+        older = older_module_versions(
+            [
+                _version(1, date(2020, 1, 1), None, release=3),
+                _version(2, date(2020, 1, 1), None, release=2),
+            ],
+            date(2022, 1, 1),
+            _SORT_ORDERS,
+        )
+
+        assert [v["module_vid"] for v in older] == [1]
+
+
+class TestOlderWindows:
+    def test_each_window_ends_the_day_before_its_successor(self):
+        older = [
+            _version(2, date(2021, 1, 1), None),
+            _version(1, date(2020, 1, 1), date(2021, 6, 30)),
+        ]
+
+        windows = older_windows(older, date(2022, 1, 1))
+
+        assert [(v["module_vid"], s, e) for v, s, e in windows] == [
+            (1, date(2020, 1, 1), date(2020, 12, 31)),
+            (2, date(2021, 1, 1), date(2021, 12, 31)),
+        ]
+
+    def test_an_earlier_own_end_is_kept(self):
+        older = [_version(1, date(2020, 1, 1), date(2020, 6, 30))]
+
+        windows = older_windows(older, date(2022, 1, 1))
+
+        assert [(s, e) for _, s, e in windows] == [
+            (date(2020, 1, 1), date(2020, 6, 30))
+        ]
+
+    def test_the_current_window_is_its_own_validity(self):
+        assert current_window(date(2022, 1, 1), date(2022, 12, 31)) == (
+            date(2022, 1, 1),
+            date(2022, 12, 31),
+        )
+
+    def test_an_inverted_current_end_counts_as_open(self):
+        assert current_window(date(2022, 1, 1), date(2021, 12, 31)) == (
+            date(2022, 1, 1),
+            None,
+        )
+
+
+class TestPickModuleVersionForDate:
+    ROWS = [
+        {
+            "module_vid": 1,
+            "from_date": date(2020, 1, 1),
+            "to_date": date(2020, 12, 31),
+        },
+        {"module_vid": 2, "from_date": date(2021, 1, 1), "to_date": None},
+    ]
+
+    def test_the_version_containing_the_date_is_picked(self):
+        assert (
+            pick_module_version_for_date(self.ROWS, date(2021, 6, 30))[
+                "module_vid"
+            ]
+            == 2
+        )
+
+    def test_no_version_contains_the_date(self):
+        assert (
+            pick_module_version_for_date(self.ROWS, date(2019, 1, 1)) is None
+        )
+
+
+class TestPublishedModuleUri:
+    def test_a_pre_4_0_version_keeps_its_published_uri(self):
+        assert _published_module_uri("COREP_Con", "2.0.1") == (
+            "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/corep/its-2013-02/"
+            "2013-12-01/mod/corep_con"
+        )
+
+    def test_an_unpublished_version_has_none(self):
+        assert _published_module_uri("COREP_Con", "99.0.0") is None
+        assert _published_module_uri(None, "2.0.1") is None
