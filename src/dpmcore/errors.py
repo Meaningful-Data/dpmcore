@@ -203,6 +203,28 @@ centralised_messages: Dict[str, str] = {
         "analytical invocation: a window clause requires an order by clause."
     ),
     "4-4-0-6": ("rank operator does not accept a window clause."),
+    "4-4-0-7": (
+        "For {op} operator, a range window ordered by a Date component"
+        " needs a time period on its bounds."
+    ),
+    "4-4-0-8": (
+        "For {op} operator, a time period on the window bounds"
+        " is only allowed in a range ordered by a Date component."
+    ),
+    "4-4-0-9": (
+        "For {op} operator, a range window needs exactly one order by"
+        " component."
+    ),
+    "4-4-0-10": (
+        "For {op} operator, a range window cannot be ordered by"
+        " {component} of type {type}: it needs a Date, Number or Integer"
+        " component."
+    ),
+    "4-4-0-11": (
+        "For {op} operator, the time periods {start} and {end} of a range"
+        " window are not commensurable: both must be from A, S, Q, M or"
+        " both from W, D."
+    ),
     # - Clause Operators
     "4-5-0-1": (
         "On recordset {recordset}: clause operators"

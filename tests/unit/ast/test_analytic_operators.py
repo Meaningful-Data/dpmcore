@@ -33,6 +33,9 @@ from dpmcore.services.syntax import SyntaxService
         "count({vRS} over (partition by CNT order by r desc))",
         "sum({vRS} over (order by r data points between 2 preceding and current data point))",
         "sum({vRS} over (order by yr range between 2 preceding and current data point))",
+        "avg({vRS} over (order by refPeriod range between 11 M preceding and current data point))",
+        "avg({vRS} over (order by refPeriod range between 23 M preceding and 12 M preceding))",
+        "sum({vRS} over (order by refPeriod range between current data point and 1 A following))",
         "sum({vRS} over (order by r data points between unbounded preceding and unbounded following))",
         "sum({vRS} over (order by r data points between current data point and 3 following))",
         "sum({vRS} over (order by r data points between 1 preceding and 2 following))",
@@ -112,6 +115,53 @@ def test_window_clause_frame_types(frame_type, expr):
     assert w.start.bound_type == "n_preceding"
     assert w.start.n == 2
     assert w.end.bound_type == "current_data_point"
+
+
+@pytest.mark.parametrize(
+    ("bound", "bound_type", "n", "period"),
+    [
+        ("11 M preceding", "n_preceding", 11, "M"),
+        ("2 Q following", "n_following", 2, "Q"),
+        ("1 A preceding", "n_preceding", 1, "A"),
+        ("1 S preceding", "n_preceding", 1, "S"),
+        ("1 W following", "n_following", 1, "W"),
+        ("1 D preceding", "n_preceding", 1, "D"),
+        ("3 preceding", "n_preceding", 3, None),
+    ],
+)
+def test_window_boundary_keeps_its_time_period(bound, bound_type, n, period):
+    ast = SyntaxService().parse(
+        f"sum({{vRS}} over (order by refPeriod range between {bound} "
+        "and current data point))"
+    )
+    start = ast.children[0].analytic_clause.window.start
+    assert start.bound_type == bound_type
+    assert start.n == n
+    assert start.period == period
+
+
+@pytest.mark.parametrize(
+    ("bounds", "start", "end"),
+    [
+        (
+            "23 M preceding and 12 M preceding",
+            ("n_preceding", 23, "M"),
+            ("n_preceding", 12, "M"),
+        ),
+        (
+            "11 M preceding and 2 M following",
+            ("n_preceding", 11, "M"),
+            ("n_following", 2, "M"),
+        ),
+    ],
+)
+def test_window_end_boundary_keeps_its_time_period(bounds, start, end):
+    ast = SyntaxService().parse(
+        f"avg({{vRS}} over (order by refPeriod range between {bounds}))"
+    )
+    window = ast.children[0].analytic_clause.window
+    for boundary, expected in ((window.start, start), (window.end, end)):
+        assert (boundary.bound_type, boundary.n, boundary.period) == expected
 
 
 def test_window_clause_unbounded():
@@ -240,6 +290,44 @@ def test_aggregation_serializes_window_frame(serialize_expr):
     assert window["frame_type"] == "data_points"
     assert window["start"] == {"bound_type": "n_preceding", "n": 1}
     assert window["end"] == {"bound_type": "n_following", "n": 2}
+
+
+def test_aggregation_serializes_window_period(serialize_expr):
+    """The period travels with its bound; bounds without one are unchanged."""
+    node = serialize_expr(
+        "avg({tT1, r001} over (order by refPeriod "
+        "range between 11 M preceding and current data point))"
+    )
+    window = node["analytic_clause"]["window"]
+    assert window["start"] == {
+        "bound_type": "n_preceding",
+        "n": 11,
+        "period": "M",
+    }
+    assert window["end"] == {"bound_type": "current_data_point"}
+
+
+def test_aggregation_serializes_end_window_period(serialize_expr):
+    node = serialize_expr(
+        "avg({tT1, r001} over (order by refPeriod "
+        "range between 23 M preceding and 12 M preceding))"
+    )
+    window = node["analytic_clause"]["window"]
+    assert window["end"] == {
+        "bound_type": "n_preceding",
+        "n": 12,
+        "period": "M",
+    }
+
+
+def test_window_boundary_tojson_includes_its_period():
+    ast = SyntaxService().parse(
+        "avg({vRS} over (order by refPeriod "
+        "range between 11 M preceding and current data point))"
+    )
+    window = ast.children[0].toJSON()["analytic_clause"]["window"]
+    assert window["start"]["period"] == "M"
+    assert "period" not in window["end"]
 
 
 def test_rank_payload_matches_sum_over_the_same_clause(serialize_expr):
