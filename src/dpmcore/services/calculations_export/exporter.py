@@ -125,6 +125,8 @@ class CalculationsExporter:
         )
         script = _build_expression(calculations)
         ast, operation_codes = self._parse(script, calculations)
+        # Operand checking needs ``X :=`` before ``{oX}``
+        operation_codes = self._order_by_dependency(ast, operation_codes)
         operands = CalculationsOperandsChecking(
             session,
             script,
@@ -138,7 +140,6 @@ class CalculationsExporter:
         # carries nothing the export needs -- and every later pass sees
         # fully-resolved VarIDs.
         unwrap_with_expressions(ast)
-        operation_codes = self._order_by_dependency(ast, operation_codes)
 
         dependencies = DependencyTableExtractor(session, release_id)
         dependencies.visit(ast)

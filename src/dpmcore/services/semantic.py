@@ -35,6 +35,7 @@ from dpmcore.services._precondition_codes import (
     extract_precondition_codes,
     gate_satisfiable,
 )
+from dpmcore.services.calculations_export.visitors import DAGAnalyzer
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -292,8 +293,10 @@ class SemanticService:
                 (``7-3``/``7-4``/``7-5``); a VID with nothing to check
                 against is accepted.
             is_scripting: Allows ``{oCODE}`` references to other rules'
-                ``:=`` names declared earlier in the same batch. Applies
-                to ``expression`` only, not the precondition.
+                ``:=`` names declared in the same batch. The statements
+                are validated in dependency order, so a name may be
+                declared after it is read. Applies to ``expression``
+                only, not the precondition.
         """
         try:
             resolved = self._resolve_release(release_id, release_code)
@@ -385,7 +388,8 @@ class SemanticService:
                 precondition gate, so the analyzer enforces a boolean result
                 (``2-1``) even though the expression itself contains no
                 precondition item.
-            is_scripting: Forwarded to ``OperandsChecking`` so ``{oCODE}``
+            is_scripting: Sorts the statements into dependency order,
+                then is forwarded to ``OperandsChecking`` so ``{oCODE}``
                 references are allowed and resolved batch-locally.
         """
         try:
@@ -395,6 +399,8 @@ class SemanticService:
                 # in ``visitLiteral``) are captured alongside the ones from
                 # the analyzer pass.
                 ast = self._syntax.parse(expression)
+                if is_scripting:
+                    DAGAnalyzer().create_dag(ast, check_overwriting=False)
                 self.ast = ast
 
                 oc = OperandsChecking(

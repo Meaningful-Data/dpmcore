@@ -82,7 +82,10 @@ class CalculationsOperandsChecking(OperandsChecking):
 
 
 class DAGAnalyzer(ASTTemplate):
-    """Reorders ``ast.children`` so producers precede their consumers."""
+    """Reorders ``ast.children`` so producers precede their consumers.
+
+    Applies ``with`` contexts itself, so it runs before operand checking.
+    """
 
     def __init__(self) -> None:
         """Start with an empty dependency map."""
@@ -91,12 +94,17 @@ class DAGAnalyzer(ASTTemplate):
         self.outputs: List[str] = []
         self.dependencies: Dict[int, Dict[str, List[str]]] = {}
         self.calculation_number = 1
+        self.partial_selection: Optional[VarID] = None
 
-    def create_dag(self, ast: Any) -> None:
+    def create_dag(self, ast: Any, *, check_overwriting: bool = True) -> None:
         """Reorder ``ast.children`` into dependency order, in place.
 
         Args:
             ast: The ``Start`` node holding the script's statements.
+            check_overwriting: Whether to reject two statements that
+                assign the same output. Semantic validation leaves it to
+                its own ``6-1`` check, which also catches overlapping
+                ranges.
 
         Raises:
             Invalid: If the calculations form a cycle, or two of them
@@ -132,7 +140,8 @@ class DAGAnalyzer(ASTTemplate):
         # about their order: run it even when nothing needs reordering,
         # or two independent calculations writing the same cell go
         # unreported.
-        self._check_overwriting(ast.children)
+        if check_overwriting:
+            self._check_overwriting(ast.children)
         if edges:
             self._sort_ast(ast, sorting)
 
@@ -259,18 +268,27 @@ class DAGAnalyzer(ASTTemplate):
         self.inputs.append(node.operation_code)
 
     def visit_WithExpression(self, node: WithExpression) -> None:
-        """Walk the guarded expression; the context itself is not an input."""
+        """Walk the guarded expression with its context applied."""
+        previous = self.partial_selection
+        self.partial_selection = node.partial_selection
         self.visit(node.expression)
+        self.partial_selection = previous
 
     def visit_VarID(self, node: VarID) -> None:
-        """Record the referenced cell as an input."""
-        self.inputs.append(self._cell_code(node))
+        """Record the referenced cell, completed by its context."""
+        self.inputs.append(self._cell_code(node, self.partial_selection))
 
     @staticmethod
-    def _cell_code(node: Any) -> str:
-        """Key a node by the cell (or variable) it denotes."""
+    def _cell_code(node: Any, context: Optional[VarID] = None) -> str:
+        """Key a cell, completed by its ``with`` context, or a variable."""
         if isinstance(node, VarID):
-            return f"t{node.table}-{node.rows}-{node.cols}-{node.sheets}"
+            table, rows, cols, sheets = (
+                getattr(node, attribute)
+                if getattr(node, attribute) is not None or context is None
+                else getattr(context, attribute)
+                for attribute in ("table", "rows", "cols", "sheets")
+            )
+            return f"t{table}-{rows}-{cols}-{sheets}"
         return str(node.variable)
 
 
