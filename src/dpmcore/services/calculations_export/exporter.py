@@ -126,7 +126,9 @@ class CalculationsExporter:
         script = _build_expression(calculations)
         ast, operation_codes = self._parse(script, calculations)
         # Operand checking needs ``X :=`` before ``{oX}``
-        operation_codes = self._order_by_dependency(ast, operation_codes)
+        operation_codes = self._order_by_dependency(
+            ast, operation_codes, release_id
+        )
         operands = CalculationsOperandsChecking(
             session,
             script,
@@ -278,15 +280,18 @@ class CalculationsExporter:
             )
         return ast, [calc["operation_code"] for calc in calculations]
 
-    @staticmethod
     def _order_by_dependency(
-        ast: Any, operation_codes: List[Optional[str]]
+        self,
+        ast: Any,
+        operation_codes: List[Optional[str]],
+        release_id: Optional[int],
     ) -> List[Optional[str]]:
         """Reorder the script into dependency order, codes in lockstep.
 
         Args:
             ast: The parsed script; reordered in place.
             operation_codes: Codes positionally matching ``ast.children``.
+            release_id: Release the cell selections are resolved against.
 
         Returns:
             The codes in the new statement order.
@@ -297,7 +302,9 @@ class CalculationsExporter:
             id(child): code
             for child, code in zip(ast.children, operation_codes, strict=True)
         }
-        DAGAnalyzer().create_dag(ast)
+        DAGAnalyzer(
+            self.session, release_id, live_table_versions=True
+        ).create_dag(ast)
         return [code_by_child.get(id(child)) for child in ast.children]
 
     def _dependency_modules(

@@ -46,7 +46,7 @@ from dpmcore.dpm_xl.utils.serialization import (
     NodeDict,
     NodeValue,
 )
-from dpmcore.errors import InternalError, Invalid
+from dpmcore.errors import InternalError, Invalid, SemanticError
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -85,11 +85,29 @@ class DAGAnalyzer(ASTTemplate):
     """Reorders ``ast.children`` so producers precede their consumers.
 
     Applies ``with`` contexts itself, so it runs before operand checking.
+    A cell selection is keyed cell by cell, so a range, a list or a
+    wildcard read is linked to the statement writing any cell in it.
     """
 
-    def __init__(self) -> None:
-        """Start with an empty dependency map."""
+    def __init__(
+        self,
+        session: Optional[Session] = None,
+        release_id: Optional[int] = None,
+        live_table_versions: bool = False,
+    ) -> None:
+        """Start with an empty dependency map.
+
+        Args:
+            session: Resolves each selection into the cells it holds.
+                Without one, a selection is keyed as written.
+            release_id: Release the selections are resolved against.
+            live_table_versions: Forwarded to
+                :meth:`ViewDatapointsQuery.get_table_data`.
+        """
         super().__init__()
+        self.session = session
+        self.release_id = release_id
+        self.live_table_versions = live_table_versions
         self.inputs: List[str] = []
         self.outputs: List[str] = []
         self.dependencies: Dict[int, Dict[str, List[str]]] = {}
@@ -107,8 +125,8 @@ class DAGAnalyzer(ASTTemplate):
                 ranges.
 
         Raises:
-            Invalid: If the calculations form a cycle, or two of them
-                assign the same output.
+            SemanticError: ``6-4`` if the calculations form a cycle.
+            Invalid: If two calculations assign the same output.
             InternalError: If the reordering would lose a statement.
         """
         self.visit(ast)
@@ -145,9 +163,8 @@ class DAGAnalyzer(ASTTemplate):
         if edges:
             self._sort_ast(ast, sorting)
 
-    @staticmethod
     def _topological_sort(
-        nodes: List[int], edges: List[tuple[int, int]]
+        self, nodes: List[int], edges: List[tuple[int, int]]
     ) -> List[int]:
         """Kahn's algorithm, FIFO in node insertion order.
 
@@ -159,7 +176,7 @@ class DAGAnalyzer(ASTTemplate):
             The statement numbers in dependency order.
 
         Raises:
-            Invalid: If the graph has a cycle.
+            SemanticError: ``6-4`` if the graph has a cycle.
         """
         indegree = dict.fromkeys(nodes, 0)
         successors: Dict[int, List[int]] = {n: [] for n in nodes}
@@ -177,14 +194,38 @@ class DAGAnalyzer(ASTTemplate):
                 if indegree[m] == 0:
                     queue.append(m)
         if len(order) != len(nodes):
-            raise Invalid(
-                title="Cyclic calculations",
-                description=(
-                    "The module's calculations depend on each other in a "
-                    "cycle, so no evaluation order exists."
-                ),
+            op1, op2 = self._cycle_edge(
+                [n for n in nodes if indegree[n] > 0], edges
+            )
+            raise SemanticError(
+                "6-4",
+                op1=self.dependencies[op1]["outputs"][0],
+                op2=self.dependencies[op2]["outputs"][0],
             )
         return order
+
+    @staticmethod
+    def _cycle_edge(
+        unsorted: List[int], edges: List[tuple[int, int]]
+    ) -> tuple[int, int]:
+        """Two consecutive statements on a cycle among *unsorted*.
+
+        Each unsorted statement is fed by another unsorted one, so
+        walking back from any of them ends on a cycle.
+
+        Returns:
+            ``(statement, producer)``, both on the cycle.
+        """
+        remaining = set(unsorted)
+        producer = {
+            b: a for a, b in edges if a in remaining and b in remaining
+        }
+        met: Set[int] = set()
+        node = unsorted[0]
+        while node not in met:
+            met.add(node)
+            node = producer[node]
+        return node, producer[node]
 
     def _sort_ast(self, ast: Any, sorting: List[int]) -> None:
         """Apply the computed order to ``ast.children``.
@@ -254,8 +295,8 @@ class DAGAnalyzer(ASTTemplate):
             self.outputs = []
 
     def visit_PersistentAssignment(self, node: PersistentAssignment) -> None:
-        """Record the assigned cell as an output."""
-        self.outputs.append(self._cell_code(node.left))
+        """Record the assigned cells as outputs."""
+        self.outputs.extend(self._cells(node.left))
         self.visit(node.right)
 
     def visit_TemporaryAssignment(self, node: TemporaryAssignment) -> None:
@@ -275,21 +316,48 @@ class DAGAnalyzer(ASTTemplate):
         self.partial_selection = previous
 
     def visit_VarID(self, node: VarID) -> None:
-        """Record the referenced cell, completed by its context."""
-        self.inputs.append(self._cell_code(node, self.partial_selection))
+        """Record the referenced cells, completed by their context."""
+        self.inputs.extend(self._cells(node, self.partial_selection))
+
+    def _cells(self, node: Any, context: Optional[VarID] = None) -> List[str]:
+        """Key each cell a selection holds, completed by its context.
+
+        A table selection is resolved against the database; anything
+        else is keyed as written.
+        """
+        if self.session is not None and isinstance(node, VarID):
+            table, rows, cols, sheets = self._completed(node, context)
+            if table and not node.is_table_group:
+                data = ViewDatapointsQuery.get_table_data(
+                    self.session,
+                    table,
+                    rows,
+                    cols,
+                    sheets,
+                    self.release_id,
+                    live_table_versions=self.live_table_versions,
+                )
+                if not data.empty:
+                    return list(data["cell_code"])
+        return [self._cell_code(node, context)]
 
     @staticmethod
     def _cell_code(node: Any, context: Optional[VarID] = None) -> str:
         """Key a cell, completed by its ``with`` context, or a variable."""
         if isinstance(node, VarID):
-            table, rows, cols, sheets = (
-                getattr(node, attribute)
-                if getattr(node, attribute) is not None or context is None
-                else getattr(context, attribute)
-                for attribute in ("table", "rows", "cols", "sheets")
-            )
+            table, rows, cols, sheets = DAGAnalyzer._completed(node, context)
             return f"t{table}-{rows}-{cols}-{sheets}"
         return str(node.variable)
+
+    @staticmethod
+    def _completed(node: VarID, context: Optional[VarID]) -> tuple[Any, ...]:
+        """The node's table, rows, cols and sheets, gaps from *context*."""
+        return tuple(
+            getattr(node, attribute)
+            if getattr(node, attribute) is not None or context is None
+            else getattr(context, attribute)
+            for attribute in ("table", "rows", "cols", "sheets")
+        )
 
 
 class OutputExtractor(ASTTemplate):

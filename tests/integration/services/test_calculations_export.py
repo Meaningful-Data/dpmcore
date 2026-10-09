@@ -587,6 +587,28 @@ class TestDependencyOrderBeforeOperandChecking:
 
         assert ns["calculations"]["operation_codes"] == ["c_0001", "c_0002"]
 
+    @pytest.mark.parametrize(
+        "selection", ["r0020-0030", "(r0020, r0030)", "r*"]
+    )
+    def test_a_cell_read_inside_a_selection_is_ordered(
+        self, calc_session, selection
+    ):
+        """c_0001 reads c_0002's output r0030 only within a selection."""
+        _set_expression(
+            calc_session,
+            100,
+            f"{{t{HOME_TABLE}, r0010, c{COLUMN}}} <- "
+            f"sum({{t{HOME_TABLE}, {selection}, c{COLUMN}}})",
+        )
+
+        ns = _namespace(
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+        )
+
+        assert ns["calculations"]["operation_codes"] == ["c_0002", "c_0001"]
+
 
 class TestOperationVersionWindow:
     """Only the operation version effective at the export's release."""

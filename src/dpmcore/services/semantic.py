@@ -400,7 +400,9 @@ class SemanticService:
                 # the analyzer pass.
                 ast = self._syntax.parse(expression)
                 if is_scripting:
-                    DAGAnalyzer().create_dag(ast, check_overwriting=False)
+                    DAGAnalyzer(self.session, release_id).create_dag(
+                        ast, check_overwriting=False
+                    )
                 self.ast = ast
 
                 oc = OperandsChecking(

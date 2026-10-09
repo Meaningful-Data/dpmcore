@@ -3,6 +3,8 @@ tests, which stub ``_validate_resolved`` and never build a real
 ``OperandsChecking``.
 """
 
+import pytest
+
 from dpmcore.services.dpm_xl import DpmXlService
 from dpmcore.services.semantic import SemanticService
 
@@ -99,15 +101,35 @@ def test_an_unknown_operation_is_still_reported_as_1_8(fixture_session):
     )
 
 
-def test_a_cycle_between_operations_is_reported(fixture_session):
+def test_a_cycle_between_operations_is_reported_as_6_4(fixture_session):
     result = SemanticService(fixture_session).validate(
         "t1 := {ot2} + 1; t2 := {ot1} + 1;", is_scripting=True
     )
     assert not result.is_valid
-    assert result.error_code == "UNKNOWN"
+    assert result.error_code == "6-4"
     assert result.error_message == (
-        "Cyclic calculations: The module's calculations depend on each "
-        "other in a cycle, so no evaluation order exists."
+        "Circular reference between operations t1 and t2. Try removing or "
+        "changing these references."
+    )
+
+
+@pytest.mark.parametrize("selection", ["r0020-0030", "(r0020, r0030)", "r*"])
+def test_a_cycle_through_a_cell_inside_a_selection_is_reported_as_6_4(
+    fixture_session, selection
+):
+    # r0030 is written by the second statement and only read inside the
+    # first one's selection: the DAG has to match it cell by cell.
+    result = SemanticService(fixture_session).validate(
+        f"{{tF_01.01, r0010, c0010}} <- sum({{tF_01.01, {selection}, c0010}});"
+        " {tF_01.01, r0030, c0010} <- {tF_01.01, r0010, c0010};",
+        release_code="4.2.1",
+        is_scripting=True,
+    )
+    assert not result.is_valid
+    assert result.error_code == "6-4"
+    assert result.error_message == (
+        "Circular reference between operations {F_01.01, r0010, c0010} and "
+        "{F_01.01, r0030, c0010}. Try removing or changing these references."
     )
 
 

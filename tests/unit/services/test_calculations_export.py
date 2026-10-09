@@ -15,7 +15,7 @@ import pandas as pd
 import pytest
 
 from dpmcore.dpm_xl.ast.nodes import Constant, VarID
-from dpmcore.errors import Invalid
+from dpmcore.errors import Invalid, SemanticError
 from dpmcore.services.calculations_export.exporter import (
     CalculationsExporter,
     _build_datapoint_mapping,
@@ -126,10 +126,29 @@ class TestDAGAnalyzer:
         )
 
         with pytest.raises(
-            Invalid,
+            SemanticError,
             match=re.escape(
-                "Cyclic calculations: The module's calculations depend on "
-                "each other in a cycle, so no evaluation order exists."
+                "Circular reference between operations "
+                "tA-['0010']-['0010']-None and tA-['0020']-['0010']-None. "
+                "Try removing or changing these references."
+            ),
+        ) as excinfo:
+            DAGAnalyzer().create_dag(ast)
+        assert excinfo.value.code == "6-4"
+
+    def test_a_cycle_is_reported_by_two_of_its_statements(self):
+        """A statement fed by the cycle, but not on it, is not named."""
+        ast = _parse(
+            f"{_CELL_C} <- {_CELL_A} + 1;\n"
+            f"{_CELL_A} <- {_CELL_B} + 1;\n"
+            f"{_CELL_B} <- {_CELL_A} + 1;"
+        )
+
+        with pytest.raises(
+            SemanticError,
+            match=re.escape(
+                "Circular reference between operations "
+                "tA-['0010']-['0010']-None and tA-['0020']-['0010']-None."
             ),
         ):
             DAGAnalyzer().create_dag(ast)
