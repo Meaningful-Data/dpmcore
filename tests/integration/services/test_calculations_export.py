@@ -16,12 +16,17 @@ dependency module the calculations read from. Byte parity with the EBA
 
 from __future__ import annotations
 
+import re
 from datetime import date
 
 import pytest
 from sqlalchemy import text
 
-from dpmcore.errors import ConfigurationError, NotFound
+from dpmcore.errors import (
+    ConfigurationError,
+    NotFound,
+    SemanticError,
+)
 from dpmcore.orm.glossary import Property
 from dpmcore.orm.infrastructure import DataType, Release
 from dpmcore.orm.operations import (
@@ -529,6 +534,125 @@ class TestWithExpressions:
         # legal. A leaked context would silently graft c0010 onto it.
         assert checker.tables[HOME_TABLE]["cols"] is None
         assert checker.partial_selection is None
+
+
+def _set_expression(session, operation_vid, expression):
+    session.query(OperationVersion).filter(
+        OperationVersion.operation_vid == operation_vid
+    ).update({OperationVersion.expression: expression})
+    session.commit()
+
+
+class TestDependencyOrderBeforeOperandChecking:
+    """The script is sorted before its operands are resolved."""
+
+    def test_an_operation_assigned_by_a_later_version_is_found(
+        self, calc_session
+    ):
+        """``{oX}`` read by c_0001 (VID 100), assigned by VID 101."""
+        _set_expression(
+            calc_session,
+            100,
+            f"{{t{HOME_TABLE}, r0020, c{COLUMN}}} <- {{oX}} + 1",
+        )
+        _set_expression(
+            calc_session,
+            101,
+            f"X := {{t{DEP_TABLE}, r0010, c{COLUMN}}} * 2",
+        )
+
+        ns = _namespace(
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+        )
+
+        assert ns["calculations"]["operation_codes"] == ["c_0002", "c_0001"]
+        # The statements move with their codes
+        assign_x, read_x = ns["calculations"]["ast"]["children"]
+        assert assign_x["class_name"] == "TemporaryAssignment"
+        assert assign_x["left"]["value"] == "X"
+        assert read_x["class_name"] == "PersistentAssignment"
+        assert read_x["left"]["row"] == "0020"
+
+    def test_a_cell_read_through_a_with_context_is_ordered(self, calc_session):
+        """c_0002 reads c_0001's output only through its ``with``."""
+        _set_expression(
+            calc_session,
+            101,
+            f"{{t{HOME_TABLE}, r0030, c{COLUMN}}} <- "
+            f"with {{t{HOME_TABLE}, c{COLUMN}}}: {{r0020}} * 2",
+        )
+
+        ns = _namespace(
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+        )
+
+        assert ns["calculations"]["operation_codes"] == ["c_0001", "c_0002"]
+
+    @pytest.mark.parametrize(
+        "selection", ["r0020-0030", "(r0020, r0030)", "r*"]
+    )
+    def test_a_cell_read_inside_a_selection_is_ordered(
+        self, calc_session, selection
+    ):
+        """c_0001 reads c_0002's output r0030 only within a selection."""
+        _set_expression(
+            calc_session,
+            100,
+            f"{{t{HOME_TABLE}, r0010, c{COLUMN}}} <- "
+            f"sum({{t{HOME_TABLE}, {selection}, c{COLUMN}}})",
+        )
+
+        ns = _namespace(
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+        )
+
+        assert ns["calculations"]["operation_codes"] == ["c_0002", "c_0001"]
+
+
+class TestDependencyErrors:
+    def test_a_cycle_is_reported_by_its_operation_codes(self, calc_session):
+        """c_0001 and c_0002 each read the cell the other writes."""
+        _set_expression(
+            calc_session,
+            100,
+            f"{{t{HOME_TABLE}, r0020, c{COLUMN}}} <- "
+            f"{{t{HOME_TABLE}, r0030, c{COLUMN}}} + 1",
+        )
+
+        with pytest.raises(
+            SemanticError,
+            match=re.escape(
+                "Circular reference between operations c_0001 and c_0002."
+            ),
+        ):
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+
+    def test_a_cell_written_inside_a_range_is_an_overwrite(self, calc_session):
+        """c_0002 writes r0020-0030, c_0001 writes r0020 on its own."""
+        _set_expression(
+            calc_session,
+            101,
+            f"{{t{HOME_TABLE}, r0020-0030, c{COLUMN}}} <- 1",
+        )
+
+        with pytest.raises(
+            SemanticError,
+            match=re.escape(
+                "Overwriting a variable is not allowed, trying it with "
+                f"{{{HOME_TABLE}, r0020, c{COLUMN}}}."
+            ),
+        ):
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
 
 
 class TestOperationVersionWindow:
