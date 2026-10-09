@@ -110,6 +110,8 @@ class CalculationsExporter:
                 be resolved.
             Invalid: If the parsed script does not have one statement
                 per calculation.
+            SemanticError: ``6-4`` if the calculations form a cycle, or
+                ``6-1`` if two of them assign the same output.
         """
         session = self.session
         module_vid = get_module_version_id(

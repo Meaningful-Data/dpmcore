@@ -87,7 +87,8 @@ class DpmXlService:
         ``release_id=5``.
 
         ``is_scripting`` allows ``{oCODE}`` references to other rules'
-        ``:=`` names declared earlier in the same batch.
+        ``:=`` names declared in the same batch, before or after the
+        reference.
         """
         if self.semantic is None:
             raise RuntimeError("No database session provided.")

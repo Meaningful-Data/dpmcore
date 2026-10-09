@@ -128,8 +128,8 @@ class DAGAnalyzer(ASTTemplate):
             ast: The ``Start`` node holding the script's statements.
             check_overwriting: Whether to reject two statements that
                 assign the same output. Semantic validation leaves it to
-                the analyzer's ``6-1`` check, which also compares a table
-                group with its member tables.
+                the analyzer's ``6-1`` check, so it reports overwriting
+                the same way with or without scripting.
             operation_codes: The code of each statement, positionally
                 matching ``ast.children``, to name the statements of a
                 cycle. Without one, a statement is named by its first
