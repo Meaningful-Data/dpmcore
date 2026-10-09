@@ -26,6 +26,7 @@ from dpmcore.errors import (
     ConfigurationError,
     Invalid,
     NotFound,
+    SemanticError,
 )
 from dpmcore.orm.glossary import Property
 from dpmcore.orm.infrastructure import DataType, Release
@@ -616,6 +617,25 @@ class TestDependencyOrderBeforeOperandChecking:
 
 
 class TestDependencyErrors:
+    def test_a_cycle_is_reported_by_its_operation_codes(self, calc_session):
+        """c_0001 and c_0002 each read the cell the other writes."""
+        _set_expression(
+            calc_session,
+            100,
+            f"{{t{HOME_TABLE}, r0020, c{COLUMN}}} <- "
+            f"{{t{HOME_TABLE}, r0030, c{COLUMN}}} + 1",
+        )
+
+        with pytest.raises(
+            SemanticError,
+            match=re.escape(
+                "Circular reference between operations c_0001 and c_0002."
+            ),
+        ):
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+
     def test_a_cell_written_inside_a_range_is_an_overwrite(self, calc_session):
         """c_0002 writes r0020-0030, c_0001 writes r0020 on its own."""
         _set_expression(

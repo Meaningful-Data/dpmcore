@@ -153,6 +153,23 @@ class TestDAGAnalyzer:
         ):
             DAGAnalyzer().create_dag(ast)
 
+    def test_a_cycle_is_reported_by_its_operation_codes(self):
+        ast = _parse(
+            f"{_CELL_C} <- {_CELL_A} + 1;\n"
+            f"{_CELL_A} <- {_CELL_B} + 1;\n"
+            f"{_CELL_B} <- {_CELL_A} + 1;"
+        )
+
+        with pytest.raises(
+            SemanticError,
+            match=re.escape(
+                "Circular reference between operations c_0002 and c_0003."
+            ),
+        ):
+            DAGAnalyzer().create_dag(
+                ast, operation_codes=["c_0001", "c_0002", "c_0003"]
+            )
+
     def test_assigning_the_same_output_twice_is_reported(self):
         ast = _parse(
             f"{_CELL_A} <- 1;\n{_CELL_A} <- 2;\n{_CELL_B} <- {_CELL_A} + 1;"

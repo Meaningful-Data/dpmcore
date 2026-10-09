@@ -304,7 +304,7 @@ class CalculationsExporter:
         }
         DAGAnalyzer(
             self.session, release_id, live_table_versions=True
-        ).create_dag(ast)
+        ).create_dag(ast, operation_codes=operation_codes)
         return [code_by_child.get(id(child)) for child in ast.children]
 
     def _dependency_modules(

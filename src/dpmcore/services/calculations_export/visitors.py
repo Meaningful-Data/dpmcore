@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Set
 
 import pandas as pd
 
@@ -113,8 +113,15 @@ class DAGAnalyzer(ASTTemplate):
         self.dependencies: Dict[int, Dict[str, List[str]]] = {}
         self.calculation_number = 1
         self.partial_selection: Optional[VarID] = None
+        self.operation_codes: Optional[Sequence[Optional[str]]] = None
 
-    def create_dag(self, ast: Any, *, check_overwriting: bool = True) -> None:
+    def create_dag(
+        self,
+        ast: Any,
+        *,
+        check_overwriting: bool = True,
+        operation_codes: Optional[Sequence[Optional[str]]] = None,
+    ) -> None:
         """Reorder ``ast.children`` into dependency order, in place.
 
         Args:
@@ -123,12 +130,17 @@ class DAGAnalyzer(ASTTemplate):
                 assign the same output. Semantic validation leaves it to
                 its own ``6-1`` check, which also catches overlapping
                 ranges.
+            operation_codes: The code of each statement, positionally
+                matching ``ast.children``, to name the statements of a
+                cycle. Without one, a statement is named by its first
+                output.
 
         Raises:
             SemanticError: ``6-4`` if the calculations form a cycle.
             Invalid: If two calculations assign the same output.
             InternalError: If the reordering would lose a statement.
         """
+        self.operation_codes = operation_codes
         self.visit(ast)
 
         # Every statement is a vertex, including one that assigns
@@ -198,11 +210,17 @@ class DAGAnalyzer(ASTTemplate):
                 [n for n in nodes if indegree[n] > 0], edges
             )
             raise SemanticError(
-                "6-4",
-                op1=self.dependencies[op1]["outputs"][0],
-                op2=self.dependencies[op2]["outputs"][0],
+                "6-4", op1=self._name(op1), op2=self._name(op2)
             )
         return order
+
+    def _name(self, statement: int) -> str:
+        """The statement's operation code, or else its first output."""
+        if self.operation_codes is not None:
+            code = self.operation_codes[statement - 1]
+            if code is not None:
+                return code
+        return self.dependencies[statement]["outputs"][0]
 
     @staticmethod
     def _cycle_edge(
