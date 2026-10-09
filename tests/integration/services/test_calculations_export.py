@@ -16,12 +16,17 @@ dependency module the calculations read from. Byte parity with the EBA
 
 from __future__ import annotations
 
+import re
 from datetime import date
 
 import pytest
 from sqlalchemy import text
 
-from dpmcore.errors import ConfigurationError, NotFound
+from dpmcore.errors import (
+    ConfigurationError,
+    Invalid,
+    NotFound,
+)
 from dpmcore.orm.glossary import Property
 from dpmcore.orm.infrastructure import DataType, Release
 from dpmcore.orm.operations import (
@@ -608,6 +613,27 @@ class TestDependencyOrderBeforeOperandChecking:
         )
 
         assert ns["calculations"]["operation_codes"] == ["c_0002", "c_0001"]
+
+
+class TestDependencyErrors:
+    def test_a_cell_written_inside_a_range_is_an_overwrite(self, calc_session):
+        """c_0002 writes r0020-0030, c_0001 writes r0020 on its own."""
+        _set_expression(
+            calc_session,
+            101,
+            f"{{t{HOME_TABLE}, r0020-0030, c{COLUMN}}} <- 1",
+        )
+
+        with pytest.raises(
+            Invalid,
+            match=re.escape(
+                f"Output {{{HOME_TABLE}, r0020, c{COLUMN}}} is assigned by "
+                "more than one calculation."
+            ),
+        ):
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
 
 
 class TestOperationVersionWindow:

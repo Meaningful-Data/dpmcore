@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Set
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 import pandas as pd
 
@@ -135,31 +135,31 @@ class DAGAnalyzer(ASTTemplate):
         # nothing: leaving it out would drop it from the reordered
         # script instead of merely leaving it unconstrained.
         vertex = list(self.dependencies)
-        edges = []
+        # Indexed by cell, so each input is looked up once.
+        producers: Dict[str, List[int]] = {}
         for key, calc in self.dependencies.items():
-            # Every output, not just the first: a statement with more
-            # than one would otherwise have its remaining outputs left
-            # unconstrained, and which one survived depended on set
-            # iteration order.
             for output in calc["outputs"]:
-                for sub_key, sub_calc in self.dependencies.items():
+                producers.setdefault(output, []).append(key)
+        # One edge per producer, not one per cell read from it.
+        edges: Dict[tuple[int, int], None] = {}
+        for key, calc in self.dependencies.items():
+            for cell in calc["inputs"]:
+                for producer in producers.get(cell, ()):
                     # Never against itself. A statement that reads the
                     # cell it writes -- a time_shift carry-forward reads
                     # the previous period -- is not a cycle, but a
                     # self-edge keeps its own indegree above zero and
                     # Kahn's algorithm reports one.
-                    if sub_key == key:
-                        continue
-                    if output in sub_calc["inputs"]:
-                        edges.append((key, sub_key))
+                    if producer != key:
+                        edges[(producer, key)] = None
 
-        sorting = self._topological_sort(vertex, edges)
+        sorting = self._topological_sort(vertex, list(edges))
         # The overwrite check is about the statements themselves, not
         # about their order: run it even when nothing needs reordering,
         # or two independent calculations writing the same cell go
         # unreported.
         if check_overwriting:
-            self._check_overwriting(ast.children)
+            self._check_overwriting(producers)
         if edges:
             self._sort_ast(ast, sorting)
 
@@ -250,33 +250,28 @@ class DAGAnalyzer(ASTTemplate):
             )
         ast.children = ordered
 
-    def _check_overwriting(self, outputs: Sequence[Any]) -> None:
+    @staticmethod
+    def _check_overwriting(producers: Dict[str, List[int]]) -> None:
         """Raise if two statements assign the same output.
 
+        The outputs are compared cell by cell, so a range and a single
+        cell inside it writing the same cell are caught too.
+
         Args:
-            outputs: The reordered statements.
+            producers: The statements assigning each output.
 
         Raises:
             Invalid: If an output is assigned more than once.
         """
-        seen: Set[str] = set()
-        for output in outputs:
-            value = None
-            if isinstance(output, TemporaryAssignment):
-                value = output.left.value
-            elif isinstance(output, PersistentAssignment):
-                value = self._cell_code(output.left)
-            if value is None:
-                continue
-            if value in seen:
+        for output, statements in producers.items():
+            if len(statements) > 1:
                 raise Invalid(
                     title="Duplicate calculation output",
                     description=(
-                        f"Output {value} is assigned by more than one "
+                        f"Output {output} is assigned by more than one "
                         "calculation."
                     ),
                 )
-            seen.add(value)
 
     def visit_Start(self, node: Any) -> None:
         """Record one dependency entry per statement."""
