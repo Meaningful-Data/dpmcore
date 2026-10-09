@@ -128,8 +128,8 @@ class DAGAnalyzer(ASTTemplate):
             ast: The ``Start`` node holding the script's statements.
             check_overwriting: Whether to reject two statements that
                 assign the same output. Semantic validation leaves it to
-                its own ``6-1`` check, which also catches overlapping
-                ranges.
+                the analyzer's ``6-1`` check, which also compares a table
+                group with its member tables.
             operation_codes: The code of each statement, positionally
                 matching ``ast.children``, to name the statements of a
                 cycle. Without one, a statement is named by its first
@@ -137,7 +137,8 @@ class DAGAnalyzer(ASTTemplate):
 
         Raises:
             SemanticError: ``6-4`` if the calculations form a cycle.
-            Invalid: If two calculations assign the same output.
+            SemanticError: ``6-1`` if two calculations assign the same
+                output.
             InternalError: If the reordering would lose a statement.
         """
         self.operation_codes = operation_codes
@@ -279,17 +280,12 @@ class DAGAnalyzer(ASTTemplate):
             producers: The statements assigning each output.
 
         Raises:
-            Invalid: If an output is assigned more than once.
+            SemanticError: ``6-1`` if an output is assigned more than
+                once.
         """
         for output, statements in producers.items():
             if len(statements) > 1:
-                raise Invalid(
-                    title="Duplicate calculation output",
-                    description=(
-                        f"Output {output} is assigned by more than one "
-                        "calculation."
-                    ),
-                )
+                raise SemanticError("6-1", variable=output)
 
     def visit_Start(self, node: Any) -> None:
         """Record one dependency entry per statement."""

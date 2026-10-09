@@ -15,7 +15,7 @@ import pandas as pd
 import pytest
 
 from dpmcore.dpm_xl.ast.nodes import Constant, VarID
-from dpmcore.errors import Invalid, SemanticError
+from dpmcore.errors import SemanticError
 from dpmcore.services.calculations_export.exporter import (
     CalculationsExporter,
     _build_datapoint_mapping,
@@ -176,11 +176,10 @@ class TestDAGAnalyzer:
         )
 
         with pytest.raises(
-            Invalid,
+            SemanticError,
             match=re.escape(
-                "Duplicate calculation output: Output "
-                "tA-['0010']-['0010']-None is assigned by more than one "
-                "calculation."
+                "Overwriting a variable is not allowed, trying it with "
+                "tA-['0010']-['0010']-None."
             ),
         ):
             DAGAnalyzer().create_dag(ast)
@@ -195,11 +194,10 @@ class TestDAGAnalyzer:
         ast = _parse(f"{_CELL_A} <- 1;\n{_CELL_A} <- 2;")
 
         with pytest.raises(
-            Invalid,
+            SemanticError,
             match=re.escape(
-                "Duplicate calculation output: Output "
-                "tA-['0010']-['0010']-None is assigned by more than one "
-                "calculation."
+                "Overwriting a variable is not allowed, trying it with "
+                "tA-['0010']-['0010']-None."
             ),
         ):
             DAGAnalyzer().create_dag(ast)

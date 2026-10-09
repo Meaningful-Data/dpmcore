@@ -24,7 +24,6 @@ from sqlalchemy import text
 
 from dpmcore.errors import (
     ConfigurationError,
-    Invalid,
     NotFound,
     SemanticError,
 )
@@ -645,10 +644,10 @@ class TestDependencyErrors:
         )
 
         with pytest.raises(
-            Invalid,
+            SemanticError,
             match=re.escape(
-                f"Output {{{HOME_TABLE}, r0020, c{COLUMN}}} is assigned by "
-                "more than one calculation."
+                "Overwriting a variable is not allowed, trying it with "
+                f"{{{HOME_TABLE}, r0020, c{COLUMN}}}."
             ),
         ):
             ASTGeneratorService(calc_session).calculations_for_module(
