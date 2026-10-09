@@ -11,6 +11,7 @@ from dpmcore.dpm_xl.ast.ml_generation import MLGeneration
 from dpmcore.dpm_xl.ast.nodes import (
     AggregationOp,
     AnalyticClause,
+    BinOp,
     Constant,
     CountSetOp,
     Dimension,
@@ -20,6 +21,8 @@ from dpmcore.dpm_xl.ast.nodes import (
     Set,
     SetdiffOp,
     SetOfOp,
+    SubAssignment,
+    SubOp,
     SubstrOp,
     SymdiffOp,
     UnionSetOp,
@@ -182,6 +185,49 @@ def test_visit_count_set_op_walks_operand(ml_generation):
     assert ml_generation.create_operation_node.call_count == 1
     assert len(visited) == 1
     assert visited[0].argument == "operand"
+
+
+def test_visit_sub_op_stores_the_substitution_as_a_condition(ml_generation):
+    """``sub`` is stored like ``where``: an ``operand`` and a ``condition``
+    equating the component to the value. The ``Sub`` operator has no
+    ``value`` argument.
+    """
+    operand = _int_constant(1)
+    value = _int_constant(2)
+    node = SubOp(operand, [SubAssignment("LCF", value)])
+
+    visited = _visit_and_capture(ml_generation, "visit_SubOp", node)
+
+    assert ml_generation.create_operation_node.call_count == 1
+    assert visited[0] is operand
+    assert visited[0].argument == "operand"
+    condition = visited[1]
+    assert isinstance(condition, BinOp)
+    assert condition.argument == "condition"
+    assert condition.parent is node
+    assert condition.op == "="
+    assert condition.left.dimension_code == "LCF"
+    assert condition.right is value
+
+
+def test_visit_sub_op_chains_one_sub_per_substitution(ml_generation):
+    """``X[sub a=1, b=2]`` is ``X[sub a=1][sub b=2]``: the outer ``sub``
+    holds the last substitution, its operand the earlier ones.
+    """
+    operand = _int_constant(1)
+    first = SubAssignment("A", _int_constant(2))
+    second = SubAssignment("B", _int_constant(3))
+    node = SubOp(operand, [first, second])
+
+    visited = _visit_and_capture(ml_generation, "visit_SubOp", node)
+
+    inner, condition = visited
+    assert isinstance(inner, SubOp)
+    assert inner.argument == "operand"
+    assert inner.operand is operand
+    assert inner.substitutions == [first]
+    assert condition.left.dimension_code == "B"
+    assert condition.right is second.value
 
 
 def test_visit_empty_set_creates_leaf_without_operand_refs(ml_generation):
