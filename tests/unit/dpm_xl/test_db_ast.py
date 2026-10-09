@@ -530,6 +530,18 @@ class TestLeaves:
             "dimension_code": "BASE",
         }
 
+    @pytest.mark.parametrize("code", ["refPeriod", "entityID", "baseCurrency"])
+    def test_contextual_dimension_leaf(self, session, code):
+        _add_node(session, 2, is_leaf=True)
+        _add_ref(session, 1, node_id=2, kind=code)
+        _wrap_unary(session, 2)
+
+        ast_dict, _ = _build(session)
+        assert ast_dict["operand"] == {
+            "class_name": "Dimension",
+            "dimension_code": code,
+        }
+
     def test_scalar_leaf(self, session):
         _add_item_category(session, 700, code="i1", signature="sig1")
         _add_node(session, 2, is_leaf=True)
