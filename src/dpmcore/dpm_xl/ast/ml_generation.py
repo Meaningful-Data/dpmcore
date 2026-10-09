@@ -630,21 +630,21 @@ class MLGeneration(ASTTemplate):
         self.session.add(new_operand_ref)
 
     def visit_SubOp(self, node: SubOp) -> None:
-        node.op = "sub"
-        operand_node = self.create_operation_node(node)
-        node.operand.parent = operand_node
-        node.operand.argument = "operand"
-        self.visit(node.operand)
+        # Stored like ``where``. ``X[sub a=1, b=2]`` is ``X[sub a=1][sub b=2]``.
+        *previous, last = node.substitutions
+        operand = SubOp(node.operand, previous) if previous else node.operand
+        condition = BinOp(
+            left=Dimension(last.property_code), op="=", right=last.value
+        )
 
-        # Every substitution value shares ``argument="value"`` against the
-        # same parent ``operand_node``. This matches ``visit_ComplexNumericOp``
-        # (which reuses ``argument="operand"`` for its children) and relies on
-        # the ``Sub`` operator's ``OperatorArgument`` row for ``value`` being
-        # used by all child OperationNodes; each child is still a distinct row.
-        for sub in node.substitutions:
-            sub.value.parent = operand_node
-            sub.value.argument = "value"
-            self.visit(sub.value)
+        node.op = "sub"
+        sub_node = self.create_operation_node(node)
+        operand.parent = sub_node
+        operand.argument = "operand"
+        self.visit(operand)
+        condition.parent = sub_node
+        condition.argument = "condition"
+        self.visit(condition)
 
     def visit_PreconditionItem(self, node: PreconditionItem) -> None:
         operand_node = self.create_operation_node(node, is_leaf=True)
