@@ -134,8 +134,7 @@ def test_a_cycle_through_a_cell_inside_a_selection_is_reported_as_6_4(
 
 
 def test_overwriting_is_still_reported_as_6_1(fixture_session):
-    # The DAG's own overwrite check must not pre-empt the analyzer's,
-    # which also sees that overlapping ranges collide.
+    # Reported by the analyzer, not by the DAG's own overwrite check.
     result = SemanticService(fixture_session).validate(
         "{tF_01.01, r0010-0020, c0010} <- 1; {tF_01.01, r0020, c0010} <- 2;",
         release_code="4.2.1",
@@ -146,6 +145,17 @@ def test_overwriting_is_still_reported_as_6_1(fixture_session):
     assert result.error_message == (
         "Overwriting a variable is not allowed, trying it with "
         "F_01.01, r0020, c0010."
+    )
+
+
+def test_a_temporary_assigned_twice_is_reported_as_6_1(fixture_session):
+    result = SemanticService(fixture_session).validate(
+        "t1 := 1; t1 := 2; t2 := {ot1} + 1;", is_scripting=True
+    )
+    assert not result.is_valid
+    assert result.error_code == "6-1"
+    assert result.error_message == (
+        "Overwriting a variable is not allowed, trying it with t1."
     )
 
 
