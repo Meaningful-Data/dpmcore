@@ -1,7 +1,7 @@
 """Tests for the duplicate-output guard in InputAnalyzer.visit_Start.
 
 Two independent, top-level assignments to the same ``{cellRef}``/``{varRef}``
-must be rejected with error code 6-1 (GitHub issue #289).
+or temporary must be rejected with error code 6-1 (GitHub issue #289).
 """
 
 import pytest
@@ -36,6 +36,9 @@ DUPLICATE_TARGET_SCRIPTS = [
         "{tF_01.01, r0010, c0010} <- 2;",
         "F_01.01",
     ),
+    # The same temporary assigned twice
+    ("t1 := 1; t1 := 2;", "t1"),
+    ("v1 := {vFoo} <- 1; v1 := {vBar} <- 2;", "v1"),
 ]
 
 NON_DUPLICATE_SCRIPTS = [
@@ -53,6 +56,8 @@ NON_DUPLICATE_SCRIPTS = [
     "{gF_01.01, r0010, c0010} <- 1; {tF_01.01, r0010, c0010} <- 2;",
     # Bare compRef target has no table, never compared
     "{r0010, c0010} <- 1; {r0010, c0010} <- 2;",
+    # Different temporaries
+    "t1 := 1; t2 := 2;",
 ]
 
 

@@ -117,15 +117,24 @@ _PARAMETER_SCALAR_TYPES: dict[str, str] = {
 }
 
 
-def _check_duplicate_persistent_assignments(
+def _check_duplicate_assignments(
     children: list[AST],
     session: Session | None,
     release_id: int | None,
 ) -> None:
-    """Raise ``6-1`` when two statements assign the same ``{cellRef}``/``{varRef}``."""
+    """Raise ``6-1`` when two statements assign the same output.
+
+    The output is a temporary's name, a ``{varRef}`` or a ``{cellRef}``.
+    """
+    seen_temporaries: set[str] = set()
     seen_refs: set[str] = set()
     seen_ids: list[VarID] = []
     for child in children:
+        if isinstance(child, TemporaryAssignment):
+            name = child.left.value
+            if name in seen_temporaries:
+                raise errors.SemanticError("6-1", variable=name)
+            seen_temporaries.add(name)
         target = (
             child.right if isinstance(child, TemporaryAssignment) else child
         )
@@ -260,7 +269,7 @@ class InputAnalyzer(ASTTemplate, ABC):
         self, node: Start
     ) -> Operand | list[Operand]:
 
-        _check_duplicate_persistent_assignments(
+        _check_duplicate_assignments(
             node.children, self.session, self.release_id
         )
 
