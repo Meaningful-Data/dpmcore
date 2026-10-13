@@ -169,6 +169,8 @@ class TestExportCalculationsSuccess:
                     "2026-12-31",
                     "--publication-date",
                     "2026-01-01",
+                    "--release",
+                    "4.2",
                     "--database",
                     "sqlite:///dpm.db",
                     "--output",
@@ -177,7 +179,31 @@ class TestExportCalculationsSuccess:
             )
 
         connect.assert_called_once_with("sqlite:///dpm.db")
-        assert accessor.call_args.args == ("KRI", "2026-12-31", "2026-01-01")
+        assert accessor.call_args.args == (
+            "KRI",
+            "2026-12-31",
+            "2026-01-01",
+            "4.2",
+        )
+
+    def test_the_release_defaults_to_live(self, runner, tmp_path):
+        with _patched_connection(_export()) as (_, accessor):
+            runner.invoke(
+                main,
+                [
+                    "export-calculations",
+                    "--module-code",
+                    "KRI",
+                    "--reference-date",
+                    "2026-12-31",
+                    "--database",
+                    "sqlite:///dpm.db",
+                    "--output",
+                    str(tmp_path / "kri.json"),
+                ],
+            )
+
+        assert accessor.call_args.args[3] is None
 
 
 class TestExportCalculationsFailure:

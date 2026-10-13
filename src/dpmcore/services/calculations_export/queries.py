@@ -10,13 +10,14 @@ numerically and spells its perpetual release ``9999``. Neither holds in
 dpmcore -- ``ReleaseID`` became opaque at DPM 4.2.1 and the perpetual
 release is identified by
 :func:`~dpmcore.orm.release_sort_order.compute_sort_order` -- so every
-release window here goes through :func:`_release_window`.
+release window here goes through :func:`release_window`.
 """
 
 from __future__ import annotations
 
 import logging
 from datetime import date as date_cls
+from datetime import datetime
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -30,6 +31,7 @@ from typing import (
 
 import pandas as pd
 
+from dpmcore.data import get_module_schema_ref_by_version
 from dpmcore.dpm_xl.model_queries import read_sql_with_connection
 from dpmcore.dpm_xl.utils.filters import (
     filter_by_date,
@@ -64,7 +66,7 @@ EBA_BASE_URI = "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/"
 """Namespace prefix of the EBA taxonomy URIs the export is keyed by."""
 
 
-def _release_window(
+def release_window(
     query: "Query[Any]",
     start_col: Any,
     end_col: Any,
@@ -211,6 +213,10 @@ def get_module_uri(
 ) -> tuple[str, str]:
     """Build a module version's EBA taxonomy URI.
 
+    Versions published before 4.0 use their published schema reference
+    (``get_module_schema_ref_by_version``), later ones are built from
+    the framework, release and module codes.
+
     The release code is reported verbatim, a working release included:
     the reference export keys its dependency modules at ``Playground``
     and the consumer looks them up by URI, so rewriting one to the
@@ -230,6 +236,7 @@ def get_module_uri(
     result = (
         session.query(
             ModuleVersion.code.label("module_code"),
+            ModuleVersion.version_number.label("version_number"),
             Framework.code.label("framework_code"),
             Release.code.label("release_code"),
             ModuleVersion.start_release_id.label("start_release_id"),
@@ -249,6 +256,11 @@ def get_module_uri(
                 f"No Framework is reachable from module VID {module_vid}."
             ),
         )
+    published = _published_module_uri(
+        result.module_code, result.version_number
+    )
+    if published is not None and result.framework_code is not None:
+        return published, result.framework_code
     # The URI keys the whole exported document, so a missing part makes
     # the export unusable rather than merely incomplete.
     missing = [
@@ -280,6 +292,18 @@ def get_module_uri(
         f"{release_code}/mod/{result.module_code.lower()}"
     )
     return uri, result.framework_code
+
+
+def _published_module_uri(
+    module_code: Optional[str], version_number: Optional[str]
+) -> Optional[str]:
+    """Published URI of a pre-4.0 module version, if any."""
+    if not module_code or not version_number:
+        return None
+    schema_ref = get_module_schema_ref_by_version(module_code, version_number)
+    if schema_ref is None:
+        return None
+    return schema_ref.removesuffix(".json")
 
 
 def _is_working_release(session: "Session", release_id: Optional[int]) -> bool:
@@ -352,7 +376,7 @@ def get_calculations(
         )
         .filter(ModuleVersion.module_vid == module_vid)
     )
-    query = _release_window(
+    query = release_window(
         query,
         OperationVersion.start_release_id,
         OperationVersion.end_release_id,
@@ -408,7 +432,7 @@ def _data_types(
             DataType.data_type_id == Property.data_type_id,
         )
     )
-    query = _release_window(
+    query = release_window(
         query,
         VariableVersion.start_release_id,
         VariableVersion.end_release_id,
@@ -497,7 +521,7 @@ def get_output_variable_vids(
         VariableVersion.code.label("code"),
         VariableVersion.variable_vid.label("variable_vid"),
     )
-    query = _release_window(
+    query = release_window(
         query,
         VariableVersion.start_release_id,
         VariableVersion.end_release_id,
@@ -582,10 +606,45 @@ def get_output_tables(
     return output_tables
 
 
+def to_date(value: Any) -> Optional[date_cls]:
+    """Normalise a DB date (date, datetime or ``YYYY-MM-DD`` text)."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date_cls):
+        return value
+    return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()  # noqa: DTZ007
+
+
+def pick_module_version_for_date(
+    rows: Sequence[Dict[str, Any]], reference_date: date_cls
+) -> Optional[Dict[str, Any]]:
+    """Return the first row whose window contains ``reference_date``.
+
+    Args:
+        rows: Dicts with ``from_date`` and ``to_date`` (open when
+            ``None``).
+        reference_date: The date to look for.
+
+    Returns:
+        The matching row, or ``None``.
+    """
+    for row in rows:
+        from_date, to_date_ = row.get("from_date"), row.get("to_date")
+        if from_date is not None and from_date > reference_date:
+            continue
+        if to_date_ is not None and to_date_ < reference_date:
+            continue
+        return row
+    return None
+
+
 def group_tables_by_module(
     session: "Session",
     tables: Dict[str, Dict[str, Any]],
     release_id: Optional[int] = None,
+    reference_date: Any = None,
 ) -> Dict[str, Dict[str, Any]]:
     """Group dependency tables under the module versions that contain them.
 
@@ -593,12 +652,17 @@ def group_tables_by_module(
         session: SQLAlchemy session.
         tables: ``{table_code: {"variables": {id: type}, "open_keys": …}}``
             as collected from the calculations' operands.
-        release_id: Release to resolve the table and module versions at.
+        release_id: Release to resolve the table and module versions at,
+            ``None`` selects the live ones.
+        reference_date: Picks, among a module's versions, the one valid
+            at this date, otherwise the lowest ``ModuleVID``.
 
     Returns:
-        ``{module_code: {module_vid, from_date, to_date, tables}}``,
-        carrying each table's variables and open keys through unchanged.
+        ``{module_code: {module_vid, version_number, from_date, to_date,
+        tables}}``, carrying each table's variables and open keys
+        through unchanged.
     """
+    ref_date = to_date(reference_date) if reference_date else None
     module_tables: Dict[str, Dict[str, Any]] = {}
     if not tables:
         return module_tables
@@ -628,24 +692,50 @@ def group_tables_by_module(
         table_vid = table_vid_by_code.get(table_code)
         if table_vid is None:
             continue
+        rows_by_module: Dict[str, List[Dict[str, Any]]] = {}
         for row in modules_by_table_vid.get(table_vid, ()):
-            entry = module_tables.setdefault(
-                row.module_code,
+            rows_by_module.setdefault(row.module_code, []).append(
                 {
                     "module_vid": row.module_vid,
-                    "from_date": row.from_date,
-                    "to_date": row.to_date,
-                    "tables": {},
-                },
+                    "version_number": row.version_number,
+                    "from_date": to_date(row.from_date),
+                    "to_date": to_date(row.to_date),
+                }
             )
-            entry["tables"][table_code] = {
-                # Already resolved by the caller; re-deriving them here
+        for module_code, rows in rows_by_module.items():
+            if module_code not in module_tables:
+                module_tables[module_code] = {
+                    **_choose_module_version(module_code, rows, ref_date),
+                    "tables": {},
+                }
+            module_tables[module_code]["tables"][table_code] = {
+                # Already resolved by the caller, re-deriving them here
                 # would throw the data types away.
                 "variables": table_info["variables"],
                 "open_keys": table_info.get("open_keys", {}),
             }
 
     return module_tables
+
+
+def _choose_module_version(
+    module_code: str,
+    rows: List[Dict[str, Any]],
+    reference_date: Optional[date_cls],
+) -> Dict[str, Any]:
+    """Pick the module version valid at ``reference_date``, or the first."""
+    if reference_date is None:
+        return rows[0]
+    chosen = pick_module_version_for_date(rows, reference_date)
+    if chosen is not None:
+        return chosen
+    logger.warning(
+        "No version of module %s contains %s, using module version %s",
+        module_code,
+        reference_date,
+        rows[0]["module_vid"],
+    )
+    return rows[0]
 
 
 def _windowed_table_vids(
@@ -676,7 +766,7 @@ def _windowed_table_vids(
         TableVersion.code.label("code"),
         TableVersion.table_vid.label("table_vid"),
     )
-    query = _release_window(
+    query = release_window(
         query,
         TableVersion.start_release_id,
         TableVersion.end_release_id,
@@ -695,7 +785,7 @@ def _windowed_table_vids(
     if ambiguous:
         logger.warning(
             "%s dependency table(s) have overlapping versions at the "
-            "export's release; the lowest TableVID is used: %s",
+            "export's release, the lowest TableVID is used: %s",
             len(ambiguous),
             ", ".join(sorted(ambiguous)),
         )
@@ -716,13 +806,15 @@ def _modules_of_table_vids(
 
     Returns:
         ``{table_vid: [row, ...]}`` where each row carries
-        ``module_vid``, ``module_code``, ``from_date`` and ``to_date``.
+        ``module_vid``, ``module_code``, ``version_number``,
+        ``from_date`` and ``to_date``.
     """
     query: Any = (
         session.query(
             ModuleVersionComposition.table_vid.label("table_vid"),
             ModuleVersionComposition.module_vid.label("module_vid"),
             ModuleVersion.code.label("module_code"),
+            ModuleVersion.version_number.label("version_number"),
             ModuleVersion.from_reference_date.label("from_date"),
             ModuleVersion.to_reference_date.label("to_date"),
         )
@@ -732,7 +824,7 @@ def _modules_of_table_vids(
         )
         .order_by(ModuleVersionComposition.module_vid)
     )
-    query = _release_window(
+    query = release_window(
         query,
         ModuleVersion.start_release_id,
         ModuleVersion.end_release_id,

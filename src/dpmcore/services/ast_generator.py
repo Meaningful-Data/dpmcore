@@ -1005,6 +1005,7 @@ class ASTGeneratorService:
         module_code: str,
         reference_date: str,
         publication_date: Optional[str] = None,
+        release_code: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Export a module version's calculations set.
 
@@ -1026,6 +1027,8 @@ class ASTGeneratorService:
                 one exported; exactly one must.
             publication_date: Publication date stamped into the
                 ``dpm_release`` block; defaults to today.
+            release_code: Release for the dictionary lookups (e.g.
+                ``"4.2"``). Defaults to the live release.
 
         Returns:
             The export, keyed by the module's EBA taxonomy URI.
@@ -1036,7 +1039,7 @@ class ASTGeneratorService:
                 ``OperationOutput`` table cannot be resolved.
         """
         return self.calculations_export(
-            module_code, reference_date, publication_date
+            module_code, reference_date, publication_date, release_code
         ).calculations
 
     def calculations_datapoints(
@@ -1044,6 +1047,7 @@ class ASTGeneratorService:
         module_code: str,
         reference_date: str,
         publication_date: Optional[str] = None,
+        release_code: Optional[str] = None,
     ) -> Dict[str, Dict[str, Any]]:
         """Map every datapoint a module's calculations touch to its cell.
 
@@ -1055,6 +1059,8 @@ class ASTGeneratorService:
             reference_date: Reference date, ``YYYY-MM-DD``.
             publication_date: Publication date stamped into the
                 ``dpm_release`` block; defaults to today.
+            release_code: Release for the dictionary lookups (e.g.
+                ``"4.2"``). Defaults to the live release.
 
         Returns:
             ``{variable_id: {"table", "row", "column", "sheet"}}``.
@@ -1065,7 +1071,7 @@ class ASTGeneratorService:
                 ``OperationOutput`` table cannot be resolved.
         """
         return self.calculations_export(
-            module_code, reference_date, publication_date
+            module_code, reference_date, publication_date, release_code
         ).datapoints
 
     def calculations_export(
@@ -1073,6 +1079,7 @@ class ASTGeneratorService:
         module_code: str,
         reference_date: str,
         publication_date: Optional[str] = None,
+        release_code: Optional[str] = None,
     ) -> "CalculationsExport":
         """Export a module's calculations and datapoint map in one pass.
 
@@ -1081,6 +1088,8 @@ class ASTGeneratorService:
             reference_date: Reference date, ``YYYY-MM-DD``.
             publication_date: Publication date stamped into the
                 ``dpm_release`` block; defaults to today.
+            release_code: Release for the dictionary lookups (e.g.
+                ``"4.2"``). Defaults to the live release.
 
         Returns:
             Both halves of the export.
@@ -1096,8 +1105,15 @@ class ASTGeneratorService:
             raise ValueError(
                 "No database session — cannot export calculations."
             )
+        from dpmcore.dpm_xl.utils.filters import resolve_release_id
+
         return CalculationsExporter(self.session).export(
-            module_code, reference_date, publication_date
+            module_code,
+            reference_date,
+            publication_date,
+            release_id=resolve_release_id(
+                self.session, release_code=release_code
+            ),
         )
 
     def list_module_versions(
