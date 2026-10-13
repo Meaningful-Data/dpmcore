@@ -9,11 +9,13 @@ need one are covered by
 
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 import pytest
 
 from dpmcore.dpm_xl.ast.nodes import Constant, VarID
-from dpmcore.errors import Invalid
+from dpmcore.errors import SemanticError
 from dpmcore.services.calculations_export.exporter import (
     CalculationsExporter,
     _build_datapoint_mapping,
@@ -123,15 +125,63 @@ class TestDAGAnalyzer:
             f"{_CELL_A} <- {_CELL_B} + 1;\n{_CELL_B} <- {_CELL_A} + 1;"
         )
 
-        with pytest.raises(Invalid, match="cycle"):
+        with pytest.raises(
+            SemanticError,
+            match=re.escape(
+                "Circular reference between operations "
+                "tA-['0010']-['0010']-None and tA-['0020']-['0010']-None. "
+                "Try removing or changing these references."
+            ),
+        ) as excinfo:
             DAGAnalyzer().create_dag(ast)
+        assert excinfo.value.code == "6-4"
+
+    def test_a_cycle_is_reported_by_two_of_its_statements(self):
+        """A statement fed by the cycle, but not on it, is not named."""
+        ast = _parse(
+            f"{_CELL_C} <- {_CELL_A} + 1;\n"
+            f"{_CELL_A} <- {_CELL_B} + 1;\n"
+            f"{_CELL_B} <- {_CELL_A} + 1;"
+        )
+
+        with pytest.raises(
+            SemanticError,
+            match=re.escape(
+                "Circular reference between operations "
+                "tA-['0010']-['0010']-None and tA-['0020']-['0010']-None."
+            ),
+        ):
+            DAGAnalyzer().create_dag(ast)
+
+    def test_a_cycle_is_reported_by_its_operation_codes(self):
+        ast = _parse(
+            f"{_CELL_C} <- {_CELL_A} + 1;\n"
+            f"{_CELL_A} <- {_CELL_B} + 1;\n"
+            f"{_CELL_B} <- {_CELL_A} + 1;"
+        )
+
+        with pytest.raises(
+            SemanticError,
+            match=re.escape(
+                "Circular reference between operations c_0002 and c_0003."
+            ),
+        ):
+            DAGAnalyzer().create_dag(
+                ast, operation_codes=["c_0001", "c_0002", "c_0003"]
+            )
 
     def test_assigning_the_same_output_twice_is_reported(self):
         ast = _parse(
             f"{_CELL_A} <- 1;\n{_CELL_A} <- 2;\n{_CELL_B} <- {_CELL_A} + 1;"
         )
 
-        with pytest.raises(Invalid, match="assigned by more than one"):
+        with pytest.raises(
+            SemanticError,
+            match=re.escape(
+                "Overwriting a variable is not allowed, trying it with "
+                "tA-['0010']-['0010']-None."
+            ),
+        ):
             DAGAnalyzer().create_dag(ast)
 
     def test_a_duplicate_output_is_reported_without_any_edge(self):
@@ -143,7 +193,13 @@ class TestDAGAnalyzer:
         """
         ast = _parse(f"{_CELL_A} <- 1;\n{_CELL_A} <- 2;")
 
-        with pytest.raises(Invalid, match="assigned by more than one"):
+        with pytest.raises(
+            SemanticError,
+            match=re.escape(
+                "Overwriting a variable is not allowed, trying it with "
+                "tA-['0010']-['0010']-None."
+            ),
+        ):
             DAGAnalyzer().create_dag(ast)
 
     def test_a_statement_that_assigns_nothing_is_kept(self):
@@ -167,6 +223,62 @@ class TestDAGAnalyzer:
         assert analyzer.dependencies[1]["outputs"] == [
             "tA-['0010']-['0010']-None"
         ]
+
+    def test_a_with_context_completes_the_cells_it_wraps(self):
+        """The DAG runs before operand checking has grafted the context.
+
+        A cell that only names its row inside ``with {tA, c0010}`` is
+        ``{tA, r0020, c0010}``, so it must be linked to the statement
+        assigning that cell.
+        """
+        ast = _parse(
+            f"{_CELL_A} <- with {{tA, c0010}}: {{r0020}} * 2;\n"
+            f"{_CELL_B} <- {_CELL_C} + 1;"
+        )
+
+        DAGAnalyzer().create_dag(ast)
+
+        assert [child.left.rows[0] for child in ast.children] == [
+            "0020",
+            "0010",
+        ]
+
+    def test_the_with_context_is_not_written_into_the_cells(self):
+        """Grafting stays operand checking's job: the AST is untouched."""
+        ast = _parse(f"{_CELL_A} <- with {{tA, c0010}}: {{r0020}} * 2;")
+
+        DAGAnalyzer().create_dag(ast)
+
+        inner = ast.children[0].right.expression.left
+        assert inner.table is None
+        assert inner.cols is None
+
+    def test_the_with_context_ends_with_its_statement(self):
+        ast = _parse(
+            f"{_CELL_A} <- with {{tA, c0010}}: {{r0020}} * 2;\n"
+            f"{_CELL_C} <- {{r0030}};"
+        )
+
+        analyzer = DAGAnalyzer()
+        analyzer.visit(ast)
+
+        assert analyzer.dependencies[2]["inputs"] == [
+            "tNone-['0030']-None-None"
+        ]
+
+    def test_a_forward_operation_reference_is_reordered(self):
+        ast = _parse("t2 := {ot1} + 1;\nt1 := 1;")
+
+        DAGAnalyzer().create_dag(ast)
+
+        assert [child.left.value for child in ast.children] == ["t1", "t2"]
+
+    def test_the_overwrite_check_can_be_left_to_the_caller(self):
+        ast = _parse(f"{_CELL_A} <- 1;\n{_CELL_A} <- 2;")
+
+        DAGAnalyzer().create_dag(ast, check_overwriting=False)
+
+        assert len(ast.children) == 2
 
 
 class TestUnwrapWithExpressions:
