@@ -14,6 +14,8 @@ from dpmcore.dpm_xl.ast.nodes import (
     Constant,
     CountSetOp,
     Dimension,
+    GetOp,
+    GroupingClause,
     IntersectSetOp,
     OrderItem,
     Scalar,
@@ -302,6 +304,64 @@ def test_visit_dimension_on_the_fact_emits_a_leaf_without_operand_refs(
     assert node.scalar == FACT
     assert ml_generation.create_operation_node.call_count == 1
     assert ml_generation.session.add.call_count == 0
+
+
+@pytest.mark.parametrize("code", ["refPeriod", "entityID", "baseCurrency"])
+def test_visit_dimension_references_a_contextual_component_by_name(
+    ml_generation, code
+):
+    """A contextual component has no Property to look up."""
+    ml_generation.session = MagicMock()
+    ml_generation.create_operation_node = MagicMock(
+        return_value=OperationNode()
+    )
+
+    ml_generation.visit_Dimension(Dimension(dimension_code=code))
+
+    (ref,) = [
+        call.args[0] for call in ml_generation.session.add.call_args_list
+    ]
+    assert ref.operand_reference == code
+    assert ref.property_id is None
+
+
+@pytest.mark.parametrize("code", ["refPeriod", "entityID", "baseCurrency"])
+def test_visit_get_op_references_a_contextual_component_by_name(
+    ml_generation, code
+):
+    ml_generation.session = MagicMock()
+    ml_generation.visit = MagicMock()
+    ml_generation.create_operation_node = MagicMock(
+        return_value=OperationNode()
+    )
+
+    ml_generation.visit_GetOp(
+        GetOp(operand=Constant("Integer", 1), component=code)
+    )
+
+    (ref,) = [
+        call.args[0] for call in ml_generation.session.add.call_args_list
+    ]
+    assert ref.operand_reference == code
+    assert ref.property_id is None
+
+
+@pytest.mark.parametrize("code", ["refPeriod", "entityID", "baseCurrency"])
+def test_visit_grouping_clause_references_a_contextual_component_by_name(
+    ml_generation, code
+):
+    ml_generation.session = MagicMock()
+    ml_generation.create_operation_node = MagicMock(
+        return_value=OperationNode()
+    )
+
+    ml_generation.visit_GroupingClause(GroupingClause(components=[code]))
+
+    (ref,) = [
+        call.args[0] for call in ml_generation.session.add.call_args_list
+    ]
+    assert ref.operand_reference == code
+    assert ref.property_id is None
 
 
 def test_visit_set_creates_an_operand_reference_per_item_child(

@@ -38,6 +38,7 @@ from typing import Any, Dict, List, Optional, Tuple, cast
 from sqlalchemy.orm import Session
 
 from dpmcore.dpm_xl.ast import nodes as ast_nodes
+from dpmcore.dpm_xl.ast.operands import IMPLICIT_OPEN_KEYS
 from dpmcore.dpm_xl.utils.filters import filter_by_release
 from dpmcore.dpm_xl.utils.serialization import ASTToJSONVisitor
 from dpmcore.orm.glossary import ItemCategory, Property
@@ -615,6 +616,12 @@ class _Builder:
 
         if discriminators == {"property"}:
             return self._build_dimension(refs[0])
+
+        # A contextual component has no Property: it is referenced by name
+        if len(refs) == 1 and refs[0].operand_reference in IMPLICIT_OPEN_KEYS:
+            return ast_nodes.Dimension(
+                dimension_code=refs[0].operand_reference
+            )
 
         if discriminators == {"PreconditionItem"}:
             ref = refs[0]
