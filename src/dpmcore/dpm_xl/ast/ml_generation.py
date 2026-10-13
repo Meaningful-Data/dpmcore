@@ -43,6 +43,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     WhereClauseOp,
     WithExpression,
 )
+from dpmcore.dpm_xl.ast.operands import IMPLICIT_OPEN_KEYS
 from dpmcore.dpm_xl.ast.template import ASTTemplate
 from dpmcore.dpm_xl.model_queries import (
     ItemCategoryQuery,
@@ -68,8 +69,8 @@ def gather_element(node: Any, attribute: str) -> Any:
     return None
 
 
-def property_ref_period_mangement(name: str) -> bool:
-    return name == "refPeriod"
+def is_contextual_component(name: str) -> bool:
+    return name in IMPLICIT_OPEN_KEYS
 
 
 class MLGeneration(ASTTemplate):
@@ -396,7 +397,9 @@ class MLGeneration(ASTTemplate):
             comp_node = self.create_operation_node(element, is_leaf=True)
             # property_id = ItemCategoryQuery.get_property_id_from_code(code=node.component, session=self.session)[0]
             op_ref: OperandReference
-            if component in ("r", "c", "s"):
+            if component in ("r", "c", "s") or is_contextual_component(
+                component
+            ):
                 op_ref = OperandReference(
                     operation_node=comp_node, operand_reference=component
                 )
@@ -456,16 +459,14 @@ class MLGeneration(ASTTemplate):
         ast_element.parent = get_node
         ast_element.argument = "dimension"
         ast_element.source_reference = "property"
-        operand_node = self.create_operation_node(
-            ast_element, is_leaf=True
-        )  # TODO: Adapt to refPeriod
+        operand_node = self.create_operation_node(ast_element, is_leaf=True)
         component = node.component
         if component is None:
             raise RuntimeError("TimeShiftOp component is required")
         op_ref: OperandReference
-        if property_ref_period_mangement(component):
+        if is_contextual_component(component):
             op_ref = OperandReference(
-                operation_node=operand_node, operand_reference="refPeriod"
+                operation_node=operand_node, operand_reference=component
             )
         else:
             property_id = ItemCategoryQuery.get_property_id_from_code(
@@ -497,9 +498,9 @@ class MLGeneration(ASTTemplate):
         operand_node = self.create_operation_node(ast_element, is_leaf=True)
         component = node.component
         op_ref: OperandReference
-        if property_ref_period_mangement(component):
+        if is_contextual_component(component):
             op_ref = OperandReference(
-                operation_node=operand_node, operand_reference="refPeriod"
+                operation_node=operand_node, operand_reference=component
             )
         else:
             property_id = ItemCategoryQuery.get_property_id_from_code(
@@ -567,9 +568,10 @@ class MLGeneration(ASTTemplate):
         element.source_reference = "property"
         component_node = self.create_operation_node(element, is_leaf=True)
         op_ref: OperandReference
-        if property_ref_period_mangement(node.component):
+        if is_contextual_component(node.component):
             op_ref = OperandReference(
-                operation_node=component_node, operand_reference="refPeriod"
+                operation_node=component_node,
+                operand_reference=node.component,
             )
         else:
             property_id = ItemCategoryQuery.get_property_id_from_code(
@@ -630,21 +632,21 @@ class MLGeneration(ASTTemplate):
         self.session.add(new_operand_ref)
 
     def visit_SubOp(self, node: SubOp) -> None:
-        node.op = "sub"
-        operand_node = self.create_operation_node(node)
-        node.operand.parent = operand_node
-        node.operand.argument = "operand"
-        self.visit(node.operand)
+        # Stored like ``where``. ``X[sub a=1, b=2]`` is ``X[sub a=1][sub b=2]``.
+        *previous, last = node.substitutions
+        operand = SubOp(node.operand, previous) if previous else node.operand
+        condition = BinOp(
+            left=Dimension(last.property_code), op="=", right=last.value
+        )
 
-        # Every substitution value shares ``argument="value"`` against the
-        # same parent ``operand_node``. This matches ``visit_ComplexNumericOp``
-        # (which reuses ``argument="operand"`` for its children) and relies on
-        # the ``Sub`` operator's ``OperatorArgument`` row for ``value`` being
-        # used by all child OperationNodes; each child is still a distinct row.
-        for sub in node.substitutions:
-            sub.value.parent = operand_node
-            sub.value.argument = "value"
-            self.visit(sub.value)
+        node.op = "sub"
+        sub_node = self.create_operation_node(node)
+        operand.parent = sub_node
+        operand.argument = "operand"
+        self.visit(operand)
+        condition.parent = sub_node
+        condition.argument = "condition"
+        self.visit(condition)
 
     def visit_PreconditionItem(self, node: PreconditionItem) -> None:
         operand_node = self.create_operation_node(node, is_leaf=True)
@@ -777,6 +779,14 @@ class MLGeneration(ASTTemplate):
 
         node.source_reference = "property"
         op_node = self.create_operation_node(node, is_leaf=True)
+        if is_contextual_component(node.dimension_code):
+            self.session.add(
+                OperandReference(
+                    operation_node=op_node,
+                    operand_reference=node.dimension_code,
+                )
+            )
+            return
         property_row = ItemCategoryQuery.get_property_from_code(
             code=node.dimension_code, session=self.session_queries
         )

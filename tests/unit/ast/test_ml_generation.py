@@ -11,15 +11,20 @@ from dpmcore.dpm_xl.ast.ml_generation import MLGeneration
 from dpmcore.dpm_xl.ast.nodes import (
     AggregationOp,
     AnalyticClause,
+    BinOp,
     Constant,
     CountSetOp,
     Dimension,
+    GetOp,
+    GroupingClause,
     IntersectSetOp,
     OrderItem,
     Scalar,
     Set,
     SetdiffOp,
     SetOfOp,
+    SubAssignment,
+    SubOp,
     SubstrOp,
     SymdiffOp,
     UnionSetOp,
@@ -184,6 +189,49 @@ def test_visit_count_set_op_walks_operand(ml_generation):
     assert visited[0].argument == "operand"
 
 
+def test_visit_sub_op_stores_the_substitution_as_a_condition(ml_generation):
+    """``sub`` is stored like ``where``: an ``operand`` and a ``condition``
+    equating the component to the value. The ``Sub`` operator has no
+    ``value`` argument.
+    """
+    operand = _int_constant(1)
+    value = _int_constant(2)
+    node = SubOp(operand, [SubAssignment("LCF", value)])
+
+    visited = _visit_and_capture(ml_generation, "visit_SubOp", node)
+
+    assert ml_generation.create_operation_node.call_count == 1
+    assert visited[0] is operand
+    assert visited[0].argument == "operand"
+    condition = visited[1]
+    assert isinstance(condition, BinOp)
+    assert condition.argument == "condition"
+    assert condition.parent is node
+    assert condition.op == "="
+    assert condition.left.dimension_code == "LCF"
+    assert condition.right is value
+
+
+def test_visit_sub_op_chains_one_sub_per_substitution(ml_generation):
+    """``X[sub a=1, b=2]`` is ``X[sub a=1][sub b=2]``: the outer ``sub``
+    holds the last substitution, its operand the earlier ones.
+    """
+    operand = _int_constant(1)
+    first = SubAssignment("A", _int_constant(2))
+    second = SubAssignment("B", _int_constant(3))
+    node = SubOp(operand, [first, second])
+
+    visited = _visit_and_capture(ml_generation, "visit_SubOp", node)
+
+    inner, condition = visited
+    assert isinstance(inner, SubOp)
+    assert inner.argument == "operand"
+    assert inner.operand is operand
+    assert inner.substitutions == [first]
+    assert condition.left.dimension_code == "B"
+    assert condition.right is second.value
+
+
 def test_visit_empty_set_creates_leaf_without_operand_refs(ml_generation):
     """``visit_Set`` iterates ``node.children``; for the empty literal ``{}``
     the loop is a no-op, and the operation node is still emitted.
@@ -302,6 +350,64 @@ def test_visit_dimension_on_the_fact_emits_a_leaf_without_operand_refs(
     assert node.scalar == FACT
     assert ml_generation.create_operation_node.call_count == 1
     assert ml_generation.session.add.call_count == 0
+
+
+@pytest.mark.parametrize("code", ["refPeriod", "entityID", "baseCurrency"])
+def test_visit_dimension_references_a_contextual_component_by_name(
+    ml_generation, code
+):
+    """A contextual component has no Property to look up."""
+    ml_generation.session = MagicMock()
+    ml_generation.create_operation_node = MagicMock(
+        return_value=OperationNode()
+    )
+
+    ml_generation.visit_Dimension(Dimension(dimension_code=code))
+
+    (ref,) = [
+        call.args[0] for call in ml_generation.session.add.call_args_list
+    ]
+    assert ref.operand_reference == code
+    assert ref.property_id is None
+
+
+@pytest.mark.parametrize("code", ["refPeriod", "entityID", "baseCurrency"])
+def test_visit_get_op_references_a_contextual_component_by_name(
+    ml_generation, code
+):
+    ml_generation.session = MagicMock()
+    ml_generation.visit = MagicMock()
+    ml_generation.create_operation_node = MagicMock(
+        return_value=OperationNode()
+    )
+
+    ml_generation.visit_GetOp(
+        GetOp(operand=Constant("Integer", 1), component=code)
+    )
+
+    (ref,) = [
+        call.args[0] for call in ml_generation.session.add.call_args_list
+    ]
+    assert ref.operand_reference == code
+    assert ref.property_id is None
+
+
+@pytest.mark.parametrize("code", ["refPeriod", "entityID", "baseCurrency"])
+def test_visit_grouping_clause_references_a_contextual_component_by_name(
+    ml_generation, code
+):
+    ml_generation.session = MagicMock()
+    ml_generation.create_operation_node = MagicMock(
+        return_value=OperationNode()
+    )
+
+    ml_generation.visit_GroupingClause(GroupingClause(components=[code]))
+
+    (ref,) = [
+        call.args[0] for call in ml_generation.session.add.call_args_list
+    ]
+    assert ref.operand_reference == code
+    assert ref.property_id is None
 
 
 def test_visit_set_creates_an_operand_reference_per_item_child(
