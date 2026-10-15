@@ -288,7 +288,7 @@ already published — rather than the version effective at the module's
 release, so a table version introduced only in a working (`Playground`)
 release never contributes datapoints. The command needs a database
 carrying the `OperationOutput` table, which the Access DPM 2.0
-distribution does not have.
+distribution only has from release 4.4 onwards (empty there as of 4.4).
 
 **Calculations dependency graph:**
 

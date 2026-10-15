@@ -222,8 +222,9 @@ class CalculationsExporter:
                 description=(
                     "This database has no OperationOutput table, so a "
                     "module's calculations cannot be resolved. The table "
-                    "exists only in the EBA SQL Server DPM databases, "
-                    "not in the Access DPM 2.0 distribution."
+                    "exists in the EBA SQL Server DPM databases, and in "
+                    "the Access DPM 2.0 distribution only from release "
+                    "4.4 onwards."
                 ),
             ) from exc
 

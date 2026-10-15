@@ -39,9 +39,8 @@ EXCLUDED_TABLES: Set[str] = {
 # Tables modelled in the ORM that exist only in the EBA SQL Server DPM
 # databases (bacpacs), not in the Access DPM 2.0 distribution. They are
 # skipped when validating the ORM against the Access reference schema.
-SQLSERVER_ONLY_ORM_TABLES: Set[str] = {
-    "OperationOutput",
-}
+# Empty since 4.4, whose Access release added ``OperationOutput``.
+SQLSERVER_ONLY_ORM_TABLES: Set[str] = set()
 
 # ORM columns that are synthetic (e.g. surrogate PKs added because
 # the Access table has no natural primary key).  {table: {col, …}}
@@ -102,7 +101,7 @@ def accdb_schema() -> Dict[str, Set[str]]:
 
     accdb_path = os.environ.get(
         "DPM_ACCDB_PATH",
-        "/mnt/c/Pap/DPM2 Database_v 4_2_1.accdb",
+        "/mnt/c/Pap/DPM2-Database_v-4_4.accdb",
     )
     if not os.path.isfile(accdb_path):
         pytest.skip(f"Access database not found at {accdb_path}")

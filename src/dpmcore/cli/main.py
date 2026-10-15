@@ -1277,7 +1277,7 @@ def export_calculations(
 
     Requires a database with an ``OperationOutput`` table — the link
     from an operation to the module version it writes to, which the
-    Access DPM 2.0 distribution does not carry.
+    Access DPM 2.0 distribution only carries from release 4.4 onwards.
     """
     import json
     from pathlib import Path
