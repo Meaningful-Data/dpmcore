@@ -685,6 +685,22 @@ class TableAssociation(models.Model):
         null=True,
         blank=True,
     )
+    start_release = models.ForeignKey(
+        "Release",
+        on_delete=models.DO_NOTHING,
+        db_column="StartReleaseID",
+        related_name="table_association_starts",
+        null=True,
+        blank=True,
+    )
+    end_release = models.ForeignKey(
+        "Release",
+        on_delete=models.DO_NOTHING,
+        db_column="EndReleaseID",
+        related_name="table_association_ends",
+        null=True,
+        blank=True,
+    )
 
     def __str__(self) -> str:
         return self.name or str(self.association_id)

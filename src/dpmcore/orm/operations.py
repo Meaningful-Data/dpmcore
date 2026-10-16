@@ -472,14 +472,15 @@ class OperationOutput(Base):
     :class:`~dpmcore.services.calculations_export.CalculationsExporter`
     uses to collect a module's calculations.
 
-    Present in the EBA SQL Server DPM databases; absent from the Access
-    DPM 2.0 distribution (see ``SQLSERVER_ONLY_ORM_TABLES`` in the schema
-    alignment test), so a query against it raises on an Access-derived
-    database rather than returning no rows.
+    Present in the EBA SQL Server DPM databases, and in the Access DPM 2.0
+    distribution from release 4.4 onwards (empty there as of 4.4). A
+    query against it raises on a database derived from an older Access
+    release rather than returning no rows.
 
     Attributes:
         operation_vid: FK to OperationVersion (composite PK).
         module_vid: FK to ModuleVersion (composite PK).
+        owner_id: FK to Organisation.
         row_guid: Row GUID.
     """
 
@@ -497,6 +498,11 @@ class OperationOutput(Base):
         ForeignKey("ModuleVersion.ModuleVID"),
         primary_key=True,
     )
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        "OwnerID",
+        Integer,
+        ForeignKey("Organisation.OrgID"),
+    )
     row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
 
     operation_version: Mapped["OperationVersion"] = relationship(
@@ -504,6 +510,9 @@ class OperationOutput(Base):
     )
     module_version: Mapped["ModuleVersion"] = relationship(
         "ModuleVersion", back_populates="operation_outputs"
+    )
+    owner: Mapped[Optional["Organisation"]] = relationship(
+        "Organisation", foreign_keys=[owner_id]
     )
 
 
@@ -617,6 +626,7 @@ class OperandReference(Base):
         property_id: FK to Property.
         variable_id: FK to Variable.
         subcategory_id: FK to SubCategory.
+        operation_vid: FK to OperationVersion.
     """
 
     __tablename__ = "OperandReference"
@@ -655,9 +665,17 @@ class OperandReference(Base):
         Integer,
         ForeignKey("SubCategory.SubCategoryID"),
     )
+    operation_vid: Mapped[Optional[int]] = mapped_column(
+        "OperationVID",
+        Integer,
+        ForeignKey("OperationVersion.OperationVID"),
+    )
 
     operation_node: Mapped[Optional["OperationNode"]] = relationship(
         "OperationNode", back_populates="operand_references"
+    )
+    operation_version: Mapped[Optional["OperationVersion"]] = relationship(
+        "OperationVersion", foreign_keys=[operation_vid]
     )
     item: Mapped[Optional["Item"]] = relationship(
         "Item", foreign_keys=[item_id]

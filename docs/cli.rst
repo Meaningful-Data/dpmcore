@@ -596,9 +596,11 @@ naming the cell behind every datapoint the calculations reference.
 
    The command needs a database carrying the ``OperationOutput`` table,
    which links an operation to the module version it writes to. That
-   table exists in the EBA SQL Server DPM databases but not in the
-   Access DPM 2.0 distribution, so a migrated Access database reports
-   the omission instead of exporting an empty set.
+   table exists in the EBA SQL Server DPM databases, and in the Access
+   DPM 2.0 distribution only from release 4.4 onwards. A database
+   migrated from an older Access release reports the omission instead
+   of exporting an empty set; in the 4.4 Access release the table is
+   present but empty, so no module has calculations to export.
 
    Cells are read from each table's **live** version -- open now and
    already published -- rather than from the version effective at the

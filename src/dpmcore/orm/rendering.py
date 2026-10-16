@@ -788,6 +788,9 @@ class TableAssociation(Base):
         parent_cardinality: Parent cardinality/optionality.
         child_cardinality: Child cardinality/optionality.
         row_guid: FK to Concept.
+        owner_id: FK to Organisation.
+        start_release_id: FK to Release.
+        end_release_id: FK to Release.
     """
 
     __tablename__ = "TableAssociation"
@@ -834,6 +837,16 @@ class TableAssociation(Base):
         Integer,
         ForeignKey("Organisation.OrgID"),
     )
+    start_release_id: Mapped[Optional[int]] = mapped_column(
+        "StartReleaseID",
+        Integer,
+        ForeignKey("Release.ReleaseID"),
+    )
+    end_release_id: Mapped[Optional[int]] = mapped_column(
+        "EndReleaseID",
+        Integer,
+        ForeignKey("Release.ReleaseID"),
+    )
 
     child_table_version: Mapped[Optional["TableVersion"]] = relationship(
         "TableVersion",
@@ -853,6 +866,12 @@ class TableAssociation(Base):
     )
     owner: Mapped[Optional["Organisation"]] = relationship(
         "Organisation", foreign_keys=[owner_id]
+    )
+    start_release: Mapped[Optional["Release"]] = relationship(
+        "Release", foreign_keys=[start_release_id]
+    )
+    end_release: Mapped[Optional["Release"]] = relationship(
+        "Release", foreign_keys=[end_release_id]
     )
     key_header_mappings: Mapped[List["KeyHeaderMapping"]] = relationship(
         "KeyHeaderMapping",

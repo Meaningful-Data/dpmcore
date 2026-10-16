@@ -484,6 +484,13 @@ class OperandReference(models.Model):
         null=True,
         blank=True,
     )
+    operation_version = models.ForeignKey(
+        "OperationVersion",
+        on_delete=models.DO_NOTHING,
+        db_column="OperationVID",
+        null=True,
+        blank=True,
+    )
 
     class Meta:
         managed = False
