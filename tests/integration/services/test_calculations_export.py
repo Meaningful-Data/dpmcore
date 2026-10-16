@@ -9,9 +9,8 @@ tables, and two calculation operations linked through
 The export is a downstream contract, so the assertions are about its
 *shape*: the namespace key, the operation codes paired with the right
 statements, the resolved output variables and tables, and the
-dependency module the calculations read from. Byte parity with the EBA
-``drr_operations`` script is checked separately by
-``scripts/check_export_parity.py`` against a real DPM SQL Server.
+``modules`` section describing the module versions the calculations
+read from.
 """
 
 from __future__ import annotations
@@ -27,8 +26,8 @@ from dpmcore.errors import (
     NotFound,
     SemanticError,
 )
-from dpmcore.orm.glossary import Property
-from dpmcore.orm.infrastructure import DataType, Release
+from dpmcore.orm.glossary import Item, ItemCategory, Property
+from dpmcore.orm.infrastructure import DataType, Organisation, Release
 from dpmcore.orm.operations import (
     Operation,
     OperationOutput,
@@ -58,6 +57,8 @@ from dpmcore.services.syntax import SyntaxService
 
 RELEASE = 8001
 LATER = 8002
+EARLIER = 7001
+WORKING = 8003
 
 HOME_MODULE = "CALC_HOME"
 DEP_MODULE = "CALC_DEP"
@@ -77,51 +78,57 @@ def _seed_infrastructure(session):
     """Releases, data type, property and framework."""
     session.add_all(
         [
+            Release(release_id=EARLIER, code="7.0", date=date(2024, 1, 1)),
             Release(release_id=RELEASE, code="8.0", date=date(2025, 1, 1)),
             Release(release_id=LATER, code="8.1", date=date(2026, 1, 1)),
             DataType(data_type_id=1, code="m"),
             Property(property_id=1, data_type_id=1, is_metric=True),
+            Organisation(org_id=1, name="Banking authority", acronym="EBA"),
+            Organisation(org_id=2, name="Central bank", acronym="ECB"),
             Framework(framework_id=1, code="CALCFW"),
-            Module(module_id=1, framework_id=1),
-            Module(module_id=2, framework_id=1),
+            Module(module_id=1, framework_id=1, owner_id=1),
+            Module(module_id=2, framework_id=1, owner_id=1),
         ]
     )
 
 
-def _seed_module_version(session, *, module_vid, module_id, code):
-    """One open module version whose reference window covers the test date."""
+def _seed_module_version(
+    session,
+    *,
+    module_vid,
+    module_id,
+    code,
+    number="1.0.0",
+    start=date(2026, 1, 1),
+    end=date(2026, 12, 31),
+    release=RELEASE,
+):
+    """A module version; by default one whose window covers the test date."""
     session.add(
         ModuleVersion(
             module_vid=module_vid,
             module_id=module_id,
             code=code,
-            version_number="1.0.0",
-            from_reference_date=date(2026, 1, 1),
-            to_reference_date=date(2026, 12, 31),
-            start_release_id=RELEASE,
+            version_number=number,
+            from_reference_date=start,
+            to_reference_date=end,
+            start_release_id=release,
             end_release_id=None,
         )
     )
 
 
-def _seed_table(session, *, table_id, table_vid, module_vid, code):
-    """A table version with one column and three rows of real cells."""
+def _seed_table(
+    session, *, table_id, table_vid, module_vid, code, release=RELEASE
+):
+    """A table with one column and three rows of cells, and one version.
+
+    Its ids follow the TableID ``n``: the headers are ``n00`` (the
+    column) and ``n01`` to ``n03`` (the rows), and the cell of row ``i``
+    is ``nn0i`` and holds the Variable ``nn00i``, so 11001 is the first
+    row of table 1.
+    """
     session.add(Table(table_id=table_id))
-    session.add(
-        TableVersion(
-            table_vid=table_vid,
-            table_id=table_id,
-            code=code,
-            start_release_id=RELEASE,
-            end_release_id=None,
-        )
-    )
-    session.add(
-        ModuleVersionComposition(
-            module_vid=module_vid, table_vid=table_vid, table_id=table_id
-        )
-    )
-
     column_header_id = table_id * 100
     session.add(Header(header_id=column_header_id, direction="X", is_key=True))
     session.add(
@@ -131,6 +138,69 @@ def _seed_table(session, *, table_id, table_vid, module_vid, code):
             code=COLUMN,
         )
     )
+    for index, row_code in enumerate(ROWS, start=1):
+        header_id = table_id * 100 + index
+        variable_vid = table_id * 11000 + index
+        session.add(Header(header_id=header_id, direction="Y", is_key=True))
+        session.add(
+            HeaderVersion(
+                header_vid=header_id, header_id=header_id, code=row_code
+            )
+        )
+        session.add(
+            Cell(
+                cell_id=table_id * 1100 + index,
+                table_id=table_id,
+                row_id=header_id,
+                column_id=column_header_id,
+            )
+        )
+        session.add(Variable(variable_id=variable_vid))
+        session.add(
+            VariableVersion(
+                variable_vid=variable_vid,
+                variable_id=variable_vid,
+                property_id=1,
+                code=f"V{variable_vid}",
+                start_release_id=release,
+                end_release_id=None,
+            )
+        )
+    _seed_table_version(
+        session,
+        table_vid=table_vid,
+        table_id=table_id,
+        code=code,
+        module_vid=module_vid,
+        rows=range(1, len(ROWS) + 1),
+        release=release,
+    )
+
+
+def _seed_table_version(
+    session, *, table_vid, table_id, code, module_vid, rows, release=RELEASE
+):
+    """A version of a table of ``_seed_table``, holding the cells of ``rows``.
+
+    ``rows`` are 1-based positions in ``ROWS``. The cells are the
+    table's own, so a Variable keeps its id across the versions. A
+    version of ``EARLIER`` ends where ``RELEASE`` starts.
+    """
+    session.add(
+        TableVersion(
+            table_vid=table_vid,
+            table_id=table_id,
+            code=code,
+            start_release_id=release,
+            end_release_id=RELEASE if release == EARLIER else None,
+        )
+    )
+    session.add(
+        ModuleVersionComposition(
+            module_vid=module_vid, table_vid=table_vid, table_id=table_id
+        )
+    )
+    column_header_id = table_id * 100
     session.add(
         TableVersionHeader(
             table_vid=table_vid,
@@ -139,19 +209,8 @@ def _seed_table(session, *, table_id, table_vid, module_vid, code):
             order=1,
         )
     )
-
-    for index, row_code in enumerate(ROWS, start=1):
+    for index in rows:
         header_id = table_id * 100 + index
-        cell_id = table_vid * 100 + index
-        variable_vid = table_vid * 1000 + index
-        variable_id = variable_vid
-
-        session.add(Header(header_id=header_id, direction="Y", is_key=True))
-        session.add(
-            HeaderVersion(
-                header_vid=header_id, header_id=header_id, code=row_code
-            )
-        )
         session.add(
             TableVersionHeader(
                 table_vid=table_vid,
@@ -161,30 +220,11 @@ def _seed_table(session, *, table_id, table_vid, module_vid, code):
             )
         )
         session.add(
-            Cell(
-                cell_id=cell_id,
-                table_id=table_id,
-                row_id=header_id,
-                column_id=column_header_id,
-            )
-        )
-        session.add(Variable(variable_id=variable_id))
-        session.add(
-            VariableVersion(
-                variable_vid=variable_vid,
-                variable_id=variable_id,
-                property_id=1,
-                code=f"V{variable_vid}",
-                start_release_id=RELEASE,
-                end_release_id=None,
-            )
-        )
-        session.add(
             TableVersionCell(
                 table_vid=table_vid,
-                cell_id=cell_id,
-                cell_code=f"{{{code}, r{row_code}, c{COLUMN}}}",
-                variable_vid=variable_vid,
+                cell_id=table_id * 1100 + index,
+                cell_code=f"{{{code}, r{ROWS[index - 1]}, c{COLUMN}}}",
+                variable_vid=table_id * 11000 + index,
                 is_nullable=True,
                 is_void=False,
                 is_excluded=False,
@@ -192,10 +232,64 @@ def _seed_table(session, *, table_id, table_vid, module_vid, code):
         )
 
 
+def _seed_open_key(session, *, header_id, table_id, property_id, table_vids):
+    """An open-key header on ``table_vids``, keyed by ``property_id``."""
+    session.add(
+        Header(
+            header_id=header_id,
+            table_id=table_id,
+            direction="Y",
+            is_key=True,
+        )
+    )
+    session.add(
+        HeaderVersion(
+            header_vid=header_id, header_id=header_id, property_id=property_id
+        )
+    )
+    for table_vid in table_vids:
+        session.add(
+            TableVersionHeader(
+                table_vid=table_vid,
+                header_id=header_id,
+                header_vid=header_id,
+                order=99,
+            )
+        )
+
+
+def _seed_key_property(session, property_id, *codes):
+    """A key property named ``codes[0]`` at EARLIER, ``codes[-1]`` after."""
+    session.add(Item(item_id=property_id))
+    session.add(Property(property_id=property_id, data_type_id=1))
+    session.add(
+        ItemCategory(
+            item_id=property_id,
+            start_release_id=EARLIER,
+            end_release_id=RELEASE if len(codes) > 1 else None,
+            code=codes[0],
+        )
+    )
+    if len(codes) > 1:
+        session.add(
+            ItemCategory(
+                item_id=property_id,
+                start_release_id=RELEASE,
+                end_release_id=None,
+                code=codes[1],
+            )
+        )
+
+
 def _seed_operation(session, *, operation_id, module_vid, code, expression):
     """A calculation operation writing into ``module_vid``."""
     session.add(
-        Operation(operation_id=operation_id, code=code, type="calculation")
+        Operation(
+            operation_id=operation_id,
+            code=code,
+            type="calculation",
+            owner_id=2,
+        )
     )
     session.add(
         OperationVersion(
@@ -209,6 +303,13 @@ def _seed_operation(session, *, operation_id, module_vid, code, expression):
     session.add(
         OperationOutput(operation_vid=operation_id, module_vid=module_vid)
     )
+
+
+def _set_expression(session, operation_vid, expression):
+    session.query(OperationVersion).filter(
+        OperationVersion.operation_vid == operation_vid
+    ).update({OperationVersion.expression: expression})
+    session.commit()
 
 
 @pytest.fixture
@@ -300,9 +401,20 @@ class TestCalculationsForModule:
             )
         )
 
+        assert list(ns)[:5] == [
+            "owner",
+            "module_code",
+            "module_version",
+            "module_owner",
+            "format_version",
+        ]
+        assert ns["owner"] == "ECB"
         assert ns["module_code"] == HOME_MODULE
-        assert ns["framework_code"] == "CALCFW"
         assert ns["module_version"] == "1.0.0"
+        assert ns["module_owner"] == "EBA"
+        assert ns["format_version"] == "2.0"
+        assert "framework_code" not in ns
+        assert "dependency_modules" not in ns
         assert ns["dpm_release"] == {
             "release": "8.0",
             "publication_date": PUBLICATION_DATE,
@@ -376,39 +488,58 @@ class TestCalculationsForModule:
             "11003": "m",
         }
 
-    def test_dependency_modules_exclude_the_home_module(self, calc_session):
-        ns = _namespace(
-            ASTGeneratorService(calc_session).calculations_for_module(
-                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
-            )
-        )
-
-        (dep_uri,) = ns["dependency_modules"]
-        assert dep_uri.endswith("/mod/calc_dep")
-        tables = ns["dependency_modules"][dep_uri]["tables"]
-        assert set(tables) == {DEP_TABLE}
-        # The data types survive the grouping pass rather than being
-        # flattened back to the "m" default.
-        assert tables[DEP_TABLE]["variables"] == {"22001": "m"}
-
-    def test_a_dependency_module_carries_its_merged_variables(
+    def test_modules_hold_the_dependency_and_the_home_module(
         self, calc_session
     ):
-        """The consumer contract wants ``variables`` beside ``tables``.
-
-        It is the union of the module's tables' variables, so a reader
-        does not have to walk the tables to learn what the module
-        contributes.
-        """
         ns = _namespace(
             ASTGeneratorService(calc_session).calculations_for_module(
                 HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
             )
         )
 
-        (dep_uri,) = ns["dependency_modules"]
-        entry = ns["dependency_modules"][dep_uri]
-        assert set(entry) == {"tables"}
+        assert list(ns["modules"]) == [DEP_MODULE, HOME_MODULE]
+        (dep,) = ns["modules"][DEP_MODULE]["versions"]
+        assert dep == {
+            "version": "1.0.0",
+            "URI": (
+                "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/calcfw/8.0/"
+                "mod/calc_dep"
+            ),
+            "from": "2026-01-01",
+            "to": "2026-12-31",
+            "tables": {
+                DEP_TABLE: {
+                    "variables": {
+                        "22001": {
+                            "data_type": "m",
+                            "cells": [{"row": "0010", "column": COLUMN}],
+                        }
+                    },
+                    "open_keys": {},
+                }
+            },
+        }
+
+    def test_the_home_version_lists_every_table_and_variable(
+        self, calc_session
+    ):
+        export = ASTGeneratorService(calc_session).calculations_for_module(
+            HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+        )
+        ns = _namespace(export)
+
+        (home,) = ns["modules"][HOME_MODULE]["versions"]
+        assert home["URI"] == next(iter(export))
+        assert list(home["tables"]) == [HOME_TABLE]
+        # Every cell of the module, not only the ones written or read.
+        assert home["tables"][HOME_TABLE]["variables"] == {
+            str(11000 + row): {
+                "data_type": "m",
+                "cells": [{"row": code, "column": COLUMN}],
+            }
+            for row, code in enumerate(ROWS, start=1)
+        }
+        assert "not_evaluable" not in home
 
     def test_data_types_come_from_the_dictionary(self, calc_session):
         calc_session.query(DataType).filter(DataType.data_type_id == 1).update(
@@ -422,9 +553,9 @@ class TestCalculationsForModule:
             )
         )
 
-        (dep_uri,) = ns["dependency_modules"]
-        deps = ns["dependency_modules"][dep_uri]["tables"][DEP_TABLE]
-        assert deps["variables"] == {"22001": "p"}
+        (dep,) = ns["modules"][DEP_MODULE]["versions"]
+        variables = dep["tables"][DEP_TABLE]["variables"]
+        assert variables["22001"]["data_type"] == "p"
         assert ns["output_variables"] == {"11002": "p", "11003": "p"}
 
 
@@ -455,24 +586,15 @@ class TestCalculationsDatapoints:
                 assert variable_id in export.datapoints
 
 
-_WITH_EXPRESSION = (
-    f"{{t{HOME_TABLE}, r0020, c{COLUMN}}} <- "
-    f"with {{t{DEP_TABLE}, c{COLUMN}}}: {{r0010}} + 1"
-)
-
-
-def _use_with_expression(session):
-    """Rewrite c_0001 so its operand sits inside a ``with`` context."""
-    session.query(OperationVersion).filter(
-        OperationVersion.operation_vid == 100
-    ).update({OperationVersion.expression: _WITH_EXPRESSION})
-    session.commit()
-
-
 class TestWithExpressions:
+    EXPRESSION = (
+        f"{{t{HOME_TABLE}, r0020, c{COLUMN}}} <- "
+        f"with {{t{DEP_TABLE}, c{COLUMN}}}: {{r0010}} + 1"
+    )
+
     def test_a_with_context_reaches_the_dependency_tables(self, calc_session):
         """The context has to be grafted before dependencies are collected."""
-        _use_with_expression(calc_session)
+        _set_expression(calc_session, 100, self.EXPRESSION)
 
         ns = _namespace(
             ASTGeneratorService(calc_session).calculations_for_module(
@@ -485,14 +607,14 @@ class TestWithExpressions:
         # table of its own and is skipped -- leaving the partial
         # selection {tC_98.00, c0010}, which selects no row and so
         # reports every datapoint of the column rather than r0010's.
-        (dep_uri,) = ns["dependency_modules"]
-        assert dep_uri.endswith("/mod/calc_dep")
-        tables = ns["dependency_modules"][dep_uri]["tables"]
+        (dep,) = ns["modules"][DEP_MODULE]["versions"]
+        assert dep["URI"].endswith("/mod/calc_dep")
+        tables = dep["tables"]
         assert set(tables) == {DEP_TABLE}
-        assert tables[DEP_TABLE]["variables"] == {"22001": "m"}
+        assert list(tables[DEP_TABLE]["variables"]) == ["22001"]
 
     def test_the_operand_resolves_to_the_context_table(self, calc_session):
-        _use_with_expression(calc_session)
+        _set_expression(calc_session, 100, self.EXPRESSION)
 
         ns = _namespace(
             ASTGeneratorService(calc_session).calculations_for_module(
@@ -508,7 +630,7 @@ class TestWithExpressions:
         assert [entry["datapoint"] for entry in operand["data"]] == [22001]
 
     def test_the_wrapper_is_not_serialized(self, calc_session):
-        _use_with_expression(calc_session)
+        _set_expression(calc_session, 100, self.EXPRESSION)
 
         export = ASTGeneratorService(calc_session).calculations_for_module(
             HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
@@ -534,13 +656,6 @@ class TestWithExpressions:
         # legal. A leaked context would silently graft c0010 onto it.
         assert checker.tables[HOME_TABLE]["cols"] is None
         assert checker.partial_selection is None
-
-
-def _set_expression(session, operation_vid, expression):
-    session.query(OperationVersion).filter(
-        OperationVersion.operation_vid == operation_vid
-    ).update({OperationVersion.expression: expression})
-    session.commit()
 
 
 class TestDependencyOrderBeforeOperandChecking:
@@ -658,14 +773,8 @@ class TestDependencyErrors:
 class TestOperationVersionWindow:
     """Only the operation version effective at the export's release."""
 
-    EARLIER = 8000
-
     def _supersede(self, session):
         """Give operation 100 an older, already-closed version."""
-        session.add(
-            Release(release_id=self.EARLIER, code="7.0", date=date(2024, 1, 1))
-        )
-        session.flush()
         session.add(
             OperationVersion(
                 operation_vid=9100,
@@ -674,7 +783,7 @@ class TestOperationVersionWindow:
                     f"{{t{HOME_TABLE}, r0020, c{COLUMN}}} <- "
                     f"{{t{DEP_TABLE}, r0010, c{COLUMN}}}"
                 ),
-                start_release_id=self.EARLIER,
+                start_release_id=EARLIER,
                 end_release_id=RELEASE,
             )
         )
@@ -735,7 +844,7 @@ class TestDependencyScope:
             live_table_versions=True,
         )
 
-        extractor = DependencyTableExtractor(calc_session, RELEASE)
+        extractor = DependencyTableExtractor(calc_session)
         extractor.visit(ast)
 
         assert set(extractor.tables) == {DEP_TABLE}
@@ -743,8 +852,6 @@ class TestDependencyScope:
 
 class TestDraftModuleVersion:
     """A module version living in a working release is still exportable."""
-
-    WORKING = 8003
 
     def test_the_calculations_survive_the_working_release(
         self, calc_session, caplog
@@ -758,7 +865,7 @@ class TestDraftModuleVersion:
         """
         calc_session.add(
             Release(
-                release_id=self.WORKING,
+                release_id=WORKING,
                 code="Playground",
                 date=date(1970, 1, 1),
                 type="playground",
@@ -766,7 +873,7 @@ class TestDraftModuleVersion:
         )
         calc_session.query(ModuleVersion).filter(
             ModuleVersion.module_vid == 1
-        ).update({ModuleVersion.start_release_id: self.WORKING})
+        ).update({ModuleVersion.start_release_id: WORKING})
         calc_session.commit()
 
         with caplog.at_level("WARNING"):
@@ -931,8 +1038,6 @@ class TestWorkingReleaseUri:
     export itself is keyed at one -- exporting the draft dictionary.
     """
 
-    WORKING = 8003
-
     def _seed(self, session):
         session.add_all(
             [
@@ -941,7 +1046,7 @@ class TestWorkingReleaseUri:
                 # Dated, but typed as the working dictionary: it sorts as
                 # the latest whatever its date says.
                 Release(
-                    release_id=self.WORKING,
+                    release_id=WORKING,
                     code="Playground",
                     date=date(1970, 1, 1),
                     type="playground",
@@ -950,17 +1055,12 @@ class TestWorkingReleaseUri:
                 Module(module_id=1, framework_id=1),
             ]
         )
-        session.add(
-            ModuleVersion(
-                module_vid=1,
-                module_id=1,
-                code=HOME_MODULE,
-                version_number="1.0.0",
-                from_reference_date=date(2026, 1, 1),
-                to_reference_date=date(2026, 12, 31),
-                start_release_id=self.WORKING,
-                end_release_id=None,
-            )
+        _seed_module_version(
+            session,
+            module_vid=1,
+            module_id=1,
+            code=HOME_MODULE,
+            release=WORKING,
         )
         session.commit()
 
@@ -1003,56 +1103,40 @@ class TestWorkingReleaseUri:
         assert caplog.text == ""
 
 
-class TestVersionWindows:
-    """A dependency read at another period carries its version chain.
+class TestModuleVersions:
+    """``modules`` lists every version a read can land in.
 
-    ``CALC_DEP`` gets an earlier version (``0.9.0``, release ``7.0``)
-    whose ``C_98.00`` holds the cell at r0010 under the same
-    ``VariableID`` but not the one at r0020.
+    ``CALC_DEP`` gets an earlier version (``0.9.0``, release ``7.0``,
+    2025) whose ``C_98.00`` holds the cell at r0010 under the same
+    ``VariableID`` but not the one at r0020, and ``c_0003`` reads both
+    cells a year back.
     """
 
-    EARLIER = 7001
+    DEP_URI = (
+        "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/calcfw/{}/mod/calc_dep"
+    )
 
     @pytest.fixture
     def shifted_session(self, calc_session):
         session = calc_session
-        session.add(
-            Release(release_id=self.EARLIER, code="7.0", date=date(2024, 1, 1))
+        _seed_module_version(
+            session,
+            module_vid=3,
+            module_id=2,
+            code=DEP_MODULE,
+            number="0.9.0",
+            start=date(2025, 1, 1),
+            end=date(2025, 12, 31),
+            release=EARLIER,
         )
-        session.add(
-            ModuleVersion(
-                module_vid=3,
-                module_id=2,
-                code=DEP_MODULE,
-                version_number="0.9.0",
-                from_reference_date=date(2025, 1, 1),
-                to_reference_date=date(2025, 12, 31),
-                start_release_id=self.EARLIER,
-                end_release_id=RELEASE,
-            )
-        )
-        session.add(
-            TableVersion(
-                table_vid=21,
-                table_id=2,
-                code=DEP_TABLE,
-                start_release_id=self.EARLIER,
-                end_release_id=RELEASE,
-            )
-        )
-        session.add(
-            ModuleVersionComposition(module_vid=3, table_vid=21, table_id=2)
-        )
-        session.add(
-            TableVersionCell(
-                table_vid=21,
-                cell_id=2201,
-                cell_code=f"{{{DEP_TABLE}, r0010, c{COLUMN}}}",
-                variable_vid=22001,
-                is_nullable=True,
-                is_void=False,
-                is_excluded=False,
-            )
+        _seed_table_version(
+            session,
+            table_vid=21,
+            table_id=2,
+            code=DEP_TABLE,
+            module_vid=3,
+            rows=[1],
+            release=EARLIER,
         )
         _seed_operation(
             session,
@@ -1068,61 +1152,298 @@ class TestVersionWindows:
         session.commit()
         return session
 
-    def _dependency(self, session):
+    def _versions(self, session, module=DEP_MODULE):
         ns = _namespace(
             ASTGeneratorService(session).calculations_for_module(
                 HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
             )
         )
-        (entry,) = ns["dependency_modules"].values()
-        return entry
+        return ns["modules"][module]["versions"]
 
-    def test_a_dependency_read_only_at_t_has_none(self, calc_session):
-        assert "version_windows" not in self._dependency(calc_session)
-
-    def test_the_whole_chain_is_declared_oldest_first(self, shifted_session):
-        windows = self._dependency(shifted_session)["version_windows"]
-
-        assert [
-            (
-                w["URI"],
-                w["module_version"],
-                w["from_reference_date"],
-                w["to_reference_date"],
-            )
-            for w in windows
-        ] == [
-            (
-                "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/calcfw/7.0/"
-                "mod/calc_dep",
-                "0.9.0",
-                "2025-01-01",
-                "2025-12-31",
-            ),
-            (
-                "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/calcfw/8.0/"
-                "mod/calc_dep",
-                "1.0.0",
-                "2026-01-01",
-                "2026-12-31",
-            ),
+    def test_a_dependency_read_only_at_t_has_one_version(self, calc_session):
+        assert [v["version"] for v in self._versions(calc_session)] == [
+            "1.0.0"
         ]
 
-    def test_an_older_version_lists_only_what_differs(self, shifted_session):
-        older, current = self._dependency(shifted_session)["version_windows"]
+    def test_a_read_a_year_back_reaches_the_predecessor(self, shifted_session):
+        versions = self._versions(shifted_session)
 
-        # r0020 (22002) is not defined in 0.9.0: the table is listed
-        # with the shifted cells it still holds.
-        assert older["tables"] == {
-            DEP_TABLE: {"variables": {"22001": "m"}, "open_keys": {}}
-        }
-        # The current version holds every shifted cell where declared.
-        assert current["tables"] == {}
+        assert [
+            (v["version"], v["URI"], v["from"], v["to"]) for v in versions
+        ] == [
+            ("0.9.0", self.DEP_URI.format("7.0"), "2025-01-01", "2025-12-31"),
+            ("1.0.0", self.DEP_URI.format("8.0"), "2026-01-01", "2026-12-31"),
+        ]
 
-    def test_the_declaration_is_unchanged(self, shifted_session):
-        tables = self._dependency(shifted_session)["tables"]
+    def test_each_version_lists_what_lands_in_it(self, shifted_session):
+        older, current = self._versions(shifted_session)
 
-        assert tables[DEP_TABLE]["variables"] == {
-            "22001": "m",
-            "22002": "m",
-        }
+        # c_0003's reads land in 0.9.0, which has no cell for r0020.
+        assert list(older["tables"][DEP_TABLE]["variables"]) == ["22001"]
+        # Only c_0001's read at T lands in 1.0.0.
+        assert list(current["tables"][DEP_TABLE]["variables"]) == ["22001"]
+
+    def test_a_version_missing_a_variable_cannot_serve_its_reader(
+        self, shifted_session
+    ):
+        older, current = self._versions(shifted_session)
+
+        assert older["not_evaluable"] == ["c_0003"]
+        assert "not_evaluable" not in current
+
+    def test_a_version_out_of_reach_is_not_listed(self, shifted_session):
+        """A year back from 2026 never reaches 2024, nor a ghost."""
+        shifted_session.add_all(
+            [
+                Release(release_id=7000, code="6.0", date=date(2023, 1, 1)),
+                Release(release_id=7002, code="7.1", date=date(2024, 6, 1)),
+            ]
+        )
+        _seed_module_version(
+            shifted_session,
+            module_vid=4,
+            module_id=2,
+            code=DEP_MODULE,
+            number="0.8.0",
+            start=date(2024, 1, 1),
+            end=date(2024, 12, 31),
+            release=7000,
+        )
+        _seed_module_version(
+            shifted_session,
+            module_vid=5,
+            module_id=2,
+            code=DEP_MODULE,
+            number="0.9.1",
+            start=date(2025, 6, 30),
+            end=date(2025, 6, 30),
+            release=7002,
+        )
+        shifted_session.commit()
+
+        versions = self._versions(shifted_session)
+
+        assert [v["version"] for v in versions] == ["0.9.0", "1.0.0"]
+        assert versions[0]["to"] == "2025-12-31"
+
+    def test_a_successor_in_the_window_is_listed(self, calc_session):
+        _seed_module_version(
+            calc_session,
+            module_vid=6,
+            module_id=2,
+            code=DEP_MODULE,
+            number="1.1.0",
+            start=date(2026, 7, 1),
+            end=None,
+            release=LATER,
+        )
+        _seed_table_version(
+            calc_session,
+            table_vid=23,
+            table_id=2,
+            code=DEP_TABLE,
+            module_vid=6,
+            rows=[1, 2, 3],
+            release=LATER,
+        )
+        calc_session.commit()
+
+        versions = self._versions(calc_session)
+
+        assert [
+            (v["version"], v["URI"], v["from"], v["to"]) for v in versions
+        ] == [
+            ("1.0.0", self.DEP_URI.format("8.0"), "2026-01-01", "2026-06-30"),
+            ("1.1.0", self.DEP_URI.format("8.1"), "2026-07-01", None),
+        ]
+        assert "not_evaluable" not in versions[1]
+
+    def test_open_keys_are_compared_by_property(self, shifted_session):
+        """``SIC`` renamed ``qSIC`` is the same key: nothing changes."""
+        _seed_key_property(shifted_session, 50, "SIC", "qSIC")
+        _seed_open_key(
+            shifted_session,
+            header_id=290,
+            table_id=2,
+            property_id=50,
+            table_vids=[21, 22],
+        )
+        _set_expression(
+            shifted_session,
+            102,
+            f"{{t{HOME_TABLE}, r0010, c{COLUMN}}} <- "
+            f"time_shift({{t{DEP_TABLE}, r0010, c{COLUMN}}}, A, 1)",
+        )
+
+        older, current = self._versions(shifted_session)
+
+        assert "not_evaluable" not in older
+        # Each version names the key as its own release does.
+        assert older["tables"][DEP_TABLE]["open_keys"] == {"SIC": "m"}
+        assert current["tables"][DEP_TABLE]["open_keys"] == {"qSIC": "m"}
+
+    def test_a_different_open_key_cannot_serve_the_reader(
+        self, shifted_session
+    ):
+        _seed_key_property(shifted_session, 50, "qSIC")
+        _seed_key_property(shifted_session, 51, "qEGS")
+        _seed_open_key(
+            shifted_session,
+            header_id=290,
+            table_id=2,
+            property_id=50,
+            table_vids=[22],
+        )
+        _seed_open_key(
+            shifted_session,
+            header_id=291,
+            table_id=2,
+            property_id=51,
+            table_vids=[21],
+        )
+        _set_expression(
+            shifted_session,
+            102,
+            f"{{t{HOME_TABLE}, r0010, c{COLUMN}}} <- "
+            f"time_shift({{t{DEP_TABLE}, r0010, c{COLUMN}}}, A, 1)",
+        )
+
+        older, _ = self._versions(shifted_session)
+
+        assert older["not_evaluable"] == ["c_0003"]
+
+    def test_a_shifted_read_of_the_home_module_reaches_its_predecessor(
+        self, calc_session
+    ):
+        _seed_module_version(
+            calc_session,
+            module_vid=7,
+            module_id=1,
+            code=HOME_MODULE,
+            number="0.9.0",
+            start=date(2025, 1, 1),
+            end=date(2025, 12, 31),
+            release=EARLIER,
+        )
+        _seed_table_version(
+            calc_session,
+            table_vid=12,
+            table_id=1,
+            code=HOME_TABLE,
+            module_vid=7,
+            rows=[2],
+            release=EARLIER,
+        )
+        _seed_operation(
+            calc_session,
+            operation_id=102,
+            module_vid=1,
+            code="c_0003",
+            expression=(
+                f"{{t{HOME_TABLE}, r0010, c{COLUMN}}} <- "
+                f"time_shift({{t{HOME_TABLE}, r0020, c{COLUMN}}}, A, 1)"
+            ),
+        )
+        calc_session.commit()
+
+        older, own = self._versions(calc_session, HOME_MODULE)
+
+        assert older["version"] == "0.9.0"
+        assert older["URI"].endswith("/calcfw/7.0/mod/calc_home")
+        assert list(older["tables"][HOME_TABLE]["variables"]) == ["11002"]
+        assert "not_evaluable" not in older
+        # The own version still describes every Variable of the module.
+        assert len(own["tables"][HOME_TABLE]["variables"]) == len(ROWS)
+
+
+class TestHomeTables:
+    """A table of the home module is read from the home module."""
+
+    @pytest.mark.parametrize(
+        "read",
+        [
+            f"{{t{HOME_TABLE}, r0020, c{COLUMN}}}",
+            # A month back lands in 2025-12..2026-11, inside CALC_DEP 1.0.0.
+            f"time_shift({{t{HOME_TABLE}, r0020, c{COLUMN}}}, M, 1)",
+        ],
+    )
+    def test_another_module_holding_it_is_no_alternative(
+        self, calc_session, read
+    ):
+        """``CALC_DEP`` also holds ``C_99.00``: it gains nothing from it."""
+        calc_session.add(
+            ModuleVersionComposition(module_vid=2, table_vid=11, table_id=1)
+        )
+        _set_expression(
+            calc_session, 101, f"{{t{HOME_TABLE}, r0030, c{COLUMN}}} <- {read}"
+        )
+
+        ns = _namespace(
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+        )
+
+        (dep,) = ns["modules"][DEP_MODULE]["versions"]
+        assert list(dep["tables"]) == [DEP_TABLE]
+
+
+class TestMovedVariable:
+    def test_a_variable_moved_to_two_tables_is_listed_in_both(
+        self, calc_session
+    ):
+        """In 0.9.0, 22001 sits in C_96.00 and C_97.00, not C_98.00.
+
+        Both have the open keys of C_98.00 (none), so the read can be
+        served from either, and both are listed until the spec settles
+        V-40.
+        """
+        _seed_module_version(
+            calc_session,
+            module_vid=3,
+            module_id=2,
+            code=DEP_MODULE,
+            number="0.9.0",
+            start=date(2025, 1, 1),
+            end=date(2025, 12, 31),
+            release=EARLIER,
+        )
+        for table_id, code in ((6, "C_96.00"), (7, "C_97.00")):
+            _seed_table(
+                calc_session,
+                table_id=table_id,
+                table_vid=table_id * 10 + 1,
+                module_vid=3,
+                code=code,
+                release=EARLIER,
+            )
+        _seed_operation(
+            calc_session,
+            operation_id=102,
+            module_vid=1,
+            code="c_0003",
+            expression=(
+                f"{{t{HOME_TABLE}, r0010, c{COLUMN}}} <- "
+                f"time_shift({{t{DEP_TABLE}, r0010, c{COLUMN}}}, A, 1)"
+            ),
+        )
+        calc_session.commit()
+        # Their r0010 holds 22001, the Variable at r0010 of C_98.00.
+        calc_session.query(TableVersionCell).filter(
+            TableVersionCell.table_vid.in_([61, 71]),
+            TableVersionCell.cell_code.contains("r0010"),
+        ).update({TableVersionCell.variable_vid: 22001})
+        calc_session.commit()
+
+        ns = _namespace(
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+        )
+
+        older, _ = ns["modules"][DEP_MODULE]["versions"]
+        assert {
+            code: list(table["variables"])
+            for code, table in older["tables"].items()
+        } == {"C_96.00": ["22001"], "C_97.00": ["22001"]}
+        assert "not_evaluable" not in older

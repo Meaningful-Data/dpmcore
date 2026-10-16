@@ -2689,6 +2689,42 @@ class ViewDatapointsQuery:
     # -- public methods -------------------------------------------- #
 
     @classmethod
+    def get_table_version_cells(
+        cls,
+        session: "Session",
+        table: str,
+        table_vids: Sequence[int],
+    ) -> pd.DataFrame:
+        """Return every non-void cell of ``table_vids`` with its variable.
+
+        Pinned to the given table versions instead of resolving them by
+        code and release as :meth:`get_table_data` does, so a version a
+        later release superseded is read as it was published.
+
+        Args:
+            session: SQLAlchemy session.
+            table: Code of the table versions, set on every row.
+            table_vids: The table versions to read.
+
+        Returns:
+            A copy with ``table_vid``, ``variable_id``, ``data_type`` and
+            ``{row,column,sheet}_{code,order}``.
+        """
+        frame = cls._cell_frame(session, table, table_vids)
+        columns = [
+            "table_vid",
+            "variable_id",
+            "data_type",
+            "row_code",
+            "column_code",
+            "sheet_code",
+            "row_order",
+            "column_order",
+            "sheet_order",
+        ]
+        return frame[columns].copy()
+
+    @classmethod
     def get_table_data(
         cls,
         session: "Session",

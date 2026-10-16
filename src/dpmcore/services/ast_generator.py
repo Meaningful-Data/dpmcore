@@ -1028,7 +1028,8 @@ class ASTGeneratorService:
             publication_date: Publication date stamped into the
                 ``dpm_release`` block; defaults to today.
             release_code: Release for the dictionary lookups (e.g.
-                ``"4.2"``). Defaults to the live release.
+                ``"4.2"``). Defaults to the module version's start
+                release.
 
         Returns:
             The export, keyed by the module's EBA taxonomy URI.
@@ -1060,7 +1061,8 @@ class ASTGeneratorService:
             publication_date: Publication date stamped into the
                 ``dpm_release`` block; defaults to today.
             release_code: Release for the dictionary lookups (e.g.
-                ``"4.2"``). Defaults to the live release.
+                ``"4.2"``). Defaults to the module version's start
+                release.
 
         Returns:
             ``{variable_id: {"table", "row", "column", "sheet"}}``.
@@ -1089,7 +1091,8 @@ class ASTGeneratorService:
             publication_date: Publication date stamped into the
                 ``dpm_release`` block; defaults to today.
             release_code: Release for the dictionary lookups (e.g.
-                ``"4.2"``). Defaults to the live release.
+                ``"4.2"``). Defaults to the module version's start
+                release.
 
         Returns:
             Both halves of the export.

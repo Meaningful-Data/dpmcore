@@ -2,8 +2,8 @@
 
 Everything the export needs that is not already a dpmcore query: the
 ``OperationOutput`` join that yields a module's calculations, the module
-metadata and EBA taxonomy URI, per-datapoint data types, and the output
-and dependency tables.
+metadata and EBA taxonomy URI, per-datapoint data types, the output
+tables, and the module versions holding each table read.
 
 The EBA ``drr_operations`` pipeline these mirror compares release IDs
 numerically and spells its perpetual release ``9999``. Neither holds in
@@ -40,7 +40,7 @@ from dpmcore.dpm_xl.utils.filters import (
 )
 from dpmcore.errors import Invalid, NotFound
 from dpmcore.orm.glossary import Property
-from dpmcore.orm.infrastructure import DataType, Release
+from dpmcore.orm.infrastructure import DataType, Organisation, Release
 from dpmcore.orm.operations import (
     Operation,
     OperationOutput,
@@ -143,31 +143,37 @@ def get_module_version_id(
 
 
 def get_module_metadata(session: "Session", module_vid: int) -> Dict[str, Any]:
-    """Return the module version's code, version, dates and start release.
+    """Return the module version's identity, dates, release and owner.
 
     Args:
         session: SQLAlchemy session.
         module_vid: Module version ID.
 
     Returns:
-        Dict with ``module_vid``, ``code``, ``version_number``,
-        ``from_date``, ``to_date`` and ``start_release_id``.
+        Dict with ``module_vid``, ``module_id``, ``code``,
+        ``version_number``, ``from_date``, ``to_date``,
+        ``start_release_id`` and ``module_owner`` (the acronym of the
+        organisation owning the module, ``None`` when it has none).
 
     Raises:
         NotFound: If no ``ModuleVersion`` has that VID.
     """
-    mv = (
-        session.query(ModuleVersion)
+    row = (
+        session.query(ModuleVersion, Organisation.acronym)
+        .outerjoin(Module, Module.module_id == ModuleVersion.module_id)
+        .outerjoin(Organisation, Organisation.org_id == Module.owner_id)
         .filter(ModuleVersion.module_vid == module_vid)
         .first()
     )
-    if mv is None:
+    if row is None:
         raise NotFound(
             title="Module version not found",
             description=f"No ModuleVersion with VID {module_vid}.",
         )
+    mv, module_owner = row
     return {
         "module_vid": module_vid,
+        "module_id": mv.module_id,
         "code": mv.code,
         "version_number": mv.version_number or "1.0.0",
         "from_date": mv.from_reference_date,
@@ -177,6 +183,7 @@ def get_module_metadata(session: "Session", module_vid: int) -> Dict[str, Any]:
             if mv.start_release_id is not None
             else None
         ),
+        "module_owner": module_owner,
     }
 
 
@@ -352,14 +359,16 @@ def get_calculations(
             two assign the same output.
 
     Returns:
-        ``[{"operation_vid", "expression", "operation_code"}, ...]``,
-        ordered by ``OperationVID``.
+        ``[{"operation_vid", "expression", "operation_code", "owner"},
+        ...]``, ordered by ``OperationVID``; ``owner`` is the acronym of
+        the organisation owning the operation, or ``None``.
     """
     query: Any = (
         session.query(
             OperationVersion.operation_vid.label("operation_vid"),
             OperationVersion.expression.label("expression"),
             Operation.code.label("operation_code"),
+            Organisation.acronym.label("owner"),
         )
         .select_from(ModuleVersion)
         .join(
@@ -374,6 +383,7 @@ def get_calculations(
             Operation,
             Operation.operation_id == OperationVersion.operation_id,
         )
+        .outerjoin(Organisation, Organisation.org_id == Operation.owner_id)
         .filter(ModuleVersion.module_vid == module_vid)
     )
     query = release_window(
@@ -617,130 +627,9 @@ def to_date(value: Any) -> Optional[date_cls]:
     return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()  # noqa: DTZ007
 
 
-def pick_module_version_for_date(
-    rows: Sequence[Dict[str, Any]], reference_date: date_cls
-) -> Optional[Dict[str, Any]]:
-    """Return the first row whose window contains ``reference_date``.
-
-    Args:
-        rows: Dicts with ``from_date`` and ``to_date`` (open when
-            ``None``).
-        reference_date: The date to look for.
-
-    Returns:
-        The matching row, or ``None``.
-    """
-    for row in rows:
-        from_date, to_date_ = row.get("from_date"), row.get("to_date")
-        if from_date is not None and from_date > reference_date:
-            continue
-        if to_date_ is not None and to_date_ < reference_date:
-            continue
-        return row
-    return None
-
-
-def group_tables_by_module(
+def windowed_table_vids(
     session: "Session",
-    tables: Dict[str, Dict[str, Any]],
-    release_id: Optional[int] = None,
-    reference_date: Any = None,
-) -> Dict[str, Dict[str, Any]]:
-    """Group dependency tables under the module versions that contain them.
-
-    Args:
-        session: SQLAlchemy session.
-        tables: ``{table_code: {"variables": {id: type}, "open_keys": …}}``
-            as collected from the calculations' operands.
-        release_id: Release to resolve the table and module versions at,
-            ``None`` selects the live ones.
-        reference_date: Picks, among a module's versions, the one valid
-            at this date, otherwise the lowest ``ModuleVID``.
-
-    Returns:
-        ``{module_code: {module_vid, version_number, from_date, to_date,
-        tables}}``, carrying each table's variables and open keys
-        through unchanged.
-    """
-    ref_date = to_date(reference_date) if reference_date else None
-    module_tables: Dict[str, Dict[str, Any]] = {}
-    if not tables:
-        return module_tables
-
-    table_vid_by_code = _windowed_table_vids(session, tables, release_id)
-    dropped = [code for code in tables if code not in table_vid_by_code]
-    if dropped:
-        # The operands were resolved against each table's *live* version,
-        # which need not be the one effective at ``release_id``. Saying
-        # so beats a dependency quietly missing from the export.
-        logger.warning(
-            "%s dependency table(s) have no version at the export's "
-            "release and are left out of dependency_modules: %s",
-            len(dropped),
-            ", ".join(sorted(dropped)),
-        )
-    if not table_vid_by_code:
-        return module_tables
-
-    modules_by_table_vid = _modules_of_table_vids(
-        session, set(table_vid_by_code.values()), release_id
-    )
-
-    # Driven by ``tables`` rather than by the query results, so the
-    # exported order follows the order the operands were collected in.
-    for table_code, table_info in tables.items():
-        table_vid = table_vid_by_code.get(table_code)
-        if table_vid is None:
-            continue
-        rows_by_module: Dict[str, List[Dict[str, Any]]] = {}
-        for row in modules_by_table_vid.get(table_vid, ()):
-            rows_by_module.setdefault(row.module_code, []).append(
-                {
-                    "module_vid": row.module_vid,
-                    "version_number": row.version_number,
-                    "from_date": to_date(row.from_date),
-                    "to_date": to_date(row.to_date),
-                }
-            )
-        for module_code, rows in rows_by_module.items():
-            if module_code not in module_tables:
-                module_tables[module_code] = {
-                    **_choose_module_version(module_code, rows, ref_date),
-                    "tables": {},
-                }
-            module_tables[module_code]["tables"][table_code] = {
-                # Already resolved by the caller, re-deriving them here
-                # would throw the data types away.
-                "variables": table_info["variables"],
-                "open_keys": table_info.get("open_keys", {}),
-            }
-
-    return module_tables
-
-
-def _choose_module_version(
-    module_code: str,
-    rows: List[Dict[str, Any]],
-    reference_date: Optional[date_cls],
-) -> Dict[str, Any]:
-    """Pick the module version valid at ``reference_date``, or the first."""
-    if reference_date is None:
-        return rows[0]
-    chosen = pick_module_version_for_date(rows, reference_date)
-    if chosen is not None:
-        return chosen
-    logger.warning(
-        "No version of module %s contains %s, using module version %s",
-        module_code,
-        reference_date,
-        rows[0]["module_vid"],
-    )
-    return rows[0]
-
-
-def _windowed_table_vids(
-    session: "Session",
-    tables: Dict[str, Dict[str, Any]],
+    table_codes: Sequence[str],
     release_id: Optional[int],
 ) -> Dict[str, int]:
     """Resolve each table code to one ``TableVID`` at ``release_id``.
@@ -755,7 +644,7 @@ def _windowed_table_vids(
 
     Args:
         session: SQLAlchemy session.
-        tables: The dependency tables, keyed by code.
+        table_codes: The table codes to resolve.
         release_id: Release to window the table versions at.
 
     Returns:
@@ -774,7 +663,7 @@ def _windowed_table_vids(
     )
     resolved: Dict[str, int] = {}
     ambiguous: Set[str] = set()
-    for row in chunked_in(query, TableVersion.code, list(tables)):
+    for row in chunked_in(query, TableVersion.code, list(table_codes)):
         table_vid = int(row.table_vid)
         current = resolved.get(row.code)
         if current is None:
@@ -784,7 +673,7 @@ def _windowed_table_vids(
         resolved[row.code] = min(current, table_vid)
     if ambiguous:
         logger.warning(
-            "%s dependency table(s) have overlapping versions at the "
+            "%s table(s) read have overlapping versions at the "
             "export's release, the lowest TableVID is used: %s",
             len(ambiguous),
             ", ".join(sorted(ambiguous)),
@@ -792,7 +681,7 @@ def _windowed_table_vids(
     return resolved
 
 
-def _modules_of_table_vids(
+def modules_of_table_vids(
     session: "Session",
     table_vids: "set[int]",
     release_id: Optional[int],
@@ -806,17 +695,14 @@ def _modules_of_table_vids(
 
     Returns:
         ``{table_vid: [row, ...]}`` where each row carries
-        ``module_vid``, ``module_code``, ``version_number``,
-        ``from_date`` and ``to_date``.
+        ``module_vid``, ``module_id`` and ``module_code``.
     """
     query: Any = (
         session.query(
             ModuleVersionComposition.table_vid.label("table_vid"),
             ModuleVersionComposition.module_vid.label("module_vid"),
+            ModuleVersion.module_id.label("module_id"),
             ModuleVersion.code.label("module_code"),
-            ModuleVersion.version_number.label("version_number"),
-            ModuleVersion.from_reference_date.label("from_date"),
-            ModuleVersion.to_reference_date.label("to_date"),
         )
         .join(
             ModuleVersion,

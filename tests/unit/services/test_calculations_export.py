@@ -16,21 +16,26 @@ import pandas as pd
 import pytest
 
 from dpmcore.dpm_xl.ast.nodes import Constant, VarID
-from dpmcore.errors import Invalid, SemanticError
+from dpmcore.errors import Invalid, NotFound, SemanticError
 from dpmcore.orm.release_sort_order import compute_sort_order
 from dpmcore.services.calculations_export.exporter import (
     CalculationsExporter,
     _build_datapoint_mapping,
     _build_expression,
+    _module_owner,
+    _owner,
+)
+from dpmcore.services.calculations_export.modules import (
+    AT_T,
+    ModuleVersionInfo,
+    RefDateLag,
+    combine_lags,
+    overlaps,
+    target_window,
+    version_chain,
 )
 from dpmcore.services.calculations_export.queries import (
     _published_module_uri,
-    pick_module_version_for_date,
-)
-from dpmcore.services.calculations_export.version_windows import (
-    current_window,
-    older_module_versions,
-    older_windows,
 )
 from dpmcore.services.calculations_export.visitors import (
     CalculationsJSONVisitor,
@@ -43,6 +48,10 @@ from dpmcore.services.calculations_export.visitors import (
 )
 from dpmcore.services.syntax import SyntaxService
 
+_CELL_A = "{tA, r0010, c0010}"
+_CELL_B = "{tA, r0020, c0010}"
+_CELL_C = "{tB, r0010, c0010}"
+
 
 def _parse(script):
     return SyntaxService().parse(script)
@@ -50,6 +59,30 @@ def _parse(script):
 
 def _calc(expression, code=None):
     return {"expression": expression, "operation_code": code}
+
+
+def _reads(script):
+    """``DependencyTableExtractor`` run over ``script``, DB-free.
+
+    Each selection resolves to one datapoint whose id is its first row
+    code, so ``{tA, r0010, ...}`` reads datapoint ``10`` of ``A``.
+    """
+    ast = _parse(script)
+    unwrap_with_expressions(ast)
+    extractor = DependencyTableExtractor(session=None)
+    extractor._variable_ids = lambda table, node: [int(node.rows[0])]
+    extractor.visit(ast)
+    return extractor
+
+
+def _mv(vid, start, end, release=1, number=None):
+    return ModuleVersionInfo(
+        module_vid=vid,
+        version_number=number or f"{vid}.0.0",
+        start=start,
+        end=end,
+        start_release_id=release,
+    )
 
 
 class TestBuildExpression:
@@ -100,11 +133,6 @@ class TestOperationCodePairing:
         calculations = [_calc("x := 1; y := 2", "c1")]
         with pytest.raises(Invalid, match="do not pair"):
             exporter._parse(_build_expression(calculations), calculations)
-
-
-_CELL_A = "{tA, r0010, c0010}"
-_CELL_B = "{tA, r0020, c0010}"
-_CELL_C = "{tB, r0010, c0010}"
 
 
 class TestDAGAnalyzer:
@@ -613,48 +641,61 @@ class TestUnresolvableOperands:
 
     def test_an_operand_without_a_table_is_skipped(self):
         """A with-context operand never reaches the database untouched."""
-        from dpmcore.services.calculations_export.visitors import (
-            DependencyTableExtractor,
-        )
-
         extractor = DependencyTableExtractor(session=None)
         extractor.visit_VarID(VarID(None, ["0010"], None, None, None, None))
 
+        assert extractor.reads == []
         assert extractor.tables == {}
-        assert extractor.all_datapoints == []
 
 
-def _shifted(script):
-    """``DependencyTableExtractor.shifted`` over ``script``, DB-free.
+class TestReadLags:
+    @pytest.mark.parametrize(
+        ("operand", "lag"),
+        [
+            (
+                "time_shift({tA, r0010, c0010}, A, 1, refPeriod)",
+                RefDateLag(-12),
+            ),
+            ("time_shift({tA, r0010, c0010}, Q, 1)", RefDateLag(-3)),
+            # A negative shift reads a later period.
+            (
+                "time_shift({tA, r0010, c0010}, A, (-1), refPeriod)",
+                RefDateLag(12),
+            ),
+            ("time_shift({tA, r0010, c0010}, M, -12)", RefDateLag(12)),
+        ],
+    )
+    def test_a_time_shift_moves_the_read(self, operand, lag):
+        reads = _reads(f"x := {operand};").reads
 
-    Each selection resolves to one datapoint whose id is its first row
-    code, so ``{tA, r0010, ...}`` reads datapoint ``10`` of ``A``.
-    """
-    ast = _parse(script)
-    unwrap_with_expressions(ast)
-    extractor = DependencyTableExtractor(session=None)
-    extractor._variable_ids = lambda table, node: [int(node.rows[0])]
-    extractor._get_open_keys = lambda table: {}
-    extractor.visit(ast)
-    return extractor
+        assert {(read.table, read.lag) for read in reads} == {("A", lag)}
 
+    def test_nested_shifts_add_up(self):
+        reads = _reads(
+            "x := time_shift(time_shift({tA, r0010, c0010}, Q, 1), M, 1);"
+        ).reads
 
-class TestShiftedReads:
+        assert {(read.table, read.lag) for read in reads} == {
+            ("A", RefDateLag(-4))
+        }
+
     @pytest.mark.parametrize(
         "operand",
         [
-            "time_shift({tA, r0010, c0010}, A, 1, refPeriod)",
-            "time_shift({tA, r0010, c0010}, Q, -1)",
             "{tA, r0010, c0010}[where refPeriod = #2025-12-31#]",
             "{tA, r0010, c0010}[sub refPeriod = #2025-12-31#]",
             "avg({tA, r0010, c0010} over (order by refPeriod "
             "data points between 11 preceding and current data point))",
             "sum({tA, r0010, c0010} over (partition by qEGS "
             "order by refPeriod desc))",
+            "time_shift({tA, r0010, c0010}[where refPeriod = #2025-12-31#]"
+            ", A, 1)",
         ],
     )
-    def test_a_read_at_another_period_is_shifted(self, operand):
-        assert _shifted(f"x := {operand};").shifted == {"A": {"10"}}
+    def test_a_read_no_lag_describes_lands_anywhere(self, operand):
+        reads = _reads(f"x := {operand};").reads
+
+        assert {(read.table, read.lag) for read in reads} == {("A", None)}
 
     @pytest.mark.parametrize(
         "operand",
@@ -667,171 +708,270 @@ class TestShiftedReads:
             "sum({tA, r0010, c0010} group by refPeriod)",
         ],
     )
-    def test_a_read_at_the_instance_s_own_period_is_not(self, operand):
-        extractor = _shifted(f"x := {operand};")
+    def test_a_read_at_the_anchor_s_own_date(self, operand):
+        reads = _reads(f"x := {operand};").reads
 
-        assert extractor.shifted == {}
-        # Still a dependency, read at T.
-        assert set(extractor.tables) == {"A"}
+        assert {(read.table, read.lag) for read in reads} == {("A", AT_T)}
 
-    def test_only_the_shifted_operand_of_an_expression_is_shifted(self):
-        extractor = _shifted(
+    def test_only_the_shifted_operand_of_an_expression_moves(self):
+        reads = _reads(
             "x := {tA, r0010, c0010} - "
             "time_shift({tB, r0020, c0010}, A, 1, refPeriod);"
-        )
+        ).reads
 
-        assert extractor.shifted == {"B": {"20"}}
-        assert set(extractor.tables) == {"A", "B"}
+        assert {(read.table, read.lag) for read in reads} == {
+            ("A", AT_T),
+            ("B", RefDateLag(-12)),
+        }
 
     def test_a_with_level_where_on_ref_period_reaches_every_operand(self):
         """The ``where`` is grafted onto the selections, so it survives
         the unwrapping of the ``with``.
         """
-        extractor = _shifted(
+        reads = _reads(
             "x := with {tA, c0010}[where refPeriod = #2025-12-31#]: "
             "{tA, r0010} + {tB, r0020, c0010};"
+        ).reads
+
+        assert {(read.table, read.lag) for read in reads} == {
+            ("A", None),
+            ("B", None),
+        }
+
+    def test_each_read_names_its_statement(self):
+        extractor = _reads(
+            "x := {tA, r0010, c0010};\ny := {tB, r0020, c0010};"
         )
 
-        assert extractor.shifted == {"A": {"10"}, "B": {"20"}}
+        assert [
+            (read.statement, read.table, read.variable_ids)
+            for read in extractor.reads
+        ] == [(0, "A", frozenset({10})), (1, "B", frozenset({20}))]
 
-    def test_tables_keep_the_order_they_are_first_shifted_in(self):
-        extractor = _shifted(
-            "x := time_shift({tB, r0010, c0010}, A, 1) + "
-            "time_shift({tA, r0010, c0010}, A, 1);"
+    def test_tables_merge_the_reads_of_a_table(self):
+        extractor = _reads(
+            "x := {tA, r0010, c0010} + time_shift({tA, r0020, c0010}, A, 1);"
         )
 
-        assert list(extractor.shifted) == ["B", "A"]
+        assert extractor.tables == {"A": {10, 20}}
 
 
-def _version(vid, start, end, release=1, number=None):
-    return {
-        "module_vid": vid,
-        "version_number": number or f"{vid}.0.0",
-        "from_date": start,
-        "to_date": end,
-        "start_release_id": release,
+class TestRefDateLag:
+    @pytest.mark.parametrize(
+        ("period", "shift", "lag"),
+        [
+            ("A", 1, RefDateLag(-12)),
+            ("S", 1, RefDateLag(-6)),
+            ("Q", -2, RefDateLag(6)),
+            ("M", 1, RefDateLag(-1)),
+            ("W", 1, RefDateLag(-7, "D")),
+            ("D", 3, RefDateLag(-3, "D")),
+            ("X", 1, None),
+        ],
+    )
+    def test_of_time_shift(self, period, shift, lag):
+        assert RefDateLag.of_time_shift(period, shift) == lag
+
+    @pytest.mark.parametrize(
+        ("lag", "anchor", "target"),
+        [
+            (RefDateLag(-3), date(2026, 6, 30), date(2026, 3, 31)),
+            (RefDateLag(-12), date(2026, 6, 30), date(2025, 6, 30)),
+            (RefDateLag(-1), date(2026, 3, 31), date(2026, 2, 28)),
+            (RefDateLag(12), date(2026, 12, 31), date(2027, 12, 31)),
+            (RefDateLag(-13), date(2026, 1, 15), date(2024, 12, 31)),
+            (RefDateLag(-14, "D"), date(2026, 1, 10), date(2025, 12, 27)),
+            (AT_T, date(2026, 1, 1), date(2026, 1, 1)),
+        ],
+    )
+    def test_target(self, lag, anchor, target):
+        assert lag.target(anchor) == target
+
+    @pytest.mark.parametrize(
+        ("outer", "inner", "combined"),
+        [
+            (RefDateLag(-3), RefDateLag(-1), RefDateLag(-4)),
+            (AT_T, RefDateLag(-7, "D"), RefDateLag(-7, "D")),
+            (RefDateLag(-7, "D"), AT_T, RefDateLag(-7, "D")),
+            (RefDateLag(-1), RefDateLag(-1, "D"), None),
+            (None, RefDateLag(-1), None),
+            (RefDateLag(-1), None, None),
+        ],
+    )
+    def test_combine_lags(self, outer, inner, combined):
+        assert combine_lags(outer, inner) == combined
+
+
+class TestVersionChain:
+    # Release 1 to 3 dated in order; 99 is the Playground (no date).
+    SORT_ORDERS = {
+        1: date(2020, 1, 1).toordinal(),
+        2: date(2021, 1, 1).toordinal(),
+        3: date(2022, 1, 1).toordinal(),
+        99: compute_sort_order(None, None),
     }
 
-
-# Release 1 to 3 dated in order; 99 is the Playground (no date).
-_SORT_ORDERS = {
-    1: date(2020, 1, 1).toordinal(),
-    2: date(2021, 1, 1).toordinal(),
-    3: date(2022, 1, 1).toordinal(),
-    99: compute_sort_order(None, None),
-}
-
-
-class TestOlderModuleVersions:
-    def test_versions_before_the_current_one_latest_first(self):
-        older = older_module_versions(
+    def test_versions_come_in_date_order(self):
+        chain = version_chain(
             [
-                _version(1, date(2020, 1, 1), date(2020, 12, 31)),
-                _version(2, date(2021, 1, 1), date(2021, 12, 31)),
-                _version(3, date(2023, 1, 1), None),
+                _mv(3, date(2022, 1, 1), None),
+                _mv(1, date(2020, 1, 1), date(2020, 12, 31)),
+                _mv(2, date(2021, 1, 1), date(2021, 12, 31)),
             ],
-            date(2022, 1, 1),
-            _SORT_ORDERS,
+            self.SORT_ORDERS,
         )
 
-        assert [v["module_vid"] for v in older] == [2, 1]
+        assert [v.module_vid for v in chain] == [1, 2, 3]
 
-    def test_a_ghost_version_never_held_data(self):
-        older = older_module_versions(
-            [
-                _version(1, date(2020, 1, 1), date(2020, 12, 31)),
-                _version(2, date(2021, 1, 1), date(2021, 1, 1)),
-                _version(3, date(2021, 6, 1), date(2021, 5, 1)),
-            ],
-            date(2022, 1, 1),
-            _SORT_ORDERS,
-        )
-
-        assert [v["module_vid"] for v in older] == [1]
-
-    def test_a_playground_version_is_ignored(self):
-        older = older_module_versions(
-            [
-                _version(1, date(2020, 1, 1), date(2020, 12, 31)),
-                _version(2, date(2021, 1, 1), None, release=99),
-            ],
-            date(2022, 1, 1),
-            _SORT_ORDERS,
-        )
-
-        assert [v["module_vid"] for v in older] == [1]
-
-    def test_the_latest_release_wins_a_shared_start_date(self):
-        older = older_module_versions(
-            [
-                _version(1, date(2020, 1, 1), None, release=3),
-                _version(2, date(2020, 1, 1), None, release=2),
-            ],
-            date(2022, 1, 1),
-            _SORT_ORDERS,
-        )
-
-        assert [v["module_vid"] for v in older] == [1]
-
-
-class TestOlderWindows:
     def test_each_window_ends_the_day_before_its_successor(self):
-        older = [
-            _version(2, date(2021, 1, 1), None),
-            _version(1, date(2020, 1, 1), date(2021, 6, 30)),
-        ]
+        chain = version_chain(
+            [
+                _mv(1, date(2020, 1, 1), None),
+                _mv(2, date(2021, 1, 1), date(2022, 6, 30)),
+                _mv(3, date(2022, 1, 1), None),
+            ],
+            self.SORT_ORDERS,
+        )
 
-        windows = older_windows(older, date(2022, 1, 1))
-
-        assert [(v["module_vid"], s, e) for v, s, e in windows] == [
-            (1, date(2020, 1, 1), date(2020, 12, 31)),
-            (2, date(2021, 1, 1), date(2021, 12, 31)),
+        assert [(v.start, v.end) for v in chain] == [
+            (date(2020, 1, 1), date(2020, 12, 31)),
+            (date(2021, 1, 1), date(2021, 12, 31)),
+            (date(2022, 1, 1), None),
         ]
 
     def test_an_earlier_own_end_is_kept(self):
-        older = [_version(1, date(2020, 1, 1), date(2020, 6, 30))]
+        chain = version_chain(
+            [
+                _mv(1, date(2020, 1, 1), date(2020, 6, 30)),
+                _mv(2, date(2021, 1, 1), None),
+            ],
+            self.SORT_ORDERS,
+        )
 
-        windows = older_windows(older, date(2022, 1, 1))
+        assert chain[0].end == date(2020, 6, 30)
 
-        assert [(s, e) for _, s, e in windows] == [
-            (date(2020, 1, 1), date(2020, 6, 30))
+    def test_a_ghost_version_never_applied(self):
+        chain = version_chain(
+            [
+                _mv(1, date(2020, 1, 1), date(2020, 12, 31)),
+                _mv(2, date(2021, 1, 1), date(2021, 1, 1)),
+                _mv(3, date(2021, 6, 1), date(2021, 5, 1)),
+            ],
+            self.SORT_ORDERS,
+        )
+
+        assert [v.module_vid for v in chain] == [1]
+
+    def test_a_playground_version_fills_the_dates_after_the_last(self):
+        chain = version_chain(
+            [
+                _mv(1, date(2020, 1, 1), None),
+                _mv(2, date(2021, 1, 1), None, release=99),
+            ],
+            self.SORT_ORDERS,
+        )
+
+        assert [(v.module_vid, v.end) for v in chain] == [
+            (1, date(2020, 12, 31)),
+            (2, None),
         ]
 
-    def test_the_current_window_is_its_own_validity(self):
-        assert current_window(date(2022, 1, 1), date(2022, 12, 31)) == (
-            date(2022, 1, 1),
-            date(2022, 12, 31),
+    def test_a_published_version_beats_a_playground_one(self):
+        chain = version_chain(
+            [
+                _mv(1, date(2020, 1, 1), None, release=99),
+                _mv(2, date(2020, 1, 1), None, release=1),
+            ],
+            self.SORT_ORDERS,
         )
 
-    def test_an_inverted_current_end_counts_as_open(self):
-        assert current_window(date(2022, 1, 1), date(2021, 12, 31)) == (
-            date(2022, 1, 1),
-            None,
+        assert [v.module_vid for v in chain] == [2]
+
+    def test_the_latest_release_wins_a_shared_start_date(self):
+        chain = version_chain(
+            [
+                _mv(1, date(2020, 1, 1), None, release=3),
+                _mv(2, date(2020, 1, 1), None, release=2),
+            ],
+            self.SORT_ORDERS,
         )
 
+        assert [v.module_vid for v in chain] == [1]
 
-class TestPickModuleVersionForDate:
-    ROWS = [
-        {
-            "module_vid": 1,
-            "from_date": date(2020, 1, 1),
-            "to_date": date(2020, 12, 31),
-        },
-        {"module_vid": 2, "from_date": date(2021, 1, 1), "to_date": None},
+    def test_the_own_version_is_always_kept(self):
+        chain = version_chain(
+            [
+                _mv(1, date(2020, 1, 1), date(2020, 1, 1), release=99),
+                _mv(2, date(2020, 1, 1), None, release=3),
+            ],
+            self.SORT_ORDERS,
+            keep=1,
+        )
+
+        assert [v.module_vid for v in chain] == [1]
+
+    def test_a_version_without_start_is_left_out(self):
+        chain = version_chain(
+            [_mv(1, None, None), _mv(2, date(2020, 1, 1), None)],
+            self.SORT_ORDERS,
+        )
+
+        assert [v.module_vid for v in chain] == [2]
+
+
+class TestReachableVersions:
+    CHAIN = [
+        _mv(1, date(2024, 1, 1), date(2024, 12, 31)),
+        _mv(2, date(2025, 1, 1), date(2025, 12, 31)),
+        _mv(3, date(2026, 1, 1), date(2026, 12, 31)),
+        _mv(4, date(2027, 1, 1), None),
     ]
+    WINDOW = (date(2026, 1, 1), date(2026, 12, 31))
 
-    def test_the_version_containing_the_date_is_picked(self):
-        assert (
-            pick_module_version_for_date(self.ROWS, date(2021, 6, 30))[
-                "module_vid"
-            ]
-            == 2
-        )
+    def _reached(self, lag, window=WINDOW):
+        target = target_window(window, lag)
+        return [v.module_vid for v in self.CHAIN if overlaps(v, target)]
 
-    def test_no_version_contains_the_date(self):
-        assert (
-            pick_module_version_for_date(self.ROWS, date(2019, 1, 1)) is None
-        )
+    def test_a_read_at_t_reaches_the_window_s_own_versions(self):
+        assert self._reached(AT_T) == [3]
+
+    def test_a_year_back_reaches_the_predecessor(self):
+        assert self._reached(RefDateLag(-12)) == [2]
+
+    def test_a_quarter_back_straddles_the_boundary(self):
+        assert self._reached(RefDateLag(-3)) == [2, 3]
+
+    def test_a_year_ahead_reaches_the_successor(self):
+        assert self._reached(RefDateLag(12)) == [4]
+
+    def test_an_open_window_reaches_every_later_version(self):
+        assert self._reached(AT_T, (date(2026, 1, 1), None)) == [3, 4]
+
+    def test_a_read_no_lag_describes_reaches_them_all(self):
+        assert self._reached(None) == [1, 2, 3, 4]
+
+
+class TestOwner:
+    def test_the_operations_owner_names_the_export(self):
+        assert _owner([{"owner": "ECB"}, {"owner": "ECB"}], "EBA") == "ECB"
+
+    def test_the_most_frequent_owner_wins(self, caplog):
+        calculations = [{"owner": "EBA"}, {"owner": "ECB"}, {"owner": "EBA"}]
+
+        with caplog.at_level("WARNING"):
+            assert _owner(calculations, "EBA") == "EBA"
+        assert "several owners" in caplog.text
+
+    def test_without_one_the_module_owner_is_used(self, caplog):
+        with caplog.at_level("WARNING"):
+            assert _owner([{"owner": None}], "EBA") == "EBA"
+        assert "module owner" in caplog.text
+
+    def test_a_module_needs_an_owner(self):
+        with pytest.raises(NotFound, match="Module owner not found"):
+            _module_owner({"code": "KRI", "module_vid": 1})
+
+        assert _module_owner({"module_owner": "EBA"}) == "EBA"
 
 
 class TestPublishedModuleUri:

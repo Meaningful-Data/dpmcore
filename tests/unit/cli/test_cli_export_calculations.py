@@ -23,9 +23,11 @@ def _export():
     return CalculationsExport(
         calculations={
             _NS_URI: {
+                "owner": "EBA",
                 "module_code": "KRI",
-                "framework_code": "FW",
                 "module_version": "1.0.0",
+                "module_owner": "EBA",
+                "format_version": "2.0",
                 "dpm_release": {
                     "release": "1.0",
                     "publication_date": "2026-01-01",
@@ -37,9 +39,7 @@ def _export():
                 },
                 "output_variables": {"1": "m"},
                 "output_tables": {},
-                "dependency_modules": {
-                    "http://example.org/m1": {"tables": {}}
-                },
+                "modules": {"KRI": {"versions": []}},
             }
         },
         datapoints={
@@ -110,7 +110,7 @@ class TestExportCalculationsSuccess:
 
         normalized = " ".join(result.output.split())
         assert "2 calculations" in normalized
-        assert "1 dependency modules" in normalized
+        assert "1 modules" in normalized
         assert "1 datapoints" in normalized
 
     def test_honours_an_explicit_datapoints_path(self, runner, tmp_path):
@@ -138,7 +138,7 @@ class TestExportCalculationsSuccess:
         assert dp.exists()
         assert not (tmp_path / "kri_datapoints.json").exists()
 
-    def test_defaults_the_output_to_the_module_code(self, runner):
+    def test_defaults_the_output_to_owner_module_and_version(self, runner):
         with runner.isolated_filesystem(), _patched_connection(_export()):
             result = runner.invoke(
                 main,
@@ -154,8 +154,8 @@ class TestExportCalculationsSuccess:
             )
 
             assert result.exit_code == 0, result.output
-            assert "KRI.json" in result.output
-            assert "KRI_datapoints.json" in result.output
+            assert "EBA-KRI-1.0.0.json" in result.output
+            assert "EBA-KRI-1.0.0_datapoints.json" in result.output
 
     def test_passes_every_argument_through(self, runner, tmp_path):
         with _patched_connection(_export()) as (connect, accessor):
@@ -186,7 +186,8 @@ class TestExportCalculationsSuccess:
             "4.2",
         )
 
-    def test_the_release_defaults_to_live(self, runner, tmp_path):
+    def test_without_a_release_none_is_passed(self, runner, tmp_path):
+        """The service then resolves at the module's start release."""
         with _patched_connection(_export()) as (_, accessor):
             runner.invoke(
                 main,

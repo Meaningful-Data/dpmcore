@@ -4,9 +4,8 @@ Four walks, in the order the exporter runs them:
 
 1. :class:`CalculationsOperandsChecking` resolves every operand against
    the dictionary (inherited) *and* the assignment targets.
-2. :class:`DependencyTableExtractor` collects the tables and datapoints
-   the calculations read (and which of them are read at another
-   reference period), and :class:`OutputExtractor` those they write.
+2. :class:`DependencyTableExtractor` collects what each statement reads
+   and at which lag, and :class:`OutputExtractor` what they write.
 3. :class:`VarIDDataEnricher` precomputes each ``VarID``'s ``data``
    array, so operand reference IDs follow visit order.
 4. :class:`CalculationsJSONVisitor` serialises the result.
@@ -38,10 +37,7 @@ from dpmcore.dpm_xl.ast.nodes import (
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
 from dpmcore.dpm_xl.ast.template import ASTTemplate
 from dpmcore.dpm_xl.ast.where_clause import WhereClauseChecker
-from dpmcore.dpm_xl.model_queries import (
-    ViewDatapointsQuery,
-    ViewKeyComponentsQuery,
-)
+from dpmcore.dpm_xl.model_queries import ViewDatapointsQuery
 from dpmcore.dpm_xl.utils import tokens
 from dpmcore.dpm_xl.utils.data_handlers import filter_all_data, generate_xyz
 from dpmcore.dpm_xl.utils.serialization import (
@@ -50,6 +46,12 @@ from dpmcore.dpm_xl.utils.serialization import (
     NodeValue,
 )
 from dpmcore.errors import InternalError, Invalid, SemanticError
+from dpmcore.services.calculations_export.modules import (
+    AT_T,
+    Read,
+    RefDateLag,
+    combine_lags,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -428,31 +430,26 @@ def _constrains_ref_period(condition: Any) -> bool:
 
 
 class DependencyTableExtractor(ASTTemplate):
-    """Collect the tables and datapoints the calculations read.
+    """Collect what each statement reads, and at which lag.
 
     Must run *after* operand resolution: a ``VarID`` inside a ``with``
     block has no table of its own until the with-context has been
     grafted onto it, and would otherwise be skipped silently.
 
-    Also records in ``shifted`` the datapoints read at another
-    reference period: under ``time_shift`` (without component or on
-    ``refPeriod``), a ``where``/``sub`` on ``refPeriod`` or an analytic
-    ordered by ``refPeriod``.
+    Every ``VarID`` read becomes a :class:`~.modules.Read`. A
+    ``time_shift`` without component, or on ``refPeriod``, moves its
+    operand's lag by the period shifted. A ``where`` or ``sub`` on
+    ``refPeriod``, and an analytic ordered by it, read periods no lag
+    describes, so their operands get the lag ``None``.
     """
 
-    def __init__(
-        self,
-        session: "Session",
-        release_id: Optional[int] = None,
-    ) -> None:
-        """Collect dependency tables using *session* for lookups."""
+    def __init__(self, session: "Session") -> None:
+        """Collect the reads using *session* for the datapoint lookups."""
         super().__init__()
         self.session = session
-        self.release_id = release_id
-        self.tables: Dict[str, Dict[str, Any]] = {}
-        self.all_datapoints: List[int] = []
-        self.shifted: Dict[str, Set[str]] = {}
-        self._shift_depth = 0
+        self.reads: List[Read] = []
+        self._statement = 0
+        self._lag: Optional[RefDateLag] = AT_T
         # Operands repeat across a module's calculations, and
         # get_filtered_datapoints is uncached: without this, the same
         # selection is resolved once per occurrence, each time reloading
@@ -461,6 +458,20 @@ class DependencyTableExtractor(ASTTemplate):
             tuple[str, tuple[str, ...], tuple[str, ...], tuple[str, ...]],
             List[int],
         ] = {}
+
+    @property
+    def tables(self) -> Dict[str, Set[int]]:
+        """``{table code: VariableIDs}`` read, in first-read order."""
+        tables: Dict[str, Set[int]] = {}
+        for read in self.reads:
+            tables.setdefault(read.table, set()).update(read.variable_ids)
+        return tables
+
+    def visit_Start(self, node: Any) -> None:
+        """Visit each statement, numbered by its position."""
+        for index, child in enumerate(node.children):
+            self._statement = index
+            self.visit(child)
 
     def visit_PersistentAssignment(self, node: PersistentAssignment) -> None:
         """Walk the expression only -- the target is written, not read.
@@ -471,26 +482,24 @@ class DependencyTableExtractor(ASTTemplate):
         """
         self.visit(node.right)
 
-    def _visit_operand(self, operand: Any, shifted: bool) -> None:
-        """Visit ``operand``, as read at another period when ``shifted``."""
-        if shifted:
-            self._shift_depth += 1
-            self.visit(operand)
-            self._shift_depth -= 1
-        else:
-            self.visit(operand)
+    def _visit_at(self, operand: Any, lag: Optional[RefDateLag]) -> None:
+        """Visit ``operand`` as read at ``lag``."""
+        previous = self._lag
+        self._lag = lag
+        self.visit(operand)
+        self._lag = previous
 
     def visit_TimeShiftOp(self, node: Any) -> None:
-        """A shift without component, or on ``refPeriod``, is shifted."""
-        self._visit_operand(
-            node.operand, node.component in (None, tokens.REF_PERIOD)
-        )
+        """A shift without component, or on ``refPeriod``, moves the lag."""
+        lag = self._lag
+        if node.component in (None, tokens.REF_PERIOD):
+            lag = combine_lags(lag, _time_shift_lag(node))
+        self._visit_at(node.operand, lag)
 
     def visit_WhereClauseOp(self, node: Any) -> None:
-        """A ``where`` constraining ``refPeriod`` reads another period."""
-        self._visit_operand(
-            node.operand, _constrains_ref_period(node.condition)
-        )
+        """A ``where`` constraining ``refPeriod`` reads other periods."""
+        shifted = _constrains_ref_period(node.condition)
+        self._visit_at(node.operand, None if shifted else self._lag)
         self.visit(node.condition)
 
     def visit_SubOp(self, node: Any) -> None:
@@ -500,7 +509,7 @@ class DependencyTableExtractor(ASTTemplate):
             or _constrains_ref_period(sub.value)
             for sub in node.substitutions
         )
-        self._visit_operand(node.operand, shifted)
+        self._visit_at(node.operand, None if shifted else self._lag)
         for sub in node.substitutions:
             self.visit(sub.value)
 
@@ -510,7 +519,7 @@ class DependencyTableExtractor(ASTTemplate):
         shifted = clause is not None and any(
             item.key_name == tokens.REF_PERIOD for item in clause.order_by
         )
-        self._visit_operand(node.operand, shifted)
+        self._visit_at(node.operand, None if shifted else self._lag)
 
     def _variable_ids(self, table: str, node: VarID) -> List[int]:
         """Return the datapoint ids *node* selects, resolved once per key.
@@ -534,9 +543,9 @@ class DependencyTableExtractor(ASTTemplate):
 
         # No release on the datapoints query on purpose. The table
         # version is already pinned to the live one, and windowing the
-        # module join as well would empty the dependency set for a table
-        # whose live version has moved into a newer module version.
-        # ``group_tables_by_module`` applies the release scoping.
+        # module join as well would empty the read for a table whose
+        # live version has moved into a newer module version. The
+        # ``modules`` section applies the release scoping.
         datapoints_df = ViewDatapointsQuery.get_filtered_datapoints(
             self.session,
             table,
@@ -559,46 +568,26 @@ class DependencyTableExtractor(ASTTemplate):
         self._datapoints_cache[key] = variable_ids
         return variable_ids
 
-    def _get_open_keys(self, table_code: str) -> Dict[str, str]:
-        """Return ``{property_code: data_type}`` for a table's open keys."""
-        key_df = ViewKeyComponentsQuery.get_by_table(
-            self.session, table_code, self.release_id
-        )
-        if key_df.empty:
-            return {}
-        return dict(
-            zip(
-                key_df["property_code"],
-                key_df["data_type"],
-                strict=False,
-            )
-        )
-
     def visit_VarID(self, node: VarID) -> None:
-        """Register the node's table and the datapoints it selects."""
+        """Record the datapoints the node selects, at the current lag."""
         table = node.table
         if not table:
             return
-
         variable_ids = self._variable_ids(table, node)
         if not variable_ids:
             return
+        self.reads.append(
+            Read(self._statement, table, frozenset(variable_ids), self._lag)
+        )
 
-        # Not setdefault: its default is evaluated eagerly, so the
-        # open-key query would run again on every operand naming a
-        # table already collected.
-        if table not in self.tables:
-            self.tables[table] = {
-                "variables": set(),
-                "open_keys": self._get_open_keys(table),
-            }
-        entry = self.tables[table]
-        entry["variables"].update(variable_ids)
-        self.all_datapoints.extend(variable_ids)
-        if self._shift_depth:
-            self.shifted.setdefault(table, set()).update(
-                str(var_id) for var_id in variable_ids
-            )
+
+def _time_shift_lag(node: Any) -> Optional[RefDateLag]:
+    """Return the lag a ``time_shift`` adds, ``None`` if not a literal."""
+    try:
+        shift = int(_shift_number_text(node.shift_number))
+    except Invalid:
+        return None
+    return RefDateLag.of_time_shift(node.period_indicator, shift)
 
 
 class VarIDDataEnricher(ASTTemplate):
