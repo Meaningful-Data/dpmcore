@@ -454,6 +454,15 @@ pip install dpmcore[cli,migration]
 dpmcore migrate --source /path/to/dpm.accdb --database sqlite:///dpm.db
 ```
 
+> **Breaking change.** Databases migrated with dpmcore 0.2.1rc3 or earlier
+> are not readable by later versions. The ORM now maps
+> `TableAssociation.StartReleaseID`/`EndReleaseID`,
+> `OperandReference.OperationVID` and `OperationOutput.OwnerID`, added by
+> the DPM 4.4 Access release, so queries on those tables fail against a
+> database that lacks them. Regenerate the database from the Access file
+> (`dpmcore migrate` or `dpmcore update-db --access-file`);
+> `dpmcore validate` reports the missing columns.
+
 **Update database** (requires `migration` extra):
 
 Safely replace an existing DPM database with fresh data. Data is loaded into a
