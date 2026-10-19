@@ -459,14 +459,6 @@ class DependencyTableExtractor(ASTTemplate):
             List[int],
         ] = {}
 
-    @property
-    def tables(self) -> Dict[str, Set[int]]:
-        """``{table code: VariableIDs}`` read, in first-read order."""
-        tables: Dict[str, Set[int]] = {}
-        for read in self.reads:
-            tables.setdefault(read.table, set()).update(read.variable_ids)
-        return tables
-
     def visit_Start(self, node: Any) -> None:
         """Visit each statement, numbered by its position."""
         for index, child in enumerate(node.children):

@@ -177,7 +177,7 @@ class CalculationsExporter:
         export = {
             module_uri: {
                 "owner": _owner(calculations, module_owner),
-                "module_code": module_code,
+                "module_code": module_meta["code"],
                 "module_version": module_meta["version_number"],
                 "module_owner": module_owner,
                 "format_version": FORMAT_VERSION,

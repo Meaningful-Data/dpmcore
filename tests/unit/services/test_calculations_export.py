@@ -645,7 +645,6 @@ class TestUnresolvableOperands:
         extractor.visit_VarID(VarID(None, ["0010"], None, None, None, None))
 
         assert extractor.reads == []
-        assert extractor.tables == {}
 
 
 class TestReadLags:
@@ -747,13 +746,6 @@ class TestReadLags:
             (read.statement, read.table, read.variable_ids)
             for read in extractor.reads
         ] == [(0, "A", frozenset({10})), (1, "B", frozenset({20}))]
-
-    def test_tables_merge_the_reads_of_a_table(self):
-        extractor = _reads(
-            "x := {tA, r0010, c0010} + time_shift({tA, r0020, c0010}, A, 1);"
-        )
-
-        assert extractor.tables == {"A": {10, 20}}
 
 
 class TestRefDateLag:
@@ -862,13 +854,34 @@ class TestVersionChain:
 
         assert [v.module_vid for v in chain] == [1]
 
-    def test_a_playground_version_fills_the_dates_after_the_last(self):
+    def test_a_module_with_only_ghosts_has_no_chain(self):
+        chain = version_chain(
+            [_mv(1, date(2021, 1, 1), date(2021, 1, 1))], self.SORT_ORDERS
+        )
+
+        assert chain == []
+
+    def test_a_playground_version_was_never_published(self):
+        chain = version_chain(
+            [
+                _mv(1, date(2020, 1, 1), date(2020, 12, 31)),
+                _mv(2, date(2021, 1, 1), None, release=99),
+            ],
+            self.SORT_ORDERS,
+        )
+
+        assert [(v.module_vid, v.end) for v in chain] == [
+            (1, date(2020, 12, 31))
+        ]
+
+    def test_with_drafts_a_playground_version_succeeds_the_last(self):
         chain = version_chain(
             [
                 _mv(1, date(2020, 1, 1), None),
                 _mv(2, date(2021, 1, 1), None, release=99),
             ],
             self.SORT_ORDERS,
+            drafts=True,
         )
 
         assert [(v.module_vid, v.end) for v in chain] == [
@@ -876,13 +889,14 @@ class TestVersionChain:
             (2, None),
         ]
 
-    def test_a_published_version_beats_a_playground_one(self):
+    def test_with_drafts_a_published_version_beats_a_playground_one(self):
         chain = version_chain(
             [
                 _mv(1, date(2020, 1, 1), None, release=99),
                 _mv(2, date(2020, 1, 1), None, release=1),
             ],
             self.SORT_ORDERS,
+            drafts=True,
         )
 
         assert [v.module_vid for v in chain] == [2]

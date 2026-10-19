@@ -207,22 +207,23 @@ def version_chain(
     sort_orders: Mapping[int, int],
     *,
     keep: Optional[int] = None,
+    drafts: bool = False,
 ) -> List[ModuleVersionInfo]:
     """Return the versions of one module that applied, in date order.
 
-    Drops ghosts and versions without a start date. Of two versions
-    starting on the same date a published one beats one of a working
-    release, and otherwise the later release wins. Working-release
-    versions are listed too: a published module can read a dependency
-    at dates only a working-release version covers. As a successor,
-    such a version ends the window of the published one before it.
-    The version ``keep`` (the export's own) is never dropped. Each
-    window is then cut where its successor starts, so no two overlap.
+    Drops ghosts, versions without a start date and, unless ``drafts``,
+    versions of a working release: those were never published. Of two
+    versions starting on the same date a published one beats one of a
+    working release, and otherwise the later release wins. The version
+    ``keep`` (the export's own) is never dropped. Each window is then
+    cut where its successor starts, so no two overlap.
 
     Args:
         versions: Every version of the module.
         sort_orders: ``{release_id: sort_order}``.
         keep: A ``module_vid`` to keep whatever its window or release.
+        drafts: Whether working-release versions are listed too, as
+            when the export itself is resolved at a working release.
 
     Returns:
         The versions, earliest first, with non-overlapping windows.
@@ -240,7 +241,12 @@ def version_chain(
     def applied(version: ModuleVersionInfo) -> bool:
         if version.module_vid == keep:
             return True
-        return version.start is not None and not is_ghost(version)
+        published, _ = rank(version)
+        return (
+            (published or drafts)
+            and version.start is not None
+            and not is_ghost(version)
+        )
 
     def wins(
         candidate: ModuleVersionInfo, incumbent: ModuleVersionInfo
@@ -264,6 +270,8 @@ def _cut_overlaps(
     ordered: List[ModuleVersionInfo], keep: Optional[int]
 ) -> List[ModuleVersionInfo]:
     """End each window the day before its successor starts, if later."""
+    if not ordered:
+        return []
     chain: List[ModuleVersionInfo] = []
     for version, successor in zip(ordered, [*ordered[1:], None], strict=True):
         if successor is None or successor.start is None:
@@ -377,6 +385,11 @@ class _ModulesBuilder:
         self.operation_codes = operation_codes
         self.release_id = release_id
         self.sort_orders = load_release_sort_orders(session)
+        # Working-release versions are listed only in an export that is
+        # itself resolved at a working release.
+        self.drafts = release_id is not None and self.sort_orders.get(
+            release_id, -1
+        ) >= compute_sort_order(None, None)
         self._base_vid: Dict[str, int] = {}
         self._key_properties: Dict[int, FrozenSet[int]] = {}
         self._default_types: Set[int] = set()
@@ -458,7 +471,10 @@ class _ModulesBuilder:
         is_own = code == self.own_code
         every = _module_versions(self.session, group.module_ids)
         chain = version_chain(
-            every, self.sort_orders, keep=self.own_vid if is_own else None
+            every,
+            self.sort_orders,
+            keep=self.own_vid if is_own else None,
+            drafts=self.drafts,
         )
         lags = {read.lag for read in group.reads}
         if is_own:
@@ -472,17 +488,16 @@ class _ModulesBuilder:
         fallback = not listed
         if fallback:
             # Nothing it holds can be read on the export's dates; the
-            # versions the tables were resolved in still describe them.
-            listed = sorted(
-                (v for v in every if v.module_vid in group.base_vids),
-                key=lambda v: v.start or date.min,
-            )
-            logger.warning(
-                "No version of module %s covers a date its reads land on; "
-                "listing %s",
-                code,
-                ", ".join(str(v.version_number) for v in listed),
-            )
+            # versions the tables were resolved in still describe them,
+            # unless they never applied.
+            listed = [v for v in chain if v.module_vid in group.base_vids]
+            if listed:
+                logger.warning(
+                    "No version of module %s covers a date its reads land "
+                    "on; listing %s",
+                    code,
+                    ", ".join(str(v.version_number) for v in listed),
+                )
 
         entries: List[Dict[str, Any]] = []
         for version in listed:
@@ -622,7 +637,8 @@ class _ModulesBuilder:
         Returns:
             ``{table code: {"variables": {...}, "open_keys": {...}}}``,
             ordered by code. Open keys are named as of the version's
-            own release.
+            own release. A table without Variables, such as an abstract
+            one, is left out.
         """
         if not listed:
             return {}
@@ -647,7 +663,9 @@ class _ModulesBuilder:
             entry["variables"] = dict(
                 sorted(entry["variables"].items(), key=lambda kv: int(kv[0]))
             )
-        return tables
+        return {
+            code: entry for code, entry in tables.items() if entry["variables"]
+        }
 
     def _variables(
         self, cells: pd.DataFrame, wanted: Optional[Set[int]]

@@ -1311,7 +1311,7 @@ def export_calculations(
         Path(output)
         if output
         else Path(
-            f"{namespace.get('owner')}-{module_code}-"
+            f"{namespace.get('owner')}-{namespace.get('module_code')}-"
             f"{namespace.get('module_version')}.json"
         )
     )

@@ -139,13 +139,14 @@ class TestExportCalculationsSuccess:
         assert not (tmp_path / "kri_datapoints.json").exists()
 
     def test_defaults_the_output_to_owner_module_and_version(self, runner):
+        """The module code is the export's, as the DPM writes it."""
         with runner.isolated_filesystem(), _patched_connection(_export()):
             result = runner.invoke(
                 main,
                 [
                     "export-calculations",
                     "--module-code",
-                    "KRI",
+                    "kri",
                     "--reference-date",
                     "2026-12-31",
                     "--database",

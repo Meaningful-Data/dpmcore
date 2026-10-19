@@ -541,6 +541,32 @@ class TestCalculationsForModule:
         }
         assert "not_evaluable" not in home
 
+    def test_a_table_without_variables_is_left_out(self, calc_session):
+        """An abstract table has no cells, so nothing to describe."""
+        calc_session.add(Table(table_id=3, is_abstract=True))
+        calc_session.add(
+            TableVersion(
+                table_vid=31,
+                table_id=3,
+                code="C_00.00",
+                start_release_id=RELEASE,
+                end_release_id=None,
+            )
+        )
+        calc_session.add(
+            ModuleVersionComposition(module_vid=1, table_vid=31, table_id=3)
+        )
+        calc_session.commit()
+
+        ns = _namespace(
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+        )
+
+        (home,) = ns["modules"][HOME_MODULE]["versions"]
+        assert list(home["tables"]) == [HOME_TABLE]
+
     def test_data_types_come_from_the_dictionary(self, calc_session):
         calc_session.query(DataType).filter(DataType.data_type_id == 1).update(
             {DataType.code: "p"}
@@ -847,7 +873,7 @@ class TestDependencyScope:
         extractor = DependencyTableExtractor(calc_session)
         extractor.visit(ast)
 
-        assert set(extractor.tables) == {DEP_TABLE}
+        assert {read.table for read in extractor.reads} == {DEP_TABLE}
 
 
 class TestDraftModuleVersion:
@@ -1258,6 +1284,100 @@ class TestModuleVersions:
         ]
         assert "not_evaluable" not in versions[1]
 
+    def _seed_draft_successor(self, session):
+        """A ``CALC_DEP`` 1.1.0 from 2026-07-01 in the working release."""
+        session.add(
+            Release(
+                release_id=WORKING,
+                code="Playground",
+                date=date(1970, 1, 1),
+                type="playground",
+            )
+        )
+        _seed_module_version(
+            session,
+            module_vid=6,
+            module_id=2,
+            code=DEP_MODULE,
+            number="1.1.0",
+            start=date(2026, 7, 1),
+            end=None,
+            release=WORKING,
+        )
+        session.commit()
+
+    def test_a_working_release_version_is_not_listed(self, calc_session):
+        """It was never published: it neither shows nor cuts a window."""
+        self._seed_draft_successor(calc_session)
+
+        versions = self._versions(calc_session)
+
+        assert [(v["version"], v["to"]) for v in versions] == [
+            ("1.0.0", "2026-12-31")
+        ]
+
+    def test_a_draft_export_lists_working_release_versions(self, calc_session):
+        self._seed_draft_successor(calc_session)
+
+        ns = _namespace(
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE, "Playground"
+            )
+        )
+
+        assert [
+            (v["version"], v["from"], v["to"])
+            for v in ns["modules"][DEP_MODULE]["versions"]
+        ] == [
+            ("1.0.0", "2026-01-01", "2026-06-30"),
+            ("1.1.0", "2026-07-01", None),
+        ]
+
+    def _move_dependency(self, session, start, end):
+        session.query(ModuleVersion).filter(
+            ModuleVersion.module_vid == 2
+        ).update(
+            {
+                ModuleVersion.from_reference_date: start,
+                ModuleVersion.to_reference_date: end,
+            }
+        )
+        session.commit()
+
+    def test_a_dependency_off_the_dates_read_keeps_its_version(
+        self, calc_session, caplog
+    ):
+        """No version covers the dates read: the one the table was
+        resolved in still describes it.
+        """
+        self._move_dependency(
+            calc_session, date(2025, 1, 1), date(2025, 12, 31)
+        )
+
+        with caplog.at_level("WARNING"):
+            versions = self._versions(calc_session)
+
+        assert [(v["version"], v["to"]) for v in versions] == [
+            ("1.0.0", "2025-12-31")
+        ]
+        assert "covers a date its reads land on" in caplog.text
+
+    def test_a_ghost_is_never_listed(self, calc_session, caplog):
+        """Not even when it is the only version the table was found in."""
+        self._move_dependency(
+            calc_session, date(2025, 6, 30), date(2025, 6, 30)
+        )
+
+        with caplog.at_level("WARNING"):
+            ns = _namespace(
+                ASTGeneratorService(calc_session).calculations_for_module(
+                    HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+                )
+            )
+
+        assert DEP_MODULE not in ns["modules"]
+        assert "has no version to list" in caplog.text
+
     def test_open_keys_are_compared_by_property(self, shifted_session):
         """``SIC`` renamed ``qSIC`` is the same key: nothing changes."""
         _seed_key_property(shifted_session, 50, "SIC", "qSIC")
@@ -1395,8 +1515,7 @@ class TestMovedVariable:
         """In 0.9.0, 22001 sits in C_96.00 and C_97.00, not C_98.00.
 
         Both have the open keys of C_98.00 (none), so the read can be
-        served from either, and both are listed until the spec settles
-        V-40.
+        served from either, and both are listed.
         """
         _seed_module_version(
             calc_session,
