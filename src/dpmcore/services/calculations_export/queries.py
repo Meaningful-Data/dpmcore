@@ -63,7 +63,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 EBA_BASE_URI = "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/"
-"""Namespace prefix of the EBA taxonomy URIs the export is keyed by."""
+"""Namespace prefix of the EBA taxonomy URIs the export names."""
 
 
 def release_window(
@@ -229,10 +229,9 @@ def get_module_uri(
     the framework, release and module codes.
 
     The release code is reported verbatim, a working release included:
-    the reference export keys its dependency modules at ``Playground``
-    and the consumer looks them up by URI, so rewriting one to the
-    newest published release would silently repoint it. A working
-    release is logged as a warning instead.
+    a consumer matches an instance by its module URI, so rewriting one
+    to the newest published release would silently repoint it. A
+    working release is logged as a warning instead.
 
     Args:
         session: SQLAlchemy session.
@@ -272,7 +271,7 @@ def get_module_uri(
     )
     if published is not None and result.framework_code is not None:
         return published, result.framework_code
-    # The URI keys the whole exported document, so a missing part makes
+    # The URI names the exported module version, so a missing part makes
     # the export unusable rather than merely incomplete.
     missing = [
         name
@@ -284,7 +283,7 @@ def get_module_uri(
             title="Module URI not resolvable",
             description=(
                 f"Module VID {module_vid} has no {', '.join(missing)}; "
-                "the export is keyed by the module's taxonomy URI."
+                "the export names the module's taxonomy URI."
             ),
         )
     release_code = result.release_code

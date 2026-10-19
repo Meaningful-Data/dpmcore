@@ -1032,7 +1032,7 @@ class ASTGeneratorService:
                 release.
 
         Returns:
-            The export, keyed by the module's EBA taxonomy URI.
+            The export, with the module's URI in ``module_uri``.
 
         Raises:
             ValueError: If the service has no database session.

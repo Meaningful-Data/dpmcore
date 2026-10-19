@@ -546,7 +546,7 @@ the ones that *write* into it.
 The calculations are parsed as one script, reordered so a calculation
 always follows the ones it consumes, and serialized with every operand
 resolved to its datapoints. Two files are written: the export itself,
-keyed by the module's EBA taxonomy URI, and a companion datapoint map
+with the module's URI in ``module_uri``, and a companion datapoint map
 naming the cell behind every datapoint the calculations reference.
 
 The export follows Script Format 2.0. Its ``modules`` section describes

@@ -387,7 +387,7 @@ def build_modules(
     *,
     own: Mapping[str, Any],
     window: Window,
-    root_uri: str,
+    module_uri: str,
     reads: Sequence[Read],
     operation_codes: Sequence[Optional[str]],
     release_id: Optional[int],
@@ -400,7 +400,7 @@ def build_modules(
             :func:`~dpmcore.services.calculations_export.queries.get_module_metadata`
             returns it.
         window: The own version's window (:func:`reference_window`).
-        root_uri: The URI the export is keyed by.
+        module_uri: The URI of the export's own version.
         reads: What each statement reads.
         operation_codes: The operation code of each statement.
         release_id: Release the read tables were resolved at.
@@ -409,7 +409,7 @@ def build_modules(
         ``{module_code: {"versions": [...]}}``, ordered by code.
     """
     return _ModulesBuilder(
-        session, own, window, root_uri, operation_codes, release_id
+        session, own, window, module_uri, operation_codes, release_id
     ).build(reads)
 
 
@@ -430,7 +430,7 @@ class _ModulesBuilder:
         session: "Session",
         own: Mapping[str, Any],
         window: Window,
-        root_uri: str,
+        module_uri: str,
         operation_codes: Sequence[Optional[str]],
         release_id: Optional[int],
     ) -> None:
@@ -440,7 +440,7 @@ class _ModulesBuilder:
         self.own_code = own["code"]
         self.own_module_id = own["module_id"]
         self.window = window
-        self.root_uri = root_uri
+        self.module_uri = module_uri
         self.operation_codes = operation_codes
         self.release_id = release_id
         self.sort_orders = load_release_sort_orders(session)
@@ -577,7 +577,7 @@ class _ModulesBuilder:
     ) -> Optional[Dict[str, Any]]:
         """Return one ``versions[]`` entry, ``None`` when it has no URI."""
         is_own = version.module_vid == self.own_vid
-        uri = self.root_uri if is_own else self._uri(version)
+        uri = self.module_uri if is_own else self._uri(version)
         if uri is None:
             return None
 
@@ -655,8 +655,8 @@ class _ModulesBuilder:
                 version.version_number,
             )
             return None
-        if uri == self.root_uri:
-            # Exactly one version carries the root URI: the export's own.
+        if uri == self.module_uri:
+            # Exactly one version carries module_uri: the export's own.
             logger.warning(
                 "Module version %s %s resolves to the export's own URI "
                 "(%s) and is left out of modules",

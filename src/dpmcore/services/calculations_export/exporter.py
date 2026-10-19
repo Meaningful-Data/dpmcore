@@ -3,8 +3,8 @@
 Given a module code and a reference date, collects the module version's
 calculation operations, parses them as one script, resolves every
 operand against the dictionary, and emits the two JSON structures the
-downstream deployment consumes: the calculations export (keyed by the
-module's EBA taxonomy URI) and its companion datapoint map.
+downstream deployment consumes: the calculations export (with the
+module's URI in ``module_uri``) and its companion datapoint map.
 """
 
 from __future__ import annotations
@@ -68,8 +68,8 @@ class CalculationsExport:
     """A module version's exported calculations and its datapoint map.
 
     Attributes:
-        calculations: The export, keyed by the module's EBA taxonomy
-            URI.
+        calculations: The export, with the module's EBA taxonomy URI
+            in ``module_uri``.
         datapoints: ``{variable_id: {table, row, column, sheet}}`` for
             every datapoint the calculations touch -- the companion file
             the deployment reads alongside the export.
@@ -170,7 +170,7 @@ class CalculationsExporter:
             session,
             own=module_meta,
             window=window,
-            root_uri=module_uri,
+            module_uri=module_uri,
             reads=dependencies.reads,
             operation_codes=operation_codes,
             release_id=release_id,
@@ -179,28 +179,26 @@ class CalculationsExporter:
             module_vid, outputs, release_id
         )
 
+        # Not keyed by URI: several owners can export over one version.
         export = {
-            module_uri: {
-                "owner": _owner(calculations, module_owner),
-                "module_code": module_meta["code"],
-                "module_version": module_meta["version_number"],
-                "module_owner": module_owner,
-                "format_version": FORMAT_VERSION,
-                "dpm_release": release_info,
-                "dates": {
-                    "from": _as_date_string(window[0]),
-                    "to": _as_date_string(window[1]),
-                },
-                "calculations": {
-                    "ast": CalculationsJSONVisitor(enricher.payloads).visit(
-                        ast
-                    ),
-                    "operation_codes": operation_codes,
-                },
-                "output_variables": output_variables,
-                "output_tables": output_tables,
-                "modules": modules,
-            }
+            "owner": _owner(calculations, module_owner),
+            "module_code": module_meta["code"],
+            "module_version": module_meta["version_number"],
+            "module_owner": module_owner,
+            "module_uri": module_uri,
+            "format_version": FORMAT_VERSION,
+            "dpm_release": release_info,
+            "dates": {
+                "from": _as_date_string(window[0]),
+                "to": _as_date_string(window[1]),
+            },
+            "calculations": {
+                "ast": CalculationsJSONVisitor(enricher.payloads).visit(ast),
+                "operation_codes": operation_codes,
+            },
+            "output_variables": output_variables,
+            "output_tables": output_tables,
+            "modules": modules,
         }
         return CalculationsExport(
             calculations=export,

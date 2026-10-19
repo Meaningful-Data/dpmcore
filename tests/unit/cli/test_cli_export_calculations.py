@@ -11,7 +11,7 @@ from dpmcore.cli.main import main
 from dpmcore.errors import ConfigurationError
 from dpmcore.services.calculations_export import CalculationsExport
 
-_NS_URI = "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/fw/1.0/mod/kri"
+_MODULE_URI = "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/fw/1.0/mod/kri"
 
 
 @pytest.fixture
@@ -22,25 +22,24 @@ def runner():
 def _export():
     return CalculationsExport(
         calculations={
-            _NS_URI: {
-                "owner": "EBA",
-                "module_code": "KRI",
-                "module_version": "1.0.0",
-                "module_owner": "EBA",
-                "format_version": "2.0",
-                "dpm_release": {
-                    "release": "1.0",
-                    "publication_date": "2026-01-01",
-                },
-                "dates": {"from": "2026-01-01", "to": None},
-                "calculations": {
-                    "ast": {"class_name": "Start", "children": []},
-                    "operation_codes": ["c_0001", "c_0002"],
-                },
-                "output_variables": {"1": "m"},
-                "output_tables": {},
-                "modules": {"KRI": {"versions": []}},
-            }
+            "owner": "EBA",
+            "module_code": "KRI",
+            "module_version": "1.0.0",
+            "module_owner": "EBA",
+            "module_uri": _MODULE_URI,
+            "format_version": "2.0",
+            "dpm_release": {
+                "release": "1.0",
+                "publication_date": "2026-01-01",
+            },
+            "dates": {"from": "2026-01-01", "to": None},
+            "calculations": {
+                "ast": {"class_name": "Start", "children": []},
+                "operation_codes": ["c_0001", "c_0002"],
+            },
+            "output_variables": {"1": "m"},
+            "output_tables": {},
+            "modules": {"KRI": {"versions": []}},
         },
         datapoints={
             "1": {"table": "T", "row": "0010", "column": "0010", "sheet": None}
@@ -86,7 +85,7 @@ class TestExportCalculationsSuccess:
 
         assert result.exit_code == 0, result.output
         payload = json.loads(out.read_text())
-        assert list(payload) == [_NS_URI]
+        assert payload == _export().calculations
         datapoints = json.loads((tmp_path / "kri_datapoints.json").read_text())
         assert datapoints["1"]["table"] == "T"
 

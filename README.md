@@ -273,7 +273,7 @@ through `OperationOutput`, the ones that write into it — as the JSON the
 downstream deployment consumes. The calculations are parsed as one
 script, reordered so a calculation follows the ones it consumes, and
 serialized with every operand resolved to its datapoints. Two files are
-written: the export, keyed by the module's EBA taxonomy URI, and a
+written: the export, with the module's URI in `module_uri`, and a
 companion datapoint map.
 
 ```bash

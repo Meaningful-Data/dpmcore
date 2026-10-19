@@ -377,22 +377,23 @@ def _clear_query_caches():
 
 
 def _namespace(export):
-    """The single namespace block of an export."""
-    assert len(export) == 1
-    return next(iter(export.values()))
+    """The export, the module object itself."""
+    assert "module_uri" in export
+    return export
 
 
 class TestCalculationsForModule:
-    def test_namespace_is_the_module_uri(self, calc_session):
+    def test_the_module_uri_is_a_member_not_the_key(self, calc_session):
         export = ASTGeneratorService(calc_session).calculations_for_module(
             HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
         )
 
-        (uri,) = export
+        uri = export["module_uri"]
         assert uri == (
             "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/calcfw/8.0/"
             "mod/calc_home"
         )
+        assert uri not in export
 
     def test_module_block(self, calc_session):
         ns = _namespace(
@@ -401,12 +402,19 @@ class TestCalculationsForModule:
             )
         )
 
-        assert list(ns)[:5] == [
+        assert list(ns) == [
             "owner",
             "module_code",
             "module_version",
             "module_owner",
+            "module_uri",
             "format_version",
+            "dpm_release",
+            "dates",
+            "calculations",
+            "output_variables",
+            "output_tables",
+            "modules",
         ]
         assert ns["owner"] == "ECB"
         assert ns["module_code"] == HOME_MODULE
@@ -529,7 +537,7 @@ class TestCalculationsForModule:
         ns = _namespace(export)
 
         (home,) = ns["modules"][HOME_MODULE]["versions"]
-        assert home["URI"] == next(iter(export))
+        assert home["URI"] == export["module_uri"]
         assert list(home["tables"]) == [HOME_TABLE]
         # Every cell of the module, not only the ones written or read.
         assert home["tables"][HOME_TABLE]["variables"] == {
@@ -907,8 +915,9 @@ class TestDraftModuleVersion:
                 HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
             )
 
-        (uri,) = export
-        assert uri.endswith("/calcfw/Playground/mod/calc_home")
+        assert export["module_uri"].endswith(
+            "/calcfw/Playground/mod/calc_home"
+        )
         assert "working release" in caplog.text
         assert _namespace(export)["calculations"]["operation_codes"] == [
             "c_0001",
@@ -1042,8 +1051,8 @@ class TestVariableOutputs:
 
 
 class TestModuleUri:
-    def test_a_module_with_no_release_cannot_be_keyed(self, calc_session):
-        """The URI keys the document, so a missing part is fatal."""
+    def test_a_module_with_no_release_has_no_uri(self, calc_session):
+        """The URI names the export, so a missing part is fatal."""
         calc_session.query(ModuleVersion).filter(
             ModuleVersion.module_vid == 1
         ).update({ModuleVersion.start_release_id: None})
@@ -1102,9 +1111,8 @@ class TestWorkingReleaseUri:
         with caplog.at_level("WARNING"):
             uri, _ = get_module_uri(memory_session, 1)
 
-        # Reported verbatim: the reference export keys its dependency
-        # modules at the working release and the consumer looks them up
-        # by URI, so substituting a published code repoints them.
+        # Reported verbatim: a consumer matches an instance by its module
+        # URI, so substituting a published code repoints it.
         assert uri.endswith("/calc_fw/Playground/mod/calc_home")
         # Silence would hide that the URI does not resolve against a
         # published taxonomy.

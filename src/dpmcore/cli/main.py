@@ -1280,8 +1280,8 @@ def export_calculations(
 ) -> None:
     """Export a module version's calculations set as JSON.
 
-    Writes two files: the calculations export, keyed by the module's EBA
-    taxonomy URI, and the companion datapoint map that names the cell
+    Writes two files: the calculations export, with the module's URI in
+    ``module_uri``, and the companion datapoint map that names the cell
     behind every datapoint it references.
 
     Requires a database with an ``OperationOutput`` table — the link
@@ -1306,13 +1306,13 @@ def export_calculations(
         click.echo(f"Calculations export failed: {exc}", err=True)
         sys.exit(1)
 
-    namespace: dict[str, Any] = next(iter(export.calculations.values()), {})
+    document: dict[str, Any] = export.calculations
     out_path = (
         Path(output)
         if output
         else Path(
-            f"{namespace.get('owner')}-{namespace.get('module_code')}-"
-            f"{namespace.get('module_version')}.json"
+            f"{document.get('owner')}-{document.get('module_code')}-"
+            f"{document.get('module_version')}.json"
         )
     )
     dp_path = (
@@ -1333,8 +1333,8 @@ def export_calculations(
             newline="\n",
         )
 
-    n_calcs = len(namespace.get("calculations", {}).get("operation_codes", []))
-    n_modules = len(namespace.get("modules", {}))
+    n_calcs = len(document.get("calculations", {}).get("operation_codes", []))
+    n_modules = len(document.get("modules", {}))
     click.echo(
         f"Wrote {out_path} ({n_calcs} calculations, {n_modules} modules)"
     )
