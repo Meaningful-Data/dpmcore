@@ -36,6 +36,7 @@ from dpmcore.orm.operations import (
 from dpmcore.orm.packaging import (
     Framework,
     Module,
+    ModuleParameters,
     ModuleVersion,
     ModuleVersionComposition,
 )
@@ -67,6 +68,9 @@ DEP_TABLE = "C_98.00"
 
 REFERENCE_DATE = "2026-06-30"
 PUBLICATION_DATE = "2026-01-01"
+
+# Data type and property of the filing indicators.
+BOOLEAN = 9
 
 # Row/column codes shared by both tables, so a cell is addressed the
 # same way in the home and the dependency table.
@@ -256,6 +260,30 @@ def _seed_open_key(session, *, header_id, table_id, property_id, table_vids):
                 order=99,
             )
         )
+
+
+def _seed_filing_indicator(
+    session, *, variable_id, module_vid, code, kind="filingindicator"
+):
+    """A variable ``code`` bound to ``module_vid`` by ``ModuleParameters``.
+
+    A filing indicator unless ``kind`` is another variable type. Its
+    property is ``BOOLEAN``, which the caller seeds.
+    """
+    session.add(Variable(variable_id=variable_id, type=kind))
+    session.add(
+        VariableVersion(
+            variable_vid=variable_id,
+            variable_id=variable_id,
+            property_id=BOOLEAN,
+            code=code,
+            start_release_id=RELEASE,
+            end_release_id=None,
+        )
+    )
+    session.add(
+        ModuleParameters(module_vid=module_vid, variable_vid=variable_id)
+    )
 
 
 def _seed_key_property(session, property_id, *codes):
@@ -574,6 +602,58 @@ class TestCalculationsForModule:
 
         (home,) = ns["modules"][HOME_MODULE]["versions"]
         assert list(home["tables"]) == [HOME_TABLE]
+
+    def test_the_home_version_lists_its_filing_indicators(self, calc_session):
+        calc_session.add(DataType(data_type_id=BOOLEAN, code="b"))
+        calc_session.add(Property(property_id=BOOLEAN, data_type_id=BOOLEAN))
+        _seed_filing_indicator(
+            calc_session, variable_id=90001, module_vid=1, code=HOME_TABLE
+        )
+        _seed_filing_indicator(
+            calc_session,
+            variable_id=90002,
+            module_vid=1,
+            code="BM",
+            kind="Business Model",
+        )
+        _seed_filing_indicator(
+            calc_session, variable_id=90003, module_vid=2, code=DEP_TABLE
+        )
+        calc_session.commit()
+
+        ns = _namespace(
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+        )
+
+        (home,) = ns["modules"][HOME_MODULE]["versions"]
+        assert list(home) == [
+            "version",
+            "URI",
+            "from",
+            "to",
+            "tables",
+            "filing_indicators",
+        ]
+        # The module's other parameters are not filing indicators.
+        assert home["filing_indicators"] == {
+            HOME_TABLE: {"variable_id": 90001, "data_type": "b"}
+        }
+        # No calculation reads one, so no other version lists any.
+        (dep,) = ns["modules"][DEP_MODULE]["versions"]
+        assert "filing_indicators" not in dep
+
+    def test_a_module_without_filing_indicators_lists_none(self, calc_session):
+        """``filing_indicators`` is never empty."""
+        ns = _namespace(
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+        )
+
+        (home,) = ns["modules"][HOME_MODULE]["versions"]
+        assert "filing_indicators" not in home
 
     def test_data_types_come_from_the_dictionary(self, calc_session):
         calc_session.query(DataType).filter(DataType.data_type_id == 1).update(

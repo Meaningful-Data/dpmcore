@@ -3,7 +3,7 @@
 Every module the export refers to, its own included, keyed by DPM module
 code. Each lists the versions a read can land in, in date order, with
 their reference-date windows, the tables and Variables read from them
-(every table and Variable on the export's own version), and the
+(every table, Variable and filing indicator on the own version), and the
 operations a version cannot serve (``not_evaluable``). A consumer picks
 the version whose window holds a read's target date, so a dependency
 read at another period reaches the version in force then.
@@ -36,7 +36,10 @@ from typing import (
 
 import pandas as pd
 
-from dpmcore.dpm_xl.model_queries import ViewDatapointsQuery
+from dpmcore.dpm_xl.model_queries import (
+    ModuleVersionQuery,
+    ViewDatapointsQuery,
+)
 from dpmcore.errors import NotFound
 from dpmcore.orm.packaging import ModuleVersion, ModuleVersionComposition
 from dpmcore.orm.query_utils import chunked_in
@@ -627,6 +630,10 @@ class _ModulesBuilder:
             "to": _date_text(version.end),
             "tables": self._tables(version, listed, table_codes),
         }
+        if is_own:
+            indicators = _filing_indicators(self.session, version.module_vid)
+            if indicators:
+                entry["filing_indicators"] = indicators
         not_evaluable = sorted(
             {
                 code
@@ -870,3 +877,19 @@ def _composition(session: "Session", module_vid: int) -> Dict[int, str]:
         .all()
     )
     return {int(row.table_vid): row.code for row in rows if row.code}
+
+
+def _filing_indicators(
+    session: "Session", module_vid: int
+) -> Dict[str, Dict[str, Any]]:
+    """Return ``{code: {variable_id, data_type}}`` of a module version."""
+    return {
+        row.Code: {
+            "variable_id": int(row.VariableID),
+            "data_type": row.DataType or "b",
+        }
+        for row in ModuleVersionQuery.get_filing_indicators(
+            session, module_vid
+        )
+        if row.Code
+    }

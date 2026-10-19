@@ -1991,6 +1991,56 @@ class ModuleVersionQuery:
         return {row[0] for row in rows}
 
     @staticmethod
+    def get_filing_indicators(
+        session: "Session",
+        module_vid: int,
+    ) -> list[Any]:
+        """Return the filing indicators of one module version.
+
+        Bound to it through ``ModuleParameters``, as
+        :meth:`get_precondition_module_versions` reads them; its other
+        parameters are not filing indicators and are left out.
+
+        Args:
+            session: SQLAlchemy session.
+            module_vid: ModuleVID integer.
+
+        Returns:
+            Named-tuple rows (Code, VariableID, DataType), ordered by
+            code; ``DataType`` is ``None`` when the dictionary has none.
+        """
+        query = (
+            session.query(
+                VariableVersion.code.label("Code"),
+                Variable.variable_id.label("VariableID"),
+                DataType.code.label("DataType"),
+            )
+            .select_from(ModuleParameters)
+            .join(
+                VariableVersion,
+                ModuleParameters.variable_vid == VariableVersion.variable_vid,
+            )
+            .join(
+                Variable,
+                VariableVersion.variable_id == Variable.variable_id,
+            )
+            .outerjoin(
+                Property,
+                VariableVersion.property_id == Property.property_id,
+            )
+            .outerjoin(
+                DataType,
+                Property.data_type_id == DataType.data_type_id,
+            )
+            .filter(
+                ModuleParameters.module_vid == module_vid,
+                _is_filing_indicator(),
+            )
+            .order_by(VariableVersion.code)
+        )
+        return query.all()
+
+    @staticmethod
     def get_module_version_by_vid(
         session: "Session",
         vid: int,
