@@ -622,6 +622,13 @@ def generate_script(
     ),
 )
 @click.option(
+    "--dpm-publication-date",
+    default=None,
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help="Publication date (YYYY-MM-DD) stamped into the dpm_release "
+    "block (default: the date of the database's latest release).",
+)
+@click.option(
     "--database",
     required=True,
     help="SQLAlchemy database URL.",
@@ -643,6 +650,7 @@ def export_script(
     all_modules: bool,
     all_versions: bool,
     release: str | None,
+    dpm_publication_date: datetime | None,
     database: str,
     output: str | None,
 ) -> None:
@@ -655,6 +663,10 @@ def export_script(
     ``--all-modules``/``--all-versions`` to sweep many at once.
     ``--release`` on its own (no ``--module-version``/``--all-versions``)
     selects each targeted module's version active at that release instead.
+
+    The ``dpm_release`` block names the database's latest release, the
+    same for every target; ``--dpm-publication-date`` overrides its
+    publication date.
 
     The output file holds only the ``enriched_ast`` content — the same
     ``{namespace: ...}`` shape mdpm's own export produces — not the
@@ -698,6 +710,11 @@ def export_script(
         output=output,
     )
     sweeping = module_version is None
+    publication_date = (
+        dpm_publication_date.strftime("%Y-%m-%d")
+        if dpm_publication_date
+        else None
+    )
 
     try:
         engine = create_engine(database)
@@ -735,7 +752,10 @@ def export_script(
             total_skipped = 0
             for code, version in targets:
                 result = svc.script_for_module(
-                    module_code=code, module_version=version, release=release
+                    module_code=code,
+                    module_version=version,
+                    release=release,
+                    publication_date=publication_date,
                 )
                 if not result.get("success"):
                     console.print(
@@ -778,6 +798,7 @@ def export_script(
             module_code=cast(str, module_code),
             module_version=cast(str, module_version),
             release=release,
+            publication_date=publication_date,
         )
 
     if not result.get("success"):

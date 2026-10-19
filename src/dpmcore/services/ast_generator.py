@@ -467,6 +467,7 @@ class ASTGeneratorService:
         ],
         referenced_table_codes: set[str],
         referenced_parameters: Dict[str, ParameterInfo],
+        release_info: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Assemble the final script dict from already-resolved operations.
 
@@ -479,6 +480,11 @@ class ASTGeneratorService:
         This is a verbatim extraction of what used to be the tail of
         :meth:`script`'s body — no behaviour changed, only where the
         code lives.
+
+        ``release_info``, when given, is stamped as the ``dpm_release``
+        block verbatim; otherwise the block is built from
+        ``release_row`` (see :meth:`script_for_module` for why the two
+        can differ).
         """
         if self._scope_calc is None or self.session is None:
             raise InternalError(
@@ -569,7 +575,9 @@ class ASTGeneratorService:
         module_info = self._build_module_info(mv)
         ns_block: Dict[str, Any] = {
             **module_info,
-            "dpm_release": self._build_release_info(release_row),
+            "dpm_release": (
+                release_info or self._build_release_info(release_row)
+            ),
             "dates": self._build_dates(mv),
             "operations": operations,
             "variables": variables_block,
@@ -792,6 +800,7 @@ class ASTGeneratorService:
         severity: Optional[str] = None,
         severities: Optional[Dict[str, str]] = None,
         from_submission_dates: Optional[Dict[str, str]] = None,
+        release_info: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Generate a DB-discovered module version's validations script.
 
@@ -824,6 +833,9 @@ class ASTGeneratorService:
                 column was null) falls back to
                 :meth:`_build_operation_entry`'s own default, same as
                 :meth:`script`'s caller-supplied expressions.
+            release_info: Optional ``{"release", "publication_date"}``
+                block stamped as ``dpm_release``. When omitted, the
+                block is built from ``release_row``.
 
         Returns:
             Same shape as :meth:`script`. Unlike :meth:`script`, a
@@ -924,6 +936,7 @@ class ASTGeneratorService:
                 scope_pairs=scope_pairs,
                 referenced_table_codes=referenced_table_codes,
                 referenced_parameters=referenced_parameters,
+                release_info=release_info,
             )
 
         except ValueError as exc:
@@ -946,6 +959,7 @@ class ASTGeneratorService:
         module_code: str,
         module_version: str,
         release: Optional[str] = None,
+        publication_date: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Auto-discover a module version's active validations and script them.
 
@@ -954,11 +968,20 @@ class ASTGeneratorService:
         ``OperationScopeComposition`` / ``OperationVersion`` for this module
         version, then handed to :meth:`script_from_db`.
 
+        The ``dpm_release`` block names the database the script was
+        exported from — its latest release (:meth:`_database_release_info`)
+        — not the release the content is resolved at, which is still
+        ``release`` or the latest one in the module version's window
+        (#433). A sweep therefore stamps the same block on every file.
+
         Args:
             module_code: Code of the module (e.g. ``"COREP_Con"``).
             module_version: Version of the module (e.g. ``"2.0.1"``).
             release: Optional release code; resolved the same way as in
                 :meth:`script`.
+            publication_date: Optional ``YYYY-MM-DD`` stamped as the
+                ``dpm_release`` publication date. Defaults to the date
+                of the database's latest release.
 
         Returns:
             Same shape as :meth:`script`.
@@ -975,6 +998,7 @@ class ASTGeneratorService:
             mv, release_row = self._resolve_release(
                 module_code, module_version, release
             )
+            release_info = self._database_release_info(publication_date)
             (
                 expressions,
                 operation_vids,
@@ -998,6 +1022,7 @@ class ASTGeneratorService:
             preconditions=preconditions or None,
             severities=severities or None,
             from_submission_dates=from_submission_dates or None,
+            release_info=release_info,
         )
 
     def calculations_for_module(
@@ -2283,6 +2308,45 @@ class ASTGeneratorService:
                 release_row.date, fallback=_DEFAULT_FROM_DATE
             ),
         }
+
+    def _database_release_info(
+        self, publication_date: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Build the ``dpm_release`` block for a database export (#433).
+
+        Names the database's latest release by the date-based sort order
+        (ties break by ``release_id``, as in
+        :meth:`DataDictionaryService.get_latest_release`), whatever
+        release the content itself is resolved at.
+
+        Args:
+            publication_date: Optional override for the block's
+                ``publication_date``. Defaults to the latest release's
+                ``Release.date``.
+
+        Raises:
+            ValueError: If the database has no ``Release`` row, or the
+                latest one is undated and no override is given.
+        """
+        from dpmcore.orm.infrastructure import Release
+        from dpmcore.orm.release_sort_order import compute_sort_order
+
+        if self.session is None:
+            raise RuntimeError("session required")
+        rows = self.session.query(Release).all()
+        if not rows:
+            raise ValueError("No Release rows found in the database.")
+        latest = max(
+            rows,
+            key=lambda r: (compute_sort_order(r.date, r.type), r.release_id),
+        )
+        pub_date = publication_date or _format_date(latest.date)
+        if pub_date is None:
+            raise ValueError(
+                f"Latest release {latest.code} has no date; pass an "
+                "explicit publication date."
+            )
+        return {"release": latest.code or "", "publication_date": pub_date}
 
     @staticmethod
     def _build_dates(mv: Any) -> Dict[str, Any]:

@@ -141,6 +141,59 @@ class TestExportScriptSuccess:
         assert kwargs["module_code"] == "FINREP_Con"
         assert kwargs["module_version"] == "2.0.1"
         assert kwargs["release"] is None
+        assert kwargs["publication_date"] is None
+
+    def test_dpm_publication_date_passed_to_service(self, runner, tmp_path):
+        out = tmp_path / "script.json"
+        with patch(
+            "dpmcore.services.ast_generator.ASTGeneratorService"
+        ) as Svc:
+            Svc.return_value.script_for_module.return_value = _success_result()
+            result = runner.invoke(
+                main,
+                [
+                    "export-script",
+                    "--module-code",
+                    "FINREP_Con",
+                    "--module-version",
+                    "2.0.1",
+                    "--dpm-publication-date",
+                    "2027-01-15",
+                    "--database",
+                    "sqlite:///:memory:",
+                    "--output",
+                    str(out),
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        kwargs = Svc.return_value.script_for_module.call_args.kwargs
+        assert kwargs["publication_date"] == "2027-01-15"
+
+    def test_invalid_dpm_publication_date_rejected(self, runner, tmp_path):
+        with patch(
+            "dpmcore.services.ast_generator.ASTGeneratorService"
+        ) as Svc:
+            result = runner.invoke(
+                main,
+                [
+                    "export-script",
+                    "--module-code",
+                    "FINREP_Con",
+                    "--module-version",
+                    "2.0.1",
+                    "--dpm-publication-date",
+                    "30/12/2026",
+                    "--database",
+                    "sqlite:///:memory:",
+                    "--output",
+                    str(tmp_path / "script.json"),
+                ],
+            )
+
+        assert result.exit_code == 2
+        assert "--dpm-publication-date" in result.output
+        Svc.return_value.script_for_module.assert_not_called()
 
     def test_no_expressions_option_exists(self, runner, tmp_path):
         out = tmp_path / "script.json"
@@ -825,6 +878,40 @@ class TestExportScriptReleaseOnlyMode:
         assert kwargs["module_code"] == "FINREP_Con"
         assert kwargs["module_version"] == "2.0.1"
         assert kwargs["release"] == "4.2"
+        assert kwargs["publication_date"] is None
+
+    def test_sweep_passes_dpm_publication_date_to_every_target(
+        self, runner, tmp_path
+    ):
+        out_dir = tmp_path / "out"
+        with patch(
+            "dpmcore.services.ast_generator.ASTGeneratorService"
+        ) as Svc:
+            Svc.return_value.list_module_versions.return_value = [
+                ("MOD_A", "1.0"),
+                ("MOD_B", "2.0"),
+            ]
+            Svc.return_value.script_for_module.return_value = _success_result()
+            result = runner.invoke(
+                main,
+                [
+                    "export-script",
+                    "--all-modules",
+                    "--release",
+                    "4.2",
+                    "--dpm-publication-date",
+                    "2027-01-15",
+                    "--database",
+                    "sqlite:///:memory:",
+                    "--output",
+                    str(out_dir),
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        calls = Svc.return_value.script_for_module.call_args_list
+        assert len(calls) == 2
+        assert all(c.kwargs["publication_date"] == "2027-01-15" for c in calls)
 
     def test_no_targets_at_release_exits_1(self, runner, tmp_path):
         out_dir = tmp_path / "out"
