@@ -152,8 +152,9 @@ def get_module_metadata(session: "Session", module_vid: int) -> Dict[str, Any]:
     Returns:
         Dict with ``module_vid``, ``module_id``, ``code``,
         ``version_number``, ``from_date``, ``to_date``,
-        ``start_release_id`` and ``module_owner`` (the acronym of the
-        organisation owning the module, ``None`` when it has none).
+        ``start_release_id``, ``end_release_id`` and ``module_owner``
+        (the acronym of the organisation owning the module, ``None``
+        when it has none).
 
     Raises:
         NotFound: If no ``ModuleVersion`` has that VID.
@@ -182,6 +183,9 @@ def get_module_metadata(session: "Session", module_vid: int) -> Dict[str, Any]:
             int(mv.start_release_id)
             if mv.start_release_id is not None
             else None
+        ),
+        "end_release_id": (
+            int(mv.end_release_id) if mv.end_release_id is not None else None
         ),
         "module_owner": module_owner,
     }

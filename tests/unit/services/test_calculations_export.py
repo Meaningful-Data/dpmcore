@@ -75,13 +75,14 @@ def _reads(script):
     return extractor
 
 
-def _mv(vid, start, end, release=1, number=None):
+def _mv(vid, start, end, release=1, number=None, end_release=None):
     return ModuleVersionInfo(
         module_vid=vid,
         version_number=number or f"{vid}.0.0",
         start=start,
         end=end,
         start_release_id=release,
+        end_release_id=end_release,
     )
 
 
@@ -872,6 +873,45 @@ class TestVersionChain:
 
         assert [(v.module_vid, v.end) for v in chain] == [
             (1, date(2020, 12, 31))
+        ]
+
+    @pytest.mark.parametrize(
+        "end",
+        # Where the Playground successor starts, or inverted by a
+        # Playground patch from the same date.
+        [date(2020, 12, 31), date(2019, 12, 31)],
+    )
+    def test_a_version_playground_ended_is_open_as_published(self, end):
+        chain = version_chain(
+            [_mv(1, date(2020, 1, 1), end, end_release=99)],
+            self.SORT_ORDERS,
+        )
+
+        assert [(v.module_vid, v.end) for v in chain] == [(1, None)]
+
+    def test_it_still_ends_where_its_published_successor_starts(self):
+        chain = version_chain(
+            [
+                _mv(1, date(2020, 1, 1), date(2020, 6, 30), end_release=99),
+                _mv(2, date(2021, 1, 1), None, release=3),
+            ],
+            self.SORT_ORDERS,
+        )
+
+        assert [(v.module_vid, v.end) for v in chain] == [
+            (1, date(2020, 12, 31)),
+            (2, None),
+        ]
+
+    def test_with_drafts_it_keeps_the_end_playground_gave_it(self):
+        chain = version_chain(
+            [_mv(1, date(2020, 1, 1), date(2020, 6, 30), end_release=99)],
+            self.SORT_ORDERS,
+            drafts=True,
+        )
+
+        assert [(v.module_vid, v.end) for v in chain] == [
+            (1, date(2020, 6, 30))
         ]
 
     def test_with_drafts_a_playground_version_succeeds_the_last(self):

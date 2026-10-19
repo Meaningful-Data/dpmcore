@@ -26,7 +26,10 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import SQLAlchemyError
 
 from dpmcore.errors import ConfigurationError, Invalid, NotFound
-from dpmcore.services.calculations_export.modules import build_modules
+from dpmcore.services.calculations_export.modules import (
+    build_modules,
+    reference_window,
+)
 from dpmcore.services.calculations_export.queries import (
     get_calculations,
     get_data_types,
@@ -128,6 +131,7 @@ class CalculationsExporter:
         module_meta = get_module_metadata(session, module_vid)
         if release_id is None:
             release_id = module_meta["start_release_id"]
+        window = reference_window(session, module_meta, release_id)
         module_owner = _module_owner(module_meta)
         module_uri, _ = get_module_uri(session, module_vid)
         release_info = get_release_info(session, release_id, publication_date)
@@ -165,6 +169,7 @@ class CalculationsExporter:
         modules = build_modules(
             session,
             own=module_meta,
+            window=window,
             root_uri=module_uri,
             reads=dependencies.reads,
             operation_codes=operation_codes,
@@ -183,8 +188,8 @@ class CalculationsExporter:
                 "format_version": FORMAT_VERSION,
                 "dpm_release": release_info,
                 "dates": {
-                    "from": _as_date_string(module_meta["from_date"]),
-                    "to": _as_date_string(module_meta["to_date"]),
+                    "from": _as_date_string(window[0]),
+                    "to": _as_date_string(window[1]),
                 },
                 "calculations": {
                     "ast": CalculationsJSONVisitor(enricher.payloads).visit(

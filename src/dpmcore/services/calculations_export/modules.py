@@ -181,6 +181,8 @@ class ModuleVersionInfo:
         start: First reference date; ``None`` when the DPM has none.
         end: Last reference date; ``None`` when open-ended.
         start_release_id: The release it was published in.
+        end_release_id: The release that ended it; ``None`` while it
+            is current.
     """
 
     module_vid: int
@@ -188,6 +190,35 @@ class ModuleVersionInfo:
     start: Optional[date]
     end: Optional[date]
     start_release_id: Optional[int]
+    end_release_id: Optional[int] = None
+
+
+def is_working_release(
+    sort_orders: Mapping[int, int], release_id: Optional[int]
+) -> bool:
+    """Whether ``release_id`` is a working release, such as ``Playground``.
+
+    It sorts after every published release.
+    """
+    return release_id is not None and sort_orders.get(
+        release_id, -1
+    ) >= compute_sort_order(None, None)
+
+
+def as_published(
+    version: ModuleVersionInfo, sort_orders: Mapping[int, int]
+) -> ModuleVersionInfo:
+    """Return ``version`` as published: open if a working release ended it.
+
+    A working release that ends a version also rewrites its end date in
+    the same row, and the database keeps no other, so the version is
+    taken as open until its next published successor starts. This
+    assumes it was open as published; one that had an end date of its
+    own is stretched to that successor.
+    """
+    if is_working_release(sort_orders, version.end_release_id):
+        return replace(version, end=None)
+    return version
 
 
 def is_ghost(version: ModuleVersionInfo) -> bool:
@@ -211,24 +242,28 @@ def version_chain(
 ) -> List[ModuleVersionInfo]:
     """Return the versions of one module that applied, in date order.
 
-    Drops ghosts, versions without a start date and, unless ``drafts``,
-    versions of a working release: those were never published. Of two
-    versions starting on the same date a published one beats one of a
-    working release, and otherwise the later release wins. The version
-    ``keep`` (the export's own) is never dropped. Each window is then
-    cut where its successor starts, so no two overlap.
+    Unless ``drafts``, the versions are read as published: those of a
+    working release are dropped, and one a working release ended is
+    open again (:func:`as_published`). Then ghosts and versions without
+    a start date are dropped. Of two versions starting on the same date
+    a published one beats one of a working release, and otherwise the
+    later release wins. The version ``keep`` (the export's own) is
+    never dropped. Each window is then cut where its successor starts,
+    so no two overlap.
 
     Args:
         versions: Every version of the module.
         sort_orders: ``{release_id: sort_order}``.
         keep: A ``module_vid`` to keep whatever its window or release.
-        drafts: Whether working-release versions are listed too, as
-            when the export itself is resolved at a working release.
+        drafts: Whether to read the versions as the working release
+            left them, as when the export itself is resolved at one.
 
     Returns:
         The versions, earliest first, with non-overlapping windows.
     """
     draft = compute_sort_order(None, None)
+    if not drafts:
+        versions = [as_published(version, sort_orders) for version in versions]
 
     def rank(version: ModuleVersionInfo) -> Tuple[bool, int]:
         order = (
@@ -323,10 +358,35 @@ def overlaps(version: ModuleVersionInfo, window: Window) -> bool:
     )
 
 
+def reference_window(
+    session: "Session", own: Mapping[str, Any], release_id: Optional[int]
+) -> Window:
+    """Return the reference-date window of the export's own version.
+
+    Read as published (:func:`as_published`), unless the export is
+    itself resolved at a working release.
+
+    Args:
+        session: SQLAlchemy session.
+        own: The export's own module version, as
+            :func:`~dpmcore.services.calculations_export.queries.get_module_metadata`
+            returns it.
+        release_id: Release the export is resolved at.
+    """
+    sort_orders = load_release_sort_orders(session)
+    end = to_date(own["to_date"])
+    if not is_working_release(sort_orders, release_id) and (
+        is_working_release(sort_orders, own.get("end_release_id"))
+    ):
+        end = None
+    return (to_date(own["from_date"]), end)
+
+
 def build_modules(
     session: "Session",
     *,
     own: Mapping[str, Any],
+    window: Window,
     root_uri: str,
     reads: Sequence[Read],
     operation_codes: Sequence[Optional[str]],
@@ -339,6 +399,7 @@ def build_modules(
         own: The export's own module version, as
             :func:`~dpmcore.services.calculations_export.queries.get_module_metadata`
             returns it.
+        window: The own version's window (:func:`reference_window`).
         root_uri: The URI the export is keyed by.
         reads: What each statement reads.
         operation_codes: The operation code of each statement.
@@ -348,7 +409,7 @@ def build_modules(
         ``{module_code: {"versions": [...]}}``, ordered by code.
     """
     return _ModulesBuilder(
-        session, own, root_uri, operation_codes, release_id
+        session, own, window, root_uri, operation_codes, release_id
     ).build(reads)
 
 
@@ -368,6 +429,7 @@ class _ModulesBuilder:
         self,
         session: "Session",
         own: Mapping[str, Any],
+        window: Window,
         root_uri: str,
         operation_codes: Sequence[Optional[str]],
         release_id: Optional[int],
@@ -377,19 +439,14 @@ class _ModulesBuilder:
         self.own_vid = int(own["module_vid"])
         self.own_code = own["code"]
         self.own_module_id = own["module_id"]
-        self.window: Window = (
-            to_date(own["from_date"]),
-            to_date(own["to_date"]),
-        )
+        self.window = window
         self.root_uri = root_uri
         self.operation_codes = operation_codes
         self.release_id = release_id
         self.sort_orders = load_release_sort_orders(session)
         # Working-release versions are listed only in an export that is
         # itself resolved at a working release.
-        self.drafts = release_id is not None and self.sort_orders.get(
-            release_id, -1
-        ) >= compute_sort_order(None, None)
+        self.drafts = is_working_release(self.sort_orders, release_id)
         self._base_vid: Dict[str, int] = {}
         self._key_properties: Dict[int, FrozenSet[int]] = {}
         self._default_types: Set[int] = set()
@@ -726,6 +783,7 @@ def _module_versions(
             ModuleVersion.from_reference_date,
             ModuleVersion.to_reference_date,
             ModuleVersion.start_release_id,
+            ModuleVersion.end_release_id,
         )
         .filter(ModuleVersion.module_id.in_(ids))
         .order_by(ModuleVersion.module_vid)
@@ -740,6 +798,11 @@ def _module_versions(
             start_release_id=(
                 int(row.start_release_id)
                 if row.start_release_id is not None
+                else None
+            ),
+            end_release_id=(
+                int(row.end_release_id)
+                if row.end_release_id is not None
                 else None
             ),
         )

@@ -1333,6 +1333,59 @@ class TestModuleVersions:
             ("1.1.0", "2026-07-01", None),
         ]
 
+    def _end_in_working_release(self, session, module_vid, end):
+        """End a version as a working release does, in its own row."""
+        session.query(ModuleVersion).filter(
+            ModuleVersion.module_vid == module_vid
+        ).update(
+            {
+                ModuleVersion.to_reference_date: end,
+                ModuleVersion.end_release_id: WORKING,
+            }
+        )
+        session.commit()
+
+    @pytest.mark.parametrize(
+        "end",
+        [
+            date(2026, 6, 30),
+            # A working-release patch from the same date inverts it.
+            date(2025, 12, 31),
+        ],
+    )
+    def test_a_version_a_working_release_ended_is_read_as_published(
+        self, calc_session, end
+    ):
+        self._seed_draft_successor(calc_session)
+        self._end_in_working_release(calc_session, 2, end)
+
+        versions = self._versions(calc_session)
+
+        assert [(v["version"], v["from"], v["to"]) for v in versions] == [
+            ("1.0.0", "2026-01-01", None)
+        ]
+
+    def test_the_own_dates_are_read_as_published(self, calc_session):
+        self._seed_draft_successor(calc_session)
+        self._end_in_working_release(calc_session, 1, date(2026, 9, 30))
+        service = ASTGeneratorService(calc_session)
+
+        published = _namespace(
+            service.calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+        )
+        draft = _namespace(
+            service.calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE, "Playground"
+            )
+        )
+
+        assert published["dates"] == {"from": "2026-01-01", "to": None}
+        (own,) = published["modules"][HOME_MODULE]["versions"]
+        assert own["to"] is None
+        assert draft["dates"] == {"from": "2026-01-01", "to": "2026-09-30"}
+
     def _move_dependency(self, session, start, end):
         session.query(ModuleVersion).filter(
             ModuleVersion.module_vid == 2
