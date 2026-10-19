@@ -1,9 +1,9 @@
 """``OperationOutput``: the link from an operation to what it writes.
 
 A calculation operation names the module version it outputs to through
-this table. It is the join the calculations export walks, and it exists
-only in the EBA SQL Server DPM databases -- the schema-alignment test
-lists it under ``SQLSERVER_ONLY_ORM_TABLES`` for exactly that reason.
+this table. It is the join the calculations export walks. It exists in
+the EBA SQL Server DPM databases, and in the Access distribution only
+from release 4.4 onwards (still empty there as of 4.4).
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from dpmcore.orm.infrastructure import Organisation
 from dpmcore.orm.operations import (
     Operation,
     OperationOutput,
@@ -69,3 +70,14 @@ def test_one_operation_may_write_to_several_modules(linked_session):
 
     version = linked_session.get(OperationVersion, 100)
     assert sorted(o.module_vid for o in version.operation_outputs) == [10, 11]
+
+
+def test_the_owner_added_in_the_4_4_access_release_is_reachable(
+    linked_session,
+):
+    linked_session.add(Organisation(org_id=1012, name="EBA"))
+    output = linked_session.get(OperationOutput, (100, 10))
+    output.owner_id = 1012
+    linked_session.commit()
+
+    assert linked_session.get(OperationOutput, (100, 10)).owner.name == "EBA"

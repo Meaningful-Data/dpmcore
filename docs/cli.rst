@@ -55,6 +55,17 @@ Migrate an Access database into a SQL database.
        --source dpm.accdb \
        --database mssql+pyodbc://user:pass@server/db?driver=ODBC+Driver+17
 
+.. warning::
+
+   Databases migrated with dpmcore 0.2.1rc3 or earlier are not readable
+   by later versions. The ORM now maps ``TableAssociation.StartReleaseID``,
+   ``TableAssociation.EndReleaseID``, ``OperandReference.OperationVID`` and
+   ``OperationOutput.OwnerID``, added by the DPM 4.4 Access release, so
+   queries on those tables fail against a database that lacks them.
+   Regenerate the database from the Access file with ``dpmcore migrate``
+   or ``dpmcore update-db --access-file``; ``dpmcore validate`` reports
+   the missing columns.
+
 ``dpmcore validate``
 --------------------
 
@@ -596,9 +607,11 @@ naming the cell behind every datapoint the calculations reference.
 
    The command needs a database carrying the ``OperationOutput`` table,
    which links an operation to the module version it writes to. That
-   table exists in the EBA SQL Server DPM databases but not in the
-   Access DPM 2.0 distribution, so a migrated Access database reports
-   the omission instead of exporting an empty set.
+   table exists in the EBA SQL Server DPM databases, and in the Access
+   DPM 2.0 distribution only from release 4.4 onwards. A database
+   migrated from an older Access release reports the omission instead
+   of exporting an empty set; in the 4.4 Access release the table is
+   present but empty, so no module has calculations to export.
 
    Cells are read from each table's **live** version -- open now and
    already published -- rather than from the version effective at the
