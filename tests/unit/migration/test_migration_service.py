@@ -149,6 +149,91 @@ class TestLoadData:
             service._load_data({"bad_table": df})
 
 
+class TestLoadTableAgainstOrmSchema:
+    """``_load_table`` keeps the columns the ORM models, drops the rest."""
+
+    @pytest.fixture
+    def orm_service(self, sqlite_engine):
+        service = MigrationService(sqlite_engine)
+        service._create_schema()
+        return service
+
+    @pytest.mark.parametrize(
+        ("table_name", "data", "new_columns", "expected"),
+        [
+            (
+                "TableAssociation",
+                {
+                    "AssociationID": [1, 2],
+                    "ChildTableVID": [5989, 5987],
+                    "ParentTableVID": [5992, 5992],
+                    "Name": ["R1", "R2"],
+                    "StartReleaseID": [3, 3],
+                    "EndReleaseID": [5, None],
+                },
+                ["StartReleaseID", "EndReleaseID"],
+                [(3, 5), (3, None)],
+            ),
+            (
+                "OperandReference",
+                {
+                    "OperandReferenceID": [1],
+                    "NodeID": [10],
+                    "OperandReference": ["tA"],
+                    "OperationVID": [100],
+                },
+                ["OperationVID"],
+                [(100,)],
+            ),
+            (
+                "OperationOutput",
+                {"OperationVID": [100], "ModuleVID": [10], "OwnerID": [1012]},
+                ["OwnerID"],
+                [(1012,)],
+            ),
+        ],
+    )
+    def test_columns_added_in_the_4_4_access_release_are_loaded(
+        self,
+        orm_service,
+        sqlite_engine,
+        table_name,
+        data,
+        new_columns,
+        expected,
+    ):
+        warnings: list = []
+
+        orm_service._load_table(table_name, pd.DataFrame(data), warnings, {})
+
+        assert warnings == []
+        cols = ", ".join(f'"{c}"' for c in new_columns)
+        with sqlite_engine.connect() as conn:
+            rows = conn.execute(
+                text(f'SELECT {cols} FROM "{table_name}"')  # noqa: S608
+            ).fetchall()
+        assert [tuple(r) for r in rows] == expected
+
+    def test_unknown_columns_are_dropped_with_a_warning(
+        self, orm_service, sqlite_engine
+    ):
+        df = pd.DataFrame({"OperationVID": [100], "ModuleVID": [10], "X": [1]})
+        warnings: list = []
+
+        orm_service._load_table("OperationOutput", df, warnings, {})
+
+        assert warnings == [
+            "Table 'OperationOutput': dropping unknown columns ['X']"
+        ]
+        with sqlite_engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    'SELECT "OperationVID", "ModuleVID" FROM "OperationOutput"'
+                )
+            ).fetchall()
+        assert rows == [(100, 10)]
+
+
 class TestSystemTablesFiltered:
     def test_mdbtools_filters_system_tables(self, service):
         raw_tables = "Users\nMSysObjects\nMSysACEs\n~TmpTable\nOrders\n"

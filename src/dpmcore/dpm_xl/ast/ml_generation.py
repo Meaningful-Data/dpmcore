@@ -446,7 +446,7 @@ class MLGeneration(ASTTemplate):
         period_indicator_node = AST()
         period_indicator_node.parent = get_node
         period_indicator_node.argument = "period_indicator"
-        period_indicator_node.scalar = "Q"
+        period_indicator_node.scalar = node.period_indicator
         self.create_operation_node(period_indicator_node, is_leaf=True)
 
         # shift number

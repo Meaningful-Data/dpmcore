@@ -265,6 +265,7 @@ TABLE OperandReference
   COL NodeID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=OperationNode.NodeID
   COL OperandReference pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
   COL OperandReferenceID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=
+  COL OperationVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=OperationVersion.OperationVID
   COL PropertyID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Property.PropertyID
   COL SubCategoryID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=SubCategory.SubCategoryID
   COL VariableID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Variable.VariableID
@@ -313,6 +314,7 @@ TABLE OperationNode
 TABLE OperationOutput
   COL ModuleVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=ModuleVersion.ModuleVID
   COL OperationVID pg=INTEGER mssql=INTEGER null=False pk=True ai=auto fks=OperationVersion.OperationVID
+  COL OwnerID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Organisation.OrgID
   COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=
   PK OperationVID,ModuleVID
 TABLE OperationScope
@@ -485,6 +487,7 @@ TABLE TableAssociation
   COL ChildCardinalityAndOptionality pg=VARCHAR(3) mssql=VARCHAR(3) null=True pk=False ai=auto fks=
   COL ChildTableVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=TableVersion.TableVID
   COL Description pg=VARCHAR(255) mssql=VARCHAR(255) null=True pk=False ai=auto fks=
+  COL EndReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
   COL IsIdentifying pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
   COL IsSubtype pg=BOOLEAN mssql=BIT null=True pk=False ai=auto fks=
   COL Name pg=VARCHAR(50) mssql=VARCHAR(50) null=True pk=False ai=auto fks=
@@ -492,6 +495,7 @@ TABLE TableAssociation
   COL ParentCardinalityAndOptionality pg=VARCHAR(3) mssql=VARCHAR(3) null=True pk=False ai=auto fks=
   COL ParentTableVID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=TableVersion.TableVID
   COL RowGUID pg=VARCHAR(38) mssql=VARCHAR(38) null=True pk=False ai=auto fks=Concept.ConceptGUID
+  COL StartReleaseID pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Release.ReleaseID
   COL SubtypeDiscriminator pg=INTEGER mssql=INTEGER null=True pk=False ai=auto fks=Header.HeaderID
   PK AssociationID
 TABLE TableGroup

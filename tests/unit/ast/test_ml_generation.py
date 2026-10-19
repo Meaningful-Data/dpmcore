@@ -27,6 +27,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     SubOp,
     SubstrOp,
     SymdiffOp,
+    TimeShiftOp,
     UnionSetOp,
     VarID,
 )
@@ -522,3 +523,30 @@ def test_create_operation_node_unwraps_a_default_from_another_ast_implementation
     result = MLGeneration.create_operation_node(ml_generation, node)
 
     assert result.fallback_value == 0
+
+
+@pytest.mark.parametrize("period_indicator", ["A", "Q", "M"])
+def test_visit_time_shift_op_keeps_the_period_indicator(
+    ml_generation, period_indicator
+):
+    ml_generation.session = MagicMock()
+    ml_generation.visit = MagicMock()
+    ml_generation.create_operation_node = MagicMock(
+        return_value=OperationNode()
+    )
+
+    ml_generation.visit_TimeShiftOp(
+        TimeShiftOp(
+            operand=Constant("Integer", 1),
+            component="refPeriod",
+            period_indicator=period_indicator,
+            shift_number=_int_constant(1),
+        )
+    )
+
+    (leaf,) = [
+        call.args[0]
+        for call in ml_generation.create_operation_node.call_args_list
+        if getattr(call.args[0], "argument", None) == "period_indicator"
+    ]
+    assert leaf.scalar == period_indicator
