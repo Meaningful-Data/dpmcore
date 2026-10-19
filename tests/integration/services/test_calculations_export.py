@@ -1612,7 +1612,10 @@ class TestMovedVariable:
         calc_session.query(TableVersionCell).filter(
             TableVersionCell.table_vid.in_([61, 71]),
             TableVersionCell.cell_code.contains("r0010"),
-        ).update({TableVersionCell.variable_vid: 22001})
+        ).update(
+            {TableVersionCell.variable_vid: 22001},
+            synchronize_session="fetch",
+        )
         calc_session.commit()
 
         ns = _namespace(
