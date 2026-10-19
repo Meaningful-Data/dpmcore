@@ -2609,6 +2609,29 @@ class TestScriptFromDb:
         build.assert_called_once_with(svc.session, 555, release_row.release_id)
         svc._semantic.validate.assert_not_called()
 
+    def test_release_info_is_stamped_instead_of_release_row(self, monkeypatch):
+        """A caller-supplied ``release_info`` names ``dpm_release``;
+        ``release_row`` still drives the content (#433).
+        """
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
+        build = MagicMock(return_value=(db_ast_dict, 24))
+        self._stub_db_ast(monkeypatch, build)
+        release_info = {"release": "4.4", "publication_date": "2026-12-30"}
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+            release_info=release_info,
+        )
+
+        assert out["success"] is True, out["error"]
+        ns = next(iter(out["enriched_ast"].values()))
+        assert ns["dpm_release"] == release_info
+        build.assert_called_once_with(svc.session, 555, release_row.release_id)
+
     def test_db_native_time_shift_reaches_dependency_detection(
         self, monkeypatch
     ):
@@ -3002,6 +3025,9 @@ class TestScriptForModuleReleaseResolution:
         svc._discover_module_validations = MagicMock(
             return_value=([], {}, [], {}, {})
         )
+        svc._database_release_info = MagicMock(
+            return_value={"release": "4.4", "publication_date": "2026-12-30"}
+        )
         svc.script_from_db = MagicMock(return_value={"success": True})
         return svc, mv, release_row
 
@@ -3028,6 +3054,101 @@ class TestScriptForModuleReleaseResolution:
         assert (
             "release_was_explicit" not in svc.script_from_db.call_args.kwargs
         )
+
+    def test_stamps_database_release_info(self):
+        """The ``dpm_release`` block names the database's latest release,
+        not the one the content is resolved at (#433).
+        """
+        svc, _, release_row = self._build_svc()
+        svc.script_for_module("MOD", "1.0.0", release="4.2")
+
+        svc._database_release_info.assert_called_once_with(None)
+        kwargs = svc.script_from_db.call_args.kwargs
+        assert kwargs["release_row"] is release_row
+        assert kwargs["release_info"] == {
+            "release": "4.4",
+            "publication_date": "2026-12-30",
+        }
+
+    def test_forwards_publication_date(self):
+        svc, _, _ = self._build_svc()
+        svc.script_for_module("MOD", "1.0.0", publication_date="2027-01-15")
+
+        svc._database_release_info.assert_called_once_with("2027-01-15")
+
+    def test_release_info_error_returns_failure(self):
+        svc, _, _ = self._build_svc()
+        svc._database_release_info.side_effect = ValueError(
+            "No Release rows found in the database."
+        )
+        out = svc.script_for_module("MOD", "1.0.0")
+
+        assert out["success"] is False
+        assert "No Release rows" in out["error"]
+        svc.script_from_db.assert_not_called()
+
+
+# ------------------------------------------------------------------ #
+# _database_release_info
+# ------------------------------------------------------------------ #
+
+
+def _release(release_id, code, release_date, release_type="module"):
+    return SimpleNamespace(
+        release_id=release_id,
+        code=code,
+        date=release_date,
+        type=release_type,
+    )
+
+
+class TestDatabaseReleaseInfo:
+    def _svc(self, rows):
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        svc.session.query.return_value.all.return_value = rows
+        return svc
+
+    def test_latest_release_by_date(self):
+        # ReleaseIDs are not monotonic in the EBA DB: ordering is by date.
+        svc = self._svc(
+            [
+                _release(1010000124, "4.4", date(2026, 12, 30)),
+                _release(4, "4.1", date(2025, 4, 28)),
+                _release(1010000115, "4.3.0.1", date(2026, 9, 13)),
+            ]
+        )
+        assert svc._database_release_info() == {
+            "release": "4.4",
+            "publication_date": "2026-12-30",
+        }
+
+    def test_publication_date_override(self):
+        svc = self._svc([_release(1, "4.4", date(2026, 12, 30))])
+        assert svc._database_release_info("2027-01-15") == {
+            "release": "4.4",
+            "publication_date": "2027-01-15",
+        }
+
+    def test_undated_release_ranks_latest(self):
+        svc = self._svc(
+            [
+                _release(1, "4.4", date(2026, 12, 30)),
+                _release(2, "Playground", None),
+            ]
+        )
+        info = svc._database_release_info("2027-01-15")
+        assert info["release"] == "Playground"
+
+    def test_undated_latest_without_override_raises(self):
+        svc = self._svc([_release(1, "Playground", None)])
+        with pytest.raises(ValueError, match="has no date"):
+            svc._database_release_info()
+
+    def test_no_release_rows_raises(self):
+        svc = self._svc([])
+        with pytest.raises(ValueError, match="No Release rows"):
+            svc._database_release_info()
 
 
 # ------------------------------------------------------------------ #

@@ -419,6 +419,7 @@ are discovered from ``OperationScope`` / ``OperationScopeComposition`` /
 
    dpmcore export-script (--module-code <code> | --all-modules)
                           (--module-version <ver> | --all-versions | --release <code>)
+                          [--dpm-publication-date <YYYY-MM-DD>]
                           --database <url> [--output <path>]
 
 **Options:**
@@ -447,6 +448,9 @@ are discovered from ``OperationScope`` / ``OperationScopeComposition`` /
        each selected module to its single version active at this release.
        One of ``--module-version``, ``--all-versions``, or ``--release``
        is required.
+   * - ``--dpm-publication-date DATE``
+     - Publication date (``YYYY-MM-DD``) stamped into the ``dpm_release``
+       block. Defaults to the date of the database's latest release.
    * - ``--database TEXT``
      - SQLAlchemy database URL. **(Required)**
    * - ``--output PATH``
@@ -481,6 +485,13 @@ are discovered from ``OperationScope`` / ``OperationScopeComposition`` /
    # --all-versions: exactly one file per module)
    dpmcore export-script --all-modules --release 4.2 \
        --database sqlite:///dpm.db --output ./scripts/
+
+Every script's ``dpm_release`` block names the database it was exported
+from: its latest ``Release`` row by date (e.g. ``4.4`` for the DPM 4.4
+database), the same for every target in a sweep. This is independent of
+the release each module version's content is resolved at (``--release``,
+or the latest one in its window). Its ``publication_date`` is that
+release's date unless ``--dpm-publication-date`` is given.
 
 A target that fails to resolve is skipped with a warning instead of
 aborting the whole sweep; the command exits non-zero if any target

@@ -193,6 +193,7 @@ with connect("sqlite:///dpm.db") as db:
         module_code="COREP_Con",
         module_version="2.0.1",
         release="4.2",  # optional; latest available if omitted
+        publication_date="2027-01-15",  # optional; latest release's date if omitted
     )
 ```
 
@@ -201,6 +202,13 @@ dpmcore export-script \
     --module-code COREP_Con --module-version 2.0.1 \
     --database sqlite:///dpm.db --output ./script.json
 ```
+
+Unlike `script()`, the `dpm_release` block of an exported script names the
+database it was exported from: its latest `Release` row by date (e.g. `4.4`
+for the DPM 4.4 database), the same for every target in a sweep — whatever
+release the module version's content is resolved at. Its `publication_date`
+is that release's date unless `--dpm-publication-date YYYY-MM-DD`
+(`publication_date=` in Python) is given.
 
 Severities come from `OperationScope.Severity` in the database rather than
 a manual `--severity` override. `--output` is optional for a single target;

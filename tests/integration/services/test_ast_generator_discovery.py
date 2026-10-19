@@ -262,3 +262,39 @@ def test_discovered_preconditions_reference_affected_operations(
             "has a precondition using the {v_<code>} marker form that "
             "_build_preconditions_block supports."
         )
+
+
+def test_dpm_release_names_the_database_latest_release(fixture_session):
+    """``dpm_release`` names the DB's latest release by date (#433), not
+    the release the module version's content is resolved at.
+    """
+    rows = fixture_session.execute(
+        text('SELECT Code, "Date", ReleaseID FROM "Release"')
+    ).fetchall()
+    dated = [r for r in rows if r.Date is not None]
+    assert len(dated) == len(rows), "oracle assumes every release is dated"
+    latest = max(dated, key=lambda r: (str(r.Date)[:10], r.ReleaseID))
+
+    service = ASTGeneratorService(fixture_session)
+    result = service.script_for_module(
+        module_code=_MODULE_CODE,
+        module_version=_MODULE_VERSION,
+    )
+    assert result["success"] is True, result.get("error")
+    _, ns_block = next(iter(result["enriched_ast"].items()))
+    assert ns_block["dpm_release"] == {
+        "release": latest.Code,
+        "publication_date": str(latest.Date)[:10],
+    }
+
+    overridden = service.script_for_module(
+        module_code=_MODULE_CODE,
+        module_version=_MODULE_VERSION,
+        publication_date="2027-01-15",
+    )
+    assert overridden["success"] is True, overridden.get("error")
+    _, ns_block = next(iter(overridden["enriched_ast"].items()))
+    assert ns_block["dpm_release"] == {
+        "release": latest.Code,
+        "publication_date": "2027-01-15",
+    }
