@@ -253,6 +253,13 @@ class TestResolveFromSubmissionDates:
             "v4": "2001-01-01",
         }
 
+    def test_year_below_1000_is_zero_padded(self):
+        _, Cls, _ = _bare_svc()
+        out = Cls._resolve_from_submission_dates(
+            {"v1": date(999, 1, 1)}, ["v1"], default="2001-01-01"
+        )
+        assert out == {"v1": "0999-01-01"}
+
     def test_unknown_code_raises(self):
         _, Cls, _ = _bare_svc()
         with pytest.raises(
@@ -265,7 +272,16 @@ class TestResolveFromSubmissionDates:
 
     @pytest.mark.parametrize(
         "value",
-        ["2026-02-30", "20260331", "2026-3-1", "2026-W01-1", "", None, 123],
+        [
+            "2026-02-30",
+            "20260331",
+            "2026-3-1",
+            "2026-W01-1",
+            "\uff12\uff10\uff12\uff16-01-01",  # full-width digits
+            "",
+            None,
+            123,
+        ],
     )
     def test_invalid_value_raises(self, value):
         _, Cls, _ = _bare_svc()
@@ -2336,6 +2352,20 @@ class TestScript:
         )
         assert out["success"] is False
         assert "Invalid from_submission_date" in out["error"]
+
+    def test_precondition_error_reported_before_date_error(self):
+        svc, *_ = self._build_svc()
+        svc._syntax = MagicMock()
+        svc._syntax.parse.side_effect = RuntimeError("syntax error")
+        out = svc.script(
+            expressions=[("x", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+            preconditions=[("bad", ["v1"])],
+            from_submission_dates={"v1": "not-a-date"},
+        )
+        assert out["success"] is False
+        assert "Invalid precondition" in out["error"]
 
     def test_from_submission_dates_override_per_operation(self, monkeypatch):
         self._stub_serialize_ast(
