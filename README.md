@@ -335,6 +335,27 @@ with connect("sqlite:///dpm.db") as db:
     items    = dd.get_all_item_signatures(release_code="4.2.1")
     table    = dd.get_table_version("C_01.00", release_code="4.2.1")
     cats     = dd.get_item_categories(release_code="4.2.1")
+
+    # Cell coordinates -> variable ids. Scope: a module version (resolved
+    # to its release as script() does) or a release, not both. A missing
+    # row/column/sheet matches a cell without that axis (no sheets, or the
+    # open axis of an open table).
+    cells = dd.resolve_cell_variables(
+        [
+            {"table": "C_67.00.a", "row": "0010", "column": "0060",
+             "sheet": "0010"},
+            {"table": "C_67.00.a", "row": "0010", "column": "0010",
+             "sheet": "0010"},
+        ],
+        module_code="COREP_ALM",
+        module_version="3.3.0",
+    )
+    # [{"table": "C_67.00.a", "row": "0010", "column": "0060",
+    #   "sheet": "0010", "variable_id": 117387, "error": None},
+    #  {"table": "C_67.00.a", "row": "0010", "column": "0010",
+    #   "sheet": "0010", "variable_id": None, "error": "grey_cell"}]
+    # "error" is None, "grey_cell" (the cell carries no variable) or
+    # "cell_not_found" (no such non-void cell at that scope).
 ```
 
 **Operation scope calculation:**
