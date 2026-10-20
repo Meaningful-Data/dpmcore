@@ -14,6 +14,7 @@ from typing import (
     Dict,
     Iterable,
     List,
+    Mapping,
     Optional,
     Set,
     Tuple,
@@ -48,6 +49,7 @@ logger = logging.getLogger(__name__)
 
 _TABLE_CODE_NORMALIZER = re.compile(r"^([A-Z]+)_(\d+)_(\d+)$")
 _DEFAULT_FROM_DATE = "2001-01-01"
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _DEFAULT_NAMESPACE = "default_module"
 _DATA_FIELDS_TO_STRIP = ("data_type", "cell_code", "table_code", "table_vid")
 
@@ -156,6 +158,9 @@ class ASTGeneratorService:
         ] = None,
         severity: Optional[str] = None,
         severities: Optional[Dict[str, str]] = None,
+        from_submission_dates: Optional[
+            Mapping[str, Union[str, date_cls]]
+        ] = None,
         release: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Generate an engine-ready validations script.
@@ -184,6 +189,16 @@ class ASTGeneratorService:
                 validation is ``severities.get(code, severity_global)``.
                 Unknown codes (not present in ``expressions``) raise
                 ``ValueError``.
+            from_submission_dates: Optional per-validation override map
+                ``{validation_code: date}`` for each operation's
+                ``from_submission_date``. Values are ``datetime.date``
+                objects or ``YYYY-MM-DD`` strings. Resolution per
+                validation is ``from_submission_dates.get(code,
+                default)``, where the default is the module version's
+                ``from_reference_date`` (or ``2001-01-01``). Unknown
+                codes and invalid dates raise ``ValueError``. An
+                override for a code that ends up in
+                ``failed_operations`` is accepted and has no effect.
             release: Optional release code. When omitted, resolved to
                 the latest release whose window contains the requested
                 ``ModuleVersion``. The resolved release is surfaced in
@@ -226,6 +241,16 @@ class ASTGeneratorService:
             resolved_severities = self._resolve_severities(
                 severity, severities, validation_codes
             )
+            resolved_dates = self._resolve_from_submission_dates(
+                from_submission_dates,
+                validation_codes,
+                default=cast(
+                    str,
+                    _format_date(
+                        mv.from_reference_date, fallback=_DEFAULT_FROM_DATE
+                    ),
+                ),
+            )
 
             try:
                 code_to_precondition_items = self._build_precondition_index(
@@ -243,10 +268,6 @@ class ASTGeneratorService:
             # ``failed_operations`` (see ``_unsupported_gate_operations``).
             gate_failures = self._unsupported_gate_operations(
                 preconditions or []
-            )
-
-            from_reference_date = _format_date(
-                mv.from_reference_date, fallback=_DEFAULT_FROM_DATE
             )
 
             operations: Dict[str, Dict[str, Any]] = {}
@@ -295,7 +316,7 @@ class ASTGeneratorService:
                     ts=ts,
                     release_id=release_id,
                     resolved_severities=resolved_severities,
-                    from_submission_date=from_reference_date,
+                    from_submission_date=resolved_dates[code],
                     code_to_precondition_items=code_to_precondition_items,
                     operations=operations,
                     scope_pairs=scope_pairs,
@@ -2210,6 +2231,51 @@ class ASTGeneratorService:
         return {
             code: per_code.get(code, global_value) for code in validation_codes
         }
+
+    @staticmethod
+    def _resolve_from_submission_dates(
+        overrides: Optional[Mapping[str, Union[str, date_cls]]],
+        validation_codes: List[str],
+        default: str,
+    ) -> Dict[str, str]:
+        """Validate date overrides and return ``{code: YYYY-MM-DD}``.
+
+        - Codes absent from ``overrides`` get ``default``.
+        - Each value is a ``date`` (or ``datetime``) or a strict
+          ``YYYY-MM-DD`` string; anything else raises ``ValueError``.
+          The regex keeps the accepted string forms the same on every
+          Python version (``fromisoformat`` widened in 3.11).
+        - Codes in ``overrides`` that are not in ``validation_codes``
+          raise ``ValueError`` so callers learn at request time.
+        """
+        per_code: Dict[str, str] = {}
+        known_codes = set(validation_codes)
+        for code, typed_value in (overrides or {}).items():
+            if code not in known_codes:
+                raise ValueError(
+                    "Unknown validation_code in from_submission_dates: "
+                    f"{code!r}"
+                )
+            # Callers outside the type checker (REST, CLI, scripts) can
+            # send anything, so check the value as an untyped object.
+            value: object = typed_value
+            if isinstance(value, date_cls):
+                per_code[code] = value.strftime("%Y-%m-%d")
+                continue
+            try:
+                if not isinstance(value, str) or not _ISO_DATE.fullmatch(
+                    value
+                ):
+                    raise ValueError(value)
+                date_cls.fromisoformat(value)
+            except ValueError:
+                raise ValueError(
+                    f"Invalid from_submission_date {value!r} for "
+                    f"validation {code!r}: expected YYYY-MM-DD or a date"
+                ) from None
+            per_code[code] = value
+
+        return {code: per_code.get(code, default) for code in validation_codes}
 
     @staticmethod
     def _resolve_root_operator_id(ast: Any, session: "Session") -> int:

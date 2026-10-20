@@ -102,6 +102,8 @@ Generate an engine-ready validations script
            module_version="2.0.1",
            severity="warning",              # global default
            severities={"v0002": "error"},   # per-validation override
+           # optional per-validation from_submission_date (date or ISO str)
+           from_submission_dates={"v0002": "2026-06-30"},
            release="4.2",                   # optional; latest if omitted
        )
        # script["enriched_ast"] is keyed by the resolved module URI;

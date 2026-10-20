@@ -441,8 +441,10 @@ def _process_preconditions_from_json(
         "Path to a JSON file with shape "
         '{"expressions": [[expr, code], ...], '
         '"preconditions": [[pre_expr, [code, ...]], ...], '
-        '"severities": {code: severity}}. '
-        "The 'preconditions' and 'severities' keys are optional."
+        '"severities": {code: severity}, '
+        '"from_submission_dates": {code: "YYYY-MM-DD"}}. '
+        "The 'preconditions', 'severities' and "
+        "'from_submission_dates' keys are optional."
     ),
 )
 @click.option(
@@ -530,7 +532,8 @@ def generate_script(
         click.echo(
             "Invalid expressions file: expected a JSON object with an "
             "'expressions' key (and optional 'preconditions', "
-            "'severities'). The flat-list form is no longer supported.",
+            "'severities', 'from_submission_dates'). The flat-list form "
+            "is no longer supported.",
             err=True,
         )
         sys.exit(1)
@@ -551,6 +554,18 @@ def generate_script(
             sys.exit(1)
         severities = {str(k): str(v) for k, v in severities_raw.items()}
 
+    dates_raw = raw.get("from_submission_dates")
+    from_submission_dates: dict[str, str] | None = None
+    if dates_raw is not None:
+        if not isinstance(dates_raw, dict):
+            click.echo(
+                "Invalid 'from_submission_dates' field: expected an "
+                "object keyed by validation_code.",
+                err=True,
+            )
+            sys.exit(1)
+        from_submission_dates = {str(k): str(v) for k, v in dates_raw.items()}
+
     engine = create_engine(database)
     with Session(engine) as session:
         svc = ASTGeneratorService(session)
@@ -561,6 +576,7 @@ def generate_script(
             preconditions=preconditions or None,
             severity=severity,
             severities=severities,
+            from_submission_dates=from_submission_dates,
             release=release,
         )
 

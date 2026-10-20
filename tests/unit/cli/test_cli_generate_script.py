@@ -214,6 +214,7 @@ class TestGenerateScriptSuccess:
         ]
         assert kwargs["preconditions"] is None
         assert kwargs["severities"] is None
+        assert kwargs["from_submission_dates"] is None
 
     def test_propagates_preconditions(
         self, runner, expressions_with_preconditions_file, tmp_path
@@ -311,6 +312,73 @@ class TestGenerateScriptSuccess:
         )
         assert result.exit_code == 1
         assert "Invalid 'severities'" in result.output
+
+    def test_propagates_from_submission_dates_map(self, runner, tmp_path):
+        path = tmp_path / "with_dates.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "expressions": [["e", "v0001"], ["e2", "v0002"]],
+                    "from_submission_dates": {"v0002": "2026-06-30"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        out = tmp_path / "script.json"
+        with patch(
+            "dpmcore.services.ast_generator.ASTGeneratorService"
+        ) as Svc:
+            Svc.return_value.script.return_value = _success_result()
+            runner.invoke(
+                main,
+                [
+                    "generate-script",
+                    "--expressions",
+                    str(path),
+                    "--database",
+                    "sqlite:///:memory:",
+                    "--output",
+                    str(out),
+                    "--module-code",
+                    "MOD",
+                    "--module-version",
+                    "1.0",
+                ],
+            )
+
+        kwargs = Svc.return_value.script.call_args.kwargs
+        assert kwargs["from_submission_dates"] == {"v0002": "2026-06-30"}
+
+    def test_rejects_non_dict_from_submission_dates(self, runner, tmp_path):
+        path = tmp_path / "bad_dates.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "expressions": [["e", "v0001"]],
+                    "from_submission_dates": ["2026-06-30"],
+                }
+            ),
+            encoding="utf-8",
+        )
+        out = tmp_path / "script.json"
+        result = runner.invoke(
+            main,
+            [
+                "generate-script",
+                "--expressions",
+                str(path),
+                "--database",
+                "sqlite:///:memory:",
+                "--output",
+                str(out),
+                "--module-code",
+                "MOD",
+                "--module-version",
+                "1.0",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "Invalid 'from_submission_dates'" in result.output
 
 
 class TestGenerateScriptFailure:
