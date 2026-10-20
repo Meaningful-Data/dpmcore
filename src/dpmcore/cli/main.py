@@ -555,7 +555,7 @@ def generate_script(
         severities = {str(k): str(v) for k, v in severities_raw.items()}
 
     dates_raw = raw.get("from_submission_dates")
-    from_submission_dates: dict[str, str] | None = None
+    from_submission_dates: dict[str, Any] | None = None
     if dates_raw is not None:
         if not isinstance(dates_raw, dict):
             click.echo(
@@ -564,7 +564,9 @@ def generate_script(
                 err=True,
             )
             sys.exit(1)
-        from_submission_dates = {str(k): str(v) for k, v in dates_raw.items()}
+        # Values pass through untouched so the service's error message
+        # quotes what the user wrote (a JSON null stays None).
+        from_submission_dates = dict(dates_raw)
 
     engine = create_engine(database)
     with Session(engine) as session:

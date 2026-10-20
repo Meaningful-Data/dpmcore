@@ -319,7 +319,10 @@ class TestGenerateScriptSuccess:
             json.dumps(
                 {
                     "expressions": [["e", "v0001"], ["e2", "v0002"]],
-                    "from_submission_dates": {"v0002": "2026-06-30"},
+                    "from_submission_dates": {
+                        "v0001": None,
+                        "v0002": "2026-06-30",
+                    },
                 }
             ),
             encoding="utf-8",
@@ -347,7 +350,12 @@ class TestGenerateScriptSuccess:
             )
 
         kwargs = Svc.return_value.script.call_args.kwargs
-        assert kwargs["from_submission_dates"] == {"v0002": "2026-06-30"}
+        # Raw JSON values reach the service untouched (null is not
+        # stringified), so its error message quotes the real input.
+        assert kwargs["from_submission_dates"] == {
+            "v0001": None,
+            "v0002": "2026-06-30",
+        }
 
     def test_rejects_non_dict_from_submission_dates(self, runner, tmp_path):
         path = tmp_path / "bad_dates.json"
