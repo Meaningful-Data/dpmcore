@@ -1991,6 +1991,56 @@ class ModuleVersionQuery:
         return {row[0] for row in rows}
 
     @staticmethod
+    def get_filing_indicators(
+        session: "Session",
+        module_vid: int,
+    ) -> list[Any]:
+        """Return the filing indicators of one module version.
+
+        Bound to it through ``ModuleParameters``, as
+        :meth:`get_precondition_module_versions` reads them; its other
+        parameters are not filing indicators and are left out.
+
+        Args:
+            session: SQLAlchemy session.
+            module_vid: ModuleVID integer.
+
+        Returns:
+            Named-tuple rows (Code, VariableID, DataType), ordered by
+            code; ``DataType`` is ``None`` when the dictionary has none.
+        """
+        query = (
+            session.query(
+                VariableVersion.code.label("Code"),
+                Variable.variable_id.label("VariableID"),
+                DataType.code.label("DataType"),
+            )
+            .select_from(ModuleParameters)
+            .join(
+                VariableVersion,
+                ModuleParameters.variable_vid == VariableVersion.variable_vid,
+            )
+            .join(
+                Variable,
+                VariableVersion.variable_id == Variable.variable_id,
+            )
+            .outerjoin(
+                Property,
+                VariableVersion.property_id == Property.property_id,
+            )
+            .outerjoin(
+                DataType,
+                Property.data_type_id == DataType.data_type_id,
+            )
+            .filter(
+                ModuleParameters.module_vid == module_vid,
+                _is_filing_indicator(),
+            )
+            .order_by(VariableVersion.code)
+        )
+        return query.all()
+
+    @staticmethod
     def get_module_version_by_vid(
         session: "Session",
         vid: int,
@@ -2687,6 +2737,42 @@ class ViewDatapointsQuery:
         )
 
     # -- public methods -------------------------------------------- #
+
+    @classmethod
+    def get_table_version_cells(
+        cls,
+        session: "Session",
+        table: str,
+        table_vids: Sequence[int],
+    ) -> pd.DataFrame:
+        """Return every non-void cell of ``table_vids`` with its variable.
+
+        Pinned to the given table versions instead of resolving them by
+        code and release as :meth:`get_table_data` does, so a version a
+        later release superseded is read as it was published.
+
+        Args:
+            session: SQLAlchemy session.
+            table: Code of the table versions, set on every row.
+            table_vids: The table versions to read.
+
+        Returns:
+            A copy with ``table_vid``, ``variable_id``, ``data_type`` and
+            ``{row,column,sheet}_{code,order}``.
+        """
+        frame = cls._cell_frame(session, table, table_vids)
+        columns = [
+            "table_vid",
+            "variable_id",
+            "data_type",
+            "row_code",
+            "column_code",
+            "sheet_code",
+            "row_order",
+            "column_order",
+            "sheet_order",
+        ]
+        return frame[columns].copy()
 
     @classmethod
     def get_table_data(

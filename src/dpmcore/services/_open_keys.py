@@ -9,7 +9,7 @@ other.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, FrozenSet, List, Optional, Sequence
 
 from sqlalchemy import or_
 
@@ -156,3 +156,46 @@ def get_open_keys_for_tables(
         if tcode and pcode:
             result.setdefault(tcode, {})[pcode] = dcode
     return result
+
+
+def get_open_key_properties(
+    session: "Session",
+    table_vids: Sequence[int],
+) -> Dict[int, FrozenSet[int]]:
+    """Return ``{table_vid: {PropertyID}}`` of each table's open keys.
+
+    The same ``Header.IsKey`` path as :func:`get_open_keys_for_tables`,
+    reported by ``PropertyID`` rather than by code: a property keeps its
+    id when a release renames it, so two table versions compare equal
+    across the rename.
+
+    Args:
+        session: SQLAlchemy session.
+        table_vids: The table versions to look up.
+
+    Returns:
+        One entry per requested table version, empty when it has no
+        open key.
+    """
+    result: Dict[int, set[int]] = {int(vid): set() for vid in table_vids}
+    if not result:
+        return {}
+    query = (
+        session.query(
+            TableVersionHeader.table_vid.label("table_vid"),
+            HeaderVersion.property_id.label("property_id"),
+        )
+        .join(
+            HeaderVersion,
+            TableVersionHeader.header_vid == HeaderVersion.header_vid,
+        )
+        .join(Header, Header.header_id == TableVersionHeader.header_id)
+        .filter(
+            Header.is_key == True,  # noqa: E712
+            HeaderVersion.property_id.isnot(None),
+        )
+        .distinct()
+    )
+    for row in chunked_in(query, TableVersionHeader.table_vid, list(result)):
+        result[int(row.table_vid)].add(int(row.property_id))
+    return {vid: frozenset(props) for vid, props in result.items()}

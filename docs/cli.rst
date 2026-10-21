@@ -568,8 +568,18 @@ the ones that *write* into it.
 The calculations are parsed as one script, reordered so a calculation
 always follows the ones it consumes, and serialized with every operand
 resolved to its datapoints. Two files are written: the export itself,
-keyed by the module's EBA taxonomy URI, and a companion datapoint map
+with the module's URI in ``module_uri``, and a companion datapoint map
 naming the cell behind every datapoint the calculations reference.
+
+The export follows Script Format 2.0. Its ``modules`` section describes
+every module the calculations refer to, the exported one included, keyed
+by module code: each version a read can land in, with its
+reference-date window, its URI, the tables and Variables read from it
+(each Variable with its data type and cells) and, under
+``not_evaluable``, the calculations it cannot serve because a Variable
+they read is missing from it or a table they read has other open keys.
+A read shifted in time (``time_shift`` on the reference period) reaches
+the versions in force at the shifted dates, earlier or later.
 
 .. code-block:: text
 
@@ -577,6 +587,7 @@ naming the cell behind every datapoint the calculations reference.
                                --reference-date <YYYY-MM-DD>
                                --database <url>
                                [--publication-date <YYYY-MM-DD>]
+                               [--release <code>]
                                [--output <path>] [--datapoints-output <path>]
 
 **Options:**
@@ -599,9 +610,13 @@ naming the cell behind every datapoint the calculations reference.
    * - ``--publication-date TEXT``
      - Publication date stamped into the ``dpm_release`` block.
        Defaults to today.
+   * - ``--release TEXT``
+     - Release code for the dictionary lookups, e.g. ``4.2``. Defaults
+       to the exported module version's start release.
    * - ``--output PATH``
-     - Where to write the export. Defaults to ``<module_code>.json`` in
-       the current directory.
+     - Where to write the export. Defaults to
+       ``<owner>-<module_code>-<module_version>.json`` in the current
+       directory.
    * - ``--datapoints-output PATH``
      - Where to write the companion datapoint map. Defaults to
        ``<output-base>_datapoints.json``.
