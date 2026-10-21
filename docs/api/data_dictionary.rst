@@ -12,7 +12,8 @@ to variable resolution. Release-aware methods accept ``release_id`` or
 module version (``module_code`` + ``module_version``) or a release, not
 both. A module version resolves to the same release
 :meth:`~dpmcore.services.ast_generator.ASTGeneratorService.script` uses,
-so the variable ids match the ones in the scripts it generates.
+so the variable ids match the ones in the scripts it generates, and only
+the tables of that module version resolve.
 
 DataDictionaryService
 ---------------------

@@ -11,6 +11,7 @@ from typing import (
     Mapping,
     Optional,
     Sequence,
+    Set,
     Tuple,
     Union,
     overload,
@@ -273,7 +274,9 @@ class DataDictionaryService:
         ``release_code``), not both. A module version is resolved to its
         release exactly as :meth:`ASTGeneratorService.script` does
         without an explicit release, so the variable ids match the ones
-        in a script generated for that module version.
+        in a script generated for that module version, and only the
+        tables the module version is composed of (plus those of the
+        ghost versions it stands in for, as in the script) resolve.
 
         Args:
             cells: Coordinates to resolve.
@@ -286,16 +289,18 @@ class DataDictionaryService:
             One dict per input cell, in input order, with ``table``,
             ``row``, ``column``, ``sheet``, ``variable_id`` (``int``, or
             ``None`` when unresolved) and ``error``: ``None`` when
-            resolved, ``"cell_not_found"`` when the table has no such
-            (non-void) cell at that scope, or ``"grey_cell"`` when the
-            cell exists but carries no variable.
+            resolved, ``"table_not_in_module"`` when the scope is a
+            module version that does not contain the table,
+            ``"cell_not_found"`` when the table has no such (non-void)
+            cell at that scope, or ``"grey_cell"`` when the cell exists
+            but carries no variable.
 
         Raises:
             ValueError: If the scope is missing or inconsistent, the
                 module version or release is unknown, or a cell has no
                 ``table``.
         """
-        resolved_release_id = self._resolve_cells_release(
+        resolved_release_id, module_tables = self._resolve_cells_scope(
             module_code, module_version, release_id, release_code
         )
 
@@ -304,6 +309,8 @@ class DataDictionaryService:
             str, Dict[Tuple[Optional[str], ...], Any]
         ] = {}
         for table, _, _, _ in coordinates:
+            if module_tables is not None and table not in module_tables:
+                continue
             if table not in variables_by_table:
                 variables_by_table[table] = self._table_cell_variables(
                     table, resolved_release_id
@@ -312,10 +319,12 @@ class DataDictionaryService:
         result: List[Dict[str, Any]] = []
         for table, row, column, sheet in coordinates:
             key = (row, column, sheet)
-            table_variables = variables_by_table[table]
+            table_variables = variables_by_table.get(table, {})
             variable_id = table_variables.get(key)
             error: Optional[str] = None
-            if key not in table_variables:
+            if table not in variables_by_table:
+                error = "table_not_in_module"
+            elif key not in table_variables:
                 error = "cell_not_found"
             elif variable_id is None:
                 error = "grey_cell"
@@ -331,14 +340,20 @@ class DataDictionaryService:
             )
         return result
 
-    def _resolve_cells_release(
+    def _resolve_cells_scope(
         self,
         module_code: Optional[str],
         module_version: Optional[str],
         release_id: Optional[int],
         release_code: Optional[str],
-    ) -> int:
-        """Resolve the scope of :meth:`resolve_cell_variables`."""
+    ) -> Tuple[int, Optional[Set[str]]]:
+        """Resolve the scope of :meth:`resolve_cell_variables`.
+
+        Returns:
+            ``(release_id, module_tables)``: the release the cells are
+            read at and, when the scope is a module version, the codes
+            of the tables it may resolve (``None`` for a release scope).
+        """
         if (module_code is None) != (module_version is None):
             raise ValueError(
                 "module_code and module_version must be given together."
@@ -350,24 +365,47 @@ class DataDictionaryService:
                     "module_version) or a release (release_id or "
                     "release_code), not both."
                 )
-            # Same resolution as script(), so the variable ids match the
-            # ones of a script generated for this module version.
+            # Same resolution as script(), so the variable ids and the
+            # tables match the ones of a script generated for this module
+            # version.
             from dpmcore.services.ast_generator import ASTGeneratorService
 
-            _, release_row = ASTGeneratorService(
-                self.session
-            )._resolve_release(module_code, module_version, None)
-            return int(release_row.release_id)
+            ast_generator = ASTGeneratorService(self.session)
+            mv, release_row = ast_generator._resolve_release(
+                module_code, module_version, None
+            )
+            resolved = int(release_row.release_id)
+            module_vids = [
+                mv.module_vid,
+                *ast_generator._release_ghost_fallbacks(
+                    self.session, resolved
+                ).get(mv.module_vid, []),
+            ]
+            return resolved, self._module_table_codes(module_vids)
 
-        resolved = resolve_release_id(
+        resolved_id = resolve_release_id(
             self.session, release_id=release_id, release_code=release_code
         )
-        if resolved is None:
+        if resolved_id is None:
             raise ValueError(
                 "Specify a module (module_code + module_version) or a "
                 "release (release_id or release_code)."
             )
-        return resolved
+        return resolved_id, None
+
+    def _module_table_codes(self, module_vids: List[int]) -> Set[str]:
+        """Return the codes of the tables composing ``module_vids``."""
+        rows = (
+            self.session.query(TableVersion.code)
+            .join(
+                ModuleVersionComposition,
+                TableVersion.table_vid == ModuleVersionComposition.table_vid,
+            )
+            .filter(ModuleVersionComposition.module_vid.in_(module_vids))
+            .distinct()
+            .all()
+        )
+        return {row[0] for row in rows if row[0]}
 
     def _table_cell_variables(
         self, table: str, release_id: int

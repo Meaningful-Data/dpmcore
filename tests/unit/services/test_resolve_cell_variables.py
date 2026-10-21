@@ -2,7 +2,8 @@
 
 The cell frame comes from a stubbed ``ViewDatapointsQuery.get_table_data``
 so the matching rules are exercised without a DPM database: missing axis
-codes, grey cells, unknown cells, input order and the scope arguments.
+codes, grey cells, unknown cells, input order and the scope arguments,
+including the module-version table filter.
 """
 
 from __future__ import annotations
@@ -12,8 +13,12 @@ from unittest.mock import MagicMock
 import numpy as np
 import pandas as pd
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
 from dpmcore.dpm_xl.model_queries import ViewDatapointsQuery
+from dpmcore.orm.base import Base
 from dpmcore.services.data_dictionary import DataDictionaryService
 
 pytestmark = pytest.mark.unit
@@ -176,30 +181,138 @@ def test_module_and_release_are_exclusive(service, table_data_calls, release):
         )
 
 
-def test_module_version_uses_script_release_resolution(
-    service, table_data_calls, monkeypatch
-):
+_MODULE_VID = 494
+_GHOST_VID = 495
+
+
+@pytest.fixture
+def module_scope(monkeypatch):
+    """Stub the module-version resolution shared with script()."""
     from dpmcore.services.ast_generator import ASTGeneratorService
 
-    seen = []
+    calls = {"release": [], "module_vids": []}
 
     def _resolve_release(self, module_code, module_version, release):
-        seen.append((module_code, module_version, release))
-        return MagicMock(), MagicMock(release_id=_RELEASE_ID)
+        calls["release"].append((module_code, module_version, release))
+        return (
+            MagicMock(module_vid=_MODULE_VID),
+            MagicMock(release_id=_RELEASE_ID),
+        )
+
+    def _release_ghost_fallbacks(self, session, release_id):
+        return {_MODULE_VID: [_GHOST_VID]}
+
+    def _module_table_codes(self, module_vids):
+        calls["module_vids"].append(module_vids)
+        # C_67.00 is an abstract table: part of the module, without cells.
+        return {"C_22.00", "C_67.00.a", "C_67.00"}
 
     monkeypatch.setattr(
         ASTGeneratorService, "_resolve_release", _resolve_release
     )
+    monkeypatch.setattr(
+        ASTGeneratorService,
+        "_release_ghost_fallbacks",
+        _release_ghost_fallbacks,
+    )
+    monkeypatch.setattr(
+        DataDictionaryService, "_module_table_codes", _module_table_codes
+    )
+    return calls
 
+
+def test_module_version_uses_script_release_resolution(
+    service, table_data_calls, module_scope
+):
     (result,) = service.resolve_cell_variables(
         [{"table": "C_22.00", "row": "0100", "column": "0020"}],
         module_code="COREP_OF",
         module_version="4.0.0",
     )
 
-    assert seen == [("COREP_OF", "4.0.0", None)]
+    assert module_scope["release"] == [("COREP_OF", "4.0.0", None)]
+    # The module version's tables include the ghosts it stands in for.
+    assert module_scope["module_vids"] == [[_MODULE_VID, _GHOST_VID]]
     assert table_data_calls == [("C_22.00", _RELEASE_ID)]
     assert result["variable_id"] == 1001
+
+
+def test_table_not_in_module(service, table_data_calls, module_scope):
+    result = service.resolve_cell_variables(
+        [
+            {"table": "C_66.01.a", "column": "0010"},
+            {"table": "C_22.00", "row": "0100", "column": "0020"},
+        ],
+        module_code="COREP_OF",
+        module_version="4.0.0",
+    )
+
+    assert [(r["variable_id"], r["error"]) for r in result] == [
+        (None, "table_not_in_module"),
+        (1001, None),
+    ]
+    # A table outside the module is not read at all.
+    assert table_data_calls == [("C_22.00", _RELEASE_ID)]
+
+
+def test_abstract_table_of_module_has_no_cells(
+    service, table_data_calls, module_scope
+):
+    (result,) = service.resolve_cell_variables(
+        [{"table": "C_67.00", "row": "0010", "column": "0060"}],
+        module_code="COREP_OF",
+        module_version="4.0.0",
+    )
+
+    assert result["variable_id"] is None
+    assert result["error"] == "cell_not_found"
+
+
+def test_release_scope_resolves_any_table(service, table_data_calls):
+    (result,) = service.resolve_cell_variables(
+        [{"table": "C_66.01.a", "column": "0010"}], release_id=_RELEASE_ID
+    )
+
+    assert result["variable_id"] == 3001
+
+
+@pytest.fixture
+def memory_session():
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        yield session
+    engine.dispose()
+
+
+def test_module_table_codes(memory_session):
+    from dpmcore.orm.packaging import ModuleVersionComposition
+    from dpmcore.orm.rendering import TableVersion
+
+    memory_session.add_all(
+        [
+            TableVersion(table_vid=1, table_id=1, code="T_01.00"),
+            TableVersion(table_vid=2, table_id=2, code="T_02.00"),
+            TableVersion(table_vid=3, table_id=3, code="T_03.00"),
+            TableVersion(table_vid=4, table_id=1, code="T_01.00"),
+            ModuleVersionComposition(module_vid=10, table_id=1, table_vid=1),
+            ModuleVersionComposition(module_vid=10, table_id=2, table_vid=2),
+            ModuleVersionComposition(module_vid=11, table_id=1, table_vid=4),
+            ModuleVersionComposition(module_vid=12, table_id=3, table_vid=3),
+        ]
+    )
+    memory_session.flush()
+
+    service = DataDictionaryService(memory_session)
+
+    assert service._module_table_codes([10]) == {"T_01.00", "T_02.00"}
+    assert service._module_table_codes([10, 11]) == {"T_01.00", "T_02.00"}
+    assert service._module_table_codes([12]) == {"T_03.00"}
+    assert service._module_table_codes([99]) == set()
 
 
 @pytest.mark.parametrize(

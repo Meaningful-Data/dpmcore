@@ -354,8 +354,10 @@ with connect("sqlite:///dpm.db") as db:
     #   "sheet": "0010", "variable_id": 117387, "error": None},
     #  {"table": "C_67.00.a", "row": "0010", "column": "0010",
     #   "sheet": "0010", "variable_id": None, "error": "grey_cell"}]
-    # "error" is None, "grey_cell" (the cell carries no variable) or
-    # "cell_not_found" (no such non-void cell at that scope).
+    # "error" is None, "grey_cell" (the cell carries no variable),
+    # "cell_not_found" (no such non-void cell at that scope) or
+    # "table_not_in_module" (module scope only: the module version is not
+    # composed of that table).
 ```
 
 **Operation scope calculation:**
