@@ -11,7 +11,7 @@ from dpmcore.cli.main import main
 from dpmcore.errors import ConfigurationError
 from dpmcore.services.calculations_export import CalculationsExport
 
-_NS_URI = "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/fw/1.0/mod/kri"
+_MODULE_URI = "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/fw/1.0/mod/kri"
 
 
 @pytest.fixture
@@ -22,25 +22,24 @@ def runner():
 def _export():
     return CalculationsExport(
         calculations={
-            _NS_URI: {
-                "module_code": "KRI",
-                "framework_code": "FW",
-                "module_version": "1.0.0",
-                "dpm_release": {
-                    "release": "1.0",
-                    "publication_date": "2026-01-01",
-                },
-                "dates": {"from": "2026-01-01", "to": None},
-                "calculations": {
-                    "ast": {"class_name": "Start", "children": []},
-                    "operation_codes": ["c_0001", "c_0002"],
-                },
-                "output_variables": {"1": "m"},
-                "output_tables": {},
-                "dependency_modules": {
-                    "http://example.org/m1": {"tables": {}}
-                },
-            }
+            "owner": "EBA",
+            "module_code": "KRI",
+            "module_version": "1.0.0",
+            "module_owner": "EBA",
+            "module_uri": _MODULE_URI,
+            "format_version": "2.0",
+            "dpm_release": {
+                "release": "1.0",
+                "publication_date": "2026-01-01",
+            },
+            "dates": {"from": "2026-01-01", "to": None},
+            "calculations": {
+                "ast": {"class_name": "Start", "children": []},
+                "operation_codes": ["c_0001", "c_0002"],
+            },
+            "output_variables": {"1": "m"},
+            "output_tables": {},
+            "modules": {"KRI": {"versions": []}},
         },
         datapoints={
             "1": {"table": "T", "row": "0010", "column": "0010", "sheet": None}
@@ -86,7 +85,7 @@ class TestExportCalculationsSuccess:
 
         assert result.exit_code == 0, result.output
         payload = json.loads(out.read_text())
-        assert list(payload) == [_NS_URI]
+        assert payload == _export().calculations
         datapoints = json.loads((tmp_path / "kri_datapoints.json").read_text())
         assert datapoints["1"]["table"] == "T"
 
@@ -110,7 +109,7 @@ class TestExportCalculationsSuccess:
 
         normalized = " ".join(result.output.split())
         assert "2 calculations" in normalized
-        assert "1 dependency modules" in normalized
+        assert "1 modules" in normalized
         assert "1 datapoints" in normalized
 
     def test_honours_an_explicit_datapoints_path(self, runner, tmp_path):
@@ -138,14 +137,15 @@ class TestExportCalculationsSuccess:
         assert dp.exists()
         assert not (tmp_path / "kri_datapoints.json").exists()
 
-    def test_defaults_the_output_to_the_module_code(self, runner):
+    def test_defaults_the_output_to_owner_module_and_version(self, runner):
+        """The module code is the export's, as the DPM writes it."""
         with runner.isolated_filesystem(), _patched_connection(_export()):
             result = runner.invoke(
                 main,
                 [
                     "export-calculations",
                     "--module-code",
-                    "KRI",
+                    "kri",
                     "--reference-date",
                     "2026-12-31",
                     "--database",
@@ -154,8 +154,8 @@ class TestExportCalculationsSuccess:
             )
 
             assert result.exit_code == 0, result.output
-            assert "KRI.json" in result.output
-            assert "KRI_datapoints.json" in result.output
+            assert "EBA-KRI-1.0.0.json" in result.output
+            assert "EBA-KRI-1.0.0_datapoints.json" in result.output
 
     def test_passes_every_argument_through(self, runner, tmp_path):
         with _patched_connection(_export()) as (connect, accessor):
@@ -169,6 +169,8 @@ class TestExportCalculationsSuccess:
                     "2026-12-31",
                     "--publication-date",
                     "2026-01-01",
+                    "--release",
+                    "4.2",
                     "--database",
                     "sqlite:///dpm.db",
                     "--output",
@@ -177,7 +179,32 @@ class TestExportCalculationsSuccess:
             )
 
         connect.assert_called_once_with("sqlite:///dpm.db")
-        assert accessor.call_args.args == ("KRI", "2026-12-31", "2026-01-01")
+        assert accessor.call_args.args == (
+            "KRI",
+            "2026-12-31",
+            "2026-01-01",
+            "4.2",
+        )
+
+    def test_without_a_release_none_is_passed(self, runner, tmp_path):
+        """The service then resolves at the module's start release."""
+        with _patched_connection(_export()) as (_, accessor):
+            runner.invoke(
+                main,
+                [
+                    "export-calculations",
+                    "--module-code",
+                    "KRI",
+                    "--reference-date",
+                    "2026-12-31",
+                    "--database",
+                    "sqlite:///dpm.db",
+                    "--output",
+                    str(tmp_path / "kri.json"),
+                ],
+            )
+
+        assert accessor.call_args.args[3] is None
 
 
 class TestExportCalculationsFailure:

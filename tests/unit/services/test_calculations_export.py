@@ -10,26 +10,47 @@ need one are covered by
 from __future__ import annotations
 
 import re
+from datetime import date
 
 import pandas as pd
 import pytest
 
 from dpmcore.dpm_xl.ast.nodes import Constant, VarID
-from dpmcore.errors import SemanticError
+from dpmcore.errors import Invalid, NotFound, SemanticError
+from dpmcore.orm.release_sort_order import compute_sort_order
 from dpmcore.services.calculations_export.exporter import (
     CalculationsExporter,
     _build_datapoint_mapping,
     _build_expression,
+    _module_owner,
+    _owner,
+)
+from dpmcore.services.calculations_export.modules import (
+    AT_T,
+    ModuleVersionInfo,
+    RefDateLag,
+    combine_lags,
+    overlaps,
+    target_window,
+    version_chain,
+)
+from dpmcore.services.calculations_export.queries import (
+    _published_module_uri,
 )
 from dpmcore.services.calculations_export.visitors import (
     CalculationsJSONVisitor,
     DAGAnalyzer,
+    DependencyTableExtractor,
     VarIDDataEnricher,
     _constant_value,
     _sole_code,
     unwrap_with_expressions,
 )
 from dpmcore.services.syntax import SyntaxService
+
+_CELL_A = "{tA, r0010, c0010}"
+_CELL_B = "{tA, r0020, c0010}"
+_CELL_C = "{tB, r0010, c0010}"
 
 
 def _parse(script):
@@ -38,6 +59,31 @@ def _parse(script):
 
 def _calc(expression, code=None):
     return {"expression": expression, "operation_code": code}
+
+
+def _reads(script):
+    """``DependencyTableExtractor`` run over ``script``, DB-free.
+
+    Each selection resolves to one datapoint whose id is its first row
+    code, so ``{tA, r0010, ...}`` reads datapoint ``10`` of ``A``.
+    """
+    ast = _parse(script)
+    unwrap_with_expressions(ast)
+    extractor = DependencyTableExtractor(session=None)
+    extractor._variable_ids = lambda table, node: [int(node.rows[0])]
+    extractor.visit(ast)
+    return extractor
+
+
+def _mv(vid, start, end, release=1, number=None, end_release=None):
+    return ModuleVersionInfo(
+        module_vid=vid,
+        version_number=number or f"{vid}.0.0",
+        start=start,
+        end=end,
+        start_release_id=release,
+        end_release_id=end_release,
+    )
 
 
 class TestBuildExpression:
@@ -82,19 +128,12 @@ class TestOperationCodePairing:
 
     def test_a_multi_statement_expression_is_rejected(self):
         """Positional pairing cannot attribute two statements to one code."""
-        from dpmcore.errors import Invalid
-
         exporter = CalculationsExporter.__new__(CalculationsExporter)
         exporter._syntax = SyntaxService()
 
         calculations = [_calc("x := 1; y := 2", "c1")]
         with pytest.raises(Invalid, match="do not pair"):
             exporter._parse(_build_expression(calculations), calculations)
-
-
-_CELL_A = "{tA, r0010, c0010}"
-_CELL_B = "{tA, r0020, c0010}"
-_CELL_C = "{tB, r0010, c0010}"
 
 
 class TestDAGAnalyzer:
@@ -373,8 +412,6 @@ class TestSerializer:
 
     def test_a_computed_shift_is_rejected(self):
         """The exported shape has nowhere to put an expression."""
-        from dpmcore.errors import Invalid
-
         ast = _parse(
             "x := time_shift({tA, r0010, c0010}, Q, 1 + 1, refPeriod);"
         )
@@ -605,12 +642,399 @@ class TestUnresolvableOperands:
 
     def test_an_operand_without_a_table_is_skipped(self):
         """A with-context operand never reaches the database untouched."""
-        from dpmcore.services.calculations_export.visitors import (
-            DependencyTableExtractor,
-        )
-
         extractor = DependencyTableExtractor(session=None)
         extractor.visit_VarID(VarID(None, ["0010"], None, None, None, None))
 
-        assert extractor.tables == {}
-        assert extractor.all_datapoints == []
+        assert extractor.reads == []
+
+
+class TestReadLags:
+    @pytest.mark.parametrize(
+        ("operand", "lag"),
+        [
+            (
+                "time_shift({tA, r0010, c0010}, A, 1, refPeriod)",
+                RefDateLag(-12),
+            ),
+            ("time_shift({tA, r0010, c0010}, Q, 1)", RefDateLag(-3)),
+            # A negative shift reads a later period.
+            (
+                "time_shift({tA, r0010, c0010}, A, (-1), refPeriod)",
+                RefDateLag(12),
+            ),
+            ("time_shift({tA, r0010, c0010}, M, -12)", RefDateLag(12)),
+        ],
+    )
+    def test_a_time_shift_moves_the_read(self, operand, lag):
+        reads = _reads(f"x := {operand};").reads
+
+        assert {(read.table, read.lag) for read in reads} == {("A", lag)}
+
+    def test_nested_shifts_add_up(self):
+        reads = _reads(
+            "x := time_shift(time_shift({tA, r0010, c0010}, Q, 1), M, 1);"
+        ).reads
+
+        assert {(read.table, read.lag) for read in reads} == {
+            ("A", RefDateLag(-4))
+        }
+
+    @pytest.mark.parametrize(
+        "operand",
+        [
+            "{tA, r0010, c0010}[where refPeriod = #2025-12-31#]",
+            "{tA, r0010, c0010}[sub refPeriod = #2025-12-31#]",
+            "avg({tA, r0010, c0010} over (order by refPeriod "
+            "data points between 11 preceding and current data point))",
+            "sum({tA, r0010, c0010} over (partition by qEGS "
+            "order by refPeriod desc))",
+            "time_shift({tA, r0010, c0010}[where refPeriod = #2025-12-31#]"
+            ", A, 1)",
+        ],
+    )
+    def test_a_read_no_lag_describes_lands_anywhere(self, operand):
+        reads = _reads(f"x := {operand};").reads
+
+        assert {(read.table, read.lag) for read in reads} == {("A", None)}
+
+    @pytest.mark.parametrize(
+        "operand",
+        [
+            "{tA, r0010, c0010}",
+            "time_shift({tA, r0010, c0010}, A, 1, entityID)",
+            "{tA, r0010, c0010}[where qEGS = [eba_GA:x1]]",
+            "{tA, r0010, c0010}[get refPeriod]",
+            "sum({tA, r0010, c0010} over (partition by qEGS order by r))",
+            "sum({tA, r0010, c0010} group by refPeriod)",
+        ],
+    )
+    def test_a_read_at_the_anchor_s_own_date(self, operand):
+        reads = _reads(f"x := {operand};").reads
+
+        assert {(read.table, read.lag) for read in reads} == {("A", AT_T)}
+
+    def test_only_the_shifted_operand_of_an_expression_moves(self):
+        reads = _reads(
+            "x := {tA, r0010, c0010} - "
+            "time_shift({tB, r0020, c0010}, A, 1, refPeriod);"
+        ).reads
+
+        assert {(read.table, read.lag) for read in reads} == {
+            ("A", AT_T),
+            ("B", RefDateLag(-12)),
+        }
+
+    def test_a_with_level_where_on_ref_period_reaches_every_operand(self):
+        """The ``where`` is grafted onto the selections, so it survives
+        the unwrapping of the ``with``.
+        """
+        reads = _reads(
+            "x := with {tA, c0010}[where refPeriod = #2025-12-31#]: "
+            "{tA, r0010} + {tB, r0020, c0010};"
+        ).reads
+
+        assert {(read.table, read.lag) for read in reads} == {
+            ("A", None),
+            ("B", None),
+        }
+
+    def test_each_read_names_its_statement(self):
+        extractor = _reads(
+            "x := {tA, r0010, c0010};\ny := {tB, r0020, c0010};"
+        )
+
+        assert [
+            (read.statement, read.table, read.variable_ids)
+            for read in extractor.reads
+        ] == [(0, "A", frozenset({10})), (1, "B", frozenset({20}))]
+
+
+class TestRefDateLag:
+    @pytest.mark.parametrize(
+        ("period", "shift", "lag"),
+        [
+            ("A", 1, RefDateLag(-12)),
+            ("S", 1, RefDateLag(-6)),
+            ("Q", -2, RefDateLag(6)),
+            ("M", 1, RefDateLag(-1)),
+            ("W", 1, RefDateLag(-7, "D")),
+            ("D", 3, RefDateLag(-3, "D")),
+            ("X", 1, None),
+        ],
+    )
+    def test_of_time_shift(self, period, shift, lag):
+        assert RefDateLag.of_time_shift(period, shift) == lag
+
+    @pytest.mark.parametrize(
+        ("lag", "anchor", "target"),
+        [
+            (RefDateLag(-3), date(2026, 6, 30), date(2026, 3, 31)),
+            (RefDateLag(-12), date(2026, 6, 30), date(2025, 6, 30)),
+            (RefDateLag(-1), date(2026, 3, 31), date(2026, 2, 28)),
+            (RefDateLag(12), date(2026, 12, 31), date(2027, 12, 31)),
+            (RefDateLag(-13), date(2026, 1, 15), date(2024, 12, 31)),
+            (RefDateLag(-14, "D"), date(2026, 1, 10), date(2025, 12, 27)),
+            (AT_T, date(2026, 1, 1), date(2026, 1, 1)),
+        ],
+    )
+    def test_target(self, lag, anchor, target):
+        assert lag.target(anchor) == target
+
+    @pytest.mark.parametrize(
+        ("outer", "inner", "combined"),
+        [
+            (RefDateLag(-3), RefDateLag(-1), RefDateLag(-4)),
+            (AT_T, RefDateLag(-7, "D"), RefDateLag(-7, "D")),
+            (RefDateLag(-7, "D"), AT_T, RefDateLag(-7, "D")),
+            (RefDateLag(-1), RefDateLag(-1, "D"), None),
+            (None, RefDateLag(-1), None),
+            (RefDateLag(-1), None, None),
+        ],
+    )
+    def test_combine_lags(self, outer, inner, combined):
+        assert combine_lags(outer, inner) == combined
+
+
+class TestVersionChain:
+    # Release 1 to 3 dated in order; 99 is the Playground (no date).
+    SORT_ORDERS = {
+        1: date(2020, 1, 1).toordinal(),
+        2: date(2021, 1, 1).toordinal(),
+        3: date(2022, 1, 1).toordinal(),
+        99: compute_sort_order(None, None),
+    }
+
+    def test_versions_come_in_date_order(self):
+        chain = version_chain(
+            [
+                _mv(3, date(2022, 1, 1), None),
+                _mv(1, date(2020, 1, 1), date(2020, 12, 31)),
+                _mv(2, date(2021, 1, 1), date(2021, 12, 31)),
+            ],
+            self.SORT_ORDERS,
+        )
+
+        assert [v.module_vid for v in chain] == [1, 2, 3]
+
+    def test_each_window_ends_the_day_before_its_successor(self):
+        chain = version_chain(
+            [
+                _mv(1, date(2020, 1, 1), None),
+                _mv(2, date(2021, 1, 1), date(2022, 6, 30)),
+                _mv(3, date(2022, 1, 1), None),
+            ],
+            self.SORT_ORDERS,
+        )
+
+        assert [(v.start, v.end) for v in chain] == [
+            (date(2020, 1, 1), date(2020, 12, 31)),
+            (date(2021, 1, 1), date(2021, 12, 31)),
+            (date(2022, 1, 1), None),
+        ]
+
+    def test_an_earlier_own_end_is_kept(self):
+        chain = version_chain(
+            [
+                _mv(1, date(2020, 1, 1), date(2020, 6, 30)),
+                _mv(2, date(2021, 1, 1), None),
+            ],
+            self.SORT_ORDERS,
+        )
+
+        assert chain[0].end == date(2020, 6, 30)
+
+    def test_a_ghost_version_never_applied(self):
+        chain = version_chain(
+            [
+                _mv(1, date(2020, 1, 1), date(2020, 12, 31)),
+                _mv(2, date(2021, 1, 1), date(2021, 1, 1)),
+                _mv(3, date(2021, 6, 1), date(2021, 5, 1)),
+            ],
+            self.SORT_ORDERS,
+        )
+
+        assert [v.module_vid for v in chain] == [1]
+
+    def test_a_module_with_only_ghosts_has_no_chain(self):
+        chain = version_chain(
+            [_mv(1, date(2021, 1, 1), date(2021, 1, 1))], self.SORT_ORDERS
+        )
+
+        assert chain == []
+
+    def test_a_playground_version_was_never_published(self):
+        chain = version_chain(
+            [
+                _mv(1, date(2020, 1, 1), date(2020, 12, 31)),
+                _mv(2, date(2021, 1, 1), None, release=99),
+            ],
+            self.SORT_ORDERS,
+        )
+
+        assert [(v.module_vid, v.end) for v in chain] == [
+            (1, date(2020, 12, 31))
+        ]
+
+    @pytest.mark.parametrize(
+        "end",
+        # Where the Playground successor starts, or inverted by a
+        # Playground patch from the same date.
+        [date(2020, 12, 31), date(2019, 12, 31)],
+    )
+    def test_a_version_playground_ended_is_open_as_published(self, end):
+        chain = version_chain(
+            [_mv(1, date(2020, 1, 1), end, end_release=99)],
+            self.SORT_ORDERS,
+        )
+
+        assert [(v.module_vid, v.end) for v in chain] == [(1, None)]
+
+    def test_it_still_ends_where_its_published_successor_starts(self):
+        chain = version_chain(
+            [
+                _mv(1, date(2020, 1, 1), date(2020, 6, 30), end_release=99),
+                _mv(2, date(2021, 1, 1), None, release=3),
+            ],
+            self.SORT_ORDERS,
+        )
+
+        assert [(v.module_vid, v.end) for v in chain] == [
+            (1, date(2020, 12, 31)),
+            (2, None),
+        ]
+
+    def test_with_drafts_it_keeps_the_end_playground_gave_it(self):
+        chain = version_chain(
+            [_mv(1, date(2020, 1, 1), date(2020, 6, 30), end_release=99)],
+            self.SORT_ORDERS,
+            drafts=True,
+        )
+
+        assert [(v.module_vid, v.end) for v in chain] == [
+            (1, date(2020, 6, 30))
+        ]
+
+    def test_with_drafts_a_playground_version_succeeds_the_last(self):
+        chain = version_chain(
+            [
+                _mv(1, date(2020, 1, 1), None),
+                _mv(2, date(2021, 1, 1), None, release=99),
+            ],
+            self.SORT_ORDERS,
+            drafts=True,
+        )
+
+        assert [(v.module_vid, v.end) for v in chain] == [
+            (1, date(2020, 12, 31)),
+            (2, None),
+        ]
+
+    def test_with_drafts_a_published_version_beats_a_playground_one(self):
+        chain = version_chain(
+            [
+                _mv(1, date(2020, 1, 1), None, release=99),
+                _mv(2, date(2020, 1, 1), None, release=1),
+            ],
+            self.SORT_ORDERS,
+            drafts=True,
+        )
+
+        assert [v.module_vid for v in chain] == [2]
+
+    def test_the_latest_release_wins_a_shared_start_date(self):
+        chain = version_chain(
+            [
+                _mv(1, date(2020, 1, 1), None, release=3),
+                _mv(2, date(2020, 1, 1), None, release=2),
+            ],
+            self.SORT_ORDERS,
+        )
+
+        assert [v.module_vid for v in chain] == [1]
+
+    def test_the_own_version_is_always_kept(self):
+        chain = version_chain(
+            [
+                _mv(1, date(2020, 1, 1), date(2020, 1, 1), release=99),
+                _mv(2, date(2020, 1, 1), None, release=3),
+            ],
+            self.SORT_ORDERS,
+            keep=1,
+        )
+
+        assert [v.module_vid for v in chain] == [1]
+
+    def test_a_version_without_start_is_left_out(self):
+        chain = version_chain(
+            [_mv(1, None, None), _mv(2, date(2020, 1, 1), None)],
+            self.SORT_ORDERS,
+        )
+
+        assert [v.module_vid for v in chain] == [2]
+
+
+class TestReachableVersions:
+    CHAIN = [
+        _mv(1, date(2024, 1, 1), date(2024, 12, 31)),
+        _mv(2, date(2025, 1, 1), date(2025, 12, 31)),
+        _mv(3, date(2026, 1, 1), date(2026, 12, 31)),
+        _mv(4, date(2027, 1, 1), None),
+    ]
+    WINDOW = (date(2026, 1, 1), date(2026, 12, 31))
+
+    def _reached(self, lag, window=WINDOW):
+        target = target_window(window, lag)
+        return [v.module_vid for v in self.CHAIN if overlaps(v, target)]
+
+    def test_a_read_at_t_reaches_the_window_s_own_versions(self):
+        assert self._reached(AT_T) == [3]
+
+    def test_a_year_back_reaches_the_predecessor(self):
+        assert self._reached(RefDateLag(-12)) == [2]
+
+    def test_a_quarter_back_straddles_the_boundary(self):
+        assert self._reached(RefDateLag(-3)) == [2, 3]
+
+    def test_a_year_ahead_reaches_the_successor(self):
+        assert self._reached(RefDateLag(12)) == [4]
+
+    def test_an_open_window_reaches_every_later_version(self):
+        assert self._reached(AT_T, (date(2026, 1, 1), None)) == [3, 4]
+
+    def test_a_read_no_lag_describes_reaches_them_all(self):
+        assert self._reached(None) == [1, 2, 3, 4]
+
+
+class TestOwner:
+    def test_the_operations_owner_names_the_export(self):
+        assert _owner([{"owner": "ECB"}, {"owner": "ECB"}], "EBA") == "ECB"
+
+    def test_the_most_frequent_owner_wins(self, caplog):
+        calculations = [{"owner": "EBA"}, {"owner": "ECB"}, {"owner": "EBA"}]
+
+        with caplog.at_level("WARNING"):
+            assert _owner(calculations, "EBA") == "EBA"
+        assert "several owners" in caplog.text
+
+    def test_without_one_the_module_owner_is_used(self, caplog):
+        with caplog.at_level("WARNING"):
+            assert _owner([{"owner": None}], "EBA") == "EBA"
+        assert "module owner" in caplog.text
+
+    def test_a_module_needs_an_owner(self):
+        with pytest.raises(NotFound, match="Module owner not found"):
+            _module_owner({"code": "KRI", "module_vid": 1})
+
+        assert _module_owner({"module_owner": "EBA"}) == "EBA"
+
+
+class TestPublishedModuleUri:
+    def test_a_pre_4_0_version_keeps_its_published_uri(self):
+        assert _published_module_uri("COREP_Con", "2.0.1") == (
+            "http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/corep/its-2013-02/"
+            "2013-12-01/mod/corep_con"
+        )
+
+    def test_an_unpublished_version_has_none(self):
+        assert _published_module_uri("COREP_Con", "99.0.0") is None
+        assert _published_module_uri(None, "2.0.1") is None
