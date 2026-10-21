@@ -1282,6 +1282,13 @@ def export_layout(
     "(YYYY-MM-DD, default: today).",
 )
 @click.option(
+    "--release",
+    "release_code",
+    default=None,
+    help="Release code for the dictionary lookups (e.g. 4.2; "
+    "default: the module version's start release).",
+)
+@click.option(
     "--database",
     required=True,
     help="SQLAlchemy database URL.",
@@ -1291,7 +1298,8 @@ def export_layout(
     default=None,
     type=click.Path(),
     help="Where to write the export (default: "
-    "'<module_code>.json' in the current directory).",
+    "'<owner>-<module_code>-<module_version>.json' in the current "
+    "directory).",
 )
 @click.option(
     "--datapoints-output",
@@ -1304,14 +1312,15 @@ def export_calculations(
     module_code: str,
     reference_date: datetime,
     publication_date: str | None,
+    release_code: str | None,
     database: str,
     output: str | None,
     datapoints_output: str | None,
 ) -> None:
     """Export a module version's calculations set as JSON.
 
-    Writes two files: the calculations export, keyed by the module's EBA
-    taxonomy URI, and the companion datapoint map that names the cell
+    Writes two files: the calculations export, with the module's URI in
+    ``module_uri``, and the companion datapoint map that names the cell
     behind every datapoint it references.
 
     Requires a database with an ``OperationOutput`` table — the link
@@ -1324,43 +1333,49 @@ def export_calculations(
     from dpmcore.connection import connect
     from dpmcore.errors import DpmCoreError
 
-    out_path = Path(output) if output else Path(f"{module_code}.json")
-    dp_path = (
-        Path(datapoints_output)
-        if datapoints_output
-        else out_path.with_name(f"{out_path.stem}_datapoints.json")
-    )
-
     try:
         with connect(database) as db:
             export = db.services.ast_generator.calculations_export(
                 module_code,
                 reference_date.strftime("%Y-%m-%d"),
                 publication_date,
+                release_code,
             )
-    except DpmCoreError as exc:
+    except (DpmCoreError, ValueError) as exc:
         click.echo(f"Calculations export failed: {exc}", err=True)
         sys.exit(1)
 
+    document: dict[str, Any] = export.calculations
+    out_path = (
+        Path(output)
+        if output
+        else Path(
+            f"{document.get('owner')}-{document.get('module_code')}-"
+            f"{document.get('module_version')}.json"
+        )
+    )
+    dp_path = (
+        Path(datapoints_output)
+        if datapoints_output
+        else out_path.with_name(f"{out_path.stem}_datapoints.json")
+    )
     for path, payload in (
         (out_path, export.calculations),
         (dp_path, export.datapoints),
     ):
         path.parent.mkdir(parents=True, exist_ok=True)
-        # newline="\n" keeps the bytes identical on Windows: the export
-        # is compared byte for byte against the reference EBA output.
+        # newline="\n" keeps the bytes identical on Windows, so two
+        # exports of the same module compare byte for byte.
         path.write_text(
             json.dumps(payload, indent=2, default=str),
             encoding="utf-8",
             newline="\n",
         )
 
-    namespace: dict[str, Any] = next(iter(export.calculations.values()), {})
-    n_calcs = len(namespace.get("calculations", {}).get("operation_codes", []))
-    n_deps = len(namespace.get("dependency_modules", {}))
+    n_calcs = len(document.get("calculations", {}).get("operation_codes", []))
+    n_modules = len(document.get("modules", {}))
     click.echo(
-        f"Wrote {out_path} ({n_calcs} calculations, "
-        f"{n_deps} dependency modules)"
+        f"Wrote {out_path} ({n_calcs} calculations, {n_modules} modules)"
     )
     click.echo(f"Wrote {dp_path} ({len(export.datapoints)} datapoints)")
 

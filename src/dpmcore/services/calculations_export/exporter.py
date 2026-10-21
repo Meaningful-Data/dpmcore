@@ -3,8 +3,8 @@
 Given a module code and a reference date, collects the module version's
 calculation operations, parses them as one script, resolves every
 operand against the dictionary, and emits the two JSON structures the
-downstream deployment consumes: the calculations export (keyed by the
-module's EBA taxonomy URI) and its companion datapoint map.
+downstream deployment consumes: the calculations export (with the
+module's URI in ``module_uri``) and its companion datapoint map.
 """
 
 from __future__ import annotations
@@ -26,6 +26,10 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import SQLAlchemyError
 
 from dpmcore.errors import ConfigurationError, Invalid, NotFound
+from dpmcore.services.calculations_export.modules import (
+    build_modules,
+    reference_window,
+)
 from dpmcore.services.calculations_export.queries import (
     get_calculations,
     get_data_types,
@@ -36,7 +40,6 @@ from dpmcore.services.calculations_export.queries import (
     get_output_tables,
     get_output_variable_vids,
     get_release_info,
-    group_tables_by_module,
 )
 from dpmcore.services.calculations_export.visitors import (
     CalculationsJSONVisitor,
@@ -56,14 +59,17 @@ logger = logging.getLogger(__name__)
 
 _OPERATION_OUTPUT_TABLE = "OperationOutput"
 
+FORMAT_VERSION = "2.0"
+"""Script Format version of the export."""
+
 
 @dataclass(frozen=True)
 class CalculationsExport:
     """A module version's exported calculations and its datapoint map.
 
     Attributes:
-        calculations: The export, keyed by the module's EBA taxonomy
-            URI.
+        calculations: The export, with the module's EBA taxonomy URI
+            in ``module_uri``.
         datapoints: ``{variable_id: {table, row, column, sheet}}`` for
             every datapoint the calculations touch -- the companion file
             the deployment reads alongside the export.
@@ -90,15 +96,20 @@ class CalculationsExporter:
         module_code: str,
         reference_date: str,
         publication_date: Optional[str] = None,
+        release_id: Optional[int] = None,
     ) -> CalculationsExport:
         """Export ``module_code``'s calculations as of ``reference_date``.
 
         Args:
             module_code: Module code (e.g. ``"KRI"``).
             reference_date: Reference date, ``YYYY-MM-DD``, selecting
-                the module version.
+                the module version. Every version of a module the
+                calculations read that their dates can land in is
+                listed in ``modules``.
             publication_date: Publication date stamped into the
                 ``dpm_release`` block; defaults to today.
+            release_id: Release for the dictionary lookups. Defaults to
+                the module version's start release.
 
         Returns:
             The export and its datapoint map.
@@ -106,8 +117,8 @@ class CalculationsExporter:
         Raises:
             ConfigurationError: If the database has no
                 ``OperationOutput`` table.
-            NotFound: If the module version, or its calculations, cannot
-                be resolved.
+            NotFound: If the module version, its owner or its
+                calculations cannot be resolved.
             Invalid: If the parsed script does not have one statement
                 per calculation.
             SemanticError: ``6-4`` if the calculations form a cycle, or
@@ -118,8 +129,11 @@ class CalculationsExporter:
             session, module_code, reference_date
         )
         module_meta = get_module_metadata(session, module_vid)
-        release_id = module_meta["start_release_id"]
-        module_uri, framework_code = get_module_uri(session, module_vid)
+        if release_id is None:
+            release_id = module_meta["start_release_id"]
+        window = reference_window(session, module_meta, release_id)
+        module_owner = _module_owner(module_meta)
+        module_uri, _ = get_module_uri(session, module_vid)
         release_info = get_release_info(session, release_id, publication_date)
 
         calculations = self._collect_calculations(
@@ -145,40 +159,46 @@ class CalculationsExporter:
         # fully-resolved VarIDs.
         unwrap_with_expressions(ast)
 
-        dependencies = DependencyTableExtractor(session, release_id)
+        dependencies = DependencyTableExtractor(session)
         dependencies.visit(ast)
         enricher = VarIDDataEnricher(operands.data)
         enricher.visit(ast)
         outputs = OutputExtractor(data=operands.data)
         outputs.visit(ast)
 
-        dependency_modules = self._dependency_modules(
-            module_code, dependencies, release_id
+        modules = build_modules(
+            session,
+            own=module_meta,
+            window=window,
+            module_uri=module_uri,
+            reads=dependencies.reads,
+            operation_codes=operation_codes,
+            release_id=release_id,
         )
         output_variables, output_tables = self._outputs(
             module_vid, outputs, release_id
         )
 
+        # Not keyed by URI: several owners can export over one version.
         export = {
-            module_uri: {
-                "module_code": module_code,
-                "framework_code": framework_code,
-                "module_version": module_meta["version_number"],
-                "dpm_release": release_info,
-                "dates": {
-                    "from": _as_date_string(module_meta["from_date"]),
-                    "to": _as_date_string(module_meta["to_date"]),
-                },
-                "calculations": {
-                    "ast": CalculationsJSONVisitor(enricher.payloads).visit(
-                        ast
-                    ),
-                    "operation_codes": operation_codes,
-                },
-                "output_variables": output_variables,
-                "output_tables": output_tables,
-                "dependency_modules": dependency_modules,
-            }
+            "owner": _owner(calculations, module_owner),
+            "module_code": module_meta["code"],
+            "module_version": module_meta["version_number"],
+            "module_owner": module_owner,
+            "module_uri": module_uri,
+            "format_version": FORMAT_VERSION,
+            "dpm_release": release_info,
+            "dates": {
+                "from": _as_date_string(window[0]),
+                "to": _as_date_string(window[1]),
+            },
+            "calculations": {
+                "ast": CalculationsJSONVisitor(enricher.payloads).visit(ast),
+                "operation_codes": operation_codes,
+            },
+            "output_variables": output_variables,
+            "output_tables": output_tables,
+            "modules": modules,
         }
         return CalculationsExport(
             calculations=export,
@@ -310,59 +330,6 @@ class CalculationsExporter:
         ).create_dag(ast, operation_codes=operation_codes)
         return [code_by_child.get(id(child)) for child in ast.children]
 
-    def _dependency_modules(
-        self,
-        module_code: str,
-        dependencies: DependencyTableExtractor,
-        release_id: Optional[int],
-    ) -> Dict[str, Dict[str, Any]]:
-        """Resolve the dependency tables into per-module URI entries.
-
-        Args:
-            module_code: The exported module, excluded from its own
-                dependencies.
-            dependencies: The collected dependency tables.
-            release_id: Release to resolve at.
-
-        Returns:
-            ``{module_uri: {"tables": {...}, "variables": {...}}}``.
-        """
-        data_types = get_data_types(
-            self.session, dependencies.all_datapoints, release_id
-        )
-        # A new mapping rather than an edit in place: the extractor's
-        # own ``variables`` are sets of ids, and rewriting them as
-        # ``{id: type}`` dicts would leave it unusable for a second call.
-        resolved_tables: Dict[str, Dict[str, Any]] = {
-            table_code: {
-                **table_info,
-                "variables": {
-                    str(var_id): data_types.get(str(var_id), "m")
-                    for var_id in sorted(table_info["variables"])
-                },
-            }
-            for table_code, table_info in dependencies.tables.items()
-        }
-        _warn_on_default_data_types(
-            "dependency", dependencies.all_datapoints, data_types
-        )
-
-        grouped = group_tables_by_module(
-            self.session, resolved_tables, release_id
-        )
-        result: Dict[str, Dict[str, Any]] = {}
-        for dep_module_code, dep_info in grouped.items():
-            if dep_module_code == module_code:
-                continue
-            dep_uri, _ = get_module_uri(self.session, dep_info["module_vid"])
-            # `tables` only: the calculations contract carries no
-            # `variables` key on a dependency entry (that is the
-            # validations export's shape), and adding one puts every
-            # module with dependencies out of parity with
-            # drr_operations.
-            result[dep_uri] = {"tables": dep_info["tables"]}
-        return result
-
     def _outputs(
         self,
         module_vid: int,
@@ -466,6 +433,57 @@ def _warn_on_default_data_types(
         what,
         ", ".join(missing[:20]) + (", ..." if len(missing) > 20 else ""),
     )
+
+
+def _module_owner(module_meta: Dict[str, Any]) -> str:
+    """Return the acronym of the organisation owning the module.
+
+    Raises:
+        NotFound: If the module has no owner: the export's identity
+            names it.
+    """
+    owner = module_meta.get("module_owner")
+    if not owner:
+        raise NotFound(
+            title="Module owner not found",
+            description=(
+                f"Module {module_meta.get('code')!r} (VID "
+                f"{module_meta.get('module_vid')}) has no owner "
+                "organisation; the export names it as module_owner."
+            ),
+        )
+    return str(owner)
+
+
+def _owner(calculations: List[Dict[str, Any]], module_owner: str) -> str:
+    """Return the organisation that defined the calculations.
+
+    The owner of the calculations' operations; the most frequent one
+    when they disagree, and the module's owner when none has one.
+
+    Args:
+        calculations: The module's calculation records.
+        module_owner: The fallback, the module's owner.
+
+    Returns:
+        An organisation acronym.
+    """
+    owners = [str(calc["owner"]) for calc in calculations if calc.get("owner")]
+    if not owners:
+        logger.warning(
+            "No calculation names an owner; the module owner %r is used",
+            module_owner,
+        )
+        return module_owner
+    ranked = sorted(dict.fromkeys(owners), key=owners.count, reverse=True)
+    if len(ranked) > 1:
+        logger.warning(
+            "The calculations have several owners (%s); %r, the most "
+            "frequent, is the export's owner",
+            ", ".join(f"{owner}: {owners.count(owner)}" for owner in ranked),
+            ranked[0],
+        )
+    return ranked[0]
 
 
 def _build_expression(calculations: List[Dict[str, Any]]) -> str:

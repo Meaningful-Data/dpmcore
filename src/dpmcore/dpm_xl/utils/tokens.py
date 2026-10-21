@@ -83,6 +83,7 @@ ROW = "r"
 COLUMN = "c"
 SHEET = "s"
 FACT = "f"
+REF_PERIOD = "refPeriod"
 
 # Indexes
 INDEX_X = "x"
