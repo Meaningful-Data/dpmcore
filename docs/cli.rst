@@ -382,7 +382,12 @@ the ``/api/v1/scripts`` REST endpoint).
 **Input file format:**
 
 The ``--expressions`` file is a JSON object. Only ``expressions`` is
-required; ``preconditions`` and ``severities`` are optional.
+required; ``preconditions``, ``severities`` and
+``from_submission_dates`` are optional. ``from_submission_dates`` maps a
+validation code to a ``YYYY-MM-DD`` date that overrides that operation's
+``from_submission_date`` (which otherwise defaults to the module
+version's start date, or ``2001-01-01``). Unknown codes or invalid dates
+fail the generation.
 
 .. code-block:: json
 
@@ -393,7 +398,8 @@ required; ``preconditions`` and ``severities`` are optional.
        "preconditions": [
            ["{is_reporting_entity}", ["v0001"]]
        ],
-       "severities": {"v0001": "error"}
+       "severities": {"v0001": "error"},
+       "from_submission_dates": {"v0001": "2026-06-30"}
    }
 
 **Example:**

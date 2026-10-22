@@ -31,6 +31,7 @@ class GenerateScriptRequest(BaseModel):
     preconditions: Optional[List[PreconditionEntry]] = None
     severity: Optional[str] = None
     severities: Optional[Dict[str, str]] = None
+    from_submission_dates: Optional[Dict[str, str]] = None
     release: Optional[str] = None
 
     @field_validator("expressions")
@@ -113,6 +114,7 @@ def create_scripts_router(
             preconditions=preconditions,
             severity=body.severity,
             severities=body.severities,
+            from_submission_dates=body.from_submission_dates,
             release=body.release,
         )
         return GenerateScriptResponse(

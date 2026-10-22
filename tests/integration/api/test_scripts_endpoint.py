@@ -110,6 +110,7 @@ class TestPostScripts:
                     "module_version": "2.0.1",
                     "severity": "error",
                     "severities": {"v0001": "warning"},
+                    "from_submission_dates": {"v0001": "2026-06-30"},
                     "release": "4.2",
                 },
             )
@@ -119,6 +120,7 @@ class TestPostScripts:
         assert kwargs["module_version"] == "2.0.1"
         assert kwargs["severity"] == "error"
         assert kwargs["severities"] == {"v0001": "warning"}
+        assert kwargs["from_submission_dates"] == {"v0001": "2026-06-30"}
         assert kwargs["release"] == "4.2"
         assert kwargs["expressions"] == [("expr1", "v0001")]
         assert kwargs["preconditions"] is None

@@ -221,6 +221,80 @@ class TestResolveSeverities:
 
 
 # ------------------------------------------------------------------ #
+# _resolve_from_submission_dates
+# ------------------------------------------------------------------ #
+
+
+class TestResolveFromSubmissionDates:
+    def test_no_overrides_uses_default(self):
+        _, Cls, _ = _bare_svc()
+        out = Cls._resolve_from_submission_dates(
+            None, ["v1", "v2"], default="2026-03-31"
+        )
+        assert out == {"v1": "2026-03-31", "v2": "2026-03-31"}
+
+    def test_overrides_are_normalised(self):
+        from datetime import datetime
+
+        _, Cls, _ = _bare_svc()
+        out = Cls._resolve_from_submission_dates(
+            {
+                "v1": date(2026, 6, 30),
+                "v2": datetime(2026, 7, 1, 12, 30),
+                "v3": "2026-08-15",
+            },
+            ["v1", "v2", "v3", "v4"],
+            default="2001-01-01",
+        )
+        assert out == {
+            "v1": "2026-06-30",
+            "v2": "2026-07-01",
+            "v3": "2026-08-15",
+            "v4": "2001-01-01",
+        }
+
+    def test_year_below_1000_is_zero_padded(self):
+        _, Cls, _ = _bare_svc()
+        out = Cls._resolve_from_submission_dates(
+            {"v1": date(999, 1, 1)}, ["v1"], default="2001-01-01"
+        )
+        assert out == {"v1": "0999-01-01"}
+
+    def test_unknown_code_raises(self):
+        _, Cls, _ = _bare_svc()
+        with pytest.raises(
+            ValueError,
+            match="Unknown validation_code in from_submission_dates: 'vXX'",
+        ):
+            Cls._resolve_from_submission_dates(
+                {"vXX": "2026-01-01"}, ["v1"], default="2001-01-01"
+            )
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "2026-02-30",
+            "20260331",
+            "2026-3-1",
+            "2026-W01-1",
+            "\uff12\uff10\uff12\uff16-01-01",  # full-width digits
+            "",
+            None,
+            123,
+        ],
+    )
+    def test_invalid_value_raises(self, value):
+        _, Cls, _ = _bare_svc()
+        with pytest.raises(
+            ValueError,
+            match=r"Invalid from_submission_date .* for validation 'v1'",
+        ):
+            Cls._resolve_from_submission_dates(
+                {"v1": value}, ["v1"], default="2001-01-01"
+            )
+
+
+# ------------------------------------------------------------------ #
 # _clean_ast_data_entries
 # ------------------------------------------------------------------ #
 
@@ -2256,6 +2330,68 @@ class TestScript:
         )
         assert out["success"] is False
         assert "Unknown validation_code" in out["error"]
+
+    def test_unknown_code_in_from_submission_dates_returns_error(self):
+        svc, *_ = self._build_svc()
+        out = svc.script(
+            expressions=[("x", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+            from_submission_dates={"vXX": "2026-01-01"},
+        )
+        assert out["success"] is False
+        assert "Unknown validation_code" in out["error"]
+
+    def test_invalid_from_submission_date_returns_error(self):
+        svc, *_ = self._build_svc()
+        out = svc.script(
+            expressions=[("x", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+            from_submission_dates={"v1": "31/03/2026"},
+        )
+        assert out["success"] is False
+        assert "Invalid from_submission_date" in out["error"]
+
+    def test_precondition_error_reported_before_date_error(self):
+        svc, *_ = self._build_svc()
+        svc._syntax = MagicMock()
+        svc._syntax.parse.side_effect = RuntimeError("syntax error")
+        out = svc.script(
+            expressions=[("x", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+            preconditions=[("bad", ["v1"])],
+            from_submission_dates={"v1": "not-a-date"},
+        )
+        assert out["success"] is False
+        assert "Invalid precondition" in out["error"]
+
+    def test_from_submission_dates_override_per_operation(self, monkeypatch):
+        self._stub_serialize_ast(
+            monkeypatch,
+            {
+                "class_name": "VarID",
+                "table": "C_01.00",
+                "data": [{"datapoint": 1, "data_type": "m"}],
+            },
+        )
+        svc, *_ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+        out = svc.script(
+            expressions=[("e1", "v1"), ("e2", "v2")],
+            module_code="MOD",
+            module_version="1.0",
+            from_submission_dates={"v2": date(2026, 6, 30)},
+        )
+        assert out["success"] is True
+        ops = out["enriched_ast"]["http://example/mod"]["operations"]
+        # v1 keeps the module version's from_reference_date.
+        assert ops["v1"]["from_submission_date"] == "2026-03-31"
+        assert ops["v2"]["from_submission_date"] == "2026-06-30"
 
     def test_happy_path_returns_namespaced_shape(self, monkeypatch):
         self._stub_serialize_ast(
