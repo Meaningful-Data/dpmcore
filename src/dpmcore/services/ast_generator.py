@@ -117,11 +117,13 @@ def _sweep_order(
 
 
 @overload
-def _format_date(value: Any, fallback: str) -> str: ...
+def _format_date(value: Any, fallback: str) -> str:
+    pass
 
 
 @overload
-def _format_date(value: Any, fallback: None = None) -> Optional[str]: ...
+def _format_date(value: Any, fallback: None = None) -> Optional[str]:
+    pass
 
 
 def _format_date(value: Any, fallback: Optional[str] = None) -> Optional[str]:
