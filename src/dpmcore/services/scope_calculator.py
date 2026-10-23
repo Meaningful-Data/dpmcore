@@ -1611,6 +1611,31 @@ _discover_module_validations`.
     # Helpers
     # ------------------------------------------------------------------ #
 
+    def _get_module_table_versions(
+        self,
+        module_vid: int,
+        ghost_vids: Optional[List[int]] = None,
+    ) -> List[Any]:
+        """``(code, table_vid)`` rows composed into *module_vid*.
+
+        Plus any ghost siblings (*ghost_vids*) whose own table rows the
+        fallback doesn't compose — the table versions
+        :meth:`_get_module_tables` declares variables from.
+        """
+        all_vids = [module_vid, *(ghost_vids or [])]
+        return (
+            self.session.query(
+                TableVersion.code,
+                TableVersion.table_vid,
+            )
+            .join(
+                ModuleVersionComposition,
+                TableVersion.table_vid == ModuleVersionComposition.table_vid,
+            )
+            .filter(ModuleVersionComposition.module_vid.in_(all_vids))
+            .all()
+        )
+
     def _get_module_tables(
         self,
         module_vid: int,
@@ -1636,21 +1661,7 @@ _discover_module_validations`.
         engine unable to build a Scalar for that operand ("Scalar
         can't be created for this data").
         """
-        # Get table codes + VIDs for this module (plus any ghost siblings
-        # whose own table/variable rows the fallback doesn't compose).
-        all_vids = [module_vid, *(ghost_vids or [])]
-        tv_rows = (
-            self.session.query(
-                TableVersion.code,
-                TableVersion.table_vid,
-            )
-            .join(
-                ModuleVersionComposition,
-                TableVersion.table_vid == ModuleVersionComposition.table_vid,
-            )
-            .filter(ModuleVersionComposition.module_vid.in_(all_vids))
-            .all()
-        )
+        tv_rows = self._get_module_table_versions(module_vid, ghost_vids)
 
         table_vids = [r.table_vid for r in tv_rows if r.table_vid]
         vid_to_code = {r.table_vid: r.code for r in tv_rows if r.code}
