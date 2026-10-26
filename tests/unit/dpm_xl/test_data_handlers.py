@@ -230,21 +230,21 @@ def _xyz_frame(row_codes: list[str], with_order: bool) -> pd.DataFrame:
 
 
 class TestGenerateXyzOrdering:
-    """X/Y/Z coordinates follow the stored display order, not the code text.
+    """X/Y/Z coordinates follow the code text, not the stored display order.
 
-    This ranking path applies to whatever codes are present, so it fixes
-    wildcard (``r*``) and explicit-list selections as well as ranges.
+    Ranking by display order changed the generated DPM-ML of every
+    expression over a table whose layout does not follow its codes, so
+    the coordinates keep the code-text ranking they always had.
     """
 
-    def test_x_follows_display_order_for_non_padded_rows(self):
-        # Rows given in display order r1..r11; r10/r11 must rank last.
+    def test_x_ignores_display_order_for_non_padded_rows(self):
+        # Rows given in display order r1..r11; the code text still wins.
         rows = [str(i) for i in range(1, 12)]
         result = generate_xyz(_xyz_frame(rows, with_order=True))
         x_by_row = {r["row_code"]: r["x"] for r in result}
         assert x_by_row["1"] == 1
-        assert x_by_row["2"] == 2
-        assert x_by_row["10"] == 10
-        assert x_by_row["11"] == 11
+        assert x_by_row["10"] == 2  # lexicographic: "1","10","11","2",...
+        assert x_by_row["2"] == 4
 
     def test_order_helper_columns_are_not_leaked(self):
         rows = [str(i) for i in range(1, 4)]
@@ -253,12 +253,11 @@ class TestGenerateXyzOrdering:
         assert "column_order" not in result[0]
         assert "sheet_order" not in result[0]
 
-    def test_without_order_columns_falls_back_to_text_rank(self):
-        # No order columns -> previous text-based ranking: "10" sorts second.
+    def test_without_order_columns_ranks_by_text(self):
         rows = [str(i) for i in range(1, 12)]
         result = generate_xyz(_xyz_frame(rows, with_order=False))
         x_by_row = {r["row_code"]: r["x"] for r in result}
-        assert x_by_row["10"] == 2  # lexicographic: "1","10","11","2",...
+        assert x_by_row["10"] == 2
 
 
 class TestValueOverridesMisleadingDisplayOrder:
