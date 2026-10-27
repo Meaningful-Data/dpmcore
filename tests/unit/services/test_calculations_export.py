@@ -518,12 +518,12 @@ class TestVarIDDataEnricher:
         payload = next(iter(enricher.payloads.values()))
         assert [entry["datapoint"] for entry in payload["data"]] == [1]
 
-    def test_x_follows_the_display_order_not_the_code_text(self):
-        """Ranking a row axis by code text is the pre-#209 behaviour.
+    def test_x_follows_the_code_text_not_the_display_order(self):
+        """Ranking a row axis by display order would change the x.
 
-        This table displays 0100 between 0010 and 0020, so the exported
-        x coordinates must be 1, 2, 3 in *display* order -- which is a
-        different answer from sorting the codes as strings.
+        This table displays 0100 between 0010 and 0020, yet the exported
+        x coordinates must be 1, 2, 3 in *code* order -- which is a
+        different answer from following the table's display order.
         """
         frame = self._frame(
             [
@@ -555,8 +555,8 @@ class TestVarIDDataEnricher:
         payload = next(iter(enricher.payloads.values()))
         assert [(entry["x"], entry["row"]) for entry in payload["data"]] == [
             (1, "0010"),
-            (2, "0100"),
-            (3, "0020"),
+            (2, "0020"),
+            (3, "0100"),
         ]
 
 

@@ -203,19 +203,6 @@ def _axis_order_map(
     return build_axis_order_map(df[code_col], df[order_col])
 
 
-def _rank_column(data: pd.DataFrame, code_col: str, order_col: str) -> str:
-    """Return the column to rank/sort an axis by: order when fully populated.
-
-    Uses the stored display-order column when it is present and has no missing
-    values (all-or-nothing per axis), so ``r10`` ranks after ``r9`` rather than
-    after ``r1``. Falls back to the code column otherwise, preserving the
-    previous text-based ranking for tables without a usable order.
-    """
-    if order_col in data.columns and not data[order_col].isna().any():
-        return order_col
-    return code_col
-
-
 def generate_xyz(data: pd.DataFrame) -> list[dict[str, Any]]:
 
     for letter in [INDEX_X, INDEX_Y, INDEX_Z]:
@@ -226,51 +213,43 @@ def generate_xyz(data: pd.DataFrame) -> list[dict[str, Any]]:
     number_of_sheets = len(list(data[SHEET_CODE].unique()))
     group: list[str] = []
 
-    # Rank/sort each axis by its stored display order when available, so the
-    # X/Y/Z coordinates follow the table layout instead of the code text.
-    # This is applied to whatever codes are present, so it fixes wildcard and
-    # explicit-list selections too, not only ranges.
-    row_key = _rank_column(data, ROW_CODE, ROW_ORDER)
-    col_key = _rank_column(data, COLUMN_CODE, COLUMN_ORDER)
-    sheet_key = _rank_column(data, SHEET_CODE, SHEET_ORDER)
-
     if number_of_rows > 1:
-        data.sort_values(by=[row_key], inplace=True)
-        data[INDEX_X] = data[row_key].rank(method="dense").astype(int)
-        group.append(row_key)
+        data.sort_values(by=[ROW_CODE], inplace=True)
+        data[INDEX_X] = data[ROW_CODE].rank(method="dense").astype(int)
+        group.append(ROW_CODE)
 
     if number_of_columns > 1:
-        data.sort_values(by=[col_key], inplace=True)
+        data.sort_values(by=[COLUMN_CODE], inplace=True)
         if data[INDEX_X].isnull().all():
-            data[INDEX_Y] = data[col_key].rank(method="dense").astype(int)
+            data[INDEX_Y] = data[COLUMN_CODE].rank(method="dense").astype(int)
         else:
             col_groups = cast(
-                Iterable[tuple[Any, pd.DataFrame]], data.groupby(row_key)
+                Iterable[tuple[Any, pd.DataFrame]], data.groupby(ROW_CODE)
             )
             for _, group_data in col_groups:
-                group_data.sort_values(by=[col_key], inplace=True)
+                group_data.sort_values(by=[COLUMN_CODE], inplace=True)
                 group_data[INDEX_Y] = (
-                    group_data[col_key].rank(method="dense").astype(int)
+                    group_data[COLUMN_CODE].rank(method="dense").astype(int)
                 )
                 # Add to data[INDEX_Y] the values of group_data[INDEX_Y]
                 data.loc[group_data.index, INDEX_Y] = group_data[INDEX_Y]
-        group.append(col_key)
+        group.append(COLUMN_CODE)
 
     if number_of_sheets > 1:
-        data.sort_values(by=[sheet_key], inplace=True)
+        data.sort_values(by=[SHEET_CODE], inplace=True)
         if len(group) == 0:
-            data[INDEX_Z] = data[sheet_key].rank(method="dense").astype(int)
+            data[INDEX_Z] = data[SHEET_CODE].rank(method="dense").astype(int)
         else:
             sheet_groups = cast(
                 Iterable[tuple[Any, pd.DataFrame]], data.groupby(group)
             )
             for _, group_data in sheet_groups:
-                group_data.sort_values(by=[sheet_key], inplace=True)
+                group_data.sort_values(by=[SHEET_CODE], inplace=True)
                 group_data[INDEX_Z] = (
-                    group_data[sheet_key].rank(method="dense").astype(int)
+                    group_data[SHEET_CODE].rank(method="dense").astype(int)
                 )
                 data.loc[group_data.index, INDEX_Z] = group_data[INDEX_Z]
-        group.append(sheet_key)
+        group.append(SHEET_CODE)
     if len(group) > 0:
         data.sort_values(by=group, inplace=True)
     data.drop_duplicates(keep="first", inplace=True)

@@ -614,23 +614,17 @@ class VarIDDataEnricher(ASTTemplate):
         if filtered is None or filtered.empty:
             return
 
-        # Keep the *_order columns: generate_xyz ranks X/Y/Z by the
-        # stored display order when they are present, and falls back to
-        # the code text when they are not -- which is the pre-#209
-        # ordering, wrong for any table showing a code out of sequence.
-        projection = [
-            "row_code",
-            "column_code",
-            "sheet_code",
-            "variable_id",
-            "cell_id",
-        ]
-        projection += [
-            column
-            for column in ("row_order", "column_order", "sheet_order")
-            if column in filtered.columns
-        ]
-        xyz_data = generate_xyz(filtered[projection].copy())
+        xyz_data = generate_xyz(
+            filtered[
+                [
+                    "row_code",
+                    "column_code",
+                    "sheet_code",
+                    "variable_id",
+                    "cell_id",
+                ]
+            ].copy()
+        )
 
         unique_rows = filtered["row_code"].dropna().unique()
         unique_cols = filtered["column_code"].dropna().unique()

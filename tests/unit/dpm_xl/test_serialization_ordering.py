@@ -1,9 +1,9 @@
-"""The JSON serializer ranks x/y/z by stored display order.
+"""The JSON serializer ranks x/y/z by code text, not display order.
 
 The serializer computes cell coordinates on an independent path from
-``generate_xyz``; issue #209 requires both to follow the table's display
-order rather than the code text. A wildcard row selection over non-padded
-codes (``1`` .. ``11``) is the discriminating case: lexicographically ``10``
+``generate_xyz``; both keep the code-text ranking, ignoring the table's
+stored display order. A wildcard row selection over non-padded codes
+(``1`` .. ``11``) is the discriminating case: lexicographically ``10``
 and ``11`` sort right after ``1``.
 """
 
@@ -46,14 +46,14 @@ def _x_by_row(node: SimpleNamespace) -> dict[str, int]:
 
 
 class TestSerializerCoordinateOrdering:
-    def test_x_follows_display_order_for_wildcard_rows(self):
+    def test_x_ignores_display_order_for_wildcard_rows(self):
         x_by_row = _x_by_row(_varid(with_order=True))
+        # Lexicographic despite the display order 1..11.
         assert x_by_row["1"] == 1
-        assert x_by_row["2"] == 2
-        assert x_by_row["10"] == 10
-        assert x_by_row["11"] == 11
+        assert x_by_row["10"] == 2
+        assert x_by_row["2"] == 4
 
-    def test_without_order_falls_back_to_text_rank(self):
+    def test_without_order_ranks_by_text(self):
         x_by_row = _x_by_row(_varid(with_order=False))
         # Lexicographic: "1","10","11","2",... -> "10" ranks second.
         assert x_by_row["10"] == 2
