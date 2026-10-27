@@ -2620,6 +2620,12 @@ class _FakeUnsupportedDbAst(Exception):
     """
 
 
+class _FakeStaleDbReference(Exception):
+    """Stand-in for ``db_ast.StaleDbReference``, installed the same way
+    as :class:`_FakeUnsupportedDbAst`.
+    """
+
+
 class TestScriptFromDb:
     # Deliberately not a subclass of TestScript: that would make pytest
     # collect and re-run every TestScript test again under this class
@@ -2633,6 +2639,10 @@ class TestScriptFromDb:
         svc._scope_calc = MagicMock()
         svc._syntax = MagicMock()
         svc._release_ghost_fallbacks = MagicMock(return_value={})
+        svc._module_table_vids_cache = {}
+        svc._scope_calc._get_module_table_versions.return_value = [
+            SimpleNamespace(code="C_01.00", table_vid=10)
+        ]
 
         if mv is None:
             framework = SimpleNamespace(code="COREP")
@@ -2699,6 +2709,7 @@ class TestScriptFromDb:
         "serialising" it is a no-op.
         """
         mod = SimpleNamespace(
+            StaleDbReference=_FakeStaleDbReference,
             UnsupportedDbAst=_FakeUnsupportedDbAst,
             build_ast_from_db=build_ast_from_db,
             serialize_built_ast=lambda built: built,
@@ -2742,7 +2753,9 @@ class TestScriptFromDb:
         # The real OperationVID reaches the wire as version_id (dpm-xl
         # script-format spec §3.10), not the CRC32 fallback script() uses.
         assert op["version_id"] == 555
-        build.assert_called_once_with(svc.session, 555, release_row.release_id)
+        build.assert_called_once_with(
+            svc.session, 555, release_row.release_id, {"C_01.00": [10]}
+        )
         svc._semantic.validate.assert_not_called()
 
     def test_release_info_is_stamped_instead_of_release_row(self, monkeypatch):
@@ -2766,7 +2779,9 @@ class TestScriptFromDb:
         assert out["success"] is True, out["error"]
         ns = next(iter(out["enriched_ast"].values()))
         assert ns["dpm_release"] == release_info
-        build.assert_called_once_with(svc.session, 555, release_row.release_id)
+        build.assert_called_once_with(
+            svc.session, 555, release_row.release_id, {"C_01.00": [10]}
+        )
 
     def test_db_native_time_shift_reaches_dependency_detection(
         self, monkeypatch
@@ -2789,6 +2804,7 @@ class TestScriptFromDb:
         )
         build = MagicMock(return_value=(built_ast, 24))
         mod = SimpleNamespace(
+            StaleDbReference=_FakeStaleDbReference,
             UnsupportedDbAst=_FakeUnsupportedDbAst,
             build_ast_from_db=build,
             serialize_built_ast=lambda built: {
@@ -2831,6 +2847,7 @@ class TestScriptFromDb:
         )
         build = MagicMock(return_value=(built_ast, 24))
         mod = SimpleNamespace(
+            StaleDbReference=_FakeStaleDbReference,
             UnsupportedDbAst=_FakeUnsupportedDbAst,
             build_ast_from_db=build,
             serialize_built_ast=lambda built: {
@@ -3012,6 +3029,64 @@ class TestScriptFromDb:
         assert op["version_id"] == 555
         assert svc._semantic.validate.called
 
+    def test_stale_reference_fails_the_operation_without_reparse(
+        self, monkeypatch
+    ):
+        """dpmcore#445: a stored reference the module's tables no longer
+        hold must fail just that operation — re-parsing its text against
+        the re-laid-out table would emit a different rule.
+        """
+        reason = (
+            "Stored reference to variable 472895 at {K_60.00.a, r0210, "
+            "c0020} is stale: that cell is now variable 3530254."
+        )
+        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
+        build = MagicMock(
+            side_effect=[_FakeStaleDbReference(reason), (db_ast_dict, 24)]
+        )
+        self._stub_db_ast(monkeypatch, build)
+        svc, mv, release_row, _ = self._build_svc()
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1"), ("e2", "v2")],
+            operation_vids={"v1": 1, "v2": 2},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        assert out["failed_operations"] == {"v1": reason}
+        ns = next(iter(out["enriched_ast"].values()))
+        assert list(ns["operations"]) == ["v2"]
+        svc._semantic.validate.assert_not_called()
+
+    def test_module_table_vids_include_ghosts_and_are_memoised(self):
+        svc, _, _, _ = self._build_svc()
+        svc._release_ghost_fallbacks.return_value = {1: [7]}
+        svc._scope_calc._get_module_table_versions.return_value = [
+            SimpleNamespace(code="C_01.00", table_vid=10),
+            SimpleNamespace(code="C_01.00", table_vid=70),
+            SimpleNamespace(code="C_02.00", table_vid=11),
+            SimpleNamespace(code=None, table_vid=12),
+            SimpleNamespace(code="C_03.00", table_vid=None),
+        ]
+
+        first = svc._module_table_vids(svc.session, 1, 2)
+        second = svc._module_table_vids(svc.session, 1, 2)
+
+        assert first == {"C_01.00": [10, 70], "C_02.00": [11]}
+        assert second is first
+        svc._scope_calc._get_module_table_versions.assert_called_once_with(
+            1, [7]
+        )
+
+    def test_module_table_vids_requires_scope_calculator(self):
+        svc, _, _ = _bare_svc()
+        svc._scope_calc = None
+        svc._module_table_vids_cache = {}
+        with pytest.raises(errors.InternalError):
+            svc._module_table_vids(MagicMock(), 1, 2)
+
     def test_text_reparse_fallback_semantic_error_excludes_only_that_op(
         self, monkeypatch
     ):
@@ -3100,7 +3175,9 @@ class TestScriptFromDb:
         assert out["failed_operations"] == {"v1": "gate not supported"}
         # v1 is skipped before either AST path is even attempted; only
         # v2 (operation_vid=2) ever reaches build_ast_from_db.
-        build.assert_called_once_with(svc.session, 2, release_row.release_id)
+        build.assert_called_once_with(
+            svc.session, 2, release_row.release_id, {"C_01.00": [10]}
+        )
 
     def test_per_operation_scope_error_is_non_fatal(self, monkeypatch):
         """Unlike :meth:`script` (#122 — a scope error fails the whole

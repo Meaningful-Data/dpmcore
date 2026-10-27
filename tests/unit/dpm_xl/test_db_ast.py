@@ -14,16 +14,21 @@ from __future__ import annotations
 from datetime import date
 from typing import Dict, List, Optional
 
+import pandas as pd
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import dpmcore.orm  # noqa: F401 -- ensure all models are registered
+from dpmcore.dpm_xl.model_queries import ViewDatapointsQuery
+from dpmcore.dpm_xl.utils import db_ast
 from dpmcore.dpm_xl.utils.db_ast import (
+    StaleDbReference,
     UnsupportedDbAst,
     _infer_scalar,
     _normalize_date,
+    _table_cell_variables,
     build_ast_dict_from_db,
     build_ast_from_db,
     serialize_built_ast,
@@ -67,6 +72,37 @@ def session(engine):
     s.flush()
     yield s
     s.close()
+
+
+@pytest.fixture(autouse=True)
+def consistent_cells(monkeypatch):
+    """Resolve each table's cells from the seeded references themselves.
+
+    These tests seed no table versions, so the real
+    ``_table_cell_variables`` would find no cells and every VarID would
+    look stale (dpmcore#445). Answering with the seeded references
+    models a dictionary whose stored references are still current;
+    :class:`TestStaleReferences` overrides it with explicit cells.
+    """
+
+    def _from_references(session, table, release_id, table_vids=None):
+        rows = (
+            session.query(OperandReferenceLocation, OperandReference)
+            .join(
+                OperandReference,
+                OperandReference.operand_reference_id
+                == OperandReferenceLocation.operand_reference_id,
+            )
+            .filter(OperandReferenceLocation.table == table)
+            .all()
+        )
+        cells = {}
+        for loc, ref in rows:
+            key = (loc.row, loc.column, loc.sheet)
+            cells.setdefault(key, set()).add(ref.variable_id)
+        return cells
+
+    monkeypatch.setattr(db_ast, "_table_cell_variables", _from_references)
 
 
 # ------------------------------------------------------------------ #
@@ -793,6 +829,194 @@ class TestVarId:
 
         ast_dict, _ = _build(session)
         assert ast_dict["operand"]["default"] == ""
+
+
+class TestStaleReferences:
+    """dpmcore#445: an ``OperationVersion`` spanning a table re-layout
+    keeps references to the old cells; the builder must fail such an
+    operation (:class:`StaleDbReference`) instead of emitting a datapoint
+    the table no longer holds at those coordinates.
+    """
+
+    def _seed_cell(self, session, variable_id=700, sheet=None):
+        _add_variable(session, variable_id)
+        _add_node(session, 2, is_leaf=True, use_interval_arithmetics=False)
+        _add_ref(
+            session,
+            1,
+            node_id=2,
+            kind="variable",
+            x=0,
+            variable_id=variable_id,
+        )
+        _add_location(
+            session,
+            1,
+            table="K_60.00.a",
+            row="0210",
+            column="0020",
+            sheet=sheet,
+        )
+        _wrap_unary(session, 2)
+
+    def _cells(self, monkeypatch, cells):
+        calls = []
+
+        def _fake(session, table, release_id, table_vids=None):
+            calls.append((table, release_id, table_vids))
+            return cells
+
+        monkeypatch.setattr(db_ast, "_table_cell_variables", _fake)
+        return calls
+
+    def test_reference_to_current_variable_builds(self, session, monkeypatch):
+        self._seed_cell(session)
+        calls = self._cells(monkeypatch, {("0210", "0020", None): {700}})
+
+        ast_dict, _ = _build(session)
+
+        assert ast_dict["operand"]["data"][0]["datapoint"] == 700
+        assert calls == [("K_60.00.a", RELEASE_ID, None)]
+
+    def test_reference_to_moved_cell_raises_stale(self, session, monkeypatch):
+        self._seed_cell(session, variable_id=472895)
+        self._cells(monkeypatch, {("0210", "0020", None): {3530254}})
+
+        with pytest.raises(StaleDbReference) as exc:
+            _build(session)
+
+        assert str(exc.value) == (
+            "Stored reference to variable 472895 at {K_60.00.a, r0210, "
+            "c0020} is stale: that cell is now variable 3530254."
+        )
+
+    def test_reference_to_removed_cell_raises_stale(
+        self, session, monkeypatch
+    ):
+        self._seed_cell(session)
+        self._cells(monkeypatch, {("0220", "0020", None): {700}})
+
+        with pytest.raises(
+            StaleDbReference, match="that cell no longer has a variable"
+        ):
+            _build(session)
+
+    def test_sheet_dropped_from_table_raises_stale(self, session, monkeypatch):
+        self._seed_cell(session, sheet="0001")
+        self._cells(monkeypatch, {("0210", "0020", None): {700}})
+
+        with pytest.raises(
+            StaleDbReference, match=r"\{K_60.00.a, r0210, c0020, s0001\}"
+        ):
+            _build(session)
+
+    def test_stale_is_not_a_fallback_request(self):
+        assert not issubclass(StaleDbReference, UnsupportedDbAst)
+
+    def test_listed_tables_are_pinned_to_their_versions(
+        self, session, monkeypatch
+    ):
+        self._seed_cell(session)
+        calls = self._cells(monkeypatch, {("0210", "0020", None): {700}})
+
+        build_ast_dict_from_db(
+            session,
+            OPERATION_VID,
+            RELEASE_ID,
+            {"K_60.00.a": [6280], "F_01.01": [1]},
+        )
+
+        assert calls == [("K_60.00.a", RELEASE_ID, [6280])]
+
+    def test_cells_read_once_per_table(self, session, monkeypatch):
+        _add_variable(session, 700)
+        _add_variable(session, 701)
+        _add_node(session, 2, is_leaf=True, use_interval_arithmetics=False)
+        _add_ref(session, 1, node_id=2, x=0, kind="variable", variable_id=700)
+        _add_location(session, 1, table="F_01.01", row="0010")
+        _add_ref(session, 2, node_id=2, x=1, kind="variable", variable_id=701)
+        _add_location(session, 2, table="F_01.01", row="0020")
+        _wrap_unary(session, 2)
+        calls = self._cells(
+            monkeypatch,
+            {("0010", None, None): {700}, ("0020", None, None): {701}},
+        )
+
+        _build(session)
+
+        assert calls == [("F_01.01", RELEASE_ID, None)]
+
+    def test_reference_without_table_is_not_checked(
+        self, session, monkeypatch
+    ):
+        _add_variable(session, 700)
+        _add_node(session, 2, is_leaf=True, use_interval_arithmetics=False)
+        _add_ref(session, 1, node_id=2, x=0, kind="variable", variable_id=700)
+        _add_location(session, 1, table=None, row="0010")
+        _wrap_unary(session, 2)
+        calls = self._cells(monkeypatch, {})
+
+        ast_dict, _ = _build(session)
+
+        assert ast_dict["operand"]["data"][0]["datapoint"] == 700
+        assert calls == []
+
+
+class TestTableCellVariables:
+    # Two table versions of one code (a ghost and the version it stands
+    # in for) can each put a variable at the same coordinates.
+    FRAME = pd.DataFrame(
+        {
+            "row_code": ["0010", "0010", "0020", "0030"],
+            "column_code": ["0010", "0010", None, "0010"],
+            "sheet_code": [None, None, float("nan"), "0001"],
+            "variable_id": [700.0, 701.0, 702.0, float("nan")],
+        }
+    )
+    EXPECTED = {
+        ("0010", "0010", None): {700, 701},
+        ("0020", None, None): {702},
+    }
+
+    def test_release_scoped_cells(self, monkeypatch):
+        seen = []
+
+        def _get_table_data(session, table, release_id=None):
+            seen.append((table, release_id))
+            return self.FRAME
+
+        monkeypatch.setattr(
+            ViewDatapointsQuery, "get_table_data", _get_table_data
+        )
+
+        cells = _table_cell_variables(None, "F_01.01", 4)
+
+        assert cells == self.EXPECTED
+        assert seen == [("F_01.01", 4)]
+
+    def test_pinned_table_versions(self, monkeypatch):
+        seen = []
+
+        def _get_table_version_cells(session, table, table_vids):
+            seen.append((table, table_vids))
+            return self.FRAME
+
+        def _get_table_data(*args, **kwargs):
+            raise AssertionError("pinned tables must not resolve by release")
+
+        monkeypatch.setattr(
+            ViewDatapointsQuery,
+            "get_table_version_cells",
+            _get_table_version_cells,
+        )
+        monkeypatch.setattr(
+            ViewDatapointsQuery, "get_table_data", _get_table_data
+        )
+
+        cells = _table_cell_variables(None, "F_01.01", 4, [10, 70])
+
+        assert cells == self.EXPECTED
+        assert seen == [("F_01.01", [10, 70])]
 
 
 # ------------------------------------------------------------------ #
