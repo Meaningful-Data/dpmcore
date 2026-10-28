@@ -440,6 +440,7 @@ class TestCalculationsForModule:
             "dpm_release",
             "dates",
             "calculations",
+            "parameters",
             "output_variables",
             "output_tables",
             "modules",
@@ -1003,6 +1004,68 @@ class TestDraftModuleVersion:
             "c_0001",
             "c_0002",
         ]
+
+
+class TestParameters:
+    """The Parameters the calculations read, declared by code."""
+
+    def test_no_parameter_read_declares_none(self, calc_session):
+        ns = _namespace(
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+        )
+
+        assert ns["parameters"] == {}
+
+    def test_each_parameter_read_is_declared_by_code(self, calc_session):
+        _set_expression(
+            calc_session,
+            101,
+            f"{{t{HOME_TABLE}, r0030, c{COLUMN}}} <- "
+            f"{{t{HOME_TABLE}, r0020, c{COLUMN}}} * {{p_FACTOR, number}}",
+        )
+        _set_expression(
+            calc_session,
+            100,
+            f"{{t{HOME_TABLE}, r0020, c{COLUMN}}} <- "
+            f"if {{p_ON, boolean, default: true}} "
+            f"then {{t{DEP_TABLE}, r0010, c{COLUMN}}} + {{p_FACTOR, number}} "
+            f"else 0 endif",
+        )
+
+        ns = _namespace(
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
+        )
+
+        assert list(ns["parameters"].items()) == [
+            ("FACTOR", "Number"),
+            ("ON", "Boolean"),
+        ]
+
+    def test_a_parameter_read_with_two_types_is_reported(self, calc_session):
+        _set_expression(
+            calc_session,
+            101,
+            f"{{t{HOME_TABLE}, r0030, c{COLUMN}}} <- "
+            f"{{t{HOME_TABLE}, r0020, c{COLUMN}}} * {{p_FACTOR, number}}",
+        )
+        _set_expression(
+            calc_session,
+            100,
+            f"{{t{HOME_TABLE}, r0020, c{COLUMN}}} <- "
+            f"{{t{DEP_TABLE}, r0010, c{COLUMN}}} + {{p_FACTOR, integer}}",
+        )
+
+        with pytest.raises(
+            SemanticError,
+            match="Parameter FACTOR is declared with conflicting types",
+        ):
+            ASTGeneratorService(calc_session).calculations_for_module(
+                HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+            )
 
 
 class TestFailureModes:
