@@ -214,6 +214,35 @@ class TestGenerateScriptSuccess:
         assert kwargs["preconditions"] is None
         assert kwargs["severities"] is None
         assert kwargs["from_submission_dates"] is None
+        assert kwargs["owner"] is None
+
+    def test_owner_passed_to_service(self, runner, expressions_file, tmp_path):
+        out = tmp_path / "script.json"
+        with patch(
+            "dpmcore.services.ast_generator.ASTGeneratorService"
+        ) as Svc:
+            Svc.return_value.script.return_value = _success_result()
+            result = runner.invoke(
+                main,
+                [
+                    "generate-script",
+                    "--expressions",
+                    str(expressions_file),
+                    "--database",
+                    "sqlite:///:memory:",
+                    "--output",
+                    str(out),
+                    "--module-code",
+                    "FINREP_Con",
+                    "--module-version",
+                    "2.0.1",
+                    "--owner",
+                    "ECB",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert Svc.return_value.script.call_args.kwargs["owner"] == "ECB"
 
     def test_propagates_preconditions(
         self, runner, expressions_with_preconditions_file, tmp_path

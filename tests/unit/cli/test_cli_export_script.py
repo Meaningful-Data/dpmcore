@@ -140,6 +140,34 @@ class TestExportScriptSuccess:
         assert kwargs["module_version"] == "2.0.1"
         assert kwargs["release"] is None
         assert kwargs["publication_date"] is None
+        assert kwargs["owner"] is None
+
+    def test_owner_passed_to_service(self, runner, tmp_path):
+        out = tmp_path / "script.json"
+        with patch(
+            "dpmcore.services.ast_generator.ASTGeneratorService"
+        ) as Svc:
+            Svc.return_value.script_for_module.return_value = _success_result()
+            result = runner.invoke(
+                main,
+                [
+                    "export-script",
+                    "--module-code",
+                    "FINREP_Con",
+                    "--module-version",
+                    "2.0.1",
+                    "--owner",
+                    "ECB",
+                    "--database",
+                    "sqlite:///:memory:",
+                    "--output",
+                    str(out),
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        kwargs = Svc.return_value.script_for_module.call_args.kwargs
+        assert kwargs["owner"] == "ECB"
 
     def test_dpm_publication_date_passed_to_service(self, runner, tmp_path):
         out = tmp_path / "script.json"

@@ -2442,6 +2442,26 @@ class TestScript:
         assert "C_01.00" in doc["tables"]
         assert doc["variables"] == {"100": "m"}
 
+    def test_owner_overrides_the_module_owner(self, monkeypatch):
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+        out = svc.script(
+            expressions=[("e1", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+            owner="ECB",
+        )
+        assert out["success"] is True
+        assert out["enriched_ast"]["owner"] == "ECB"
+        assert out["enriched_ast"]["module_owner"] == "EBA"
+
     def test_tables_block_includes_unreferenced_module_tables(
         self, monkeypatch
     ):
@@ -2750,6 +2770,44 @@ class TestScriptFromDb:
         assert op["version_id"] == 555
         build.assert_called_once_with(svc.session, 555, release_row.release_id)
         svc._semantic.validate.assert_not_called()
+
+    def test_owner_defaults_to_the_module_owner(self, monkeypatch):
+        """The caller picks the validations; without ``owner`` the
+        document is the module owner's.
+        """
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
+        self._stub_db_ast(
+            monkeypatch, MagicMock(return_value=(db_ast_dict, 24))
+        )
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 1},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        assert out["enriched_ast"]["owner"] == "EBA"
+        assert out["enriched_ast"]["module_owner"] == "EBA"
+
+    def test_explicit_owner_is_written(self, monkeypatch):
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
+        self._stub_db_ast(
+            monkeypatch, MagicMock(return_value=(db_ast_dict, 24))
+        )
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 1},
+            mv=mv,
+            release_row=release_row,
+            owner="ECB",
+        )
+
+        assert out["success"] is True, out["error"]
+        assert out["enriched_ast"]["owner"] == "ECB"
 
     def test_release_info_is_stamped_instead_of_release_row(self, monkeypatch):
         """A caller-supplied ``release_info`` names ``dpm_release``;
@@ -3232,6 +3290,120 @@ class TestScriptForModuleReleaseResolution:
         assert out["success"] is False
         assert "No Release rows" in out["error"]
         svc.script_from_db.assert_not_called()
+
+
+def _discovered_two_owners():
+    """Three validations: ``v1`` of the EBA, ``v2`` of the ECB and ``v3``
+    with no owner; one precondition gating ``v1`` and ``v2``.
+    """
+    return _load_ast_generator()._DiscoveredValidations(
+        expressions=[("e1", "v1"), ("e2", "v2"), ("e3", "v3")],
+        operation_vids={"v1": 1, "v2": 2, "v3": 3},
+        preconditions=[
+            {
+                "expression": "{v_F_01.01}",
+                "affected_operations": ["v1", "v2"],
+                "code": "p1",
+                "version_id": 90,
+            }
+        ],
+        severities={"v1": "error", "v2": "warning", "v3": "error"},
+        from_submission_dates={"v1": "2026-03-31", "v2": "2026-06-30"},
+    )
+
+
+class TestScriptForModuleOwner:
+    """Script Format 2.0: a document holds the validations of one
+    owner (``Operation.OwnerID``, or the module's owner for a
+    validation with none).
+    """
+
+    def _build_svc(self, vid_owners=None):
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        mv = SimpleNamespace(module_vid=10, module_id=7)
+        release_row = SimpleNamespace(release_id=5)
+        svc._resolve_release = MagicMock(return_value=(mv, release_row))
+        svc._discover_module_validations = MagicMock(
+            return_value=_discovered_two_owners()
+        )
+        svc._database_release_info = MagicMock(
+            return_value={"release": "4.4", "publication_date": "2026-12-30"}
+        )
+        svc._module_owner = MagicMock(return_value="EBA")
+        svc._operation_owners = MagicMock(
+            return_value=(
+                {1: "EBA", 2: "ECB", 3: None}
+                if vid_owners is None
+                else vid_owners
+            )
+        )
+        svc.script_from_db = MagicMock(return_value={"success": True})
+        return svc
+
+    def test_defaults_to_the_module_owners_validations(self):
+        svc = self._build_svc()
+
+        svc.script_for_module("MOD", "1.0.0")
+
+        kwargs = svc.script_from_db.call_args.kwargs
+        assert kwargs["owner"] == "EBA"
+        # v3 has no owner: it belongs to the module's owner.
+        assert kwargs["expressions"] == [("e1", "v1"), ("e3", "v3")]
+        assert kwargs["operation_vids"] == {"v1": 1, "v3": 3}
+        assert kwargs["severities"] == {"v1": "error", "v3": "error"}
+        assert kwargs["from_submission_dates"] == {"v1": "2026-03-31"}
+
+    def test_scripts_the_given_owners_validations(self):
+        svc = self._build_svc()
+
+        svc.script_for_module("MOD", "1.0.0", owner="ECB")
+
+        kwargs = svc.script_from_db.call_args.kwargs
+        assert kwargs["owner"] == "ECB"
+        assert kwargs["expressions"] == [("e2", "v2")]
+        assert kwargs["operation_vids"] == {"v2": 2}
+        assert kwargs["severities"] == {"v2": "warning"}
+        assert kwargs["from_submission_dates"] == {"v2": "2026-06-30"}
+
+    def test_preconditions_keep_only_the_owners_validations(self):
+        svc = self._build_svc()
+
+        svc.script_for_module("MOD", "1.0.0", owner="ECB")
+
+        assert svc.script_from_db.call_args.kwargs["preconditions"] == [
+            {
+                "expression": "{v_F_01.01}",
+                "affected_operations": ["v2"],
+                "code": "p1",
+                "version_id": 90,
+            }
+        ]
+
+    def test_precondition_gating_none_of_the_owners_is_dropped(self):
+        svc = self._build_svc(vid_owners={1: "ECB", 2: "ECB", 3: None})
+
+        svc.script_for_module("MOD", "1.0.0")
+
+        assert svc.script_from_db.call_args.kwargs["preconditions"] is None
+
+    def test_owners_looked_up_by_operation_version(self):
+        svc = self._build_svc()
+
+        svc.script_for_module("MOD", "1.0.0")
+
+        svc._operation_owners.assert_called_once_with([1, 2, 3])
+        svc._module_owner.assert_called_once_with(7)
+
+    def test_owner_without_validations_gets_an_empty_script(self):
+        svc = self._build_svc()
+
+        svc.script_for_module("MOD", "1.0.0", owner="SRB")
+
+        kwargs = svc.script_from_db.call_args.kwargs
+        assert kwargs["owner"] == "SRB"
+        assert kwargs["expressions"] == []
+        assert kwargs["operation_vids"] == {}
 
 
 # ------------------------------------------------------------------ #
