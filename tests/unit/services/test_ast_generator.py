@@ -1971,6 +1971,7 @@ class TestScript:
             framework = SimpleNamespace(code="COREP")
             module = SimpleNamespace(framework=framework)
             mv = SimpleNamespace(
+                module_id=7,
                 module_vid=1,
                 start_release_id=1,
                 end_release_id=None,
@@ -1987,6 +1988,7 @@ class TestScript:
 
         svc._resolve_release = lambda mc, mv_, rel: (mv, release_row)
         svc._resolve_root_operator_id = staticmethod(lambda ast, session: 24)
+        svc._module_owner = MagicMock(return_value="EBA")
 
         svc._scope_calc._get_module_tables.return_value = {
             "C_01.00": {
@@ -2083,10 +2085,10 @@ class TestScript:
             module_version="1.0",
         )
         assert out["success"] is True
-        ns = next(iter(out["enriched_ast"].values()))
-        assert "v1" not in ns["operations"]
-        assert "v2" in ns["operations"]
-        assert "v3" in ns["operations"]
+        doc = out["enriched_ast"]
+        assert "v1" not in doc["operations"]
+        assert "v2" in doc["operations"]
+        assert "v3" in doc["operations"]
         assert out["failed_operations"] == {
             "v1": "Grey cells {F_32.03.a, r0040, c0010} were found."
         }
@@ -2134,13 +2136,13 @@ class TestScript:
 
         assert out["success"] is True, out["error"]
         assert out["failed_operations"] == {}
-        ns = next(iter(out["enriched_ast"].values()))
-        assert {"v1", "v2"} <= set(ns["operations"])
-        [gate] = ns["preconditions"].values()
+        doc = out["enriched_ast"]
+        assert {"v1", "v2"} <= set(doc["operations"])
+        [gate] = doc["preconditions"].values()
         assert gate["ast"]["class_name"] == "ParameterRef"
         assert gate["ast"]["code"] == "flag"
         assert gate["affected_operations"] == ["v1"]
-        assert ns["parameters"] == {"flag": "Boolean"}
+        assert doc["parameters"] == {"flag": "Boolean"}
 
     def test_cell_reference_gate_skips_op_preserves_others(
         self, monkeypatch, real_syntax
@@ -2169,10 +2171,10 @@ class TestScript:
         )
 
         assert out["success"] is True
-        ns = next(iter(out["enriched_ast"].values()))
-        assert "v1" not in ns["operations"]
-        assert "v2" in ns["operations"]
-        assert ns["preconditions"] == {}
+        doc = out["enriched_ast"]
+        assert "v1" not in doc["operations"]
+        assert "v2" in doc["operations"]
+        assert doc["preconditions"] == {}
         assert list(out["failed_operations"]) == ["v1"]
         assert "references a cell" in out["failed_operations"]["v1"]
 
@@ -2207,10 +2209,10 @@ class TestScript:
             module_version="1.0",
         )
         assert out["success"] is True
-        ns = next(iter(out["enriched_ast"].values()))
+        doc = out["enriched_ast"]
         # Skipped before any accumulation: no operation entry either.
-        assert "v1" not in ns["operations"]
-        assert {"v2", "v3"} <= set(ns["operations"])
+        assert "v1" not in doc["operations"]
+        assert {"v2", "v3"} <= set(doc["operations"])
         assert list(out["failed_operations"]) == ["v1"]
         assert "integer literal" in out["failed_operations"]["v1"]
 
@@ -2270,12 +2272,14 @@ class TestScript:
         )
         assert out["success"] is True
         assert "v0937_m" in out["failed_operations"]
-        ns = next(iter(out["enriched_ast"].values()))
+        doc = out["enriched_ast"]
         # p_255 gated the rejected operation alone: entry and the
         # variable it alone declared both go.
-        assert list(ns["preconditions"]) == ["p_9"]
-        assert ns["preconditions"]["p_9"]["affected_operations"] == ["v1000_m"]
-        assert ns["precondition_variables"] == {"220": "b"}
+        assert list(doc["preconditions"]) == ["p_9"]
+        assert doc["preconditions"]["p_9"]["affected_operations"] == [
+            "v1000_m"
+        ]
+        assert doc["precondition_variables"] == {"220": "b"}
 
     def test_scope_error_fails_generation(self, monkeypatch):
         """Regression for #122: a scope-calculation error must fail the
@@ -2388,12 +2392,12 @@ class TestScript:
             from_submission_dates={"v2": date(2026, 6, 30)},
         )
         assert out["success"] is True
-        ops = out["enriched_ast"]["http://example/mod"]["operations"]
+        ops = out["enriched_ast"]["operations"]
         # v1 keeps the module version's from_reference_date.
         assert ops["v1"]["from_submission_date"] == "2026-03-31"
         assert ops["v2"]["from_submission_date"] == "2026-06-30"
 
-    def test_happy_path_returns_namespaced_shape(self, monkeypatch):
+    def test_happy_path_returns_flat_document(self, monkeypatch):
         self._stub_serialize_ast(
             monkeypatch,
             {
@@ -2415,28 +2419,28 @@ class TestScript:
             severities={"v2": "info"},
         )
         assert out["success"] is True
-        ns_block = out["enriched_ast"]["http://example/mod"]
-        assert ns_block["module_code"] == "MOD"
-        assert ns_block["module_version"] == "1.0"
-        assert ns_block["framework_code"] == "COREP"
-        assert ns_block["dpm_release"] == {
+        doc = out["enriched_ast"]
+        assert doc["module_code"] == "MOD"
+        assert doc["module_version"] == "1.0"
+        assert doc["framework_code"] == "COREP"
+        assert doc["dpm_release"] == {
             "release": "4.2",
             "publication_date": "2025-04-28",
         }
-        assert ns_block["dates"] == {
+        assert doc["dates"] == {
             "from": "2026-03-31",
             "to": None,
         }
-        assert "v1" in ns_block["operations"]
-        assert ns_block["operations"]["v1"]["severity"] == "error"
-        assert ns_block["operations"]["v2"]["severity"] == "info"
-        assert ns_block["operations"]["v1"]["root_operator_id"] == 24
+        assert "v1" in doc["operations"]
+        assert doc["operations"]["v1"]["severity"] == "error"
+        assert doc["operations"]["v2"]["severity"] == "info"
+        assert doc["operations"]["v1"]["root_operator_id"] == 24
         # AST stripped
-        ast_data = ns_block["operations"]["v1"]["ast"]["data"][0]
+        ast_data = doc["operations"]["v1"]["ast"]["data"][0]
         assert "data_type" not in ast_data
         # tables/variables seeded from the module composition
-        assert "C_01.00" in ns_block["tables"]
-        assert ns_block["variables"] == {"100": "m"}
+        assert "C_01.00" in doc["tables"]
+        assert doc["variables"] == {"100": "m"}
 
     def test_tables_block_includes_unreferenced_module_tables(
         self, monkeypatch
@@ -2464,11 +2468,11 @@ class TestScript:
             module_version="1.0",
         )
         assert out["success"] is True
-        ns = next(iter(out["enriched_ast"].values()))
+        doc = out["enriched_ast"]
         # Referenced (C_01.00) AND unreferenced-with-variables (C_99.00)
         # are present; the empty-variable (abstract) table is dropped.
-        assert set(ns["tables"]) == {"C_01.00", "C_99.00"}
-        assert ns["variables"] == {"100": "m", "900": "m"}
+        assert set(doc["tables"]) == {"C_01.00", "C_99.00"}
+        assert doc["variables"] == {"100": "m", "900": "m"}
 
     def test_default_severity_is_warning(self, monkeypatch):
         self._stub_serialize_ast(
@@ -2486,8 +2490,8 @@ class TestScript:
             module_version="1.0",
         )
         assert out["success"] is True
-        ns = next(iter(out["enriched_ast"].values()))
-        assert ns["operations"]["v1"]["severity"] == "warning"
+        doc = out["enriched_ast"]
+        assert doc["operations"]["v1"]["severity"] == "warning"
 
     def test_namespace_falls_back_when_uri_missing(self, monkeypatch):
         self._stub_serialize_ast(
@@ -2545,14 +2549,14 @@ class TestScript:
             module_version="1.0",
         )
         assert out["success"] is True
-        ns = next(iter(out["enriched_ast"].values()))
+        doc = out["enriched_ast"]
         # The trimmed registry is a flat ``code -> declared_type`` map (no
         # nested is_set/default object), deduplicated across both expressions
         # to a single entry. Value correctness is covered by the real-module
         # tests on ``_accumulate_parameters``.
-        assert list(ns["parameters"]) == ["threshold"]
-        assert ns["parameters"]["threshold"] == "Number"
-        assert not isinstance(ns["parameters"]["threshold"], dict)
+        assert list(doc["parameters"]) == ["threshold"]
+        assert doc["parameters"]["threshold"] == "Number"
+        assert not isinstance(doc["parameters"]["threshold"], dict)
 
     def test_parameters_block_empty_when_none_referenced(self, monkeypatch):
         self._stub_serialize_ast(
@@ -2569,8 +2573,8 @@ class TestScript:
             module_code="MOD",
             module_version="1.0",
         )
-        ns = next(iter(out["enriched_ast"].values()))
-        assert ns["parameters"] == {}
+        doc = out["enriched_ast"]
+        assert doc["parameters"] == {}
 
     def test_script_validates_without_scope_opt_out(self, monkeypatch):
         # Regression: script() must validate each expression through the plain
@@ -2638,6 +2642,7 @@ class TestScriptFromDb:
             framework = SimpleNamespace(code="COREP")
             module = SimpleNamespace(framework=framework)
             mv = SimpleNamespace(
+                module_id=7,
                 module_vid=1,
                 start_release_id=1,
                 end_release_id=None,
@@ -2654,6 +2659,7 @@ class TestScriptFromDb:
 
         svc._resolve_release = lambda mc, mv_, rel: (mv, release_row)
         svc._resolve_root_operator_id = staticmethod(lambda ast, session: 24)
+        svc._module_owner = MagicMock(return_value="EBA")
 
         svc._scope_calc._get_module_tables.return_value = {
             "C_01.00": {
@@ -2736,8 +2742,8 @@ class TestScriptFromDb:
         )
 
         assert out["success"] is True, out["error"]
-        ns = next(iter(out["enriched_ast"].values()))
-        op = ns["operations"]["v1"]
+        doc = out["enriched_ast"]
+        op = doc["operations"]["v1"]
         assert op["ast"] == db_ast_dict
         # The real OperationVID reaches the wire as version_id (dpm-xl
         # script-format spec §3.10), not the CRC32 fallback script() uses.
@@ -2764,8 +2770,8 @@ class TestScriptFromDb:
         )
 
         assert out["success"] is True, out["error"]
-        ns = next(iter(out["enriched_ast"].values()))
-        assert ns["dpm_release"] == release_info
+        doc = out["enriched_ast"]
+        assert doc["dpm_release"] == release_info
         build.assert_called_once_with(svc.session, 555, release_row.release_id)
 
     def test_db_native_time_shift_reaches_dependency_detection(
@@ -2890,8 +2896,8 @@ class TestScriptFromDb:
         )
 
         assert out["success"] is True, out["error"]
-        ns = next(iter(out["enriched_ast"].values()))
-        assert ns["parameters"] == {"p_x": "Number"}
+        doc = out["enriched_ast"]
+        assert doc["parameters"] == {"p_x": "Number"}
         svc._semantic.validate.assert_not_called()
 
     def test_db_native_scope_used_and_reparse_skipped(self, monkeypatch):
@@ -2923,8 +2929,8 @@ class TestScriptFromDb:
             555, mv.module_vid, release_row.release_id
         )
         svc._scope_calc.calculate_from_expression.assert_not_called()
-        ns = next(iter(out["enriched_ast"].values()))
-        assert "v1" in ns["operations"]
+        doc = out["enriched_ast"]
+        assert "v1" in doc["operations"]
 
     def test_db_native_scope_falls_back_when_unsupported(self, monkeypatch):
         """``UnsupportedDbScope`` falls back to
@@ -2949,8 +2955,8 @@ class TestScriptFromDb:
             555, mv.module_vid, release_row.release_id
         )
         svc._scope_calc.calculate_from_expression.assert_called_once()
-        ns = next(iter(out["enriched_ast"].values()))
-        assert "v1" in ns["operations"]
+        doc = out["enriched_ast"]
+        assert "v1" in doc["operations"]
 
     def test_db_native_scope_error_excludes_only_that_operation(
         self, monkeypatch
@@ -3003,8 +3009,8 @@ class TestScriptFromDb:
         )
 
         assert out["success"] is True, out["error"]
-        ns = next(iter(out["enriched_ast"].values()))
-        op = ns["operations"]["v1"]
+        doc = out["enriched_ast"]
+        op = doc["operations"]["v1"]
         # Falls back to the text-reparsed AST...
         assert op["ast"]["class_name"] == "VarID"
         # ...but version_id still uses the already-known real
@@ -3040,8 +3046,8 @@ class TestScriptFromDb:
 
         assert out["success"] is True, out["error"]
         assert out["failed_operations"] == {"v1": "bad expr"}
-        ns = next(iter(out["enriched_ast"].values()))
-        assert "v1" not in ns["operations"]
+        doc = out["enriched_ast"]
+        assert "v1" not in doc["operations"]
 
     def test_no_operation_vid_skips_db_and_uses_crc32(self, monkeypatch):
         """A code with no entry in ``operation_vids`` never even attempts
@@ -3069,8 +3075,8 @@ class TestScriptFromDb:
 
         assert out["success"] is True, out["error"]
         build.assert_not_called()
-        ns = next(iter(out["enriched_ast"].values()))
-        op = ns["operations"]["v1"]
+        doc = out["enriched_ast"]
+        op = doc["operations"]["v1"]
         assert op["version_id"] == zlib.crc32(b"e1") % 10000
 
     def test_gate_failure_skips_before_any_ast_attempt(self, monkeypatch):
@@ -3132,9 +3138,9 @@ class TestScriptFromDb:
         assert out["success"] is True, out["error"]
         assert "v1" in out["failed_operations"]
         assert "boom" in out["failed_operations"]["v1"]
-        ns = next(iter(out["enriched_ast"].values()))
-        assert "v1" not in ns["operations"]
-        assert "v2" in ns["operations"]
+        doc = out["enriched_ast"]
+        assert "v1" not in doc["operations"]
+        assert "v2" in doc["operations"]
 
 
 # ------------------------------------------------------------------ #
@@ -3155,15 +3161,19 @@ class TestScriptForModuleReleaseResolution:
     def _build_svc(self):
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
-        mv = SimpleNamespace(module_vid=10)
+        mv = SimpleNamespace(module_vid=10, module_id=7)
         release_row = SimpleNamespace(release_id=5)
         svc._resolve_release = MagicMock(return_value=(mv, release_row))
         svc._discover_module_validations = MagicMock(
-            return_value=([], {}, [], {}, {})
+            return_value=_load_ast_generator()._DiscoveredValidations(
+                [], {}, [], {}, {}
+            )
         )
         svc._database_release_info = MagicMock(
             return_value={"release": "4.4", "publication_date": "2026-12-30"}
         )
+        svc._module_owner = MagicMock(return_value="EBA")
+        svc._operation_owners = MagicMock(return_value={})
         svc.script_from_db = MagicMock(return_value={"success": True})
         return svc, mv, release_row
 

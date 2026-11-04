@@ -15,58 +15,58 @@ def runner():
     return CliRunner()
 
 
-_NS_URI = "http://example.org/mod"
-
-
 def _success_result():
     return {
         "success": True,
         "enriched_ast": {
-            _NS_URI: {
-                "module_code": "FINREP_Con",
-                "module_version": "2.0.1",
-                "framework_code": "FINREP",
-                "dpm_release": {
-                    "release": "4.2",
-                    "publication_date": "2025-04-28",
+            "owner": "EBA",
+            "module_code": "FINREP_Con",
+            "module_version": "2.0.1",
+            "module_owner": "EBA",
+            "module_uri": "http://example.org/mod",
+            "framework_code": "FINREP",
+            "format_version": "2.0",
+            "dpm_release": {
+                "release": "4.2",
+                "publication_date": "2025-04-28",
+            },
+            "dates": {"from": "2026-03-31", "to": None},
+            "operations": {
+                "v0001": {
+                    "version_id": 1234,
+                    "code": "v0001",
+                    "expression": "expr",
+                    "root_operator_id": 24,
+                    "ast": {"class_name": "BinOp"},
+                    "from_submission_date": "2026-03-31",
+                    "severity": "error",
                 },
-                "dates": {"from": "2026-03-31", "to": None},
-                "operations": {
-                    "v0001": {
-                        "version_id": 1234,
-                        "code": "v0001",
-                        "expression": "expr",
-                        "root_operator_id": 24,
-                        "ast": {"class_name": "BinOp"},
-                        "from_submission_date": "2026-03-31",
-                        "severity": "error",
-                    },
-                    "v0002": {
-                        "version_id": 1235,
-                        "code": "v0002",
-                        "expression": "expr2",
-                        "root_operator_id": 24,
-                        "ast": {"class_name": "BinOp"},
-                        "from_submission_date": "2026-03-31",
-                        "severity": "warning",
-                    },
+                "v0002": {
+                    "version_id": 1235,
+                    "code": "v0002",
+                    "expression": "expr2",
+                    "root_operator_id": 24,
+                    "ast": {"class_name": "BinOp"},
+                    "from_submission_date": "2026-03-31",
+                    "severity": "warning",
                 },
-                "variables": {},
-                "tables": {},
-                "preconditions": {},
-                "precondition_variables": {},
-                "dependency_information": {
-                    "intra_instance_validations": ["v0001", "v0002"],
-                    "cross_instance_dependencies": [],
-                    "alternative_dependencies": [],
+            },
+            "preconditions": {},
+            "parameters": {},
+            "variables": {},
+            "tables": {},
+            "precondition_variables": {},
+            "dependency_information": {
+                "intra_instance_validations": ["v0001", "v0002"],
+                "cross_instance_dependencies": [],
+                "alternative_dependencies": [],
+            },
+            "dependency_modules": {
+                "http://example.org/m1": {
+                    "tables": {},
+                    "variables": {},
                 },
-                "dependency_modules": {
-                    "http://example.org/m1": {
-                        "tables": {},
-                        "variables": {},
-                    },
-                },
-            }
+            },
         },
         "error": None,
         "failed_operations": {},
@@ -98,12 +98,10 @@ class TestExportScriptSuccess:
         assert result.exit_code == 0, result.output
         assert out.exists()
         payload = json.loads(out.read_text())
-        # The file holds only ``enriched_ast``'s content (the
-        # ``{namespace: ...}`` shape), not the ``success``/``error``/
+        # The file holds only ``enriched_ast``'s content (the Script
+        # Format 2.0 document), not the ``success``/``error``/
         # ``failed_operations`` wrapper ``script_for_module`` returns.
-        assert set(payload) == {_NS_URI}
-        ns = payload[_NS_URI]
-        assert "dependency_modules" in ns
+        assert payload == _success_result()["enriched_ast"]
         # Rich wraps long lines according to console width, and the tmp_path
         # in the printed line varies in length across runs/machines, so the
         # wrap point can land inside these phrases; normalize whitespace
@@ -279,7 +277,7 @@ class TestExportScriptSkippedReporting:
         )
         assert result.exit_code == 0, result.output
         payload = json.loads(out.read_text())
-        assert set(payload) == {_NS_URI}
+        assert payload == _success_result()["enriched_ast"]
 
     def test_zero_skipped_still_reported(self, runner, tmp_path):
         result, output = self._run(runner, tmp_path / "script.json", {})

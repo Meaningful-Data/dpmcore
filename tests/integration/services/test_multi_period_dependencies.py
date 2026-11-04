@@ -61,7 +61,7 @@ def _script(session, expressions):
         module_version=_MODULE_VERSION,
     )
     assert result["success"], result["error"]
-    module = next(iter(result["enriched_ast"].values()))
+    module = result["enriched_ast"]
     return result, module
 
 

@@ -59,8 +59,8 @@ def _script(session, code: str) -> tuple[str, dict]:
     )
     assert result["success"], result["error"]
     assert not result["failed_operations"], result["failed_operations"]
-    namespace = next(iter(result["enriched_ast"]))
-    return namespace, result["enriched_ast"][namespace]
+    document = result["enriched_ast"]
+    return document["module_uri"], document
 
 
 @pytest.mark.parametrize("code", [_INLINE_CODE, _WITH_CLAUSE_CODE])
