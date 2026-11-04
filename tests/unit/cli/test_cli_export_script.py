@@ -291,6 +291,7 @@ class TestExportScriptSkippedReporting:
         assert result.exit_code == 0, result.output
         assert "2 validations discovered" in output
         assert "2 skipped" in output
+        assert "2 validations skipped:" in output
         assert "v0937_m: 3-6: Invalid default type" in output
         assert "v5372_m" in output
 

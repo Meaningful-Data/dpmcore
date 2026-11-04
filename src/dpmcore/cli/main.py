@@ -963,9 +963,9 @@ def _print_sweep_summary(
     )
     if total_skipped:
         console.print(
-            f"[yellow]{total_skipped} validations skipped[/yellow] for "
-            "semantic errors — see the per-target detail printed above "
-            "for the reason per validation."
+            f"[yellow]{total_skipped} validations skipped[/yellow] — see "
+            "the per-target detail printed above for the reason per "
+            "validation."
         )
 
 
@@ -989,10 +989,7 @@ def _report_skipped_operations(
     failed_ops: dict[str, str] = result.get("failed_operations") or {}
     if not failed_ops:
         return
-    console.print(
-        f"[yellow]{len(failed_ops)} validations skipped[/yellow] "
-        "for semantic errors:"
-    )
+    console.print(f"[yellow]{len(failed_ops)} validations skipped[/yellow]:")
     for code, reason in list(failed_ops.items())[:limit]:
         console.print(f"  [yellow]{escape(code)}[/yellow]: {escape(reason)}")
     if len(failed_ops) > limit:

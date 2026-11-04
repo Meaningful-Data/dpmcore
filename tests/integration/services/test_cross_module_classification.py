@@ -140,10 +140,10 @@ def test_shared_table_yields_only_the_intra_scope(fixture_session):
 
 
 def _operand_datapoints(node) -> set[str]:
-    """Every ``VarID`` datapoint id in a serialised operation AST."""
+    """Every ``FactVarID`` datapoint id in a serialised operation AST."""
     found: set[str] = set()
     if isinstance(node, dict):
-        if node.get("class_name") == "VarID":
+        if node.get("class_name") == "FactVarID":
             for entry in node.get("data") or []:
                 if isinstance(entry, dict) and entry.get("datapoint"):
                     found.add(str(entry["datapoint"]))
@@ -221,10 +221,10 @@ def test_dependency_declares_only_referenced_subset(fixture_session):
 
 
 def _referenced_tables(node) -> set[str]:
-    """Every ``VarID`` table code in a serialised operation AST."""
+    """Every ``FactVarID`` table code in a serialised operation AST."""
     found: set[str] = set()
     if isinstance(node, dict):
-        if node.get("class_name") == "VarID" and node.get("table"):
+        if node.get("class_name") == "FactVarID" and node.get("table"):
             found.add(node["table"])
         for value in node.values():
             if isinstance(value, (dict, list)):
