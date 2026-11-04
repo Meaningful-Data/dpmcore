@@ -303,7 +303,7 @@ class TestCleanAstDataEntries:
     def test_strips_engine_internal_fields(self):
         _, Cls, _ = _bare_svc()
         ast = {
-            "class_name": "VarID",
+            "class_name": "FactVarID",
             "table": "C_01.00",
             "data": [
                 {
@@ -334,11 +334,11 @@ class TestCleanAstDataEntries:
             "class_name": "BinOp",
             "op": "=",
             "left": {
-                "class_name": "VarID",
+                "class_name": "FactVarID",
                 "data": [{"datapoint": 1, "data_type": "m"}],
             },
             "right": {
-                "class_name": "VarID",
+                "class_name": "FactVarID",
                 "data": [{"datapoint": 2, "table_code": "X"}],
             },
         }
@@ -361,8 +361,8 @@ class TestExtractReferencedTables:
         _, Cls, _ = _bare_svc()
         ast = {
             "class_name": "BinOp",
-            "left": {"class_name": "VarID", "table": "C_01.00"},
-            "right": {"class_name": "VarID", "table": "C_02.00"},
+            "left": {"class_name": "FactVarID", "table": "C_01.00"},
+            "right": {"class_name": "FactVarID", "table": "C_02.00"},
         }
         assert Cls._extract_referenced_tables(ast) == {
             "C_01.00",
@@ -388,12 +388,12 @@ class TestExtractOperandDatapoints:
             "class_name": "BinOp",
             "op": "<=",
             "left": {
-                "class_name": "VarID",
+                "class_name": "FactVarID",
                 "table": "C_01.00",
                 "data": [{"datapoint": 32673, "data_type": "m"}],
             },
             "right": {
-                "class_name": "VarID",
+                "class_name": "FactVarID",
                 "table": "F_01.03",
                 "data": [{"datapoint": 56987, "data_type": "m"}],
             },
@@ -406,7 +406,7 @@ class TestExtractOperandDatapoints:
     def test_collects_every_datapoint_of_a_multi_cell_operand(self):
         _, Cls, _ = _bare_svc()
         ast = {
-            "class_name": "VarID",
+            "class_name": "FactVarID",
             "table": "C_04.00",
             "data": [
                 {"datapoint": 1, "data_type": "i"},
@@ -417,13 +417,13 @@ class TestExtractOperandDatapoints:
 
     def test_missing_type_falls_back_to_empty_string(self):
         _, Cls, _ = _bare_svc()
-        ast = {"class_name": "VarID", "data": [{"datapoint": 9}]}
+        ast = {"class_name": "FactVarID", "data": [{"datapoint": 9}]}
         assert Cls._extract_operand_datapoints(ast) == {"9": ""}
 
     def test_entries_without_datapoint_are_skipped(self):
         _, Cls, _ = _bare_svc()
         ast = {
-            "class_name": "VarID",
+            "class_name": "FactVarID",
             "data": [{"data_type": "m"}, {"datapoint": None}, "junk"],
         }
         assert Cls._extract_operand_datapoints(ast) == {}
@@ -590,7 +590,7 @@ class TestBuildPreconditionsBlock:
         )
         assert "p_110" in preconds
         entry = preconds["p_110"]
-        assert entry["ast"]["class_name"] == "PreconditionItem"
+        assert entry["ast"]["class_name"] == "FilingIndicatorVarID"
         assert entry["ast"]["variable_id"] == 11
         assert entry["affected_operations"] == ["v1", "v2"]
         assert entry["version_id"] == 110
@@ -630,7 +630,7 @@ class TestBuildPreconditionsBlock:
         def _collect(node):
             if not isinstance(node, dict):
                 return
-            if node.get("class_name") == "PreconditionItem":
+            if node.get("class_name") == "FilingIndicatorVarID":
                 vids.add(node.get("variable_id"))
             for value in node.values():
                 if isinstance(value, (dict, list)):
@@ -690,9 +690,9 @@ class TestBuildPreconditionsBlock:
         )
         assert list(preconds) == ["p_10"]
         assert preconds["p_10"]["ast"] == {
-            "class_name": "PreconditionItem",
+            "class_name": "FilingIndicatorVarID",
             "variable_id": 1,
-            "variable_code": "A",
+            "code": "A",
         }
         assert vars_ == {"10": "b"}
 
@@ -753,9 +753,9 @@ class TestBuildPreconditionsBlock:
             "class_name": "UnaryOp",
             "op": "not",
             "operand": {
-                "class_name": "PreconditionItem",
+                "class_name": "FilingIndicatorVarID",
                 "variable_id": 1,
-                "variable_code": "A",
+                "code": "A",
             },
         }
         assert vars_ == {"10": "b"}
@@ -1016,9 +1016,9 @@ class TestGateParameterPropagation:
             "class_name": "BinOp",
             "op": "and",
             "left": {
-                "class_name": "PreconditionItem",
+                "class_name": "FilingIndicatorVarID",
                 "variable_id": 42,
-                "variable_code": "F_01.02",
+                "code": "F_01.02",
             },
             "right": {
                 "class_name": "ParameterRef",
@@ -1137,9 +1137,9 @@ class TestGateParameterPropagation:
         assert negation["class_name"] == "UnaryOp"
         assert negation["op"] == "not"
         assert negation["operand"] == {
-            "class_name": "PreconditionItem",
+            "class_name": "FilingIndicatorVarID",
             "variable_id": 1,
-            "variable_code": "A",
+            "code": "A",
         }
 
         wrapped = ast["right"]
@@ -1148,14 +1148,14 @@ class TestGateParameterPropagation:
         assert xor_node["class_name"] == "BinOp"
         assert xor_node["op"] == "xor"
         assert xor_node["left"] == {
-            "class_name": "PreconditionItem",
+            "class_name": "FilingIndicatorVarID",
             "variable_id": 2,
-            "variable_code": "B",
+            "code": "B",
         }
         assert xor_node["right"] == {
-            "class_name": "PreconditionItem",
+            "class_name": "FilingIndicatorVarID",
             "variable_id": 3,
-            "variable_code": "C",
+            "code": "C",
         }
         assert vars_ == {"10": "b", "20": "b", "30": "b"}
 
@@ -2806,7 +2806,7 @@ class TestScriptFromDb:
         assert out["success"] is True, out["error"]
         doc = out["enriched_ast"]
         op = doc["operations"]["v1"]
-        assert op["ast"] == db_ast_dict
+        assert op["ast"] == {**db_ast_dict, "class_name": "FactVarID"}
         # The real OperationVID reaches the wire as version_id (dpm-xl
         # script-format spec §3.10), not the CRC32 fallback script() uses.
         assert op["version_id"] == 555
@@ -3112,7 +3112,7 @@ class TestScriptFromDb:
         doc = out["enriched_ast"]
         op = doc["operations"]["v1"]
         # Falls back to the text-reparsed AST...
-        assert op["ast"]["class_name"] == "VarID"
+        assert op["ast"]["class_name"] == "FactVarID"
         # ...but version_id still uses the already-known real
         # OperationVID — the fallback is per-AST, not per-identity.
         assert op["version_id"] == 555

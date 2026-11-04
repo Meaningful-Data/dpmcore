@@ -19,7 +19,7 @@ pytestmark = pytest.mark.unit
 
 def _varid(datapoint, default="__unset__", interval=None):
     node = {
-        "class_name": "VarID",
+        "class_name": "FactVarID",
         "data": [{"datapoint": datapoint}],
         "interval": interval,
     }
@@ -38,7 +38,7 @@ def _binop(left, right):
 
 class TestUnknownOperation:
     def test_unrelated_op_code_is_untouched(self):
-        ast = {"class_name": "VarID", "data": [{"datapoint": 1}]}
+        ast = {"class_name": "FactVarID", "data": [{"datapoint": 1}]}
         before = copy.deepcopy(ast)
         changed = fix_operation_ast("v_not_in_any_registry", ast)
         assert changed is False

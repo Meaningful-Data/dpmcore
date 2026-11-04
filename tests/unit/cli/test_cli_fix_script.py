@@ -30,7 +30,7 @@ class TestFixScriptSingleFile:
             {
                 "v8713_m": {
                     "ast": {
-                        "class_name": "VarID",
+                        "class_name": "FactVarID",
                         "data": [{"datapoint": 55299}],
                         "default": "",
                     }
@@ -51,7 +51,9 @@ class TestFixScriptSingleFile:
 
     def test_no_known_issues_leaves_file_untouched(self, runner, tmp_path):
         path = tmp_path / "script.json"
-        data = _script({"v0001": {"ast": {"class_name": "VarID", "data": []}}})
+        data = _script(
+            {"v0001": {"ast": {"class_name": "FactVarID", "data": []}}}
+        )
         original_text = json.dumps(data)
         path.write_text(original_text)
 
@@ -111,7 +113,7 @@ class TestFixScriptBulk:
             )
         )
         untouched_data = _script(
-            {"v0001": {"ast": {"class_name": "VarID", "data": []}}}
+            {"v0001": {"ast": {"class_name": "FactVarID", "data": []}}}
         )
         untouched = tmp_path / "b.json"
         untouched.write_text(json.dumps(untouched_data))
