@@ -16,8 +16,8 @@ optional cleanup — a freshly generated script carries these same
 errors again until patched.
 
 Each rule matches its target by structural pattern (an ``OperandType``
-plus a value predicate, e.g. "a ``VarID`` for this datapoint" or "a
-``BinOp`` whose ``left`` is that ``VarID``"), not by a fixed position
+plus a value predicate, e.g. "a ``FactVarID`` for this datapoint" or
+"a ``BinOp`` whose ``left`` is that ``FactVarID``"), not by a fixed position
 in the tree — mdpm's own script reads a couple of the more elaborate
 cases (``v6512_m``/``v6513_m``/``v12458_m``/``v12459_m``/``v6519_c``)
 off fixed dict-key offsets, which assumes mdpm's own AST shape; dpmcore
@@ -272,7 +272,7 @@ def _strip_wrong_defaults(
 ) -> bool:
     changed = False
     if isinstance(node, dict):
-        if node.get("class_name") == "VarID":
+        if node.get("class_name") == "FactVarID":
             data = node.get("data") or []
             dp = data[0].get("datapoint") if data else None
             if dp in datapoints and node.get("default") == wrong_value:
@@ -319,7 +319,10 @@ def _flip_binop_sibling_false(node: Any, datapoint: int) -> bool:
     if isinstance(node, dict):
         if node.get("class_name") == "BinOp":
             left = node.get("left")
-            if isinstance(left, dict) and left.get("class_name") == "VarID":
+            if (
+                isinstance(left, dict)
+                and left.get("class_name") == "FactVarID"
+            ):
                 data = left.get("data") or []
                 dp = data[0].get("datapoint") if data else None
                 if dp == datapoint:
@@ -346,7 +349,7 @@ def _flip_binop_sibling_false(node: Any, datapoint: int) -> bool:
 def _force_interval_false(node: Any) -> bool:
     changed = False
     if isinstance(node, dict):
-        if node.get("class_name") == "VarID":
+        if node.get("class_name") == "FactVarID":
             if node.get("interval") is not False:
                 node["interval"] = False
                 changed = True

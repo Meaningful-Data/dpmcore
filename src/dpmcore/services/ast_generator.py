@@ -33,7 +33,11 @@ from dpmcore.services._parameters import merge_parameters
 from dpmcore.services._precondition_codes import (
     extract_precondition_codes as _extract_precondition_codes,
 )
-from dpmcore.services.script_format import FORMAT_VERSION
+from dpmcore.services.script_format import (
+    FORMAT_VERSION,
+    UnsupportedNode,
+    script_ast,
+)
 from dpmcore.services.semantic import ParameterInfo, SemanticService
 from dpmcore.services.syntax import SyntaxService
 
@@ -108,7 +112,7 @@ class _DiscoveredValidations:
 class _OperandRefs:
     """What a single operation's operands reference.
 
-    ``tables`` are the table codes of its ``VarID`` nodes; ``variables``
+    ``tables`` are the table codes of its ``FactVarID`` nodes; ``variables``
     maps every operand datapoint id to its scalar type code, across all
     modules the operation spans (home module included).
     """
@@ -366,7 +370,11 @@ class ASTGeneratorService:
                 # serialise to a bare scalar), but `ast` is always a
                 # root expression here, which the wire format always
                 # renders as an object.
-                ast_dict = cast(Dict[str, Any], serialize_ast(ast))
+                try:
+                    ast_dict = script_ast(serialize_ast(ast))
+                except UnsupportedNode as exc:
+                    failed_operations[code] = str(exc)
+                    continue
                 root_operator_id = self._resolve_root_operator_id(ast, session)
 
                 scope_error = self._process_operation(
@@ -908,6 +916,10 @@ class ASTGeneratorService:
                 f"No error for {code!r} but ast_dict/root_operator_id "
                 "is still None.",
             )
+        try:
+            ast_dict = script_ast(ast_dict)
+        except UnsupportedNode as exc:
+            return str(exc)
 
         scope_result: Optional["ScopeResult"] = None
         if operation_vid is not None:
@@ -2660,7 +2672,7 @@ class ASTGeneratorService:
         """Build the ``preconditions`` and ``precondition_variables`` blocks.
 
         Each gate is parsed once and the resulting AST is walked to build
-        the entry: a ``{v_*}`` selection becomes a ``PreconditionItem``
+        the entry: a ``{v_*}`` selection becomes a ``FilingIndicatorVarID``
         node with the resolved ``variable_id``, a ``{p_*}`` reference is
         emitted as the same ``ParameterRef`` node an expression produces
         (``code``, canonical ``param_type``, ``default``), and every
@@ -2958,7 +2970,7 @@ class ASTGeneratorService:
         """Walk the parsed gate AST and emit the engine's dict shape.
 
         ``VarRef`` (the parser's node for ``{v_*}``) and ``PreconditionItem``
-        collapse to a ``PreconditionItem`` dict with the resolved
+        collapse to a ``FilingIndicatorVarID`` dict with the resolved
         ``variable_id``, registering the ``variable_vid`` in
         ``precondition_variables`` on the way. A selection that does not
         resolve becomes ``None`` — *unknown* — and unknown is only ever
@@ -3116,7 +3128,7 @@ class ASTGeneratorService:
         resolved: Dict[str, Dict[str, int]],
         precondition_variables: Dict[str, str],
     ) -> Optional[Dict[str, Any]]:
-        """Emit the ``PreconditionItem`` dict for a filing-indicator code.
+        """Emit the ``FilingIndicatorVarID`` dict for a filing indicator.
 
         Codes that don't resolve return ``None`` so the caller can drop
         the position — the same non-fatal outcome the previous regex
@@ -3130,9 +3142,9 @@ class ASTGeneratorService:
             return None
         precondition_variables[str(info["variable_vid"])] = "b"
         return {
-            "class_name": "PreconditionItem",
+            "class_name": "FilingIndicatorVarID",
+            "code": var_code,
             "variable_id": info["variable_id"],
-            "variable_code": var_code,
             # Kept for key derivation in
             # ``_build_precondition_entry_from_ast`` — the pre-existing
             # ``p_<vid>`` scheme groups precondition entries by
@@ -3193,8 +3205,8 @@ class ASTGeneratorService:
     def _is_conjunction_of_items(cls, node: Any) -> bool:
         """``True`` for the shape the regex path used to emit.
 
-        That is a ``PreconditionItem`` or an ``and`` tree whose leaves
-        are all ``PreconditionItem`` — the only shape for which the
+        That is a ``FilingIndicatorVarID`` or an ``and`` tree whose
+        leaves are all of that class — the only shape for which the
         ``p_<sorted vids>`` key alone identifies the gate. Called on
         an already ``ParExpr``-stripped tree (see
         :meth:`_strip_par_expr`), so grouping parentheses never affect
@@ -3203,7 +3215,7 @@ class ASTGeneratorService:
         if not isinstance(node, dict):
             return False
         class_name = node.get("class_name")
-        if class_name == "PreconditionItem":
+        if class_name == "FilingIndicatorVarID":
             return True
         return (
             class_name == "BinOp"
@@ -3238,12 +3250,12 @@ class ASTGeneratorService:
 
         ``variable_vid`` is added by :meth:`_precondition_item` so key
         derivation groups entries the same way ``p_<vid>`` used to. The
-        engine's ``PreconditionItem`` only carries ``variable_id`` and
-        ``variable_code``, so the field is stripped once the key has
+        ``FilingIndicatorVarID`` only carries ``code`` and
+        ``variable_id``, so the field is stripped once the key has
         been built.
         """
         if isinstance(node, dict):
-            if node.get("class_name") == "PreconditionItem":
+            if node.get("class_name") == "FilingIndicatorVarID":
                 node.pop("variable_vid", None)
             for value in node.values():
                 if isinstance(value, (dict, list)):
@@ -3286,7 +3298,7 @@ class ASTGeneratorService:
         """
         item_vids = sorted(cls._collect_precondition_item_vids(gate_ast))
         # Strip the internal ``variable_vid`` field before hashing and
-        # emitting; the engine's ``PreconditionItem`` does not carry it.
+        # emitting; ``FilingIndicatorVarID`` does not carry it.
         cls._strip_precondition_item_vids(gate_ast)
         vids_part = "_".join(str(v) for v in item_vids)
         identity_ast = cls._strip_par_expr(gate_ast)
@@ -3318,7 +3330,7 @@ class ASTGeneratorService:
 
     @classmethod
     def _collect_precondition_item_vids(cls, node: Any) -> List[int]:
-        """Return the ``variable_vid`` of every ``PreconditionItem`` node.
+        """Return the ``variable_vid`` of every ``FilingIndicatorVarID``.
 
         The pre-existing ``p_<vid>`` naming keys entries by
         ``variable_vid``, so gates that name the same filing indicator
@@ -3326,7 +3338,7 @@ class ASTGeneratorService:
         """
         vids: List[int] = []
         if isinstance(node, dict):
-            if node.get("class_name") == "PreconditionItem":
+            if node.get("class_name") == "FilingIndicatorVarID":
                 vid = node.get("variable_vid")
                 if isinstance(vid, int):
                     vids.append(vid)
@@ -3345,11 +3357,11 @@ class ASTGeneratorService:
 
     @staticmethod
     def _clean_ast_data_entries(ast_dict: Any) -> Any:
-        """Strip engine-internal debug fields from ``VarID`` data entries.
+        """Strip engine-internal debug fields from ``FactVarID`` entries.
 
         Mirrors pydpm's ``_clean_ast_data_entries``: drops
         ``data_type``, ``cell_code``, ``table_code``, ``table_vid``
-        from each entry of every ``VarID`` node's ``data`` array.
+        from each entry of every ``FactVarID`` node's ``data`` array.
         Operates in-place.
         """
         if isinstance(ast_dict, dict):
@@ -3365,8 +3377,8 @@ class ASTGeneratorService:
 
     @staticmethod
     def _strip_varid_data(node: Dict[str, Any]) -> None:
-        """Drop debug fields from a single ``VarID`` node's ``data`` list."""
-        if node.get("class_name") != "VarID":
+        """Drop debug fields from one ``FactVarID`` node's ``data`` list."""
+        if node.get("class_name") != "FactVarID":
             return
         data = node.get("data")
         if not isinstance(data, list):
@@ -3384,7 +3396,7 @@ class ASTGeneratorService:
 
         def _walk(node: Any) -> None:
             if isinstance(node, dict):
-                if node.get("class_name") == "VarID":
+                if node.get("class_name") == "FactVarID":
                     table = node.get("table")
                     if isinstance(table, str) and table:
                         codes.add(table)
@@ -3403,7 +3415,7 @@ class ASTGeneratorService:
     def _extract_operand_datapoints(ast_dict: Any) -> Dict[str, str]:
         """Walk a serialised AST and return ``{datapoint: data_type}``.
 
-        Every ``VarID`` node carries one ``data`` entry per data point its
+        Every ``FactVarID`` carries one ``data`` entry per data point its
         cell reference resolves to, each holding the datapoint id (the
         variable id) and its scalar type code. Must run *before*
         :meth:`_clean_ast_data_entries`, which strips ``data_type``.
@@ -3434,8 +3446,8 @@ class ASTGeneratorService:
         node: Dict[str, Any],
         into: Dict[str, str],
     ) -> None:
-        """Record one ``VarID`` node's datapoints and types into *into*."""
-        if node.get("class_name") != "VarID":
+        """Record one ``FactVarID``'s datapoints and types into *into*."""
+        if node.get("class_name") != "FactVarID":
             return
         data = node.get("data")
         if not isinstance(data, list):
