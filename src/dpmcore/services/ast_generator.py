@@ -16,6 +16,7 @@ from typing import (
     List,
     Mapping,
     Optional,
+    Sequence,
     Set,
     Tuple,
     Union,
@@ -32,6 +33,7 @@ from dpmcore.services._parameters import merge_parameters
 from dpmcore.services._precondition_codes import (
     extract_precondition_codes as _extract_precondition_codes,
 )
+from dpmcore.services.script_format import FORMAT_VERSION
 from dpmcore.services.semantic import ParameterInfo, SemanticService
 from dpmcore.services.syntax import SyntaxService
 
@@ -51,8 +53,55 @@ logger = logging.getLogger(__name__)
 _TABLE_CODE_NORMALIZER = re.compile(r"^([A-Z]+)_(\d+)_(\d+)$")
 _DEFAULT_FROM_DATE = "2001-01-01"
 _ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
-_DEFAULT_NAMESPACE = "default_module"
 _DATA_FIELDS_TO_STRIP = ("data_type", "cell_code", "table_code", "table_vid")
+
+
+@dataclass(frozen=True)
+class _DiscoveredValidations:
+    """A module version's active validations, as discovery finds them.
+
+    Every member but ``preconditions`` is keyed by validation code
+    (``expressions`` holds ``(expression, code)`` pairs).
+    """
+
+    expressions: List[Tuple[str, str]]
+    operation_vids: Dict[str, int]
+    preconditions: List[Dict[str, Any]]
+    severities: Dict[str, str]
+    from_submission_dates: Dict[str, str]
+
+    def only(self, codes: Set[str]) -> "_DiscoveredValidations":
+        """Keep the validations in ``codes``.
+
+        A precondition keeps the operations of ``codes`` it gates, and
+        is dropped when it gates none of them.
+        """
+        preconditions = []
+        for precondition in self.preconditions:
+            gated = [
+                code
+                for code in precondition["affected_operations"]
+                if code in codes
+            ]
+            if gated:
+                preconditions.append(
+                    {**precondition, "affected_operations": gated}
+                )
+        return _DiscoveredValidations(
+            expressions=[e for e in self.expressions if e[1] in codes],
+            operation_vids={
+                c: v for c, v in self.operation_vids.items() if c in codes
+            },
+            preconditions=preconditions,
+            severities={
+                c: v for c, v in self.severities.items() if c in codes
+            },
+            from_submission_dates={
+                c: v
+                for c, v in self.from_submission_dates.items()
+                if c in codes
+            },
+        )
 
 
 @dataclass(frozen=True)
@@ -175,6 +224,7 @@ class ASTGeneratorService:
             Mapping[str, Union[str, date_cls]]
         ] = None,
         release: Optional[str] = None,
+        owner: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Generate an engine-ready validations script.
 
@@ -217,16 +267,17 @@ class ASTGeneratorService:
                 ``ModuleVersion``. The resolved release is surfaced in
                 the ``dpm_release`` block and used for every
                 downstream DB filter.
+            owner: Optional acronym of the organisation that defined
+                the validations, the document's ``owner``. Defaults to
+                the module's owner.
 
         Returns:
             A dict with keys ``success`` (bool), ``enriched_ast`` (the
-            namespaced dict, or ``None`` on failure), ``error`` (str or
-            ``None``), and ``failed_operations`` (a
+            Script Format 2.0 document, or ``None`` on failure),
+            ``error`` (str or ``None``), and ``failed_operations`` (a
             ``{validation_code: error_message}`` map of expressions
             skipped due to semantic errors, or because their
-            precondition cannot be evaluated by the engine). The
-            namespaced dict mirrors the shape pydpm's
-            ``generate_validations_script`` produces.
+            precondition cannot be evaluated by the engine).
         """
         session = self.session
         if (
@@ -355,6 +406,7 @@ class ASTGeneratorService:
                 scope_pairs=scope_pairs,
                 referenced_table_codes=referenced_table_codes,
                 referenced_parameters=referenced_parameters,
+                owner=owner,
             )
 
         except ValueError as exc:
@@ -499,6 +551,7 @@ class ASTGeneratorService:
         referenced_table_codes: set[str],
         referenced_parameters: Dict[str, ParameterInfo],
         release_info: Optional[Dict[str, Any]] = None,
+        owner: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Assemble the final script dict from already-resolved operations.
 
@@ -516,6 +569,13 @@ class ASTGeneratorService:
         block verbatim; otherwise the block is built from
         ``release_row`` (see :meth:`script_for_module` for why the two
         can differ).
+
+        ``owner`` names the document's owner, the module's owner when
+        not given. The caller picks the operations of that owner.
+
+        Raises:
+            ValueError: If the module version has no URI or its module
+                no owner: the document names both.
         """
         if self._scope_calc is None or self.session is None:
             raise InternalError(
@@ -595,26 +655,44 @@ class ASTGeneratorService:
             }
             dep_modules = {}
 
-        namespace = (
-            self._scope_calc._get_module_uri(
-                module_vid=primary_module_vid,
-                mv=mv,
-            )
-            or _DEFAULT_NAMESPACE
+        module_uri = self._scope_calc._get_module_uri(
+            module_vid=primary_module_vid,
+            mv=mv,
         )
-
+        if not module_uri:
+            raise ValueError(
+                f"Module version {mv.code} {mv.version_number} has no URI; "
+                "the script names it as module_uri."
+            )
         module_info = self._build_module_info(mv)
-        ns_block: Dict[str, Any] = {
-            **module_info,
+        module_owner = self._module_owner(mv.module_id)
+        if not module_owner:
+            raise ValueError(
+                f"Module {mv.code} has no owner organisation; the script "
+                "names it as module_owner."
+            )
+        owner = owner or module_owner
+
+        # Script Format 2.0: one flat object, members in this order.
+        # The 1.x sections after ``parameters`` stay until ``modules`` and
+        # ``dependency_groups`` replace them.
+        document: Dict[str, Any] = {
+            "owner": owner,
+            "module_code": module_info["module_code"],
+            "module_version": module_info["module_version"],
+            "module_owner": module_owner,
+            "module_uri": module_uri,
+            "framework_code": module_info["framework_code"],
+            "format_version": FORMAT_VERSION,
             "dpm_release": (
                 release_info or self._build_release_info(release_row)
             ),
             "dates": self._build_dates(mv),
             "operations": operations,
+            "preconditions": preconditions_block,
+            "parameters": parameters_block,
             "variables": variables_block,
             "tables": tables_block,
-            "parameters": parameters_block,
-            "preconditions": preconditions_block,
             "precondition_variables": precondition_variables_block,
             "dependency_information": dep_information,
             "dependency_modules": dep_modules,
@@ -622,10 +700,57 @@ class ASTGeneratorService:
 
         return {
             "success": True,
-            "enriched_ast": {namespace: ns_block},
+            "enriched_ast": document,
             "error": None,
             "failed_operations": failed_operations,
         }
+
+    def _module_owner(self, module_id: Optional[int]) -> Optional[str]:
+        """Return the acronym of the organisation owning a module.
+
+        Reads the acronym column alone: older dictionaries lack some
+        ``Organisation`` columns the ORM entity maps.
+        """
+        from dpmcore.orm.infrastructure import Organisation
+        from dpmcore.orm.packaging import Module
+
+        if self.session is None:
+            raise RuntimeError("session required")
+        row = (
+            self.session.query(Organisation.acronym)
+            .join(Module, Module.owner_id == Organisation.org_id)
+            .filter(Module.module_id == module_id)
+            .first()
+        )
+        return row[0] if row is not None else None
+
+    def _operation_owners(
+        self, operation_vids: Sequence[int]
+    ) -> Dict[int, Optional[str]]:
+        """Return the owner acronym of each operation version's operation.
+
+        Keyed by ``OperationVID``; ``None`` for an operation with no
+        owner. A version not found is left out.
+        """
+        from dpmcore.orm.infrastructure import Organisation
+        from dpmcore.orm.operations import Operation, OperationVersion
+
+        if self.session is None:
+            raise RuntimeError("session required")
+        rows = (
+            self.session.query(
+                OperationVersion.operation_vid, Organisation.acronym
+            )
+            .select_from(OperationVersion)
+            .join(
+                Operation,
+                Operation.operation_id == OperationVersion.operation_id,
+            )
+            .outerjoin(Organisation, Organisation.org_id == Operation.owner_id)
+            .filter(OperationVersion.operation_vid.in_(list(operation_vids)))
+            .all()
+        )
+        return {row[0]: row[1] for row in rows}
 
     def _resolve_db_operation_ast(
         self,
@@ -832,6 +957,7 @@ class ASTGeneratorService:
         severities: Optional[Dict[str, str]] = None,
         from_submission_dates: Optional[Dict[str, str]] = None,
         release_info: Optional[Dict[str, Any]] = None,
+        owner: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Generate a DB-discovered module version's validations script.
 
@@ -867,6 +993,8 @@ class ASTGeneratorService:
             release_info: Optional ``{"release", "publication_date"}``
                 block stamped as ``dpm_release``. When omitted, the
                 block is built from ``release_row``.
+            owner: Optional ``owner`` of the document, the module's
+                owner by default. ``expressions`` are that owner's.
 
         Returns:
             Same shape as :meth:`script`. Unlike :meth:`script`, a
@@ -968,6 +1096,7 @@ class ASTGeneratorService:
                 referenced_table_codes=referenced_table_codes,
                 referenced_parameters=referenced_parameters,
                 release_info=release_info,
+                owner=owner,
             )
 
         except ValueError as exc:
@@ -991,13 +1120,18 @@ class ASTGeneratorService:
         module_version: str,
         release: Optional[str] = None,
         publication_date: Optional[str] = None,
+        owner: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Auto-discover a module version's active validations and script them.
+        """Auto-discover one owner's active validations and script them.
 
         No ``expressions``, ``preconditions`` or ``severities`` need to be
         supplied — they are looked up from ``OperationScope`` /
         ``OperationScopeComposition`` / ``OperationVersion`` for this module
         version, then handed to :meth:`script_from_db`.
+
+        A script holds the validations of one owner: those whose
+        ``Operation.OwnerID`` is ``owner``, and those with no owner when
+        ``owner`` is the module's.
 
         The ``dpm_release`` block names the database the script was
         exported from — its latest release (:meth:`_database_release_info`)
@@ -1013,6 +1147,8 @@ class ASTGeneratorService:
             publication_date: Optional ``YYYY-MM-DD`` stamped as the
                 ``dpm_release`` publication date. Defaults to the date
                 of the database's latest release.
+            owner: Acronym of the organisation whose validations are
+                scripted; the module's owner by default.
 
         Returns:
             Same shape as :meth:`script`.
@@ -1030,13 +1166,16 @@ class ASTGeneratorService:
                 module_code, module_version, release
             )
             release_info = self._database_release_info(publication_date)
-            (
-                expressions,
-                operation_vids,
-                preconditions,
-                severities,
-                from_submission_dates,
-            ) = self._discover_module_validations(mv, release_row)
+            discovered = self._discover_module_validations(mv, release_row)
+            module_owner = self._module_owner(mv.module_id)
+            owner = owner or module_owner
+            vid_owners = (
+                self._operation_owners(
+                    list(discovered.operation_vids.values())
+                )
+                if discovered.operation_vids
+                else {}
+            )
         except ValueError as exc:
             return {
                 "success": False,
@@ -1045,15 +1184,22 @@ class ASTGeneratorService:
                 "failed_operations": {},
             }
 
+        owner_codes = {
+            code
+            for code, vid in discovered.operation_vids.items()
+            if (vid_owners.get(vid) or module_owner) == owner
+        }
+        owned = discovered.only(owner_codes)
         return self.script_from_db(
-            expressions=expressions,
-            operation_vids=operation_vids,
+            expressions=owned.expressions,
+            operation_vids=owned.operation_vids,
             mv=mv,
             release_row=release_row,
-            preconditions=preconditions or None,
-            severities=severities or None,
-            from_submission_dates=from_submission_dates or None,
+            preconditions=list(owned.preconditions) or None,
+            severities=owned.severities or None,
+            from_submission_dates=owned.from_submission_dates or None,
             release_info=release_info,
+            owner=owner,
         )
 
     def calculations_for_module(
@@ -1342,13 +1488,7 @@ class ASTGeneratorService:
         self,
         mv: Any,
         release_row: Any,
-    ) -> Tuple[
-        List[Tuple[str, str]],
-        Dict[str, int],
-        List[Union[Tuple[str, List[str]], Dict[str, Any]]],
-        Dict[str, str],
-        Dict[str, str],
-    ]:
+    ) -> _DiscoveredValidations:
         """Look up the active ``(expression, code)`` pairs for a module.
 
         Resolves the module version's active operations by joining
@@ -1420,8 +1560,8 @@ class ASTGeneratorService:
         the winner does not depend on join order.
 
         Returns:
-            ``(expressions, operation_vids, preconditions, severities,
-            from_submission_dates)`` ready to pass to :meth:`script`.
+            A :class:`_DiscoveredValidations` whose members are ready
+            to pass to :meth:`script`.
             ``operation_vids`` maps each code to the ``OperationVID``
             already resolved by this same query, so callers that want
             the persisted AST for an operation don't need a second
@@ -1599,15 +1739,12 @@ class ASTGeneratorService:
             if prec_vid is not None:
                 prec_vid_to_codes.setdefault(prec_vid, []).append(code)
 
-        preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]] = (
-            list(self._resolve_preconditions(prec_vid_to_codes))
-        )
-        return (
-            expressions,
-            operation_vids,
-            preconditions,
-            severities,
-            from_submission_dates,
+        return _DiscoveredValidations(
+            expressions=expressions,
+            operation_vids=operation_vids,
+            preconditions=self._resolve_preconditions(prec_vid_to_codes),
+            severities=severities,
+            from_submission_dates=from_submission_dates,
         )
 
     @staticmethod

@@ -50,6 +50,7 @@ from dpmcore.services.calculations_export.visitors import (
     VarIDDataEnricher,
     unwrap_with_expressions,
 )
+from dpmcore.services.script_format import FORMAT_VERSION
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
@@ -58,9 +59,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _OPERATION_OUTPUT_TABLE = "OperationOutput"
-
-FORMAT_VERSION = "2.0"
-"""Script Format version of the export."""
 
 
 @dataclass(frozen=True)
