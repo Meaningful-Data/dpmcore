@@ -2420,9 +2420,28 @@ class TestScript:
         )
         assert out["success"] is True
         doc = out["enriched_ast"]
+        # Script Format 2.0: not keyed by URI, members in this order.
+        assert list(doc)[:12] == [
+            "owner",
+            "module_code",
+            "module_version",
+            "module_owner",
+            "module_uri",
+            "framework_code",
+            "format_version",
+            "dpm_release",
+            "dates",
+            "operations",
+            "preconditions",
+            "parameters",
+        ]
+        assert doc["owner"] == "EBA"
         assert doc["module_code"] == "MOD"
         assert doc["module_version"] == "1.0"
+        assert doc["module_owner"] == "EBA"
+        assert doc["module_uri"] == "http://example/mod"
         assert doc["framework_code"] == "COREP"
+        assert doc["format_version"] == "2.0"
         assert doc["dpm_release"] == {
             "release": "4.2",
             "publication_date": "2025-04-28",
@@ -2513,7 +2532,8 @@ class TestScript:
         doc = out["enriched_ast"]
         assert doc["operations"]["v1"]["severity"] == "warning"
 
-    def test_namespace_falls_back_when_uri_missing(self, monkeypatch):
+    def test_fails_when_module_uri_missing(self, monkeypatch):
+        """``module_uri`` is an absolute URI, never a placeholder."""
         self._stub_serialize_ast(
             monkeypatch,
             {"class_name": "VarID", "table": "C_01.00", "data": []},
@@ -2529,7 +2549,29 @@ class TestScript:
             module_code="MOD",
             module_version="1.0",
         )
-        assert "default_module" in out["enriched_ast"]
+        assert out["success"] is False
+        assert out["enriched_ast"] is None
+        assert "URI" in out["error"]
+
+    def test_fails_when_module_has_no_owner(self, monkeypatch):
+        """``module_owner`` is a non-empty acronym."""
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+        svc._module_owner.return_value = None
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+        out = svc.script(
+            expressions=[("e1", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+        assert out["success"] is False
+        assert "owner" in out["error"]
 
     def test_parameters_block_in_enriched_ast(self, monkeypatch):
         # A VarID (for tables) plus a ParameterRef on the RHS — the script()

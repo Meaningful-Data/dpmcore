@@ -530,8 +530,8 @@ class TestExportScriptSweep:
             )
 
         assert result.exit_code == 0, result.output
-        assert (out_dir / "MOD_A-1.0.json").exists()
-        assert (out_dir / "MOD_B-2.0.json").exists()
+        assert (out_dir / "EBA-MOD_A-1.0.json").exists()
+        assert (out_dir / "EBA-MOD_B-2.0.json").exists()
         assert "2 succeeded, 0 failed" in result.output
 
     def test_failed_target_does_not_abort_sweep(self, runner, tmp_path):
@@ -567,8 +567,8 @@ class TestExportScriptSweep:
             )
 
         assert result.exit_code == 1
-        assert not (out_dir / "MOD_A-1.0.json").exists()
-        assert (out_dir / "MOD_B-2.0.json").exists()
+        assert not (out_dir / "EBA-MOD_A-1.0.json").exists()
+        assert (out_dir / "EBA-MOD_B-2.0.json").exists()
         assert "1 succeeded, 1 failed" in result.output
         assert "boom" in result.output
 
@@ -614,7 +614,7 @@ class TestExportScriptSweep:
                     ],
                 )
             assert result.exit_code == 0, result.output
-            assert os.path.exists("MOD_A-1.0.json")
+            assert os.path.exists("EBA-MOD_A-1.0.json")
 
     def test_output_must_be_a_directory_when_sweeping(self, runner, tmp_path):
         existing_file = tmp_path / "not_a_dir.json"
@@ -657,7 +657,8 @@ class TestExportScriptOutputDefaults:
                     ],
                 )
             assert result.exit_code == 0, result.output
-            assert os.path.exists("FINREP_Con-2.0.1.json")
+            # <owner>-<module_code>-<module_version>.json
+            assert os.path.exists("EBA-FINREP_Con-2.0.1.json")
 
 
 class TestExportScriptSweepValidation:
@@ -836,7 +837,7 @@ class TestExportScriptReleaseOnlyMode:
             )
 
         assert result.exit_code == 0, result.output
-        assert (out_dir / "FINREP_Con-2.0.1.json").exists()
+        assert (out_dir / "EBA-FINREP_Con-2.0.1.json").exists()
         list_kwargs = Svc.return_value.list_module_versions.call_args.kwargs
         assert list_kwargs["module_code"] == "FINREP_Con"
         assert list_kwargs["release"] == "4.2"
@@ -868,8 +869,8 @@ class TestExportScriptReleaseOnlyMode:
             )
 
         assert result.exit_code == 0, result.output
-        assert (out_dir / "MOD_A-1.0.json").exists()
-        assert (out_dir / "MOD_B-2.0.json").exists()
+        assert (out_dir / "EBA-MOD_A-1.0.json").exists()
+        assert (out_dir / "EBA-MOD_B-2.0.json").exists()
         list_kwargs = Svc.return_value.list_module_versions.call_args.kwargs
         assert list_kwargs["module_code"] is None
         assert list_kwargs["release"] == "4.2"
