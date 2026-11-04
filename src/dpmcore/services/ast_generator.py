@@ -734,10 +734,11 @@ class ASTGeneratorService:
         """
         from dpmcore.orm.infrastructure import Organisation
         from dpmcore.orm.operations import Operation, OperationVersion
+        from dpmcore.orm.query_utils import chunked_in
 
         if self.session is None:
             raise RuntimeError("session required")
-        rows = (
+        query = (
             self.session.query(
                 OperationVersion.operation_vid, Organisation.acronym
             )
@@ -747,8 +748,9 @@ class ASTGeneratorService:
                 Operation.operation_id == OperationVersion.operation_id,
             )
             .outerjoin(Organisation, Organisation.org_id == Operation.owner_id)
-            .filter(OperationVersion.operation_vid.in_(list(operation_vids)))
-            .all()
+        )
+        rows = chunked_in(
+            query, OperationVersion.operation_vid, operation_vids
         )
         return {row[0]: row[1] for row in rows}
 
