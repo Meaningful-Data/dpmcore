@@ -2093,6 +2093,33 @@ class TestScript:
             "v1": "Grey cells {F_32.03.a, r0040, c0010} were found."
         }
 
+    def test_an_ast_the_format_cannot_express_fails_the_op(self, monkeypatch):
+        self._stub_serialize_ast(
+            monkeypatch,
+            {
+                "class_name": "UnaryOp",
+                "op": "not",
+                "operand": {"class_name": "VarRef", "variable": "F_01.01"},
+            },
+        )
+        svc, *_ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+
+        out = svc.script(
+            expressions=[("e1", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+
+        assert out["success"] is True
+        assert "v1" not in out["enriched_ast"]["operations"]
+        assert out["failed_operations"] == {
+            "v1": "VarRef is not a node of Script Format 2.0."
+        }
+
     def _stub_serialize_ast_for_operations(self, monkeypatch, return_value):
         """Stub ``serialize_ast`` for the operations' ``"AST"`` sentinel only.
 
@@ -3085,6 +3112,46 @@ class TestScriptFromDb:
         assert "v1" in out["failed_operations"]
         assert "boom" in out["failed_operations"]["v1"]
         svc._scope_calc.calculate_from_expression.assert_not_called()
+
+    def test_a_window_bound_keeps_its_period(self, monkeypatch):
+        bound = {"bound_type": "n_preceding", "n": 4, "period": "Q"}
+        db_ast_dict = {
+            "class_name": "AggregationOp",
+            "op": "avg",
+            "operand": {"class_name": "VarID", "table": "C_01.00", "data": []},
+            "grouping_clause": None,
+            "analytic_clause": {
+                "class_name": "AnalyticClause",
+                "partition_by": [],
+                "order_by": [{"key_name": "refPeriod", "direction": "asc"}],
+                "window": {
+                    "frame_type": "range",
+                    "start": bound,
+                    "end": {"bound_type": "current_data_point"},
+                },
+            },
+        }
+        self._stub_db_ast(
+            monkeypatch, MagicMock(return_value=(db_ast_dict, 1))
+        )
+        svc, mv, release_row, _ = self._build_svc()
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        assert "v1" not in out["failed_operations"]
+        operation = out["enriched_ast"]["operations"]["v1"]
+        window = operation["ast"]["analytic_clause"]["window"]
+        assert window["start"] == {
+            "bound_type": "n_preceding",
+            "n": 4,
+            "period_indicator": "Q",
+        }
 
     def test_falls_back_to_text_reparse_when_unsupported(self, monkeypatch):
         build = MagicMock(
