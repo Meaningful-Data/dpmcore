@@ -61,8 +61,7 @@ def _classify(session, code, module_code, module_version):
         module_version=module_version,
     )
     assert result["success"], result["error"]
-    namespace = next(iter(result["enriched_ast"]))
-    module = result["enriched_ast"][namespace]
+    module = result["enriched_ast"]
     info = module["dependency_information"]
     return {
         "intra": info["intra_instance_validations"],
@@ -171,7 +170,7 @@ def test_cross_validation_operands_declared_in_dependency(fixture_session):
         module_version=_CROSS_VERSION,
     )
     assert result["success"], result["error"]
-    module = next(iter(result["enriched_ast"].values()))
+    module = result["enriched_ast"]
     dep_modules = module["dependency_modules"]
     assert dep_modules, f"{code} must be cross-instance for {_CROSS_MODULE}"
 
@@ -199,7 +198,7 @@ def test_dependency_declares_only_referenced_subset(fixture_session):
         module_version=_CROSS_VERSION,
     )
     assert result["success"], result["error"]
-    module = next(iter(result["enriched_ast"].values()))
+    module = result["enriched_ast"]
     dep_modules = module["dependency_modules"]
     assert dep_modules, f"{code} must be cross-instance for {_CROSS_MODULE}"
 

@@ -96,9 +96,7 @@ def test_ghost_only_variables_are_declared_in_the_fallback_script(
     )
     assert result["success"], result.get("error")
 
-    modules = list(result["enriched_ast"].values())
-    assert len(modules) == 1, modules
-    ns_block = modules[0]
+    ns_block = result["enriched_ast"]
 
     assert _OPERATION in ns_block["operations"], (
         f"{_OPERATION} missing from the script -- the #182 scope rescue "

@@ -120,16 +120,15 @@ with connect("sqlite:///dpm.db") as db:
         severities={"v0002": "error"},     # per-validation override
         release="4.2",                     # optional; latest available if omitted
     )
-    # script["enriched_ast"] is keyed by the resolved module URI:
-    #   {namespace_uri: {module_code, module_version, framework_code,
-    #                    dpm_release, dates, operations, variables, tables,
-    #                    preconditions, precondition_variables,
-    #                    dependency_information, dependency_modules}}
+    # script["enriched_ast"] is the Script Format 2.0 document:
+    #   {owner, module_code, module_version, module_owner, module_uri,
+    #    framework_code, format_version, dpm_release, dates, operations,
+    #    preconditions, parameters, ...}
     # script["failed_operations"] lists expressions that were skipped due to
     # semantic errors (e.g. grey cells): {validation_code: error_message}
-    namespace, ns_block = next(iter(script["enriched_ast"].items()))
-    print(ns_block["dpm_release"])          # {"release": "...", "publication_date": "..."}
-    print(ns_block["operations"])           # {validation_code: {ast, severity, ...}}
+    document = script["enriched_ast"]
+    print(document["dpm_release"])          # {"release": "...", "publication_date": "..."}
+    print(document["operations"])           # {validation_code: {ast, severity, ...}}
     print(script["failed_operations"])      # {validation_code: error_message} or {}
 ```
 

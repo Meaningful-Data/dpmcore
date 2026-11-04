@@ -114,7 +114,7 @@ def test_ghost_union_is_scoped_to_the_release_covering_ghost(
         release=_RELEASE_UNDER_FIRST_GHOST,
     )
     assert result["success"], result.get("error")
-    ns = next(iter(result["enriched_ast"].values()))
+    ns = result["enriched_ast"]
     variables = ns["tables"][_TABLE]["variables"]
     assert _FIRST_GHOST_ONLY_VARIABLE_ID in variables
     assert _SECOND_GHOST_ONLY_VARIABLE_ID not in variables, (
@@ -129,7 +129,7 @@ def test_ghost_union_is_scoped_to_the_release_covering_ghost(
             release=release,
         )
         assert result["success"], result.get("error")
-        ns = next(iter(result["enriched_ast"].values()))
+        ns = result["enriched_ast"]
         variables = ns["tables"][_TABLE]["variables"]
         assert _SECOND_GHOST_ONLY_VARIABLE_ID in variables
         assert _FIRST_GHOST_ONLY_VARIABLE_ID not in variables, (
