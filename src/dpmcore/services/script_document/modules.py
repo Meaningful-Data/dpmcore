@@ -53,7 +53,7 @@ from dpmcore.services._open_keys import (
     get_open_key_properties,
     get_open_keys_for_tables,
 )
-from dpmcore.services.calculations_export.queries import (
+from dpmcore.services.script_document.queries import (
     get_module_uri,
     modules_of_table_vids,
     to_date,
@@ -372,7 +372,7 @@ def reference_window(
     Args:
         session: SQLAlchemy session.
         own: The export's own module version, as
-            :func:`~dpmcore.services.calculations_export.queries.get_module_metadata`
+            :func:`~dpmcore.services.script_document.queries.get_module_metadata`
             returns it.
         release_id: Release the export is resolved at.
     """
@@ -400,7 +400,7 @@ def build_modules(
     Args:
         session: SQLAlchemy session.
         own: The export's own module version, as
-            :func:`~dpmcore.services.calculations_export.queries.get_module_metadata`
+            :func:`~dpmcore.services.script_document.queries.get_module_metadata`
             returns it.
         window: The own version's window (:func:`reference_window`).
         module_uri: The URI of the export's own version.

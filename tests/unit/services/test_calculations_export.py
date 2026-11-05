@@ -25,18 +25,6 @@ from dpmcore.services.calculations_export.exporter import (
     _module_owner,
     _owner,
 )
-from dpmcore.services.calculations_export.modules import (
-    AT_T,
-    ModuleVersionInfo,
-    RefDateLag,
-    combine_lags,
-    overlaps,
-    target_window,
-    version_chain,
-)
-from dpmcore.services.calculations_export.queries import (
-    _published_module_uri,
-)
 from dpmcore.services.calculations_export.visitors import (
     CalculationsJSONVisitor,
     DAGAnalyzer,
@@ -45,6 +33,18 @@ from dpmcore.services.calculations_export.visitors import (
     _constant_value,
     _sole_code,
     unwrap_with_expressions,
+)
+from dpmcore.services.script_document.modules import (
+    AT_T,
+    ModuleVersionInfo,
+    RefDateLag,
+    combine_lags,
+    overlaps,
+    target_window,
+    version_chain,
+)
+from dpmcore.services.script_document.queries import (
+    _published_module_uri,
 )
 from dpmcore.services.syntax import SyntaxService
 

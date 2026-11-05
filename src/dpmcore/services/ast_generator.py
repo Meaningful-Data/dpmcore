@@ -33,7 +33,7 @@ from dpmcore.services._parameters import merge_parameters
 from dpmcore.services._precondition_codes import (
     extract_precondition_codes as _extract_precondition_codes,
 )
-from dpmcore.services.script_format import (
+from dpmcore.services.script_document.script_format import (
     FORMAT_VERSION,
     UnsupportedNode,
     script_ast,

@@ -2,7 +2,7 @@
 
 import pytest
 
-from dpmcore.services.script_format import (
+from dpmcore.services.script_document.script_format import (
     FORMAT_VERSION,
     UnsupportedNode,
     script_ast,

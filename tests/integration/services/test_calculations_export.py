@@ -1182,7 +1182,7 @@ class TestWorkingReleaseUri:
     def test_a_working_release_keys_the_uri_and_warns(
         self, memory_session, caplog
     ):
-        from dpmcore.services.calculations_export.queries import (
+        from dpmcore.services.script_document.queries import (
             get_module_uri,
         )
 
@@ -1200,7 +1200,7 @@ class TestWorkingReleaseUri:
         assert "Playground" in caplog.text
 
     def test_a_published_release_is_left_alone(self, memory_session, caplog):
-        from dpmcore.services.calculations_export.queries import (
+        from dpmcore.services.script_document.queries import (
             get_module_uri,
         )
 
