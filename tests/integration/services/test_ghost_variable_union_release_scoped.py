@@ -41,6 +41,16 @@ def _module_vid(session, code, version):
     ).scalar()
 
 
+def _own_version(document):
+    """The script's own module version, as ``modules`` lists it."""
+    (version,) = [
+        version
+        for version in document["modules"][document["module_code"]]["versions"]
+        if version["URI"] == document["module_uri"]
+    ]
+    return version
+
+
 def test_fixture_still_has_two_ghosts_with_disjoint_table_variables(
     fixture_session,
 ):
@@ -115,7 +125,7 @@ def test_ghost_union_is_scoped_to_the_release_covering_ghost(
     )
     assert result["success"], result.get("error")
     ns = result["enriched_ast"]
-    variables = ns["tables"][_TABLE]["variables"]
+    variables = _own_version(ns)["tables"][_TABLE]["variables"]
     assert _FIRST_GHOST_ONLY_VARIABLE_ID in variables
     assert _SECOND_GHOST_ONLY_VARIABLE_ID not in variables, (
         f"{_RELEASE_UNDER_FIRST_GHOST} is only covered by the first "
@@ -130,7 +140,7 @@ def test_ghost_union_is_scoped_to_the_release_covering_ghost(
         )
         assert result["success"], result.get("error")
         ns = result["enriched_ast"]
-        variables = ns["tables"][_TABLE]["variables"]
+        variables = _own_version(ns)["tables"][_TABLE]["variables"]
         assert _SECOND_GHOST_ONLY_VARIABLE_ID in variables
         assert _FIRST_GHOST_ONLY_VARIABLE_ID not in variables, (
             f"{release} is only covered by the second ghost -- the "

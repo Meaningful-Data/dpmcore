@@ -734,7 +734,7 @@ def export_script(
     from sqlalchemy.orm import Session
 
     from dpmcore.services.ast_generator import ASTGeneratorService
-    from dpmcore.services.script_format import script_file_name
+    from dpmcore.services.script_document.script_format import script_file_name
 
     console = Console()
 
@@ -1350,7 +1350,7 @@ def export_calculations(
 
     from dpmcore.connection import connect
     from dpmcore.errors import DpmCoreError
-    from dpmcore.services.script_format import script_file_name
+    from dpmcore.services.script_document.script_format import script_file_name
 
     try:
         with connect(database) as db:

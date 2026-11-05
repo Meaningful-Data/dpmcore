@@ -481,11 +481,41 @@ class TestBuildReleaseInfo:
 class TestBuildDates:
     def test_emits_iso_dates(self):
         _, Cls, _ = _bare_svc()
-        mv = SimpleNamespace(
-            from_reference_date=date(2026, 3, 31),
-            to_reference_date=None,
-        )
-        assert Cls._build_dates(mv) == {"from": "2026-03-31", "to": None}
+        window = (date(2026, 3, 31), None)
+        assert Cls._build_dates(window) == {"from": "2026-03-31", "to": None}
+
+
+class TestTestedFilingIndicators:
+    def test_collects_every_filing_indicator_of_every_gate(self):
+        _, Cls, _ = _bare_svc()
+        preconditions = {
+            "p_1": {
+                "ast": {
+                    "class_name": "BinOp",
+                    "op": "and",
+                    "left": {
+                        "class_name": "FilingIndicatorVarID",
+                        "code": "C_01.00",
+                        "variable_id": 1,
+                    },
+                    "right": {
+                        "class_name": "FilingIndicatorVarID",
+                        "code": "C_02.00",
+                        "variable_id": 2,
+                    },
+                }
+            },
+            "p_2": {
+                "ast": {
+                    "class_name": "FilingIndicatorVarID",
+                    "code": "C_01.00",
+                    "variable_id": 1,
+                }
+            },
+            "p_3": {"ast": {"class_name": "ParameterRef", "code": "BM"}},
+        }
+
+        assert Cls._tested_filing_indicators(preconditions) == {1, 2}
 
 
 # ------------------------------------------------------------------ #
@@ -562,10 +592,7 @@ class TestBuildPreconditionsBlock:
     def test_empty_input_returns_empty(self):
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
-        assert svc._build_preconditions_block([], release_id=None) == (
-            {},
-            {},
-        )
+        assert svc._build_preconditions_block([], release_id=None) == {}
 
     @pytest.mark.parametrize(
         "expression",
@@ -585,7 +612,7 @@ class TestBuildPreconditionsBlock:
             {"C_01.00": {"variable_id": 11, "variable_vid": 110}},
         )
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [(expression, ["v1", "v2"])], release_id=5
         )
         assert "p_110" in preconds
@@ -595,7 +622,6 @@ class TestBuildPreconditionsBlock:
         assert entry["affected_operations"] == ["v1", "v2"]
         assert entry["version_id"] == 110
         assert entry["code"] == "p_110"
-        assert vars_ == {"110": "b"}
 
     def test_compound_emits_binop_tree(self, monkeypatch, real_syntax):
         """Compound gates preserve the ``and``/``or`` structure the source
@@ -614,7 +640,7 @@ class TestBuildPreconditionsBlock:
             },
         )
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_A} and {v_B} and {v_C}", ["v1"])], release_id=None
         )
         assert "p_10_20_30" in preconds
@@ -638,7 +664,6 @@ class TestBuildPreconditionsBlock:
 
         _collect(ast)
         assert vids == {1, 2, 3}
-        assert vars_ == {"10": "b", "20": "b", "30": "b"}
 
     def test_unresolved_codes_silently_skipped(self, monkeypatch, real_syntax):
         svc, _, _ = _bare_svc()
@@ -646,11 +671,10 @@ class TestBuildPreconditionsBlock:
         svc._syntax = real_syntax
         _install_variable_resolver(monkeypatch, {})
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_unresolved}", ["v1"])], release_id=None
         )
         assert preconds == {}
-        assert vars_ == {}
 
     def test_parenthesized_unresolved_code_silently_skipped(
         self, monkeypatch, real_syntax
@@ -668,11 +692,10 @@ class TestBuildPreconditionsBlock:
         svc._syntax = real_syntax
         _install_variable_resolver(monkeypatch, {})
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("({v_unresolved})", ["v1"])], release_id=None
         )
         assert preconds == {}
-        assert vars_ == {}
 
     def test_unresolved_and_operand_keeps_the_other_side(
         self, monkeypatch, real_syntax
@@ -685,7 +708,7 @@ class TestBuildPreconditionsBlock:
             monkeypatch, {"A": {"variable_id": 1, "variable_vid": 10}}
         )
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_A} and {v_B}", ["v1"])], release_id=None
         )
         assert list(preconds) == ["p_10"]
@@ -694,7 +717,6 @@ class TestBuildPreconditionsBlock:
             "variable_id": 1,
             "code": "A",
         }
-        assert vars_ == {"10": "b"}
 
     @pytest.mark.parametrize("op", ["or", "xor"])
     def test_unresolved_operand_drops_the_whole_gate(
@@ -705,8 +727,7 @@ class TestBuildPreconditionsBlock:
         ``{v_A} or {v_B}`` with ``B`` unresolved must not collapse to
         ``{v_A}``: that is a *stricter* gate than the source, and the
         operations it guards would be skipped for filers that reported
-        only ``B``. The gate is dropped instead, and the vid of the
-        resolved side must not stay behind in ``precondition_variables``.
+        only ``B``. The gate is dropped instead.
         """
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
@@ -715,11 +736,10 @@ class TestBuildPreconditionsBlock:
             monkeypatch, {"A": {"variable_id": 1, "variable_vid": 10}}
         )
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [(f"{{v_A}} {op} {{v_B}}", ["v1"])], release_id=None
         )
         assert preconds == {}
-        assert vars_ == {}
 
     def test_unresolved_operand_under_not_reads_the_flipped_rule(
         self, monkeypatch, real_syntax
@@ -737,13 +757,12 @@ class TestBuildPreconditionsBlock:
             monkeypatch, {"A": {"variable_id": 1, "variable_vid": 10}}
         )
 
-        tightening, no_vars = svc._build_preconditions_block(
+        tightening = svc._build_preconditions_block(
             [("not({v_A} and {v_B})", ["v1"])], release_id=None
         )
         assert tightening == {}
-        assert no_vars == {}
 
-        relaxing, vars_ = svc._build_preconditions_block(
+        relaxing = svc._build_preconditions_block(
             [("not({v_A} or {v_B})", ["v1"])], release_id=None
         )
         # Not a conjunction of items, so the key carries the shape CRC.
@@ -758,7 +777,6 @@ class TestBuildPreconditionsBlock:
                 "code": "A",
             },
         }
-        assert vars_ == {"10": "b"}
 
     def test_collision_merges_affected_operations(
         self, monkeypatch, real_syntax
@@ -778,7 +796,7 @@ class TestBuildPreconditionsBlock:
             {"C_01.00": {"variable_id": 11, "variable_vid": 110}},
         )
 
-        preconds, _vars = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [
                 ("{v_C_01.00}", ["v1", "v2"]),
                 ("{v_C_01.00}", ["v2", "v3"]),
@@ -804,7 +822,7 @@ class TestBuildPreconditionsBlock:
             {"C_01.00": {"variable_id": 11, "variable_vid": 110}},
         )
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [
                 {
                     "expression": "{v_C_01.00}",
@@ -820,7 +838,6 @@ class TestBuildPreconditionsBlock:
         assert entry["code"] == "P_571"
         assert entry["version_id"] == 8341
         assert entry["affected_operations"] == ["v1", "v2"]
-        assert vars_ == {"110": "b"}
 
     def test_backward_compat_tuple_format_still_works(
         self, monkeypatch, real_syntax
@@ -834,7 +851,7 @@ class TestBuildPreconditionsBlock:
             {"C_01.00": {"variable_id": 11, "variable_vid": 110}},
         )
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_C_01.00}", ["v1", "v2"])],
             release_id=5,
         )
@@ -854,18 +871,17 @@ class TestBuildPreconditionsBlock:
             monkeypatch, {"C_01.00": {"variable_id": 11, "variable_vid": 110}}
         )
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_C_01.00}", ["v1", "v2", "v3"])],
             release_id=None,
             emitted_operations={"v1", "v3"},
         )
         assert preconds["p_110"]["affected_operations"] == ["v1", "v3"]
-        assert vars_ == {"110": "b"}
 
     def test_precondition_gating_nothing_emitted_is_dropped(
         self, monkeypatch, real_syntax
     ):
-        """A gate left with no operation drops, variables included."""
+        """A gate left with no operation drops."""
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
         svc._syntax = real_syntax
@@ -873,40 +889,12 @@ class TestBuildPreconditionsBlock:
             monkeypatch, {"C_01.00": {"variable_id": 11, "variable_vid": 110}}
         )
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_C_01.00}", ["v1"])],
             release_id=None,
             emitted_operations={"v2"},
         )
         assert preconds == {}
-        assert vars_ == {}
-
-    def test_dropped_gate_does_not_take_a_shared_variable_with_it(
-        self, monkeypatch, real_syntax
-    ):
-        """A variable a surviving gate also uses stays declared."""
-        svc, _, _ = _bare_svc()
-        svc.session = MagicMock()
-        svc._syntax = real_syntax
-        _install_variable_resolver(
-            monkeypatch,
-            {
-                "A": {"variable_id": 1, "variable_vid": 10},
-                "B": {"variable_id": 2, "variable_vid": 20},
-            },
-        )
-
-        preconds, vars_ = svc._build_preconditions_block(
-            [
-                ("{v_A}", ["v1"]),
-                ("{v_A} and {v_B}", ["v2"]),
-            ],
-            release_id=None,
-            emitted_operations={"v1"},
-        )
-        assert list(preconds) == ["p_10"]
-        # 20 belonged to the dropped compound gate only; 10 is shared.
-        assert vars_ == {"10": "b"}
 
     def test_no_emitted_operations_filter_keeps_every_code(
         self, monkeypatch, real_syntax
@@ -919,7 +907,7 @@ class TestBuildPreconditionsBlock:
             monkeypatch, {"C_01.00": {"variable_id": 11, "variable_vid": 110}}
         )
 
-        preconds, _vars = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_C_01.00}", ["v1", "v2"])], release_id=None
         )
         assert preconds["p_110"]["affected_operations"] == ["v1", "v2"]
@@ -951,7 +939,7 @@ class TestGateParameterPropagation:
         _install_variable_resolver(monkeypatch, {})
 
         referenced: dict = {}
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{p_flag, boolean}", ["v1"])],
             release_id=None,
             referenced_parameters=referenced,
@@ -967,7 +955,6 @@ class TestGateParameterPropagation:
         assert entry["affected_operations"] == ["v1"]
         assert entry["code"].startswith("p_")
         assert isinstance(entry["version_id"], int)
-        assert vars_ == {}
         assert referenced["flag"].declared_type == "Boolean"
 
     def test_parameter_default_is_preserved_on_the_node(
@@ -979,7 +966,7 @@ class TestGateParameterPropagation:
         _install_variable_resolver(monkeypatch, {})
 
         referenced: dict = {}
-        preconds, _vars = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{p_flag, boolean, default: true}", ["v1"])],
             release_id=None,
             referenced_parameters=referenced,
@@ -1005,7 +992,7 @@ class TestGateParameterPropagation:
         )
 
         referenced: dict = {}
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_F_01.02} and {p_flag, boolean}", ["v1"])],
             release_id=None,
             referenced_parameters=referenced,
@@ -1029,7 +1016,6 @@ class TestGateParameterPropagation:
         }
         assert entry["code"].startswith("p_420_")
         assert entry["version_id"] == 420
-        assert vars_ == {"420": "b"}
         assert referenced["flag"].declared_type == "Boolean"
 
     def test_boolean_literal_is_emitted_as_constant(
@@ -1042,7 +1028,7 @@ class TestGateParameterPropagation:
             monkeypatch, {"A": {"variable_id": 1, "variable_vid": 10}}
         )
 
-        preconds, _vars = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_A} and true", ["v1"])], release_id=None
         )
 
@@ -1089,7 +1075,7 @@ class TestGateParameterPropagation:
             },
         )
 
-        preconds, _vars = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_A} or {v_B}", ["v1"])], release_id=None
         )
         [entry] = preconds.values()
@@ -1122,7 +1108,7 @@ class TestGateParameterPropagation:
             },
         )
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("not {v_A} or ({v_B} xor {v_C})", ["v1"])], release_id=None
         )
 
@@ -1157,7 +1143,6 @@ class TestGateParameterPropagation:
             "variable_id": 3,
             "code": "C",
         }
-        assert vars_ == {"10": "b", "20": "b", "30": "b"}
 
     def test_gates_with_different_shapes_never_share_a_key(
         self, monkeypatch, real_syntax
@@ -1179,7 +1164,7 @@ class TestGateParameterPropagation:
             },
         )
 
-        preconds, _vars = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [
                 ("{v_A} and {v_B}", ["v1"]),
                 ("{v_A} or {v_B}", ["v2"]),
@@ -1218,7 +1203,7 @@ class TestGateParameterPropagation:
             },
         )
 
-        preconds, _vars = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [
                 ("{v_A} and {v_B}", ["v1"]),
                 ("({v_A} and {v_B})", ["v2"]),
@@ -1245,7 +1230,7 @@ class TestGateParameterPropagation:
         # that ends up stored (single-entry check, order-independent).
         parenthesized_ast = svc._build_preconditions_block(
             [("({v_A} and {v_B})", ["v2"])], release_id=None
-        )[0]["p_10_20"]["ast"]
+        )["p_10_20"]["ast"]
         assert parenthesized_ast["class_name"] == "ParExpr"
 
 
@@ -1279,14 +1264,13 @@ class TestUnsupportedGates:
         )
 
         failures = svc._unsupported_gate_operations([(expression, ["v1"])])
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [(expression, ["v1"])], release_id=None
         )
 
         assert reason in failures["v1"]
         assert "cannot be evaluated by the engine" in failures["v1"]
         assert preconds == {}
-        assert vars_ == {}
 
     def test_contract_shapes_report_nothing(self, monkeypatch, real_syntax):
         svc, _, _ = _bare_svc()
@@ -1988,6 +1972,11 @@ class TestScript:
 
         svc._resolve_release = lambda mc, mv_, rel: (mv, release_row)
         svc._resolve_root_operator_id = staticmethod(lambda ast, session: 24)
+        # The ASTs here are stand-ins with no operands to read.
+        svc._extract_reads = MagicMock(return_value=[])
+        svc._build_modules = MagicMock(
+            return_value=({"MOD": {"versions": []}}, (date(2026, 3, 31), None))
+        )
         svc._module_owner = MagicMock(return_value="EBA")
 
         svc._scope_calc._get_module_tables.return_value = {
@@ -2243,6 +2232,83 @@ class TestScript:
         assert list(out["failed_operations"]) == ["v1"]
         assert "integer literal" in out["failed_operations"]["v1"]
 
+    def test_unreadable_operation_skips_op_preserves_others(self, monkeypatch):
+        """An operation listed without what it reads would leave
+        ``modules`` short of it, so it is skipped instead.
+        """
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, _, _, mod = self._build_svc()
+        svc._semantic.ast = "AST"
+        svc._extract_reads.side_effect = [
+            mod._UnreadableOperation("Could not collect what it reads"),
+            [],
+        ]
+
+        out = svc.script(
+            expressions=[("e_bad", "v1"), ("e2", "v2")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+
+        assert out["success"] is True
+        assert list(out["enriched_ast"]["operations"]) == ["v2"]
+        assert out["failed_operations"] == {
+            "v1": "Could not collect what it reads"
+        }
+
+    def test_modules_are_built_from_what_each_operation_reads(
+        self, monkeypatch
+    ):
+        """Reads are numbered by the operation's place in ``operations``,
+        so a skipped operation shifts none of them; ``dates`` is the
+        window the own version has in ``modules``.
+        """
+        from dataclasses import dataclass
+
+        @dataclass(frozen=True)
+        class _Read:
+            statement: int
+            table: str
+
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, _, _, mod = self._build_svc()
+        svc._semantic.ast = "AST"
+        svc._extract_reads.side_effect = [
+            mod._UnreadableOperation("Could not collect what it reads"),
+            [_Read(0, "A")],
+            [_Read(0, "B"), _Read(0, "C")],
+        ]
+        modules = {"MOD": {"versions": [{"version": "1.0"}]}}
+        svc._build_modules.return_value = (
+            modules,
+            (date(2025, 12, 31), date(2026, 6, 29)),
+        )
+
+        out = svc.script(
+            expressions=[("e1", "v1"), ("e2", "v2"), ("e3", "v3")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+
+        doc = out["enriched_ast"]
+        assert doc["modules"] == modules
+        assert doc["dates"] == {"from": "2025-12-31", "to": "2026-06-29"}
+        kwargs = svc._build_modules.call_args.kwargs
+        assert kwargs["preconditions"] is doc["preconditions"]
+        scope_pairs = kwargs["scope_pairs"]
+        assert [item[1] for item, *_ in scope_pairs] == ["v2", "v3"]
+        assert [
+            (read.statement, read.table)
+            for *_, refs in scope_pairs
+            for read in refs.reads
+        ] == [(0, "A"), (1, "B"), (1, "C")]
+
     def test_preconditions_only_gate_emitted_operations(
         self, monkeypatch, real_syntax
     ):
@@ -2300,13 +2366,11 @@ class TestScript:
         assert out["success"] is True
         assert "v0937_m" in out["failed_operations"]
         doc = out["enriched_ast"]
-        # p_255 gated the rejected operation alone: entry and the
-        # variable it alone declared both go.
+        # p_255 gated the rejected operation alone, so it goes.
         assert list(doc["preconditions"]) == ["p_9"]
         assert doc["preconditions"]["p_9"]["affected_operations"] == [
             "v1000_m"
         ]
-        assert doc["precondition_variables"] == {"220": "b"}
 
     def test_scope_error_fails_generation(self, monkeypatch):
         """Regression for #122: a scope-calculation error must fail the
@@ -2448,7 +2512,7 @@ class TestScript:
         assert out["success"] is True
         doc = out["enriched_ast"]
         # Script Format 2.0: not keyed by URI, members in this order.
-        assert list(doc)[:12] == [
+        assert list(doc)[:13] == [
             "owner",
             "module_code",
             "module_version",
@@ -2460,6 +2524,7 @@ class TestScript:
             "dates",
             "operations",
             "preconditions",
+            "modules",
             "parameters",
         ]
         assert doc["owner"] == "EBA"
@@ -2484,9 +2549,6 @@ class TestScript:
         # AST stripped
         ast_data = doc["operations"]["v1"]["ast"]["data"][0]
         assert "data_type" not in ast_data
-        # tables/variables seeded from the module composition
-        assert "C_01.00" in doc["tables"]
-        assert doc["variables"] == {"100": "m"}
 
     def test_owner_overrides_the_module_owner(self, monkeypatch):
         self._stub_serialize_ast(
@@ -2507,38 +2569,6 @@ class TestScript:
         assert out["success"] is True
         assert out["enriched_ast"]["owner"] == "ECB"
         assert out["enriched_ast"]["module_owner"] == "EBA"
-
-    def test_tables_block_includes_unreferenced_module_tables(
-        self, monkeypatch
-    ):
-        """#158: module-composition tables appear even when no expression
-        references them; abstract (empty-variable) tables stay excluded.
-        """
-        self._stub_serialize_ast(
-            monkeypatch,
-            {"class_name": "VarID", "table": "C_01.00", "data": []},
-        )
-        svc, *_ = self._build_svc()
-        svc._semantic.validate.return_value = SimpleNamespace(
-            is_valid=True, error_message=None, parameters=()
-        )
-        svc._semantic.ast = "AST"
-        svc._scope_calc._get_module_tables.return_value = {
-            "C_01.00": {"variables": {"100": "m"}, "open_keys": {}},
-            "C_99.00": {"variables": {"900": "m"}, "open_keys": {}},
-            "C_ABS.00": {"variables": {}, "open_keys": {}},
-        }
-        out = svc.script(
-            expressions=[("e1", "v1")],
-            module_code="MOD",
-            module_version="1.0",
-        )
-        assert out["success"] is True
-        doc = out["enriched_ast"]
-        # Referenced (C_01.00) AND unreferenced-with-variables (C_99.00)
-        # are present; the empty-variable (abstract) table is dropped.
-        assert set(doc["tables"]) == {"C_01.00", "C_99.00"}
-        assert doc["variables"] == {"100": "m", "900": "m"}
 
     def test_default_severity_is_warning(self, monkeypatch):
         self._stub_serialize_ast(
@@ -2748,6 +2778,11 @@ class TestScriptFromDb:
 
         svc._resolve_release = lambda mc, mv_, rel: (mv, release_row)
         svc._resolve_root_operator_id = staticmethod(lambda ast, session: 24)
+        # The ASTs here are stand-ins with no operands to read.
+        svc._extract_reads = MagicMock(return_value=[])
+        svc._build_modules = MagicMock(
+            return_value=({"MOD": {"versions": []}}, (date(2026, 3, 31), None))
+        )
         svc._module_owner = MagicMock(return_value="EBA")
 
         svc._scope_calc._get_module_tables.return_value = {
@@ -2984,6 +3019,41 @@ class TestScriptFromDb:
 
         assert out["success"] is True, out["error"]
         assert "v1" in out["failed_operations"]
+        svc._scope_calc.calculate_from_expression.assert_not_called()
+
+    def test_db_native_unreadable_operation_excludes_only_that_operation(
+        self, monkeypatch
+    ):
+        """Same as a shift that cannot be declared: just this operation
+        is rejected, without falling back to a re-parse.
+        """
+        build = MagicMock(return_value=(_FakeVarID(table="C_01.00"), 24))
+        db_ast = SimpleNamespace(
+            UnsupportedDbAst=_FakeUnsupportedDbAst,
+            build_ast_from_db=build,
+            serialize_built_ast=lambda built: {
+                "class_name": "VarID",
+                "table": "C_01.00",
+                "data": [],
+            },
+        )
+        monkeypatch.setitem(sys.modules, "dpmcore.dpm_xl.utils.db_ast", db_ast)
+        svc, mv, release_row, mod = self._build_svc()
+        svc._extract_reads.side_effect = mod._UnreadableOperation(
+            "Could not collect what it reads"
+        )
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        assert out["failed_operations"] == {
+            "v1": "Could not collect what it reads"
+        }
         svc._scope_calc.calculate_from_expression.assert_not_called()
 
     def test_db_path_parameters_reach_the_parameters_block(

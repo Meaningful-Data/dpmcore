@@ -52,10 +52,8 @@ def _success_result():
                 },
             },
             "preconditions": {},
+            "modules": {},
             "parameters": {},
-            "variables": {},
-            "tables": {},
-            "precondition_variables": {},
             "dependency_information": {
                 "intra_instance_validations": ["v0001", "v0002"],
                 "cross_instance_dependencies": [],

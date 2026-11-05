@@ -44,15 +44,38 @@ def _success_payload():
                 }
             },
             "preconditions": {},
-            "parameters": {},
-            "variables": {"100": "m"},
-            "tables": {
-                "F_01.01": {
-                    "variables": {"100": "m"},
-                    "open_keys": {"BASE": "e"},
+            "modules": {
+                "FINREP_Con": {
+                    "versions": [
+                        {
+                            "version": "2.0.1",
+                            "URI": "http://example.org/mod",
+                            "from": "2026-03-31",
+                            "to": None,
+                            "tables": {
+                                "F_01.01": {
+                                    "variables": {
+                                        "100": {
+                                            "data_type": "m",
+                                            "cells": [
+                                                {
+                                                    "row": "0010",
+                                                    "column": "0010",
+                                                }
+                                            ],
+                                        }
+                                    },
+                                    "open_keys": {},
+                                }
+                            },
+                            "filing_indicators": {
+                                "F_01.01": {"variable_id": 9, "data_type": "b"}
+                            },
+                        }
+                    ]
                 }
             },
-            "precondition_variables": {},
+            "parameters": {},
             "dependency_information": {
                 "intra_instance_validations": ["v0001"],
                 "cross_instance_dependencies": [],

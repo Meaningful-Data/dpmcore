@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import calendar
 import logging
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import (
     TYPE_CHECKING,
@@ -53,8 +53,9 @@ from dpmcore.services._open_keys import (
     get_open_key_properties,
     get_open_keys_for_tables,
 )
-from dpmcore.services.calculations_export.queries import (
+from dpmcore.services.script_document.queries import (
     get_module_uri,
+    modules_of_filing_indicators,
     modules_of_table_vids,
     to_date,
     windowed_table_vids,
@@ -372,7 +373,7 @@ def reference_window(
     Args:
         session: SQLAlchemy session.
         own: The export's own module version, as
-            :func:`~dpmcore.services.calculations_export.queries.get_module_metadata`
+            :func:`~dpmcore.services.script_document.queries.get_module_metadata`
             returns it.
         release_id: Release the export is resolved at.
     """
@@ -394,26 +395,39 @@ def build_modules(
     reads: Sequence[Read],
     operation_codes: Sequence[Optional[str]],
     release_id: Optional[int],
+    ghost_vids: Sequence[int] = (),
+    filing_indicators: Iterable[int] = (),
 ) -> Dict[str, Any]:
     """Build the ``modules`` section of an export.
 
     Args:
         session: SQLAlchemy session.
         own: The export's own module version, as
-            :func:`~dpmcore.services.calculations_export.queries.get_module_metadata`
+            :func:`~dpmcore.services.script_document.queries.get_module_metadata`
             returns it.
         window: The own version's window (:func:`reference_window`).
         module_uri: The URI of the export's own version.
         reads: What each statement reads.
         operation_codes: The operation code of each statement.
         release_id: Release the read tables were resolved at.
+        ghost_vids: One-day versions of the own module whose
+            statements the export carries. The own version describes
+            their tables, Variables and filing indicators too.
+        filing_indicators: The ``VariableID`` of each filing indicator
+            the export tests, at the own version's dates.
 
     Returns:
         ``{module_code: {"versions": [...]}}``, ordered by code.
     """
     return _ModulesBuilder(
-        session, own, window, module_uri, operation_codes, release_id
-    ).build(reads)
+        session,
+        own,
+        window,
+        module_uri,
+        operation_codes,
+        release_id,
+        ghost_vids,
+    ).build(reads, filing_indicators)
 
 
 @dataclass
@@ -423,6 +437,7 @@ class _ModuleReads:
     module_ids: Set[int]
     base_vids: Set[int]
     reads: Dict[Read, None]
+    indicators: Set[int] = field(default_factory=set)
 
 
 class _ModulesBuilder:
@@ -436,10 +451,12 @@ class _ModulesBuilder:
         module_uri: str,
         operation_codes: Sequence[Optional[str]],
         release_id: Optional[int],
+        ghost_vids: Sequence[int] = (),
     ) -> None:
         """Bind the export's own version and its release."""
         self.session = session
         self.own_vid = int(own["module_vid"])
+        self.own_vids = [self.own_vid, *(int(vid) for vid in ghost_vids)]
         self.own_code = own["code"]
         self.own_module_id = own["module_id"]
         self.window = window
@@ -453,10 +470,15 @@ class _ModulesBuilder:
         self._base_vid: Dict[str, int] = {}
         self._key_properties: Dict[int, FrozenSet[int]] = {}
         self._default_types: Set[int] = set()
+        self._own_indicators: Optional[Dict[str, Dict[str, Any]]] = None
+        self._own_extra: Dict[int, Set[int]] = {}
 
-    def build(self, reads: Sequence[Read]) -> Dict[str, Any]:
-        """Return ``modules`` for ``reads``."""
+    def build(
+        self, reads: Sequence[Read], filing_indicators: Iterable[int] = ()
+    ) -> Dict[str, Any]:
+        """Return ``modules`` for ``reads`` and ``filing_indicators``."""
         groups = self._group_by_module(reads)
+        self._add_filing_indicators(groups, set(filing_indicators))
         modules: Dict[str, Any] = {}
         for code in sorted(groups):
             versions = self._versions(code, groups[code])
@@ -524,6 +546,62 @@ class _ModulesBuilder:
                 group.reads[read] = None
         return groups
 
+    def _add_filing_indicators(
+        self, groups: Dict[str, _ModuleReads], variable_ids: Set[int]
+    ) -> None:
+        """Assign each filing indicator to every module declaring it.
+
+        One the own version declares is tested there only, as it lists
+        every filing indicator anyway.
+        """
+        own = {
+            entry["variable_id"]
+            for entry in self._own_filing_indicators().values()
+        }
+        wanted = variable_ids - own
+        if not wanted:
+            return
+        holders = modules_of_filing_indicators(
+            self.session, wanted, self.release_id
+        )
+        undeclared = sorted(wanted - set(holders))
+        if undeclared:
+            logger.warning(
+                "%s filing indicator(s) tested are declared by no module "
+                "version at the export's release: %s",
+                len(undeclared),
+                ", ".join(map(str, undeclared)),
+            )
+        for variable_id in sorted(wanted):
+            rows = holders.get(variable_id, [])
+            own_rows = [r for r in rows if r.module_id == self.own_module_id]
+            if own_rows:
+                logger.warning(
+                    "Filing indicator %s is tested but only another "
+                    "version of module %s declares it",
+                    variable_id,
+                    self.own_code,
+                )
+                self._own_extra.setdefault(
+                    int(own_rows[0].module_vid), set()
+                ).add(variable_id)
+                continue
+            for row in rows:
+                group = groups.setdefault(
+                    row.module_code, _ModuleReads(set(), set(), {})
+                )
+                group.module_ids.add(int(row.module_id))
+                group.base_vids.add(int(row.module_vid))
+                group.indicators.add(variable_id)
+
+    def _own_filing_indicators(self) -> Dict[str, Dict[str, Any]]:
+        """Return the filing indicators of the own version, loaded once."""
+        if self._own_indicators is None:
+            self._own_indicators = _filing_indicators(
+                self.session, self.own_vids
+            )
+        return self._own_indicators
+
     def _versions(
         self, code: str, group: _ModuleReads
     ) -> List[Dict[str, Any]]:
@@ -537,7 +615,8 @@ class _ModulesBuilder:
             drafts=self.drafts,
         )
         lags = {read.lag for read in group.reads}
-        if is_own:
+        if is_own or group.indicators:
+            # Filing indicators are tested at the own version's dates.
             lags.add(AT_T)
         targets = [target_window(self.window, lag) for lag in lags]
         listed = [
@@ -570,23 +649,36 @@ class _ModulesBuilder:
                     if overlaps(version, target_window(self.window, read.lag))
                 ]
             )
-            entry = self._version_entry(version, here)
+            tested = (
+                group.indicators
+                if fallback or overlaps(version, self.window)
+                else set()
+            )
+            entry = self._version_entry(version, here, tested)
             if entry is not None:
                 entries.append(entry)
         return entries
 
     def _version_entry(
-        self, version: ModuleVersionInfo, reads: Sequence[Read]
+        self,
+        version: ModuleVersionInfo,
+        reads: Sequence[Read],
+        indicators: Set[int],
     ) -> Optional[Dict[str, Any]]:
-        """Return one ``versions[]`` entry, ``None`` when it has no URI."""
+        """Return one ``versions[]`` entry, ``None`` when it has no URI.
+
+        ``indicators`` are the filing indicators tested on a version of
+        another module; the own version lists all of its own.
+        """
         is_own = version.module_vid == self.own_vid
         uri = self.module_uri if is_own else self._uri(version)
         if uri is None:
             return None
+        module_vids = self.own_vids if is_own else [version.module_vid]
 
         holders = _variable_holders(
             self.session,
-            version.module_vid,
+            module_vids,
             {var for read in reads for var in read.variable_ids},
         )
         self._load_key_properties(
@@ -619,7 +711,7 @@ class _ModulesBuilder:
         listed: Mapping[int, Optional[Set[int]]] = read_tables
         if is_own:
             # The own version describes every table and Variable.
-            composition = _composition(self.session, version.module_vid)
+            composition = _composition(self.session, module_vids)
             table_codes.update(composition)
             listed = dict.fromkeys(composition)
 
@@ -630,10 +722,13 @@ class _ModulesBuilder:
             "to": _date_text(version.end),
             "tables": self._tables(version, listed, table_codes),
         }
-        if is_own:
-            indicators = _filing_indicators(self.session, version.module_vid)
-            if indicators:
-                entry["filing_indicators"] = indicators
+        declared = (
+            self._own_declared()
+            if is_own
+            else self._tested_indicators(version.module_vid, indicators)
+        )
+        if declared:
+            entry["filing_indicators"] = declared
         not_evaluable = sorted(
             {
                 code
@@ -650,6 +745,32 @@ class _ModulesBuilder:
                 ", ".join(not_evaluable),
             )
         return entry
+
+    def _own_declared(self) -> Dict[str, Dict[str, Any]]:
+        """Return the own version's filing indicators and ``_own_extra``."""
+        if not self._own_extra:
+            return self._own_filing_indicators()
+        declared = dict(self._own_filing_indicators())
+        for module_vid, indicators in sorted(self._own_extra.items()):
+            for code, entry in self._tested_indicators(
+                module_vid, indicators
+            ).items():
+                declared.setdefault(code, entry)
+        return dict(sorted(declared.items()))
+
+    def _tested_indicators(
+        self, module_vid: int, indicators: Set[int]
+    ) -> Dict[str, Dict[str, Any]]:
+        """Return those of ``indicators`` a version of another module has."""
+        if not indicators:
+            return {}
+        return {
+            code: indicator
+            for code, indicator in _filing_indicators(
+                self.session, [module_vid]
+            ).items()
+            if indicator["variable_id"] in indicators
+        }
 
     def _uri(self, version: ModuleVersionInfo) -> Optional[str]:
         """Return a dependency version's URI, ``None`` when unusable."""
@@ -722,7 +843,9 @@ class _ModulesBuilder:
             entry = tables.setdefault(
                 code, {"variables": {}, "open_keys": open_keys.get(code, {})}
             )
-            entry["variables"].update(self._variables(cells, listed[vid]))
+            _merge_variables(
+                entry["variables"], self._variables(cells, listed[vid])
+            )
         for entry in tables.values():
             entry["variables"] = dict(
                 sorted(entry["variables"].items(), key=lambda kv: int(kv[0]))
@@ -817,10 +940,30 @@ def _module_versions(
     ]
 
 
+def _merge_variables(
+    into: Dict[str, Dict[str, Any]], variables: Mapping[str, Dict[str, Any]]
+) -> None:
+    """Add ``variables`` to ``into``, joining the cells of a Variable.
+
+    Two versions of a table, one of them a one-day version's, can hold
+    the same Variable in different cells.
+    """
+    for variable_id, variable in variables.items():
+        known = into.get(variable_id)
+        if known is None:
+            into[variable_id] = variable
+            continue
+        cells = known["cells"] + [
+            cell for cell in variable["cells"] if cell not in known["cells"]
+        ]
+        cells.sort(key=lambda c: tuple(c.get(a, "") for a, _ in _AXES))
+        known["cells"] = cells
+
+
 def _variable_holders(
-    session: "Session", module_vid: int, variable_ids: Set[int]
+    session: "Session", module_vids: Sequence[int], variable_ids: Set[int]
 ) -> Dict[int, Dict[int, str]]:
-    """Return where each Variable sits in Module Version ``module_vid``.
+    """Return where each Variable sits in the Module Versions given.
 
     Only the Variables asked for are looked up: the module's other
     tables are never loaded.
@@ -850,7 +993,9 @@ def _variable_holders(
             VariableVersion.variable_vid == TableVersionCell.variable_vid,
         )
         .filter(
-            ModuleVersionComposition.module_vid == int(module_vid),
+            ModuleVersionComposition.module_vid.in_(
+                [int(vid) for vid in module_vids]
+            ),
             TableVersionCell.is_void == False,  # noqa: E712
         )
         .distinct()
@@ -865,31 +1010,41 @@ def _variable_holders(
     return holders
 
 
-def _composition(session: "Session", module_vid: int) -> Dict[int, str]:
-    """Return ``{TableVID: table code}`` of every table of a module version."""
+def _composition(
+    session: "Session", module_vids: Sequence[int]
+) -> Dict[int, str]:
+    """Return ``{TableVID: table code}`` of every table of the versions."""
     rows = (
         session.query(TableVersion.table_vid, TableVersion.code)
         .join(
             ModuleVersionComposition,
             ModuleVersionComposition.table_vid == TableVersion.table_vid,
         )
-        .filter(ModuleVersionComposition.module_vid == int(module_vid))
+        .filter(
+            ModuleVersionComposition.module_vid.in_(
+                [int(vid) for vid in module_vids]
+            )
+        )
         .all()
     )
     return {int(row.table_vid): row.code for row in rows if row.code}
 
 
 def _filing_indicators(
-    session: "Session", module_vid: int
+    session: "Session", module_vids: Sequence[int]
 ) -> Dict[str, Dict[str, Any]]:
-    """Return ``{code: {variable_id, data_type}}`` of a module version."""
-    return {
-        row.Code: {
-            "variable_id": int(row.VariableID),
-            "data_type": row.DataType or "b",
-        }
+    """Return ``{code: {variable_id, data_type}}`` of the versions.
+
+    A code in two of them keeps the first one's entry.
+    """
+    indicators: Dict[str, Dict[str, Any]] = {}
+    for module_vid in module_vids:
         for row in ModuleVersionQuery.get_filing_indicators(
             session, module_vid
-        )
-        if row.Code
-    }
+        ):
+            if row.Code and row.Code not in indicators:
+                indicators[row.Code] = {
+                    "variable_id": int(row.VariableID),
+                    "data_type": row.DataType or "b",
+                }
+    return indicators

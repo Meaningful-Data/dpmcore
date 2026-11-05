@@ -26,16 +26,10 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import SQLAlchemyError
 
 from dpmcore.errors import ConfigurationError, Invalid, NotFound
-from dpmcore.services.calculations_export.modules import (
-    build_modules,
-    reference_window,
-)
 from dpmcore.services.calculations_export.queries import (
     get_calculations,
     get_data_types,
     get_data_types_by_version,
-    get_module_metadata,
-    get_module_uri,
     get_module_version_id,
     get_output_tables,
     get_output_variable_vids,
@@ -45,12 +39,22 @@ from dpmcore.services.calculations_export.visitors import (
     CalculationsJSONVisitor,
     CalculationsOperandsChecking,
     DAGAnalyzer,
-    DependencyTableExtractor,
     OutputExtractor,
     VarIDDataEnricher,
     unwrap_with_expressions,
 )
-from dpmcore.services.script_format import FORMAT_VERSION
+from dpmcore.services.script_document.modules import (
+    build_modules,
+    reference_window,
+)
+from dpmcore.services.script_document.queries import (
+    get_module_metadata,
+    get_module_uri,
+)
+from dpmcore.services.script_document.script_format import FORMAT_VERSION
+from dpmcore.services.script_document.visitors import (
+    DependencyTableExtractor,
+)
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
