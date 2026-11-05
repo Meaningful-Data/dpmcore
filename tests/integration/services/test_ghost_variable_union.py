@@ -42,6 +42,16 @@ def _module_vid(session, code, version):
     ).scalar()
 
 
+def _own_version(document):
+    """The script's own module version, as ``modules`` lists it."""
+    (version,) = [
+        version
+        for version in document["modules"][document["module_code"]]["versions"]
+        if version["URI"] == document["module_uri"]
+    ]
+    return version
+
+
 def test_fixture_still_has_the_ghost_and_its_own_variable_ids(fixture_session):
     """Guard the fixture: the scenario below relies on this shape."""
     session = fixture_session
@@ -103,12 +113,8 @@ def test_ghost_only_variables_are_declared_in_the_fallback_script(
         "regressed, this test can't isolate the variable-union gap"
     )
 
-    table_variables = ns_block["tables"][_TABLE]["variables"]
-    top_level_variables = ns_block["variables"]
+    table_variables = _own_version(ns_block)["tables"][_TABLE]["variables"]
     for var_id in _GHOST_ONLY_VARIABLE_IDS:
         assert var_id in table_variables, (
             f"{var_id} missing from tables[{_TABLE!r}].variables"
-        )
-        assert var_id in top_level_variables, (
-            f"{var_id} missing from the top-level variables block"
         )

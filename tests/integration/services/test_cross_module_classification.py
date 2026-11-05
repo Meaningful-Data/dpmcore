@@ -53,6 +53,16 @@ def _latest_expression(session, code: str) -> str:
     return expression
 
 
+def _own_version(document):
+    """The script's own module version, as ``modules`` lists it."""
+    (version,) = [
+        version
+        for version in document["modules"][document["module_code"]]["versions"]
+        if version["URI"] == document["module_uri"]
+    ]
+    return version
+
+
 def _classify(session, code, module_code, module_version):
     expression = _latest_expression(session, code)
     result = ASTGeneratorService(session).script(
@@ -66,7 +76,7 @@ def _classify(session, code, module_code, module_version):
     return {
         "intra": info["intra_instance_validations"],
         "cross": len(info["cross_instance_dependencies"]),
-        "tables": sorted(module["tables"].keys()),
+        "tables": sorted(_own_version(module)["tables"]),
     }
 
 
@@ -110,7 +120,7 @@ def test_named_classification(
 def test_primary_hosting_no_tables_is_not_intra(fixture_session):
     """A module hosting none of a validation's tables is neither intra nor cross.
 
-    The primary module's ``tables`` block lists every table of the module
+    The primary module's own version lists every table of the module
     regardless of what the validation touches (#158), so it is not empty;
     what matters is that the validation's own tables do not leak into it.
     """
@@ -176,7 +186,11 @@ def test_cross_validation_operands_declared_in_dependency(fixture_session):
 
     operands = _operand_datapoints(module["operations"][code]["ast"])
     assert operands, "the validation must reference at least one datapoint"
-    home_variables = set(module["variables"])
+    home_variables = {
+        variable_id
+        for table in _own_version(module)["tables"].values()
+        for variable_id in table["variables"]
+    }
     assert operands & home_variables, (
         f"{code} has home-module operands: they are what #251 was about"
     )

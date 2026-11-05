@@ -357,7 +357,6 @@ class ASTGeneratorService:
                     _OperandRefs,
                 ]
             ] = []
-            referenced_table_codes: set[str] = set()
             referenced_parameters: Dict[str, ParameterInfo] = {}
 
             for item in expressions:
@@ -402,7 +401,6 @@ class ASTGeneratorService:
                     code_to_precondition_items=code_to_precondition_items,
                     operations=operations,
                     scope_pairs=scope_pairs,
-                    referenced_table_codes=referenced_table_codes,
                     referenced_parameters=referenced_parameters,
                 )
                 if scope_error is not None:
@@ -425,7 +423,6 @@ class ASTGeneratorService:
                 operations=operations,
                 failed_operations=failed_operations,
                 scope_pairs=scope_pairs,
-                referenced_table_codes=referenced_table_codes,
                 referenced_parameters=referenced_parameters,
                 owner=owner,
             )
@@ -467,7 +464,6 @@ class ASTGeneratorService:
                 _OperandRefs,
             ]
         ],
-        referenced_table_codes: set[str],
         referenced_parameters: Dict[str, ParameterInfo],
         operation_vid: Optional[int] = None,
         scope_result: Optional["ScopeResult"] = None,
@@ -475,8 +471,8 @@ class ASTGeneratorService:
         """Fold one operation's already-resolved AST into the script.
 
         Adds to the script's accumulators (``operations``,
-        ``scope_pairs``, ``referenced_table_codes``,
-        ``referenced_parameters`` — all mutated in place).
+        ``scope_pairs``, ``referenced_parameters`` — all mutated in
+        place).
 
         Independent of how ``ast_dict``/``parameters``/``root_operator_id``
         were obtained — re-parsed from text, or reshaped from the
@@ -503,11 +499,11 @@ class ASTGeneratorService:
         Returns the scope-calculation error message on failure (callers
         decide whether that aborts the whole script or just excludes
         this operation), or ``None`` on success. Nothing is added to
-        ``operations``/``referenced_table_codes``/``referenced_parameters``/
-        ``scope_pairs`` until the scope calculation has actually
-        succeeded — a failed operation must leave no trace in them,
-        since a script whose dependency block is silently missing is
-        structurally valid but semantically wrong (#122).
+        ``operations``/``referenced_parameters``/``scope_pairs`` until
+        the scope calculation has actually succeeded — a failed
+        operation must leave no trace in them, since a script whose
+        dependency block is silently missing is structurally valid but
+        semantically wrong (#122).
         """
         expr, code = item[0], item[1]
 
@@ -536,7 +532,6 @@ class ASTGeneratorService:
             reads=[replace(r, statement=len(scope_pairs)) for r in reads],
         )
         self._clean_ast_data_entries(ast_dict)
-        referenced_table_codes.update(op_refs.tables)
         self._accumulate_parameters(referenced_parameters, parameters)
 
         operations[code] = self._build_operation_entry(
@@ -571,7 +566,6 @@ class ASTGeneratorService:
                 _OperandRefs,
             ]
         ],
-        referenced_table_codes: set[str],
         referenced_parameters: Dict[str, ParameterInfo],
         release_info: Optional[Dict[str, Any]] = None,
         owner: Optional[str] = None,
@@ -608,45 +602,15 @@ class ASTGeneratorService:
         ghost_vids = self._release_ghost_fallbacks(
             self.session, release_id
         ).get(primary_module_vid, [])
-        primary_tables_full = self._scope_calc._get_module_tables(
-            primary_module_vid,
-            release_id=release_id,
-            ghost_vids=ghost_vids,
-        )
-        # Seed from every module-composition table that carries
-        # variables — i.e. the non-abstract tables; abstract templates
-        # have no cells, and the engine schema forbids an empty
-        # variables map — then union in anything the expressions
-        # reference. MDPM lists all such tables even when no validation
-        # touches them (#158). The union keeps this additive: a
-        # referenced table is never dropped.
-        seed_codes = {
-            code
-            for code, data in primary_tables_full.items()
-            if data.get("variables")
-        }
-        seed_codes |= {
-            code
-            for code in referenced_table_codes
-            if code in primary_tables_full
-        }
-        tables_block: Dict[str, Any] = {
-            code: primary_tables_full[code] for code in sorted(seed_codes)
-        }
-        variables_block: Dict[str, str] = {}
-        for tbl in tables_block.values():
-            variables_block.update(tbl.get("variables", {}))
 
         # ``emitted_operations`` is the script's own ``operations``,
         # not the harvested list: anything that landed in
         # ``failed_operations`` must not be left gated (#355).
-        preconditions_block, precondition_variables_block = (
-            self._build_preconditions_block(
-                preconditions or [],
-                release_id=release_id,
-                referenced_parameters=referenced_parameters,
-                emitted_operations=set(operations),
-            )
+        preconditions_block = self._build_preconditions_block(
+            preconditions or [],
+            release_id=release_id,
+            referenced_parameters=referenced_parameters,
+            emitted_operations=set(operations),
         )
 
         # Runtime-binding contract: the declared type of every parameter
@@ -706,8 +670,8 @@ class ASTGeneratorService:
         )
 
         # Script Format 2.0: one flat object, members in this order.
-        # The 1.x sections after ``parameters`` stay until ``modules`` and
-        # ``dependency_groups`` replace them.
+        # The 1.x sections after ``parameters`` stay until
+        # ``dependency_groups`` replaces them.
         document: Dict[str, Any] = {
             "owner": owner,
             "module_code": module_info["module_code"],
@@ -724,9 +688,6 @@ class ASTGeneratorService:
             "preconditions": preconditions_block,
             "modules": modules,
             "parameters": parameters_block,
-            "variables": variables_block,
-            "tables": tables_block,
-            "precondition_variables": precondition_variables_block,
             "dependency_information": dep_information,
             "dependency_modules": dep_modules,
         }
@@ -982,7 +943,6 @@ class ASTGeneratorService:
                 _OperandRefs,
             ]
         ],
-        referenced_table_codes: set[str],
         referenced_parameters: Dict[str, ParameterInfo],
     ) -> Optional[str]:
         """Resolve and fold one :meth:`script_from_db` expression item.
@@ -1066,7 +1026,6 @@ class ASTGeneratorService:
             code_to_precondition_items=code_to_precondition_items,
             operations=operations,
             scope_pairs=scope_pairs,
-            referenced_table_codes=referenced_table_codes,
             referenced_parameters=referenced_parameters,
             operation_vid=operation_vid,
             scope_result=scope_result,
@@ -1183,7 +1142,6 @@ class ASTGeneratorService:
                     _OperandRefs,
                 ]
             ] = []
-            referenced_table_codes: set[str] = set()
             referenced_parameters: Dict[str, ParameterInfo] = {}
 
             for item in expressions:
@@ -1206,7 +1164,6 @@ class ASTGeneratorService:
                     code_to_precondition_items=code_to_precondition_items,
                     operations=operations,
                     scope_pairs=scope_pairs,
-                    referenced_table_codes=referenced_table_codes,
                     referenced_parameters=referenced_parameters,
                 )
                 if error is not None:
@@ -1221,7 +1178,6 @@ class ASTGeneratorService:
                 operations=operations,
                 failed_operations=failed_operations,
                 scope_pairs=scope_pairs,
-                referenced_table_codes=referenced_table_codes,
                 referenced_parameters=referenced_parameters,
                 release_info=release_info,
                 owner=owner,
@@ -2781,8 +2737,8 @@ class ASTGeneratorService:
         release_id: Optional[int],
         referenced_parameters: Optional[Dict[str, ParameterInfo]] = None,
         emitted_operations: Optional[Set[str]] = None,
-    ) -> Tuple[Dict[str, Any], Dict[str, str]]:
-        """Build the ``preconditions`` and ``precondition_variables`` blocks.
+    ) -> Dict[str, Any]:
+        """Build the ``preconditions`` block.
 
         Each gate is parsed once and the resulting AST is walked to build
         the entry: a ``{v_*}`` selection becomes a ``FilingIndicatorVarID``
@@ -2814,8 +2770,8 @@ class ASTGeneratorService:
         When *emitted_operations* is given, each entry's
         ``affected_operations`` is intersected with it, and an entry
         left gating nothing at all is dropped before it is walked, so
-        the ``precondition_variables`` it alone would have contributed
-        go with it (#355). Preconditions are harvested from the database
+        the filing indicators it alone would have tested go with it
+        (#355). Preconditions are harvested from the database
         before the expressions they gate are semantically validated, so
         an operation rejected into ``failed_operations`` — including one
         rejected for the gate contract above — would otherwise stay
@@ -2829,9 +2785,8 @@ class ASTGeneratorService:
         from dpmcore.dpm_xl.utils.serialization import serialize_ast
 
         preconditions_dict: Dict[str, Any] = {}
-        precondition_variables: Dict[str, str] = {}
         if not preconditions or self.session is None:
-            return preconditions_dict, precondition_variables
+            return preconditions_dict
 
         # Parse every gate once — later passes read the AST, not the
         # source text — and collect every ``{v_*}`` code the trees carry
@@ -2858,18 +2813,10 @@ class ASTGeneratorService:
                     for code in validation_codes
                     if code in emitted_operations
                 ]
-                # Filtered before the walk, not after: dropping the gate
-                # here is what keeps the variables it alone would have
-                # declared out of ``precondition_variables`` (#355).
                 if not validation_codes:
                     continue
-            # Variables are registered per gate and merged only once the
-            # gate survives the walk: a gate discarded below must not
-            # leave the variables of its resolved leaves declared behind
-            # it (#355).
-            gate_variables: Dict[str, str] = {}
             gate_ast = self._transform_precondition_ast(
-                ast, resolved, gate_variables, serialize_ast
+                ast, resolved, serialize_ast
             )
             if gate_ast is None:
                 # Nothing left standing: either every ``{v_*}`` position
@@ -2877,7 +2824,6 @@ class ASTGeneratorService:
                 # one sat where dropping it would have tightened the
                 # gate (see ``_transform_precondition_ast``).
                 continue
-            precondition_variables.update(gate_variables)
             if referenced_parameters is not None:
                 self._accumulate_ast_parameters(
                     referenced_parameters, gate_ast
@@ -2887,7 +2833,7 @@ class ASTGeneratorService:
             )
             self._merge_precondition_entry(preconditions_dict, key, entry)
 
-        return preconditions_dict, precondition_variables
+        return preconditions_dict
 
     @staticmethod
     def _merge_precondition_entry(
@@ -3076,7 +3022,6 @@ class ASTGeneratorService:
         cls,
         node: Any,
         resolved: Dict[str, Dict[str, int]],
-        precondition_variables: Dict[str, str],
         serialize_ast: Any,
         negated: bool = False,
     ) -> Optional[Dict[str, Any]]:
@@ -3084,8 +3029,7 @@ class ASTGeneratorService:
 
         ``VarRef`` (the parser's node for ``{v_*}``) and ``PreconditionItem``
         collapse to a ``FilingIndicatorVarID`` dict with the resolved
-        ``variable_id``, registering the ``variable_vid`` in
-        ``precondition_variables`` on the way. A selection that does not
+        ``variable_id``. A selection that does not
         resolve becomes ``None`` — *unknown* — and unknown is only ever
         allowed to relax the gate, never to tighten it: the surrounding
         operator is rewired around it where dropping it widens the gate
@@ -3121,11 +3065,7 @@ class ASTGeneratorService:
 
         if isinstance(node, ast_nodes.ParExpr):
             inner = cls._transform_precondition_ast(
-                node.expression,
-                resolved,
-                precondition_variables,
-                serialize_ast,
-                negated,
+                node.expression, resolved, serialize_ast, negated
             )
             if inner is None:
                 return None
@@ -3134,21 +3074,18 @@ class ASTGeneratorService:
             variable = getattr(node, "variable", None) or getattr(
                 node, "variable_code", None
             )
-            return cls._precondition_item(
-                variable, resolved, precondition_variables
-            )
+            return cls._precondition_item(variable, resolved)
         if isinstance(node, (ast_nodes.ParameterRef, ast_nodes.Constant)):
             serialized: Dict[str, Any] = serialize_ast(node)
             return serialized
         if isinstance(node, ast_nodes.BinOp):
             return cls._transform_gate_binop(
-                node, resolved, precondition_variables, serialize_ast, negated
+                node, resolved, serialize_ast, negated
             )
         if isinstance(node, ast_nodes.UnaryOp):
             operand = cls._transform_precondition_ast(
                 node.operand,
                 resolved,
-                precondition_variables,
                 serialize_ast,
                 # ``not`` is the only unary operator the gate contract
                 # allows (``_GATE_UNARY_OPS``), so descending here always
@@ -3173,7 +3110,6 @@ class ASTGeneratorService:
         cls,
         node: Any,
         resolved: Dict[str, Dict[str, int]],
-        precondition_variables: Dict[str, str],
         serialize_ast: Any,
         negated: bool,
     ) -> Optional[Dict[str, Any]]:
@@ -3185,14 +3121,10 @@ class ASTGeneratorService:
         sits at — see :meth:`_gate_drop_relaxes`.
         """
         left = cls._transform_precondition_ast(
-            node.left, resolved, precondition_variables, serialize_ast, negated
+            node.left, resolved, serialize_ast, negated
         )
         right = cls._transform_precondition_ast(
-            node.right,
-            resolved,
-            precondition_variables,
-            serialize_ast,
-            negated,
+            node.right, resolved, serialize_ast, negated
         )
         if left is None or right is None:
             survivor = right if left is None else left
@@ -3239,7 +3171,6 @@ class ASTGeneratorService:
     def _precondition_item(
         variable: Any,
         resolved: Dict[str, Dict[str, int]],
-        precondition_variables: Dict[str, str],
     ) -> Optional[Dict[str, Any]]:
         """Emit the ``FilingIndicatorVarID`` dict for a filing indicator.
 
@@ -3253,7 +3184,6 @@ class ASTGeneratorService:
         info = resolved.get(var_code)
         if info is None:
             return None
-        precondition_variables[str(info["variable_vid"])] = "b"
         return {
             "class_name": "FilingIndicatorVarID",
             "code": var_code,
