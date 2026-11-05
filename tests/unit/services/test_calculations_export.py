@@ -28,7 +28,6 @@ from dpmcore.services.calculations_export.exporter import (
 from dpmcore.services.calculations_export.visitors import (
     CalculationsJSONVisitor,
     DAGAnalyzer,
-    DependencyTableExtractor,
     VarIDDataEnricher,
     _constant_value,
     _sole_code,
@@ -45,6 +44,9 @@ from dpmcore.services.script_document.modules import (
 )
 from dpmcore.services.script_document.queries import (
     _published_module_uri,
+)
+from dpmcore.services.script_document.visitors import (
+    DependencyTableExtractor,
 )
 from dpmcore.services.syntax import SyntaxService
 

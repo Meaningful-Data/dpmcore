@@ -39,7 +39,6 @@ from dpmcore.services.calculations_export.visitors import (
     CalculationsJSONVisitor,
     CalculationsOperandsChecking,
     DAGAnalyzer,
-    DependencyTableExtractor,
     OutputExtractor,
     VarIDDataEnricher,
     unwrap_with_expressions,
@@ -53,6 +52,9 @@ from dpmcore.services.script_document.queries import (
     get_module_uri,
 )
 from dpmcore.services.script_document.script_format import FORMAT_VERSION
+from dpmcore.services.script_document.visitors import (
+    DependencyTableExtractor,
+)
 from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:

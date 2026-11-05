@@ -940,7 +940,7 @@ class TestDependencyScope:
         without an override the home table is collected as a dependency
         of the calculation that writes into it.
         """
-        from dpmcore.services.calculations_export.visitors import (
+        from dpmcore.services.script_document.visitors import (
             DependencyTableExtractor,
         )
 
