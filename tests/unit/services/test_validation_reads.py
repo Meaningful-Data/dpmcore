@@ -3,11 +3,17 @@
 from unittest.mock import MagicMock
 
 import pandas as pd
+import pytest
+from sqlalchemy.exc import OperationalError
 
 from dpmcore.dpm_xl.ast.nodes import BinOp, Constant, Dimension, VarID
 from dpmcore.dpm_xl.utils.db_ast import _DbSubClauseOp
-from dpmcore.services.ast_generator import ASTGeneratorService
+from dpmcore.services.ast_generator import (
+    ASTGeneratorService,
+    _UnreadableOperation,
+)
 from dpmcore.services.script_document.modules import AT_T, Read, RefDateLag
+from dpmcore.services.script_document.visitors import DependencyTableExtractor
 from dpmcore.services.syntax import SyntaxService
 
 
@@ -89,3 +95,18 @@ class TestExtractReads:
             Read(0, "A", frozenset({10}), None),
             Read(0, "B", frozenset({20}), AT_T),
         ]
+
+    def test_an_ast_it_cannot_walk_is_reported(self):
+        with pytest.raises(_UnreadableOperation, match="Could not collect"):
+            _svc()._extract_reads(object())
+
+    def test_a_database_error_is_not_reported_as_the_operation(
+        self, monkeypatch
+    ):
+        def fail(self, node):
+            raise OperationalError("SELECT 1", {}, Exception("gone"))
+
+        monkeypatch.setattr(DependencyTableExtractor, "visit", fail)
+
+        with pytest.raises(OperationalError):
+            _svc()._extract_reads(_built("A", 10))

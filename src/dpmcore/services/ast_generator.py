@@ -24,6 +24,8 @@ from typing import (
     overload,
 )
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from dpmcore.dpm_xl.utils.tokens import (
     SEVERITY_WARNING,
     VALID_SEVERITIES,
@@ -49,7 +51,7 @@ if TYPE_CHECKING:
         ScopeCalculatorService,
         ScopeResult,
     )
-    from dpmcore.services.script_document.modules import Read
+    from dpmcore.services.script_document.modules import Read, Window
 
 
 logger = logging.getLogger(__name__)
@@ -125,14 +127,19 @@ class _OperandRefs:
     reads: List[Read] = field(default_factory=list)
 
 
+class _UnreadableOperation(Exception):
+    """What an operation reads could not be collected from its AST."""
+
+
 @dataclass(frozen=True)
 class _PreparedExpression:
     """One expression readied for the script, or the reason it is not.
 
     ``error`` is set when the expression cannot become a declarable
     operation — it failed semantic validation, it carries a shift whose
-    reference period cannot be declared (#326), or its precondition is
-    one the engine cannot evaluate (#338). All are reported the same
+    reference period cannot be declared (#326), what it reads cannot be
+    collected, or its precondition is one the engine cannot evaluate
+    (#338). All are reported the same
     way, through ``failed_operations``, and all must be caught before
     the caller accumulates anything for the operation: a skip afterwards
     would leave its tables, parameters and operation entry in the
@@ -598,12 +605,13 @@ class ASTGeneratorService:
                 "ScopeCalculatorService not initialised",
                 "_assemble_script requires a live DB session.",
             )
+        ghost_vids = self._release_ghost_fallbacks(
+            self.session, release_id
+        ).get(primary_module_vid, [])
         primary_tables_full = self._scope_calc._get_module_tables(
             primary_module_vid,
             release_id=release_id,
-            ghost_vids=self._release_ghost_fallbacks(
-                self.session, release_id
-            ).get(primary_module_vid, []),
+            ghost_vids=ghost_vids,
         )
         # Seed from every module-composition table that carries
         # variables — i.e. the non-abstract tables; abstract templates
@@ -688,6 +696,13 @@ class ASTGeneratorService:
                 "names it as module_owner."
             )
         owner = owner or module_owner
+        modules, window = self._build_modules(
+            primary_module_vid=primary_module_vid,
+            release_id=release_id,
+            module_uri=module_uri,
+            ghost_vids=ghost_vids,
+            scope_pairs=scope_pairs,
+        )
 
         # Script Format 2.0: one flat object, members in this order.
         # The 1.x sections after ``parameters`` stay until ``modules`` and
@@ -703,9 +718,10 @@ class ASTGeneratorService:
             "dpm_release": (
                 release_info or self._build_release_info(release_row)
             ),
-            "dates": self._build_dates(mv),
+            "dates": self._build_dates(window),
             "operations": operations,
             "preconditions": preconditions_block,
+            "modules": modules,
             "parameters": parameters_block,
             "variables": variables_block,
             "tables": tables_block,
@@ -720,6 +736,56 @@ class ASTGeneratorService:
             "error": None,
             "failed_operations": failed_operations,
         }
+
+    def _build_modules(
+        self,
+        *,
+        primary_module_vid: int,
+        release_id: int,
+        module_uri: str,
+        ghost_vids: Sequence[int],
+        scope_pairs: Sequence[
+            Tuple[
+                Tuple[str, str],
+                "ScopeResult",
+                Dict[str, List[str]],
+                _OperandRefs,
+            ]
+        ],
+    ) -> Tuple[Dict[str, Any], "Window"]:
+        """Return the ``modules`` section and the own version's window.
+
+        ``scope_pairs`` holds one entry per operation, in the order of
+        ``operations``, and its reads are numbered by that position.
+        ``ghost_vids`` are the one-day versions whose validations the
+        script carries; the own version describes them too.
+        """
+        from dpmcore.services.script_document.modules import (
+            build_modules,
+            reference_window,
+        )
+        from dpmcore.services.script_document.queries import (
+            get_module_metadata,
+        )
+
+        if self.session is None:
+            raise InternalError(
+                "SQLAlchemy session not initialised",
+                "_build_modules requires a live DB session.",
+            )
+        own = get_module_metadata(self.session, primary_module_vid)
+        window = reference_window(self.session, own, release_id)
+        modules = build_modules(
+            self.session,
+            own=own,
+            window=window,
+            module_uri=module_uri,
+            reads=[read for *_, refs in scope_pairs for read in refs.reads],
+            operation_codes=[item[1] for item, *_ in scope_pairs],
+            release_id=release_id,
+            ghost_vids=ghost_vids,
+        )
+        return modules, window
 
     def _module_owner(self, module_id: Optional[int]) -> Optional[str]:
         """Return the acronym of the organisation owning a module.
@@ -862,9 +928,9 @@ class ASTGeneratorService:
         # operation, not the whole module.
         try:
             ts = self._extract_time_shifts(built_ast)
-        except SemanticError as exc:
+            reads = self._extract_reads(built_ast)
+        except (SemanticError, _UnreadableOperation) as exc:
             return None, [], {}, [], None, str(exc)
-        reads = self._extract_reads(built_ast)
         return ast_dict, parameters, ts, reads, root_operator_id, None
 
     def _process_db_expression_item(
@@ -2615,14 +2681,13 @@ class ASTGeneratorService:
         return {"release": latest.code or "", "publication_date": pub_date}
 
     @staticmethod
-    def _build_dates(mv: Any) -> Dict[str, Any]:
-        """Build the ``{"from", "to"}`` block from a ``ModuleVersion``."""
-        return {
-            "from": _format_date(
-                mv.from_reference_date, fallback=_DEFAULT_FROM_DATE
-            ),
-            "to": _format_date(mv.to_reference_date),
-        }
+    def _build_dates(window: "Window") -> Dict[str, Any]:
+        """Build the ``{"from", "to"}`` block from the own version's window.
+
+        The window is the one the own version has in ``modules``, so the
+        two always agree.
+        """
+        return {"from": _format_date(window[0]), "to": _format_date(window[1])}
 
     @staticmethod
     def _build_operation_entry(
@@ -3795,7 +3860,7 @@ extract_precondition_codes`, shared with
                 ts=self._extract_time_shifts(ast),
                 reads=self._extract_reads(ast),
             )
-        except SemanticError as exc:
+        except (SemanticError, _UnreadableOperation) as exc:
             return _PreparedExpression(error=str(exc))
 
     @staticmethod
@@ -3903,6 +3968,12 @@ extract_precondition_codes`, shared with
         the operand rather than looked up again, so ``modules`` lists
         exactly those. The caller numbers the reads by the operation's
         position in the script.
+
+        Raises:
+            _UnreadableOperation: If the AST cannot be walked. The
+                operation is left out of the script rather than listed
+                without what it reads.
+            SQLAlchemyError: If the database fails; the script fails too.
         """
         from dpmcore.services.script_document.visitors import (
             DependencyTableExtractor,
@@ -3930,7 +4001,15 @@ extract_precondition_codes`, shared with
                 self.visit_WhereClauseOp(node)
 
         extractor = _Reads(self.session)
-        extractor.visit(ast)
+        try:
+            extractor.visit(ast)
+        except SQLAlchemyError:
+            raise
+        except Exception as exc:
+            logger.exception("Failed to collect what an operation reads.")
+            raise _UnreadableOperation(
+                f"Could not collect what the operation reads: {exc}"
+            ) from exc
         return extractor.reads
 
 

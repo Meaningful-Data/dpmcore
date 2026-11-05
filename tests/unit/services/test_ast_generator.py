@@ -481,11 +481,8 @@ class TestBuildReleaseInfo:
 class TestBuildDates:
     def test_emits_iso_dates(self):
         _, Cls, _ = _bare_svc()
-        mv = SimpleNamespace(
-            from_reference_date=date(2026, 3, 31),
-            to_reference_date=None,
-        )
-        assert Cls._build_dates(mv) == {"from": "2026-03-31", "to": None}
+        window = (date(2026, 3, 31), None)
+        assert Cls._build_dates(window) == {"from": "2026-03-31", "to": None}
 
 
 # ------------------------------------------------------------------ #
@@ -1990,6 +1987,9 @@ class TestScript:
         svc._resolve_root_operator_id = staticmethod(lambda ast, session: 24)
         # The ASTs here are stand-ins with no operands to read.
         svc._extract_reads = MagicMock(return_value=[])
+        svc._build_modules = MagicMock(
+            return_value=({"MOD": {"versions": []}}, (date(2026, 3, 31), None))
+        )
         svc._module_owner = MagicMock(return_value="EBA")
 
         svc._scope_calc._get_module_tables.return_value = {
@@ -2245,6 +2245,81 @@ class TestScript:
         assert list(out["failed_operations"]) == ["v1"]
         assert "integer literal" in out["failed_operations"]["v1"]
 
+    def test_unreadable_operation_skips_op_preserves_others(self, monkeypatch):
+        """An operation listed without what it reads would leave
+        ``modules`` short of it, so it is skipped instead.
+        """
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, _, _, mod = self._build_svc()
+        svc._semantic.ast = "AST"
+        svc._extract_reads.side_effect = [
+            mod._UnreadableOperation("Could not collect what it reads"),
+            [],
+        ]
+
+        out = svc.script(
+            expressions=[("e_bad", "v1"), ("e2", "v2")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+
+        assert out["success"] is True
+        assert list(out["enriched_ast"]["operations"]) == ["v2"]
+        assert out["failed_operations"] == {
+            "v1": "Could not collect what it reads"
+        }
+
+    def test_modules_are_built_from_what_each_operation_reads(
+        self, monkeypatch
+    ):
+        """Reads are numbered by the operation's place in ``operations``,
+        so a skipped operation shifts none of them; ``dates`` is the
+        window the own version has in ``modules``.
+        """
+        from dataclasses import dataclass
+
+        @dataclass(frozen=True)
+        class _Read:
+            statement: int
+            table: str
+
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, _, _, mod = self._build_svc()
+        svc._semantic.ast = "AST"
+        svc._extract_reads.side_effect = [
+            mod._UnreadableOperation("Could not collect what it reads"),
+            [_Read(0, "A")],
+            [_Read(0, "B"), _Read(0, "C")],
+        ]
+        modules = {"MOD": {"versions": [{"version": "1.0"}]}}
+        svc._build_modules.return_value = (
+            modules,
+            (date(2025, 12, 31), date(2026, 6, 29)),
+        )
+
+        out = svc.script(
+            expressions=[("e1", "v1"), ("e2", "v2"), ("e3", "v3")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+
+        doc = out["enriched_ast"]
+        assert doc["modules"] == modules
+        assert doc["dates"] == {"from": "2025-12-31", "to": "2026-06-29"}
+        scope_pairs = svc._build_modules.call_args.kwargs["scope_pairs"]
+        assert [item[1] for item, *_ in scope_pairs] == ["v2", "v3"]
+        assert [
+            (read.statement, read.table)
+            for *_, refs in scope_pairs
+            for read in refs.reads
+        ] == [(0, "A"), (1, "B"), (1, "C")]
+
     def test_preconditions_only_gate_emitted_operations(
         self, monkeypatch, real_syntax
     ):
@@ -2450,7 +2525,7 @@ class TestScript:
         assert out["success"] is True
         doc = out["enriched_ast"]
         # Script Format 2.0: not keyed by URI, members in this order.
-        assert list(doc)[:12] == [
+        assert list(doc)[:13] == [
             "owner",
             "module_code",
             "module_version",
@@ -2462,6 +2537,7 @@ class TestScript:
             "dates",
             "operations",
             "preconditions",
+            "modules",
             "parameters",
         ]
         assert doc["owner"] == "EBA"
@@ -2752,6 +2828,9 @@ class TestScriptFromDb:
         svc._resolve_root_operator_id = staticmethod(lambda ast, session: 24)
         # The ASTs here are stand-ins with no operands to read.
         svc._extract_reads = MagicMock(return_value=[])
+        svc._build_modules = MagicMock(
+            return_value=({"MOD": {"versions": []}}, (date(2026, 3, 31), None))
+        )
         svc._module_owner = MagicMock(return_value="EBA")
 
         svc._scope_calc._get_module_tables.return_value = {
@@ -2988,6 +3067,41 @@ class TestScriptFromDb:
 
         assert out["success"] is True, out["error"]
         assert "v1" in out["failed_operations"]
+        svc._scope_calc.calculate_from_expression.assert_not_called()
+
+    def test_db_native_unreadable_operation_excludes_only_that_operation(
+        self, monkeypatch
+    ):
+        """Same as a shift that cannot be declared: just this operation
+        is rejected, without falling back to a re-parse.
+        """
+        build = MagicMock(return_value=(_FakeVarID(table="C_01.00"), 24))
+        db_ast = SimpleNamespace(
+            UnsupportedDbAst=_FakeUnsupportedDbAst,
+            build_ast_from_db=build,
+            serialize_built_ast=lambda built: {
+                "class_name": "VarID",
+                "table": "C_01.00",
+                "data": [],
+            },
+        )
+        monkeypatch.setitem(sys.modules, "dpmcore.dpm_xl.utils.db_ast", db_ast)
+        svc, mv, release_row, mod = self._build_svc()
+        svc._extract_reads.side_effect = mod._UnreadableOperation(
+            "Could not collect what it reads"
+        )
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        assert out["failed_operations"] == {
+            "v1": "Could not collect what it reads"
+        }
         svc._scope_calc.calculate_from_expression.assert_not_called()
 
     def test_db_path_parameters_reach_the_parameters_block(

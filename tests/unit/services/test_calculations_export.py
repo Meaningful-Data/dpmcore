@@ -37,6 +37,7 @@ from dpmcore.services.script_document.modules import (
     AT_T,
     ModuleVersionInfo,
     RefDateLag,
+    _merge_variables,
     combine_lags,
     overlaps,
     target_window,
@@ -1005,6 +1006,34 @@ class TestReachableVersions:
 
     def test_a_read_no_lag_describes_reaches_them_all(self):
         assert self._reached(None) == [1, 2, 3, 4]
+
+
+class TestMergeVariables:
+    def test_a_variable_in_two_tables_keeps_the_cells_of_both(self):
+        variables = {
+            "1": {"data_type": "m", "cells": [{"row": "0020"}]},
+            "2": {"data_type": "b", "cells": [{"row": "0010"}]},
+        }
+
+        _merge_variables(
+            variables,
+            {
+                "1": {
+                    "data_type": "m",
+                    "cells": [{"row": "0010"}, {"row": "0020"}],
+                },
+                "3": {"data_type": "m", "cells": [{"row": "0030"}]},
+            },
+        )
+
+        assert variables == {
+            "1": {
+                "data_type": "m",
+                "cells": [{"row": "0010"}, {"row": "0020"}],
+            },
+            "2": {"data_type": "b", "cells": [{"row": "0010"}]},
+            "3": {"data_type": "m", "cells": [{"row": "0030"}]},
+        }
 
 
 class TestOwner:
