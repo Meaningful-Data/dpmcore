@@ -1108,8 +1108,20 @@ def _script_result_counts(result: dict[str, Any]) -> tuple[int, int, int]:
     """
     document = result.get("enriched_ast") or {}
     n_ops = len(document.get("operations") or {})
-    n_dep = len(document.get("dependency_modules") or {})
+    codes: set[str] = set()
+    for group in (document.get("dependency_groups") or {}).values():
+        _required_codes(group["requires"], codes)
+    n_dep = len(codes - {document.get("module_code")})
     return n_ops, len(result.get("failed_operations") or {}), n_dep
+
+
+def _required_codes(requires: dict[str, Any], codes: set[str]) -> None:
+    """Add to ``codes`` the modules a ``requires`` names."""
+    if "code" in requires:
+        codes.add(requires["code"])
+    for key in ("is", "and", "or", "xor", "left", "right"):
+        if key in requires:
+            _required_codes(requires[key], codes)
 
 
 @main.command()

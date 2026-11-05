@@ -76,16 +76,8 @@ def _success_payload():
                 }
             },
             "parameters": {},
-            "dependency_information": {
-                "intra_instance_validations": ["v0001"],
-                "cross_instance_dependencies": [],
-                "alternative_dependencies": [],
-            },
-            "dependency_modules": {
-                "http://example.org/m1": {
-                    "tables": {},
-                    "variables": {},
-                },
+            "dependency_groups": {
+                "G1": {"requires": {}, "validations": ["v0001"]},
             },
         },
         "error": None,

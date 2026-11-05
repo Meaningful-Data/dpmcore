@@ -52,17 +52,15 @@ def _success_result():
                 },
             },
             "preconditions": {},
-            "modules": {},
-            "parameters": {},
-            "dependency_information": {
-                "intra_instance_validations": ["v0001", "v0002"],
-                "cross_instance_dependencies": [],
-                "alternative_dependencies": [],
+            "modules": {
+                "FINREP_Con": {"versions": []},
+                "M1": {"versions": []},
             },
-            "dependency_modules": {
-                "http://example.org/m1": {
-                    "tables": {},
-                    "variables": {},
+            "parameters": {},
+            "dependency_groups": {
+                "G1": {
+                    "requires": {"is": {"code": "M1", "ref_date_lag": 0}},
+                    "validations": ["v0001", "v0002"],
                 },
             },
         },
@@ -239,6 +237,61 @@ class TestExportScriptSuccess:
         )
         assert result.exit_code != 0
         assert "no such option" in result.output.lower()
+
+
+class TestDependencyModulesCount:
+    def test_it_counts_the_other_modules_a_requires_names(
+        self, runner, tmp_path
+    ):
+        """A module listed only for a filing indicator is no dependency."""
+        result = _success_result()
+        document = result["enriched_ast"]
+        document["modules"]["M2"] = {"versions": []}
+        document["dependency_groups"] = {
+            "G1": {"requires": {}, "validations": ["v0001"]},
+            "G2": {
+                "requires": {
+                    "or": {
+                        "left": {"code": "M1", "ref_date_lag": 0},
+                        "right": {
+                            "and": {
+                                "left": {
+                                    "code": "FINREP_Con",
+                                    "ref_date_lag": -1,
+                                    "ref_date_lag_unit": "A",
+                                },
+                                "right": {"code": "M1", "ref_date_lag": -1},
+                                "decided_by": "scope",
+                            }
+                        },
+                        "decided_by": "scope",
+                    }
+                },
+                "validations": ["v0002"],
+            },
+        }
+
+        with patch(
+            "dpmcore.services.ast_generator.ASTGeneratorService"
+        ) as Svc:
+            Svc.return_value.script_for_module.return_value = result
+            output = runner.invoke(
+                main,
+                [
+                    "export-script",
+                    "--module-code",
+                    "FINREP_Con",
+                    "--module-version",
+                    "2.0.1",
+                    "--database",
+                    "sqlite:///:memory:",
+                    "--output",
+                    str(tmp_path / "script.json"),
+                ],
+            )
+
+        assert output.exit_code == 0, output.output
+        assert "1 dependency modules" in " ".join(output.output.split())
 
 
 class TestExportScriptSkippedReporting:

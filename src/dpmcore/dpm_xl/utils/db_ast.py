@@ -870,10 +870,10 @@ def build_ast_from_db(
 
     Callers that need the JSON wire shape should use
     :func:`build_ast_dict_from_db` instead — this is for a caller that
-    also needs to walk the tree itself (e.g. re-deriving time-shifted
-    reference periods with the *same* visitor a re-parsed expression
-    uses, which :func:`~dpmcore.services.ast_generator.\
-ASTGeneratorService._extract_time_shifts` expects a raw tree for).
+    also needs to walk the tree itself (e.g. collecting what it reads,
+    at which reference dates, with the *same* visitor a re-parsed
+    expression uses, which :func:`~dpmcore.services.ast_generator.\
+ASTGeneratorService._extract_reads` expects a raw tree for).
 
     Raises :class:`UnsupportedDbAst` when the tree contains anything this
     module does not (yet) faithfully reconstruct — callers must catch

@@ -1,7 +1,7 @@
 """Integration tests for the URI-resolution chain in ScopeCalculatorService.
 
 These pin the load-bearing behaviour that ``script()`` relies on when it
-populates ``dependency_modules``: the CSV-hit branch must strip the
+names the script's ``module_uri``: the CSV-hit branch must strip the
 ``.json`` suffix; the dynamic-template branch must assemble the EBA-style
 URL from real ORM rows.
 

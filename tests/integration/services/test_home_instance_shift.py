@@ -1,12 +1,11 @@
 """Integration regression: ``time_shift`` over a home-module table (#325).
 
 A validation that shifts a table of the module the script is generated for
-needs another instance of *that* module. It is therefore not
-intra-instance, and the shifted instance must be declared under the
-module's own URI with the shift's reference period — before #325 the
-validation was declared intra with no dependency at all, and the computed
-reference period never reached the output because it was only ever read
-off a dependency module's tables.
+needs another instance of *that* module. It therefore requires the own
+module at the shift's reference date lag — before #325 the validation
+was declared intra with no dependency at all, and the computed reference
+period never reached the output because it was only ever read off a
+dependency module's tables.
 
 Both real forms are covered: the shifted table named inline, and the
 shifted table inherited from a ``with`` clause.
@@ -29,7 +28,6 @@ _MODULE_VERSION = "3.3.0"
 # semantic enrichment.
 _INLINE_CODE = "v1313_m"
 _WITH_CLAUSE_CODE = "v1226_m"
-_EXPECTED_REF_PERIOD = "T-1A"
 
 
 def _latest_expression(session, code: str) -> str:
@@ -49,44 +47,26 @@ def _latest_expression(session, code: str) -> str:
     return expression
 
 
-def _script(session, code: str) -> tuple[str, dict]:
-    expression = _latest_expression(session, code)
+@pytest.mark.parametrize("code", [_INLINE_CODE, _WITH_CLAUSE_CODE])
+def test_home_shift_requires_the_own_module_a_year_before(
+    fixture_session, code
+):
+    expression = _latest_expression(fixture_session, code)
     assert "time_shift" in expression, f"{code} must shift an operand"
-    result = ASTGeneratorService(session).script(
+    result = ASTGeneratorService(fixture_session).script(
         expressions=[(expression, code)],
         module_code=_MODULE_CODE,
         module_version=_MODULE_VERSION,
     )
     assert result["success"], result["error"]
     assert not result["failed_operations"], result["failed_operations"]
-    document = result["enriched_ast"]
-    return document["module_uri"], document
-
-
-@pytest.mark.parametrize("code", [_INLINE_CODE, _WITH_CLAUSE_CODE])
-def test_home_shift_is_declared_as_a_cross_instance_dependency(
-    fixture_session, code
-):
-    namespace, module = _script(fixture_session, code)
-    info = module["dependency_information"]
-
-    assert info["intra_instance_validations"] == []
-    assert len(info["cross_instance_dependencies"]) == 1
-    dependency = info["cross_instance_dependencies"][0]
-    assert dependency["affected_operations"] == [code]
-    assert dependency["modules"] == [
-        {
-            "URI": namespace,
-            "ref_period": _EXPECTED_REF_PERIOD,
-            "module_version": _MODULE_VERSION,
+    requires = {
+        "is": {
+            "code": _MODULE_CODE,
+            "ref_date_lag": -1,
+            "ref_date_lag_unit": "A",
         }
-    ]
-
-
-@pytest.mark.parametrize("code", [_INLINE_CODE, _WITH_CLAUSE_CODE])
-def test_home_module_is_not_declared_as_a_dependency_module(
-    fixture_session, code
-):
-    """The home module's tables and variables are already at the top level."""
-    namespace, module = _script(fixture_session, code)
-    assert namespace not in module["dependency_modules"]
+    }
+    assert result["enriched_ast"]["dependency_groups"] == {
+        "G1": {"requires": requires, "validations": [code]}
+    }

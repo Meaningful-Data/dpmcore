@@ -84,17 +84,15 @@ def _success_result():
                 }
             },
             "preconditions": {},
-            "modules": {},
-            "parameters": {},
-            "dependency_information": {
-                "intra_instance_validations": ["v0001"],
-                "cross_instance_dependencies": [],
-                "alternative_dependencies": [],
+            "modules": {
+                "FINREP_Con": {"versions": []},
+                "M1": {"versions": []},
             },
-            "dependency_modules": {
-                "http://example.org/m1": {
-                    "tables": {},
-                    "variables": {},
+            "parameters": {},
+            "dependency_groups": {
+                "G1": {
+                    "requires": {"is": {"code": "M1", "ref_date_lag": 0}},
+                    "validations": ["v0001"],
                 },
             },
         },

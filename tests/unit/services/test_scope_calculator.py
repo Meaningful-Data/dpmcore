@@ -63,15 +63,12 @@ def _patch_orm(monkeypatch):
     ]:
         monkeypatch.setitem(sys.modules, mod_name, MagicMock())
 
-    # Snapshot the canonical sys.modules entries the helpers below pollute,
-    # so the teardown restores them. Both helpers register stub-deps copies
-    # under the real module names; without a restore, follow-up test files
-    # see those stub copies (or a missing entry) and patches no longer line
+    # Snapshot the canonical sys.modules entry the helper below pollutes,
+    # so the teardown restores it. The helper registers a stub-deps copy
+    # under the real module name; without a restore, follow-up test files
+    # see that stub copy (or a missing entry) and patches no longer line
     # up with the modules the production code re-imports at call time.
-    canonical_names = (
-        "dpmcore.services.scope_calculator",
-        "dpmcore.services.ast_generator",
-    )
+    canonical_names = ("dpmcore.services.scope_calculator",)
     snapshot = {n: sys.modules.get(n) for n in canonical_names}
 
     yield
@@ -2053,99 +2050,3 @@ class TestGetModuleUri:
         type(mv).code = PropertyMock(side_effect=RuntimeError("boom"))
 
         assert svc._get_module_uri(10, mv=mv) is None
-
-
-def _load_ast_generator():
-    """Load ASTGeneratorService bypassing ORM chain."""
-    # Need extra stubs for ast_generator imports
-    for mod_name in [
-        "dpmcore.dpm_xl.utils.serialization",
-        "dpmcore.services.scope_calculator",
-        "dpmcore.services.semantic",
-    ]:
-        if mod_name not in sys.modules:
-            sys.modules[mod_name] = MagicMock()
-
-    mod_name = "dpmcore.services.ast_generator"
-    if mod_name in sys.modules:
-        del sys.modules[mod_name]
-
-    spec = importlib.util.spec_from_file_location(
-        mod_name,
-        _REPO_ROOT / "src/dpmcore/services/ast_generator.py",
-    )
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[mod_name] = mod
-    spec.loader.exec_module(mod)
-    return mod.ASTGeneratorService
-
-
-class TestMergeCrossDeps:
-    """Test cross-instance dependency merging."""
-
-    def test_new_dep_appended(self):
-        Cls = _load_ast_generator()
-        existing = []
-        new = [
-            {
-                "modules": [{"URI": "http://a"}],
-                "affected_operations": ["v1"],
-            }
-        ]
-        Cls._merge_cross_deps(existing, new)
-        assert len(existing) == 1
-
-    def test_duplicate_uri_merges_operations(self):
-        Cls = _load_ast_generator()
-        existing = [
-            {
-                "modules": [{"URI": "http://a"}],
-                "affected_operations": ["v1"],
-            }
-        ]
-        new = [
-            {
-                "modules": [{"URI": "http://a"}],
-                "affected_operations": ["v2"],
-            }
-        ]
-        Cls._merge_cross_deps(existing, new)
-        assert len(existing) == 1
-        assert existing[0]["affected_operations"] == [
-            "v1",
-            "v2",
-        ]
-
-    def test_different_uris_both_kept(self):
-        Cls = _load_ast_generator()
-        existing = [
-            {
-                "modules": [{"URI": "http://a"}],
-                "affected_operations": ["v1"],
-            }
-        ]
-        new = [
-            {
-                "modules": [{"URI": "http://b"}],
-                "affected_operations": ["v2"],
-            }
-        ]
-        Cls._merge_cross_deps(existing, new)
-        assert len(existing) == 2
-
-    def test_duplicate_op_not_added_twice(self):
-        Cls = _load_ast_generator()
-        existing = [
-            {
-                "modules": [{"URI": "http://a"}],
-                "affected_operations": ["v1"],
-            }
-        ]
-        new = [
-            {
-                "modules": [{"URI": "http://a"}],
-                "affected_operations": ["v1"],
-            }
-        ]
-        Cls._merge_cross_deps(existing, new)
-        assert existing[0]["affected_operations"] == ["v1"]
