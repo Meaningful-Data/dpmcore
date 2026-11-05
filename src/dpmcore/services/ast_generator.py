@@ -11,6 +11,7 @@ from datetime import date as date_cls
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Iterable,
     List,
@@ -366,7 +367,9 @@ class ASTGeneratorService:
                 ]
             ] = []
             referenced_parameters: Dict[str, ParameterInfo] = {}
-            resolver = self._dependency_resolver(mv, release_id)
+            resolver = self._dependency_resolver(
+                mv, release_id, preconditions or []
+            )
 
             for item in expressions:
                 expr, code = item[0], item[1]
@@ -547,6 +550,7 @@ class ASTGeneratorService:
             )
 
         requires = resolver.requires(
+            code,
             [
                 frozenset(
                     c.module_vid
@@ -740,9 +744,20 @@ class ASTGeneratorService:
         }
 
     def _dependency_resolver(
-        self, mv: Any, release_id: int
+        self,
+        mv: Any,
+        release_id: int,
+        preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
     ) -> "DependencyResolver":
-        """Return the resolver of the script's dependency groups."""
+        """Return the resolver of the script's dependency groups.
+
+        It is given the filing indicators each validation's preconditions
+        need to be true, as the scopes take them: one of an ``or``, or a
+        negated one, is not needed.
+        """
+        from dpmcore.services._precondition_codes import (
+            required_precondition_codes,
+        )
         from dpmcore.services.script_document.dependency_groups import (
             DependencyResolver,
         )
@@ -753,7 +768,13 @@ class ASTGeneratorService:
                 "_dependency_resolver requires a live DB session.",
             )
         return DependencyResolver(
-            self.session, mv.module_id, mv.code, release_id
+            self.session,
+            mv.module_id,
+            mv.code,
+            release_id,
+            self._build_precondition_index(
+                preconditions, required_precondition_codes
+            ),
         )
 
     def _build_modules(
@@ -1208,7 +1229,9 @@ class ASTGeneratorService:
                 ]
             ] = []
             referenced_parameters: Dict[str, ParameterInfo] = {}
-            resolver = self._dependency_resolver(mv, release_id)
+            resolver = self._dependency_resolver(
+                mv, release_id, preconditions or []
+            )
 
             for item in expressions:
                 code = item[1]
@@ -3594,13 +3617,14 @@ class ASTGeneratorService:
     def _build_precondition_index(
         self,
         preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
+        extract: Optional[Callable[[Any], List[str]]] = None,
     ) -> Dict[str, List[str]]:
         """Map each validation code → unioned precondition variable codes.
 
         Parses each precondition expression once and extracts variable
-        codes that act as precondition items. Raises ``ValueError`` if
-        a precondition expression cannot be parsed.
-        Supports both tuple and dict formats.
+        codes that act as precondition items, with ``extract`` when
+        given. Raises ``ValueError`` if a precondition expression cannot
+        be parsed. Supports both tuple and dict formats.
         """
         index: Dict[str, List[str]] = {}
         for precond_spec in preconditions:
@@ -3613,7 +3637,7 @@ class ASTGeneratorService:
                 raise ValueError(
                     f"Invalid precondition expression {precond_expr!r}: {exc}"
                 ) from exc
-            codes = self._extract_precondition_codes(ast)
+            codes = (extract or self._extract_precondition_codes)(ast)
             for vc in validation_codes:
                 merged = index.setdefault(vc, [])
                 for c in codes:

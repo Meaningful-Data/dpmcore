@@ -26,10 +26,12 @@ from typing import (
 
 from sqlalchemy.orm import Session
 
+from dpmcore.dpm_xl.model_queries import VariableVersionQuery
 from dpmcore.orm.packaging import ModuleVersion
 from dpmcore.orm.query_utils import chunked_in
-from dpmcore.services.script_document.modules import Read, RefDateLag
+from dpmcore.services.script_document.modules import AT_T, Read, RefDateLag
 from dpmcore.services.script_document.queries import (
+    modules_of_filing_indicators,
     modules_of_table_vids,
     windowed_table_vids,
 )
@@ -73,7 +75,9 @@ class DependencyResolver:
     validated, or from the own module at another date when shifted. A
     table it does not hold is read from the modules holding it, and each
     scope that combines the own module with some of them is one
-    alternative. Tables are resolved to modules as ``modules`` resolves
+    alternative. A filing indicator a precondition needs to be true,
+    when only other modules declare it, needs one of them as well. Tables
+    and filing indicators are resolved to modules as ``modules`` resolves
     them, so every module ``requires`` names is listed there.
 
     Args:
@@ -81,6 +85,8 @@ class DependencyResolver:
         own_module_id: ``ModuleID`` of the module the script is for.
         own_code: Its code, the key of ``modules``.
         release_id: The release the script is resolved at.
+        filing_indicators: The codes of the filing indicators the
+            preconditions of each validation need to be true.
     """
 
     def __init__(
@@ -89,21 +95,28 @@ class DependencyResolver:
         own_module_id: int,
         own_code: str,
         release_id: int,
+        filing_indicators: Mapping[str, Sequence[str]],
     ) -> None:
         """Bind the resolver to the script's own module and release."""
         self.session = session
         self.own_module_id = own_module_id
         self.own_code = own_code
         self.release_id = release_id
+        self.filing_indicators = filing_indicators
         self._table_holders: Dict[str, Set[Tuple[int, str]]] = {}
         self._version_modules: Dict[int, Tuple[int, str]] = {}
+        self._indicator_modules: Dict[str, Set[str]] = {}
 
     def requires(
-        self, scopes: Sequence[FrozenSet[int]], reads: Sequence[Read]
+        self,
+        code: str,
+        scopes: Sequence[FrozenSet[int]],
+        reads: Sequence[Read],
     ) -> Dict[str, Any]:
         """Return the ``requires`` of one validation.
 
         Args:
+            code: The validation's code.
             scopes: The module versions of each of its scopes.
             reads: What it reads.
 
@@ -158,14 +171,23 @@ class DependencyResolver:
                     "group cannot state yet."
                 )
 
-        if not external:
-            return _write([own_refs])
-        return _write(
+        alternatives = (
             [
                 refs | own_refs
                 for refs in self._alternatives(scopes, external, holders)
             ]
+            if external
+            else [own_refs]
         )
+        for codes in self._filing_indicator_modules(
+            self.filing_indicators.get(code, [])
+        ):
+            alternatives = [
+                refs | {ModuleRef(module_code, AT_T)}
+                for refs in alternatives
+                for module_code in codes
+            ]
+        return _write(alternatives)
 
     def _alternatives(
         self,
@@ -238,6 +260,44 @@ class DependencyResolver:
                 }
         return self._table_holders
 
+    def _filing_indicator_modules(
+        self, codes: Sequence[str]
+    ) -> List[Set[str]]:
+        """Return the codes of the modules declaring each filing indicator.
+
+        Resolved at the script's release, as ``modules`` resolves them.
+        A filing indicator the own module declares, or no module does,
+        needs nothing else and is left out.
+        """
+        missing = sorted(set(codes) - set(self._indicator_modules))
+        if missing:
+            variables = VariableVersionQuery.get_variable_vids_by_codes(
+                self.session, missing, release_id=self.release_id
+            )
+            rows = modules_of_filing_indicators(
+                self.session,
+                {variable["variable_id"] for variable in variables.values()},
+                self.release_id,
+            )
+            for code in missing:
+                variable = variables.get(code)
+                declaring = (
+                    rows.get(variable["variable_id"], []) if variable else []
+                )
+                self._indicator_modules[code] = (
+                    set()
+                    if any(
+                        int(row.module_id) == self.own_module_id
+                        for row in declaring
+                    )
+                    else {str(row.module_code) for row in declaring}
+                )
+        return [
+            self._indicator_modules[code]
+            for code in codes
+            if self._indicator_modules[code]
+        ]
+
     def _modules(self, module_vids: Set[int]) -> Dict[int, Tuple[int, str]]:
         """Return the ``(ModuleID, code)`` of each module version."""
         missing = sorted(module_vids - set(self._version_modules))
@@ -261,12 +321,13 @@ def _write(alternatives: List[Set[ModuleRef]]) -> Dict[str, Any]:
     One alternative is ``{}``, an ``is`` or an ``and``; several are an
     ``or`` whose single module references come first and whose ``and``
     operands follow, by their first reference. An alternative holding
-    another adds nothing and is dropped.
+    another adds nothing and is dropped, as is a repeated one.
     """
+    unique = {frozenset(refs) for refs in alternatives}
     conjunctions = [
         sorted(refs, key=ModuleRef.sort_key)
-        for refs in alternatives
-        if not any(other < refs for other in alternatives)
+        for refs in unique
+        if not any(other < refs for other in unique)
     ]
     if len(conjunctions) == 1:
         (refs,) = conjunctions

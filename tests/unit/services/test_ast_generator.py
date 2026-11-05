@@ -1906,6 +1906,15 @@ class TestBuildPreconditionIndex:
         assert idx["v2"] == ["P1", "P2"]
         assert idx["v3"] == ["P2"]
 
+    def test_codes_come_from_the_extractor_given(self):
+        svc, _, _ = _bare_svc()
+        svc._syntax = MagicMock()
+        svc._syntax.parse.side_effect = lambda expr: f"AST_{expr}"
+        idx = svc._build_precondition_index(
+            [("a", ["v1"])], lambda ast: [f"{ast}_required"]
+        )
+        assert idx == {"v1": ["AST_a_required"]}
+
     def test_parse_failure_raises_value_error(self):
         svc, _, _ = _bare_svc()
         svc._syntax = MagicMock()
@@ -1980,7 +1989,9 @@ class TestScript:
         svc._module_owner = MagicMock(return_value="EBA")
         # Every operation needs only the instance being validated.
         svc._dependency_resolver = MagicMock(
-            return_value=SimpleNamespace(requires=lambda scopes, reads: {})
+            return_value=SimpleNamespace(
+                requires=lambda code, scopes, reads: {}
+            )
         )
 
         svc._scope_calc._get_module_tables.return_value = {
@@ -2828,7 +2839,9 @@ class TestScriptFromDb:
         svc._module_owner = MagicMock(return_value="EBA")
         # Every operation needs only the instance being validated.
         svc._dependency_resolver = MagicMock(
-            return_value=SimpleNamespace(requires=lambda scopes, reads: {})
+            return_value=SimpleNamespace(
+                requires=lambda code, scopes, reads: {}
+            )
         )
 
         svc._scope_calc._get_module_tables.return_value = {

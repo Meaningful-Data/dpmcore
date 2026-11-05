@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
 import pytest
 
+from dpmcore.services.ast_generator import ASTGeneratorService
+from dpmcore.services.script_document import dependency_groups
 from dpmcore.services.script_document.dependency_groups import (
     DependencyResolver,
     NoDependencyGroup,
@@ -20,9 +25,14 @@ COREP_OF = (4, "COREP_OF")
 VERSIONS = {10: OWN, 11: OWN, 20: FINREP9, 30: FINREP9DP, 40: COREP_OF}
 
 
-def _resolver(holders):
-    """A resolver for OWN whose tables are held as ``holders`` says."""
-    resolver = DependencyResolver(None, 1, "OWN", 1)
+def _resolver(holders, filing_indicators=None):
+    """A resolver for OWN whose tables are held as ``holders`` says.
+
+    Validation ``v`` needs the ``filing_indicators`` given to be true.
+    """
+    resolver = DependencyResolver(
+        None, 1, "OWN", 1, {"v": filing_indicators or []}
+    )
     resolver._holders = lambda tables: holders
     resolver._modules = lambda module_vids: VERSIONS
     return resolver
@@ -47,12 +57,15 @@ class TestRequires:
     def test_reading_the_own_module_needs_nothing_else(self):
         resolver = _resolver({"F_01.01": {OWN}})
 
-        assert resolver.requires([frozenset({10})], [_read("F_01.01")]) == {}
+        assert (
+            resolver.requires("v", [frozenset({10})], [_read("F_01.01")]) == {}
+        )
 
     def test_a_shifted_own_table_needs_the_own_module_then(self):
         resolver = _resolver({"F_01.01": {OWN, FINREP9}})
 
         requires = resolver.requires(
+            "v",
             [frozenset({10})],
             [_read("F_01.01"), _read("F_01.01", RefDateLag(-1, "A"))],
         )
@@ -63,6 +76,7 @@ class TestRequires:
         resolver = _resolver({"F_01.01": {OWN}, "C_01.00": {COREP_OF}})
 
         requires = resolver.requires(
+            "v",
             [frozenset({10, 40})],
             [_read("F_01.01"), _read("C_01.00", RefDateLag(-1, "Q"))],
         )
@@ -73,7 +87,7 @@ class TestRequires:
         resolver = _resolver({"F_01.01": {FINREP9, FINREP9DP}})
 
         requires = resolver.requires(
-            [frozenset({11, 30}), frozenset({10, 20})], [_read("F_01.01")]
+            "v", [frozenset({11, 30}), frozenset({10, 20})], [_read("F_01.01")]
         )
 
         assert requires == _op("or", _ref("FINREP9"), _ref("FINREP9DP"))
@@ -82,7 +96,9 @@ class TestRequires:
         resolver = _resolver({"F_01.01": {FINREP9}, "C_01.00": {COREP_OF}})
 
         requires = resolver.requires(
-            [frozenset({10, 20, 40})], [_read("F_01.01"), _read("C_01.00")]
+            "v",
+            [frozenset({10, 20, 40})],
+            [_read("F_01.01"), _read("C_01.00")],
         )
 
         assert requires == _op("and", _ref("COREP_OF"), _ref("FINREP9"))
@@ -91,6 +107,7 @@ class TestRequires:
         resolver = _resolver({"F_01.01": {FINREP9}, "C_01.00": {COREP_OF}})
 
         requires = resolver.requires(
+            "v",
             [frozenset({10, 20}), frozenset({10, 20, 40})],
             [_read("F_01.01"), _read("C_01.00")],
         )
@@ -101,7 +118,7 @@ class TestRequires:
         resolver = _resolver({"F_01.01": {OWN}, "GONE": set()})
 
         requires = resolver.requires(
-            [frozenset({10})], [_read("F_01.01"), _read("GONE")]
+            "v", [frozenset({10})], [_read("F_01.01"), _read("GONE")]
         )
 
         assert requires == {}
@@ -116,6 +133,7 @@ class TestRequires:
         ]
 
         requires = resolver.requires(
+            "v",
             [frozenset({10, 40})],
             [_read("C_01.00")] + [_read("F_01.01", lag) for lag in lags],
         )
@@ -138,6 +156,7 @@ class TestRequires:
         resolver = _resolver({"F_01.01": {FINREP9, FINREP9DP, COREP_OF}})
 
         requires = resolver.requires(
+            "v",
             [frozenset({10, 20, 40}), frozenset({10, 30})],
             [_read("F_01.01")],
         )
@@ -152,6 +171,7 @@ class TestRequires:
         resolver = _resolver({"F_01.01": {FINREP9, FINREP9DP}})
 
         requires = resolver.requires(
+            "v",
             [frozenset({10, 20}), frozenset({10, 20, 30})],
             [_read("F_01.01")],
         )
@@ -162,13 +182,14 @@ class TestRequires:
         resolver = _resolver({"F_01.01": {OWN}})
 
         with pytest.raises(NoDependencyGroup, match="F_01.01 at a reference"):
-            resolver.requires([frozenset({10})], [_read("F_01.01", None)])
+            resolver.requires("v", [frozenset({10})], [_read("F_01.01", None)])
 
     def test_branches_reading_different_instances_have_no_group(self):
         resolver = _resolver({"F_01.01": {OWN}})
 
         with pytest.raises(NoDependencyGroup, match="if-then-else branches"):
             resolver.requires(
+                "v",
                 [frozenset({10})],
                 [
                     _read("F_01.01"),
@@ -181,6 +202,7 @@ class TestRequires:
         resolver = _resolver({"F_01.01": {OWN}})
 
         requires = resolver.requires(
+            "v",
             [frozenset({10})],
             [
                 _read("F_01.01", RefDateLag(-1, "Q"), ((1, "then"),)),
@@ -194,6 +216,7 @@ class TestRequires:
         resolver = _resolver({"F_01.01": {OWN}})
 
         requires = resolver.requires(
+            "v",
             [frozenset({10})],
             [
                 _read("F_01.01", RefDateLag(-1, "Q"), ((1, "then"),)),
@@ -207,6 +230,7 @@ class TestRequires:
         resolver = _resolver({"F_01.01": {OWN}, "F_02.00": {OWN}})
 
         requires = resolver.requires(
+            "v",
             [frozenset({10})],
             [
                 _read("F_01.01", RefDateLag(-1, "Q"), ((1, "then"),)),
@@ -222,6 +246,7 @@ class TestRequires:
         )
 
         requires = resolver.requires(
+            "v",
             [frozenset({10, 40})],
             [
                 _read("F_01.01"),
@@ -236,13 +261,109 @@ class TestRequires:
         resolver = _resolver({"C_01.00": {COREP_OF}})
 
         with pytest.raises(NoDependencyGroup, match="None of its scopes"):
-            resolver.requires([frozenset({40})], [_read("C_01.00")])
+            resolver.requires("v", [frozenset({40})], [_read("C_01.00")])
 
     def test_no_scope_holding_every_table_has_no_group(self):
         resolver = _resolver({"C_01.00": {COREP_OF}})
 
         with pytest.raises(NoDependencyGroup, match="No scope with module"):
-            resolver.requires([frozenset({10, 20})], [_read("C_01.00")])
+            resolver.requires("v", [frozenset({10, 20})], [_read("C_01.00")])
+
+
+class TestFilingIndicators:
+    """Filing indicators the preconditions need, by who declares them."""
+
+    @pytest.fixture
+    def declared(self, monkeypatch):
+        """``I_04.00`` is IF_CLASS2's, ``F_00.01`` OWN's, ``C_00.01`` two
+        other modules', and ``X_99.99`` nobody's.
+        """
+        declaring = {
+            "I_04.00": [(5, "IF_CLASS2")],
+            "F_00.01": [(1, "OWN"), (5, "IF_CLASS2")],
+            "C_00.01": [(4, "COREP_OF"), (6, "COREP_LR")],
+            "X_99.99": [],
+        }
+        ids = {code: index for index, code in enumerate(declaring)}
+        monkeypatch.setattr(
+            dependency_groups.VariableVersionQuery,
+            "get_variable_vids_by_codes",
+            lambda session, codes, release_id: {
+                code: {"variable_id": ids[code], "variable_vid": 0}
+                for code in codes
+            },
+        )
+        monkeypatch.setattr(
+            dependency_groups,
+            "modules_of_filing_indicators",
+            lambda session, variable_ids, release_id: {
+                ids[code]: [
+                    SimpleNamespace(module_id=mid, module_code=module)
+                    for mid, module in modules
+                ]
+                for code, modules in declaring.items()
+            },
+        )
+
+    def _requires(self, *codes):
+        resolver = _resolver({"F_01.01": {OWN}}, list(codes))
+        return resolver.requires("v", [frozenset({10})], [_read("F_01.01")])
+
+    def test_one_of_another_module_needs_that_module(self, declared):
+        assert self._requires("I_04.00") == {"is": _ref("IF_CLASS2")}
+
+    def test_one_the_own_module_declares_needs_nothing_else(self, declared):
+        assert self._requires("F_00.01") == {}
+
+    def test_one_no_module_declares_needs_nothing_else(self, declared):
+        assert self._requires("X_99.99") == {}
+
+    def test_one_of_two_other_modules_needs_either(self, declared):
+        assert self._requires("C_00.01") == _op(
+            "or", _ref("COREP_LR"), _ref("COREP_OF")
+        )
+
+    def test_each_one_needs_its_module(self, declared):
+        assert self._requires("I_04.00", "C_00.01") == _op(
+            "or",
+            _op("and", _ref("COREP_LR"), _ref("IF_CLASS2")),
+            _op("and", _ref("COREP_OF"), _ref("IF_CLASS2")),
+        )
+
+    def test_they_add_to_what_the_tables_need(self, declared):
+        resolver = _resolver(
+            {"F_01.01": {OWN}, "C_01.00": {COREP_OF}}, ["I_04.00"]
+        )
+
+        requires = resolver.requires(
+            "v",
+            [frozenset({10, 40})],
+            [_read("F_01.01"), _read("C_01.00")],
+        )
+
+        assert requires == _op("and", _ref("COREP_OF"), _ref("IF_CLASS2"))
+
+
+class TestScriptResolver:
+    def test_it_gets_the_filing_indicators_a_gate_needs_true(self):
+        svc = ASTGeneratorService()
+        svc.session = MagicMock()
+
+        resolver = svc._dependency_resolver(
+            SimpleNamespace(module_id=1, code="OWN"),
+            1,
+            [
+                ("{v_A} or {v_B}", ["v1"]),
+                ("not {v_A}", ["v2"]),
+                ("{v_A} and {v_C}", ["v3"]),
+            ],
+        )
+
+        assert resolver.filing_indicators == {
+            "v1": [],
+            "v2": [],
+            "v3": ["A", "C"],
+        }
 
 
 class TestBuildDependencyGroups:
