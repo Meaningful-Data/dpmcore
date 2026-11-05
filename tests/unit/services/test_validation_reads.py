@@ -63,7 +63,7 @@ class TestExtractReads:
 
         assert svc._extract_reads(ast) == [
             Read(0, "A", frozenset({10, 20}), AT_T),
-            Read(0, "B", frozenset({30}), RefDateLag(-12)),
+            Read(0, "B", frozenset({30}), RefDateLag(-1, "A")),
         ]
         assert svc.session.method_calls == []
 

@@ -657,13 +657,13 @@ class TestReadLags:
         [
             (
                 "time_shift({tA, r0010, c0010}, A, 1, refPeriod)",
-                RefDateLag(-12),
+                RefDateLag(-1, "A"),
             ),
-            ("time_shift({tA, r0010, c0010}, Q, 1)", RefDateLag(-3)),
+            ("time_shift({tA, r0010, c0010}, Q, 1)", RefDateLag(-1, "Q")),
             # A negative shift reads a later period.
             (
                 "time_shift({tA, r0010, c0010}, A, (-1), refPeriod)",
-                RefDateLag(12),
+                RefDateLag(1, "A"),
             ),
             ("time_shift({tA, r0010, c0010}, M, -12)", RefDateLag(12)),
         ],
@@ -680,6 +680,15 @@ class TestReadLags:
 
         assert {(read.table, read.lag) for read in reads} == {
             ("A", RefDateLag(-4))
+        }
+
+    def test_nested_shifts_in_one_unit_keep_it(self):
+        reads = _reads(
+            "x := time_shift(time_shift({tA, r0010, c0010}, Q, 1), Q, 1);"
+        ).reads
+
+        assert {(read.table, read.lag) for read in reads} == {
+            ("A", RefDateLag(-2, "Q"))
         }
 
     @pytest.mark.parametrize(
@@ -724,7 +733,7 @@ class TestReadLags:
 
         assert {(read.table, read.lag) for read in reads} == {
             ("A", AT_T),
-            ("B", RefDateLag(-12)),
+            ("B", RefDateLag(-1, "A")),
         }
 
     def test_a_with_level_where_on_ref_period_reaches_every_operand(self):
@@ -756,12 +765,13 @@ class TestRefDateLag:
     @pytest.mark.parametrize(
         ("period", "shift", "lag"),
         [
-            ("A", 1, RefDateLag(-12)),
-            ("S", 1, RefDateLag(-6)),
-            ("Q", -2, RefDateLag(6)),
+            ("A", 1, RefDateLag(-1, "A")),
+            ("S", 1, RefDateLag(-1, "S")),
+            ("Q", -2, RefDateLag(2, "Q")),
             ("M", 1, RefDateLag(-1)),
-            ("W", 1, RefDateLag(-7, "D")),
+            ("W", 1, RefDateLag(-1, "W")),
             ("D", 3, RefDateLag(-3, "D")),
+            ("Q", 0, AT_T),
             ("X", 1, None),
         ],
     )
@@ -777,6 +787,9 @@ class TestRefDateLag:
             (RefDateLag(12), date(2026, 12, 31), date(2027, 12, 31)),
             (RefDateLag(-13), date(2026, 1, 15), date(2024, 12, 31)),
             (RefDateLag(-14, "D"), date(2026, 1, 10), date(2025, 12, 27)),
+            (RefDateLag(-1, "Q"), date(2026, 6, 30), date(2026, 3, 31)),
+            (RefDateLag(-1, "A"), date(2026, 6, 30), date(2025, 6, 30)),
+            (RefDateLag(-2, "W"), date(2026, 1, 10), date(2025, 12, 27)),
             (AT_T, date(2026, 1, 1), date(2026, 1, 1)),
         ],
     )
@@ -790,6 +803,11 @@ class TestRefDateLag:
             (AT_T, RefDateLag(-7, "D"), RefDateLag(-7, "D")),
             (RefDateLag(-7, "D"), AT_T, RefDateLag(-7, "D")),
             (RefDateLag(-1), RefDateLag(-1, "D"), None),
+            (RefDateLag(-1, "Q"), RefDateLag(-1, "Q"), RefDateLag(-2, "Q")),
+            (RefDateLag(-1, "A"), RefDateLag(-3), RefDateLag(-15)),
+            (RefDateLag(-1, "W"), RefDateLag(-2, "D"), RefDateLag(-9, "D")),
+            (RefDateLag(1, "Q"), RefDateLag(-1, "Q"), AT_T),
+            (RefDateLag(-1, "W"), RefDateLag(-1), None),
             (None, RefDateLag(-1), None),
             (RefDateLag(-1), None, None),
         ],
