@@ -1988,6 +1988,8 @@ class TestScript:
 
         svc._resolve_release = lambda mc, mv_, rel: (mv, release_row)
         svc._resolve_root_operator_id = staticmethod(lambda ast, session: 24)
+        # The ASTs here are stand-ins with no operands to read.
+        svc._extract_reads = MagicMock(return_value=[])
         svc._module_owner = MagicMock(return_value="EBA")
 
         svc._scope_calc._get_module_tables.return_value = {
@@ -2748,6 +2750,8 @@ class TestScriptFromDb:
 
         svc._resolve_release = lambda mc, mv_, rel: (mv, release_row)
         svc._resolve_root_operator_id = staticmethod(lambda ast, session: 24)
+        # The ASTs here are stand-ins with no operands to read.
+        svc._extract_reads = MagicMock(return_value=[])
         svc._module_owner = MagicMock(return_value="EBA")
 
         svc._scope_calc._get_module_tables.return_value = {

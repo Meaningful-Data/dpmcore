@@ -6,7 +6,7 @@ import json
 import logging
 import re
 import zlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date as date_cls
 from typing import (
     TYPE_CHECKING,
@@ -49,6 +49,7 @@ if TYPE_CHECKING:
         ScopeCalculatorService,
         ScopeResult,
     )
+    from dpmcore.services.script_document.modules import Read
 
 
 logger = logging.getLogger(__name__)
@@ -114,11 +115,14 @@ class _OperandRefs:
 
     ``tables`` are the table codes of its ``FactVarID`` nodes; ``variables``
     maps every operand datapoint id to its scalar type code, across all
-    modules the operation spans (home module included).
+    modules the operation spans (home module included). ``reads`` holds
+    one :class:`Read` per operand, at the lag it is read at, numbered by
+    the operation's position in the script.
     """
 
     tables: set[str] = field(default_factory=set)
     variables: Dict[str, str] = field(default_factory=dict)
+    reads: List[Read] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -138,6 +142,7 @@ class _PreparedExpression:
     result: Any = None
     ast: Any = None
     ts: Dict[str, List[str]] = field(default_factory=dict)
+    reads: List[Read] = field(default_factory=list)
     error: Optional[str] = None
 
 
@@ -383,6 +388,7 @@ class ASTGeneratorService:
                     parameters=result.parameters,
                     root_operator_id=root_operator_id,
                     ts=ts,
+                    reads=prepared.reads,
                     release_id=release_id,
                     resolved_severities=resolved_severities,
                     from_submission_date=resolved_dates[code],
@@ -440,6 +446,7 @@ class ASTGeneratorService:
         parameters: List[ParameterInfo],
         root_operator_id: int,
         ts: Dict[str, List[str]],
+        reads: Sequence[Read],
         release_id: int,
         resolved_severities: Dict[str, str],
         from_submission_date: Optional[str],
@@ -519,6 +526,7 @@ class ASTGeneratorService:
         op_refs = _OperandRefs(
             tables=self._extract_referenced_tables(ast_dict),
             variables=self._extract_operand_datapoints(ast_dict),
+            reads=[replace(r, statement=len(scope_pairs)) for r in reads],
         )
         self._clean_ast_data_entries(ast_dict)
         referenced_table_codes.update(op_refs.tables)
@@ -774,17 +782,19 @@ class ASTGeneratorService:
         Optional[Dict[str, Any]],
         List[ParameterInfo],
         Dict[str, List[str]],
+        List[Read],
         Optional[int],
         Optional[str],
     ]:
-        """Resolve one operation's ast_dict/parameters/ts/root_operator_id.
+        """Resolve one operation's AST, parameters, ts, reads and root id.
 
         Tries the persisted ``OperationNode`` tree first
         (:func:`db_ast.build_ast_from_db`), falling back to re-parsing
         *expr* when that isn't possible. Used by :meth:`script_from_db`,
         split out to keep its own branching within the complexity limit.
 
-        Returns ``(ast_dict, parameters, ts, root_operator_id, error)``
+        Returns ``(ast_dict, parameters, ts, reads, root_operator_id,
+        error)``
         — a non-``None`` ``error`` means the operation failed and the
         other fields should be ignored.
         """
@@ -823,14 +833,21 @@ class ASTGeneratorService:
                 self._semantic, expr, release_id, gate_failure=None
             )
             if prepared.error is not None:
-                return None, [], {}, None, prepared.error
+                return None, [], {}, [], None, prepared.error
             result, ast, ts = prepared.result, prepared.ast, prepared.ts
             # Same reasoning as script()'s own serialize_ast() call: a
             # root expression always renders as an object.
             ast_dict = cast(Dict[str, Any], serialize_ast(ast))
             parameters = result.parameters
             root_operator_id = self._resolve_root_operator_id(ast, session)
-            return ast_dict, parameters, ts, root_operator_id, None
+            return (
+                ast_dict,
+                parameters,
+                ts,
+                prepared.reads,
+                root_operator_id,
+                None,
+            )
 
         # Same source script() uses — the AST itself — not whether it
         # came from the DB or a re-parse: a parameter is self-contained
@@ -846,8 +863,9 @@ class ASTGeneratorService:
         try:
             ts = self._extract_time_shifts(built_ast)
         except SemanticError as exc:
-            return None, [], {}, None, str(exc)
-        return ast_dict, parameters, ts, root_operator_id, None
+            return None, [], {}, [], None, str(exc)
+        reads = self._extract_reads(built_ast)
+        return ast_dict, parameters, ts, reads, root_operator_id, None
 
     def _process_db_expression_item(
         self,
@@ -897,6 +915,7 @@ class ASTGeneratorService:
             ast_dict,
             parameters,
             ts,
+            reads,
             root_operator_id,
             resolve_error,
         ) = self._resolve_db_operation_ast(
@@ -946,6 +965,7 @@ class ASTGeneratorService:
             parameters=parameters,
             root_operator_id=root_operator_id,
             ts=ts,
+            reads=reads,
             release_id=release_id,
             resolved_severities=resolved_severities,
             from_submission_date=from_submission_dates.get(code),
@@ -3747,7 +3767,7 @@ extract_precondition_codes`, shared with
         release_id: int,
         gate_failure: Optional[str] = None,
     ) -> _PreparedExpression:
-        """Validate *expr* and read the reference periods it needs.
+        """Validate *expr* and read what it reads, and at which periods.
 
         ``validate()`` runs the per-expression scope check: a parameter
         referenced here must not clash with the declared type of a
@@ -3773,6 +3793,7 @@ extract_precondition_codes`, shared with
                 result=result,
                 ast=ast,
                 ts=self._extract_time_shifts(ast),
+                reads=self._extract_reads(ast),
             )
         except SemanticError as exc:
             return _PreparedExpression(error=str(exc))
@@ -3872,6 +3893,45 @@ extract_precondition_codes`, shared with
             )
             for table, periods in time_shifts.items()
         }
+
+    def _extract_reads(self, ast: Any) -> List[Read]:
+        """Return what one operation's AST reads, as statement ``0``.
+
+        Each operand already holds its Variables, resolved at the
+        script's release or read from the database, and they become the
+        ``datapoint`` entries of its ``FactVarID``. They are taken from
+        the operand rather than looked up again, so ``modules`` lists
+        exactly those. The caller numbers the reads by the operation's
+        position in the script.
+        """
+        from dpmcore.services.script_document.visitors import (
+            DependencyTableExtractor,
+        )
+
+        if self.session is None:
+            raise InternalError(
+                "SQLAlchemy session not initialised",
+                "_extract_reads requires a live DB session.",
+            )
+
+        class _Reads(DependencyTableExtractor):
+            def _variable_ids(self, table: str, node: Any) -> List[int]:
+                built = getattr(node, "_db_ast_dict", None)
+                if built is not None:
+                    return [int(entry["datapoint"]) for entry in built["data"]]
+                data = getattr(node, "data", None)
+                if data is None or data.empty:
+                    return []
+                return [int(v) for v in data["variable_id"].dropna().unique()]
+
+            def visit__DbSubClauseOp(self, node: Any) -> None:
+                # db_ast.py's stand-in for a ``sub`` clause: an
+                # ``operand`` and a ``condition``, read like a ``where``.
+                self.visit_WhereClauseOp(node)
+
+        extractor = _Reads(self.session)
+        extractor.visit(ast)
+        return extractor.reads
 
 
 __all__ = ["ASTGeneratorService"]
