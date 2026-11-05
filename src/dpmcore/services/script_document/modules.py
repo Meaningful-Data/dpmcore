@@ -176,12 +176,16 @@ class Read:
         lag: Where the read lands; ``None`` when no lag describes it (a
             ``where`` or ``sub`` on ``refPeriod``, or an analytic
             ordered by it) and it can land on any date.
+        branch: The ``if-then-else`` branches the read sits in,
+            outermost first, as ``(conditional, side)`` pairs where
+            ``side`` is ``"then"`` or ``"else"``.
     """
 
     statement: int
     table: str
     variable_ids: FrozenSet[int]
     lag: Optional[RefDateLag] = AT_T
+    branch: Tuple[Tuple[int, str], ...] = ()
 
 
 @dataclass(frozen=True)

@@ -248,3 +248,60 @@ def _referenced_tables(node) -> set[str]:
             if isinstance(item, (dict, list)):
                 found |= _referenced_tables(item)
     return found
+
+
+@pytest.mark.parametrize(
+    ("code", "module_code", "module_version", "requires"),
+    [
+        ("v09808_m", "COREP_OF", "4.1.0", {}),
+        ("v11120_m", "IF_CLASS2", "1.4.0", {}),
+        (
+            "v0709_m",
+            "COREP_LR",
+            "4.1.0",
+            {"is": {"code": "COREP_OF", "ref_date_lag": 0}},
+        ),
+        (
+            "v0709_m",
+            "COREP_OF",
+            "4.1.0",
+            {"is": {"code": "COREP_LR", "ref_date_lag": 0}},
+        ),
+    ],
+)
+def test_dependency_group(
+    fixture_session, code, module_code, module_version, requires
+):
+    """An intra-instance validation needs nothing else; a cross-instance
+    one requires the module holding the tables the own one does not.
+    """
+    expression = _latest_expression(fixture_session, code)
+    result = ASTGeneratorService(fixture_session).script(
+        expressions=[(expression, code)],
+        module_code=module_code,
+        module_version=module_version,
+    )
+    assert result["success"], result["error"]
+    assert result["enriched_ast"]["dependency_groups"] == {
+        "G1": {"requires": requires, "validations": [code]}
+    }
+
+
+def test_a_validation_reading_no_own_table_has_no_group(fixture_session):
+    """A module hosting none of a validation's tables cannot place it in
+    a dependency group, so it is reported in ``failed_operations``.
+    """
+    expression = _latest_expression(fixture_session, "v11120_m")
+    result = ASTGeneratorService(fixture_session).script(
+        expressions=[(expression, "v11120_m")],
+        module_code="COREP_OF",
+        module_version="4.1.0",
+    )
+    assert result["success"], result["error"]
+    document = result["enriched_ast"]
+    assert document["operations"] == {}
+    assert document["dependency_groups"] == {}
+    assert (
+        "None of its scopes includes module COREP_OF"
+        in (result["failed_operations"]["v11120_m"])
+    )

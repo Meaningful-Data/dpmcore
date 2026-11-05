@@ -51,6 +51,9 @@ if TYPE_CHECKING:
         ScopeCalculatorService,
         ScopeResult,
     )
+    from dpmcore.services.script_document.dependency_groups import (
+        DependencyResolver,
+    )
     from dpmcore.services.script_document.modules import Read, Window
 
 
@@ -119,12 +122,14 @@ class _OperandRefs:
     maps every operand datapoint id to its scalar type code, across all
     modules the operation spans (home module included). ``reads`` holds
     one :class:`Read` per operand, at the lag it is read at, numbered by
-    the operation's position in the script.
+    the operation's position in the script. ``requires`` is what the
+    operation needs besides the instance being validated.
     """
 
     tables: set[str] = field(default_factory=set)
     variables: Dict[str, str] = field(default_factory=dict)
     reads: List[Read] = field(default_factory=list)
+    requires: Dict[str, Any] = field(default_factory=dict)
 
 
 class _UnreadableOperation(Exception):
@@ -310,6 +315,9 @@ class ASTGeneratorService:
 
         try:
             from dpmcore.dpm_xl.utils.serialization import serialize_ast
+            from dpmcore.services.script_document.dependency_groups import (
+                NoDependencyGroup,
+            )
 
             mv, release_row = self._resolve_release(
                 module_code, module_version, release
@@ -358,6 +366,7 @@ class ASTGeneratorService:
                 ]
             ] = []
             referenced_parameters: Dict[str, ParameterInfo] = {}
+            resolver = self._dependency_resolver(mv, release_id)
 
             for item in expressions:
                 expr, code = item[0], item[1]
@@ -388,21 +397,26 @@ class ASTGeneratorService:
                     continue
                 root_operator_id = self._resolve_root_operator_id(ast, session)
 
-                scope_error = self._process_operation(
-                    item=item,
-                    ast_dict=ast_dict,
-                    parameters=result.parameters,
-                    root_operator_id=root_operator_id,
-                    ts=ts,
-                    reads=prepared.reads,
-                    release_id=release_id,
-                    resolved_severities=resolved_severities,
-                    from_submission_date=resolved_dates[code],
-                    code_to_precondition_items=code_to_precondition_items,
-                    operations=operations,
-                    scope_pairs=scope_pairs,
-                    referenced_parameters=referenced_parameters,
-                )
+                try:
+                    scope_error = self._process_operation(
+                        item=item,
+                        ast_dict=ast_dict,
+                        parameters=result.parameters,
+                        root_operator_id=root_operator_id,
+                        ts=ts,
+                        reads=prepared.reads,
+                        release_id=release_id,
+                        resolved_severities=resolved_severities,
+                        from_submission_date=resolved_dates[code],
+                        code_to_precondition_items=code_to_precondition_items,
+                        operations=operations,
+                        scope_pairs=scope_pairs,
+                        referenced_parameters=referenced_parameters,
+                        resolver=resolver,
+                    )
+                except NoDependencyGroup as exc:
+                    failed_operations[code] = str(exc)
+                    continue
                 if scope_error is not None:
                     # A script whose dependency block is silently missing
                     # is structurally valid but semantically wrong (#122),
@@ -465,6 +479,7 @@ class ASTGeneratorService:
             ]
         ],
         referenced_parameters: Dict[str, ParameterInfo],
+        resolver: "DependencyResolver",
         operation_vid: Optional[int] = None,
         scope_result: Optional["ScopeResult"] = None,
     ) -> Optional[str]:
@@ -504,6 +519,13 @@ class ASTGeneratorService:
         operation must leave no trace in them, since a script whose
         dependency block is silently missing is structurally valid but
         semantically wrong (#122).
+
+        ``resolver`` writes what the operation needs besides the instance
+        being validated, the ``requires`` of its dependency group.
+
+        Raises:
+            NoDependencyGroup: When no ``requires`` can state what the
+                operation needs. Nothing is added for it either.
         """
         expr, code = item[0], item[1]
 
@@ -524,12 +546,23 @@ class ASTGeneratorService:
                 f"'{code}': {sr.error_message}"
             )
 
+        requires = resolver.requires(
+            [
+                frozenset(
+                    c.module_vid
+                    for c in getattr(scope, "operation_scope_compositions", [])
+                )
+                for scope in sr.scopes or []
+            ],
+            reads,
+        )
         # Operand refs come off the *raw* serialisation: cleaning
         # strips the ``data_type`` each datapoint is typed by.
         op_refs = _OperandRefs(
             tables=self._extract_referenced_tables(ast_dict),
             variables=self._extract_operand_datapoints(ast_dict),
             reads=[replace(r, statement=len(scope_pairs)) for r in reads],
+            requires=requires,
         )
         self._clean_ast_data_entries(ast_dict)
         self._accumulate_parameters(referenced_parameters, parameters)
@@ -594,6 +627,10 @@ class ASTGeneratorService:
             ValueError: If the module version has no URI or its module
                 no owner: the document names both.
         """
+        from dpmcore.services.script_document.dependency_groups import (
+            build_dependency_groups,
+        )
+
         if self._scope_calc is None or self.session is None:
             raise InternalError(
                 "ScopeCalculatorService not initialised",
@@ -688,6 +725,9 @@ class ASTGeneratorService:
             "preconditions": preconditions_block,
             "modules": modules,
             "parameters": parameters_block,
+            "dependency_groups": build_dependency_groups(
+                {item[1]: refs.requires for item, *_, refs in scope_pairs}
+            ),
             "dependency_information": dep_information,
             "dependency_modules": dep_modules,
         }
@@ -698,6 +738,23 @@ class ASTGeneratorService:
             "error": None,
             "failed_operations": failed_operations,
         }
+
+    def _dependency_resolver(
+        self, mv: Any, release_id: int
+    ) -> "DependencyResolver":
+        """Return the resolver of the script's dependency groups."""
+        from dpmcore.services.script_document.dependency_groups import (
+            DependencyResolver,
+        )
+
+        if self.session is None:
+            raise InternalError(
+                "SQLAlchemy session not initialised",
+                "_dependency_resolver requires a live DB session.",
+            )
+        return DependencyResolver(
+            self.session, mv.module_id, mv.code, release_id
+        )
 
     def _build_modules(
         self,
@@ -944,6 +1001,7 @@ class ASTGeneratorService:
             ]
         ],
         referenced_parameters: Dict[str, ParameterInfo],
+        resolver: "DependencyResolver",
     ) -> Optional[str]:
         """Resolve and fold one :meth:`script_from_db` expression item.
 
@@ -953,6 +1011,9 @@ class ASTGeneratorService:
         limit.
         """
         from dpmcore.services.scope_calculator import UnsupportedDbScope
+        from dpmcore.services.script_document.dependency_groups import (
+            NoDependencyGroup,
+        )
 
         expr, code = item[0], item[1]
 
@@ -1013,23 +1074,27 @@ class ASTGeneratorService:
             except UnsupportedDbScope:
                 scope_result = None
 
-        return self._process_operation(
-            item=item,
-            ast_dict=ast_dict,
-            parameters=parameters,
-            root_operator_id=root_operator_id,
-            ts=ts,
-            reads=reads,
-            release_id=release_id,
-            resolved_severities=resolved_severities,
-            from_submission_date=from_submission_dates.get(code),
-            code_to_precondition_items=code_to_precondition_items,
-            operations=operations,
-            scope_pairs=scope_pairs,
-            referenced_parameters=referenced_parameters,
-            operation_vid=operation_vid,
-            scope_result=scope_result,
-        )
+        try:
+            return self._process_operation(
+                item=item,
+                ast_dict=ast_dict,
+                parameters=parameters,
+                root_operator_id=root_operator_id,
+                ts=ts,
+                reads=reads,
+                release_id=release_id,
+                resolved_severities=resolved_severities,
+                from_submission_date=from_submission_dates.get(code),
+                code_to_precondition_items=code_to_precondition_items,
+                operations=operations,
+                scope_pairs=scope_pairs,
+                referenced_parameters=referenced_parameters,
+                resolver=resolver,
+                operation_vid=operation_vid,
+                scope_result=scope_result,
+            )
+        except NoDependencyGroup as exc:
+            return str(exc)
 
     def script_from_db(
         self,
@@ -1143,6 +1208,7 @@ class ASTGeneratorService:
                 ]
             ] = []
             referenced_parameters: Dict[str, ParameterInfo] = {}
+            resolver = self._dependency_resolver(mv, release_id)
 
             for item in expressions:
                 code = item[1]
@@ -1165,6 +1231,7 @@ class ASTGeneratorService:
                     operations=operations,
                     scope_pairs=scope_pairs,
                     referenced_parameters=referenced_parameters,
+                    resolver=resolver,
                 )
                 if error is not None:
                     failed_operations[code] = error

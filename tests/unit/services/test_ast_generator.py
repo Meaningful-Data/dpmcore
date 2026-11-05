@@ -1978,6 +1978,10 @@ class TestScript:
             return_value=({"MOD": {"versions": []}}, (date(2026, 3, 31), None))
         )
         svc._module_owner = MagicMock(return_value="EBA")
+        # Every operation needs only the instance being validated.
+        svc._dependency_resolver = MagicMock(
+            return_value=SimpleNamespace(requires=lambda scopes, reads: {})
+        )
 
         svc._scope_calc._get_module_tables.return_value = {
             "C_01.00": {
@@ -2308,6 +2312,44 @@ class TestScript:
             for *_, refs in scope_pairs
             for read in refs.reads
         ] == [(0, "A"), (1, "B"), (1, "C")]
+
+    def test_an_operation_with_no_dependency_group_leaves_no_trace(
+        self, monkeypatch
+    ):
+        """It is reported in ``failed_operations``; the rest is grouped."""
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        from dpmcore.services.script_document.dependency_groups import (
+            NoDependencyGroup,
+        )
+
+        svc, _, _, _ = self._build_svc()
+        svc._semantic.ast = "AST"
+        svc._dependency_resolver = MagicMock(
+            return_value=SimpleNamespace(
+                requires=MagicMock(
+                    side_effect=[NoDependencyGroup("It reads X"), {}]
+                )
+            )
+        )
+
+        out = svc.script(
+            expressions=[("e1", "v1"), ("e2", "v2")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+
+        assert out["success"], out["error"]
+        assert out["failed_operations"] == {"v1": "It reads X"}
+        doc = out["enriched_ast"]
+        assert list(doc["operations"]) == ["v2"]
+        assert doc["dependency_groups"] == {
+            "G1": {"requires": {}, "validations": ["v2"]}
+        }
+        scope_pairs = svc._build_modules.call_args.kwargs["scope_pairs"]
+        assert [item[1] for item, *_ in scope_pairs] == ["v2"]
 
     def test_preconditions_only_gate_emitted_operations(
         self, monkeypatch, real_syntax
@@ -2784,6 +2826,10 @@ class TestScriptFromDb:
             return_value=({"MOD": {"versions": []}}, (date(2026, 3, 31), None))
         )
         svc._module_owner = MagicMock(return_value="EBA")
+        # Every operation needs only the instance being validated.
+        svc._dependency_resolver = MagicMock(
+            return_value=SimpleNamespace(requires=lambda scopes, reads: {})
+        )
 
         svc._scope_calc._get_module_tables.return_value = {
             "C_01.00": {

@@ -750,6 +750,20 @@ class TestReadLags:
             ("B", None),
         }
 
+    def test_each_read_names_the_branches_it_sits_in(self):
+        reads = _reads(
+            "x := if {tA, r0010, c0010} > 0 then {tB, r0020, c0010} "
+            "else if {tC, r0030, c0010} > 0 then {tD, r0040, c0010} "
+            "endif endif;"
+        ).reads
+
+        assert {(read.table, read.branch) for read in reads} == {
+            ("A", ()),
+            ("B", ((1, "then"),)),
+            ("C", ((1, "else"),)),
+            ("D", ((1, "else"), (2, "then"))),
+        }
+
     def test_each_read_names_its_statement(self):
         extractor = _reads(
             "x := {tA, r0010, c0010};\ny := {tB, r0020, c0010};"
