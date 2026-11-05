@@ -1617,6 +1617,94 @@ class TestModuleVersions:
         assert len(own["tables"][HOME_TABLE]["variables"]) == len(ROWS)
 
 
+class TestTestedFilingIndicators:
+    """Filing indicators tested on another module's versions."""
+
+    def _seed(self, session):
+        session.add(DataType(data_type_id=BOOLEAN, code="b"))
+        session.add(Property(property_id=BOOLEAN, data_type_id=BOOLEAN))
+        _seed_filing_indicator(
+            session, variable_id=90001, module_vid=1, code=HOME_TABLE
+        )
+        _seed_filing_indicator(
+            session, variable_id=90003, module_vid=2, code=DEP_TABLE
+        )
+        _seed_filing_indicator(
+            session, variable_id=90004, module_vid=2, code="C_97.00"
+        )
+        session.commit()
+
+    def _modules(self, session, filing_indicators):
+        from dpmcore.services.script_document.modules import (
+            build_modules,
+            reference_window,
+        )
+        from dpmcore.services.script_document.queries import (
+            get_module_metadata,
+            get_module_uri,
+        )
+
+        own = get_module_metadata(session, 1)
+        return build_modules(
+            session,
+            own=own,
+            window=reference_window(session, own, RELEASE),
+            module_uri=get_module_uri(session, 1)[0],
+            reads=[],
+            operation_codes=[],
+            release_id=RELEASE,
+            filing_indicators=filing_indicators,
+        )
+
+    def test_another_module_declares_only_those_tested(self, calc_session):
+        self._seed(calc_session)
+
+        modules = self._modules(calc_session, {90003})
+
+        (dependency,) = modules[DEP_MODULE]["versions"]
+        assert dependency["tables"] == {}
+        assert dependency["filing_indicators"] == {
+            DEP_TABLE: {"variable_id": 90003, "data_type": "b"}
+        }
+        (home,) = modules[HOME_MODULE]["versions"]
+        assert list(home["filing_indicators"]) == [HOME_TABLE]
+
+    def test_one_of_the_own_version_is_tested_there_only(self, calc_session):
+        self._seed(calc_session)
+
+        modules = self._modules(calc_session, {90001})
+
+        assert list(modules) == [HOME_MODULE]
+
+    def test_one_of_another_own_version_is_declared_on_the_own(
+        self, calc_session
+    ):
+        self._seed(calc_session)
+        _seed_module_version(
+            calc_session,
+            module_vid=3,
+            module_id=1,
+            code=HOME_MODULE,
+            number="0.9.0",
+            start=date(2025, 1, 1),
+            end=date(2025, 12, 31),
+            release=EARLIER,
+        )
+        _seed_filing_indicator(
+            calc_session, variable_id=90005, module_vid=3, code="C_96.00"
+        )
+        calc_session.commit()
+
+        modules = self._modules(calc_session, {90005})
+
+        assert list(modules) == [HOME_MODULE]
+        (home,) = modules[HOME_MODULE]["versions"]
+        assert home["filing_indicators"] == {
+            "C_96.00": {"variable_id": 90005, "data_type": "b"},
+            HOME_TABLE: {"variable_id": 90001, "data_type": "b"},
+        }
+
+
 class TestHomeTables:
     """A table of the home module is read from the home module."""
 

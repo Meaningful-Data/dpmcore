@@ -702,6 +702,7 @@ class ASTGeneratorService:
             module_uri=module_uri,
             ghost_vids=ghost_vids,
             scope_pairs=scope_pairs,
+            preconditions=preconditions_block,
         )
 
         # Script Format 2.0: one flat object, members in this order.
@@ -752,13 +753,16 @@ class ASTGeneratorService:
                 _OperandRefs,
             ]
         ],
+        preconditions: Mapping[str, Any],
     ) -> Tuple[Dict[str, Any], "Window"]:
         """Return the ``modules`` section and the own version's window.
 
         ``scope_pairs`` holds one entry per operation, in the order of
         ``operations``, and its reads are numbered by that position.
         ``ghost_vids`` are the one-day versions whose validations the
-        script carries; the own version describes them too.
+        script carries; the own version describes them too. The filing
+        indicators ``preconditions`` test are declared on the versions
+        of the modules holding them.
         """
         from dpmcore.services.script_document.modules import (
             build_modules,
@@ -784,8 +788,32 @@ class ASTGeneratorService:
             operation_codes=[item[1] for item, *_ in scope_pairs],
             release_id=release_id,
             ghost_vids=ghost_vids,
+            filing_indicators=self._tested_filing_indicators(preconditions),
         )
         return modules, window
+
+    @staticmethod
+    def _tested_filing_indicators(
+        preconditions: Mapping[str, Any],
+    ) -> Set[int]:
+        """Return the ``variable_id`` of every ``FilingIndicatorVarID``."""
+        found: Set[int] = set()
+
+        def _walk(node: Any) -> None:
+            if isinstance(node, dict):
+                if (
+                    node.get("class_name") == "FilingIndicatorVarID"
+                    and node.get("variable_id") is not None
+                ):
+                    found.add(int(node["variable_id"]))
+                for value in node.values():
+                    _walk(value)
+            elif isinstance(node, list):
+                for item in node:
+                    _walk(item)
+
+        _walk([entry["ast"] for entry in preconditions.values()])
+        return found
 
     def _module_owner(self, module_id: Optional[int]) -> Optional[str]:
         """Return the acronym of the organisation owning a module.

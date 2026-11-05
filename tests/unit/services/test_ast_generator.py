@@ -485,6 +485,39 @@ class TestBuildDates:
         assert Cls._build_dates(window) == {"from": "2026-03-31", "to": None}
 
 
+class TestTestedFilingIndicators:
+    def test_collects_every_filing_indicator_of_every_gate(self):
+        _, Cls, _ = _bare_svc()
+        preconditions = {
+            "p_1": {
+                "ast": {
+                    "class_name": "BinOp",
+                    "op": "and",
+                    "left": {
+                        "class_name": "FilingIndicatorVarID",
+                        "code": "C_01.00",
+                        "variable_id": 1,
+                    },
+                    "right": {
+                        "class_name": "FilingIndicatorVarID",
+                        "code": "C_02.00",
+                        "variable_id": 2,
+                    },
+                }
+            },
+            "p_2": {
+                "ast": {
+                    "class_name": "FilingIndicatorVarID",
+                    "code": "C_01.00",
+                    "variable_id": 1,
+                }
+            },
+            "p_3": {"ast": {"class_name": "ParameterRef", "code": "BM"}},
+        }
+
+        assert Cls._tested_filing_indicators(preconditions) == {1, 2}
+
+
 # ------------------------------------------------------------------ #
 # _build_operation_entry
 # ------------------------------------------------------------------ #
@@ -2312,7 +2345,9 @@ class TestScript:
         doc = out["enriched_ast"]
         assert doc["modules"] == modules
         assert doc["dates"] == {"from": "2025-12-31", "to": "2026-06-29"}
-        scope_pairs = svc._build_modules.call_args.kwargs["scope_pairs"]
+        kwargs = svc._build_modules.call_args.kwargs
+        assert kwargs["preconditions"] is doc["preconditions"]
+        scope_pairs = kwargs["scope_pairs"]
         assert [item[1] for item, *_ in scope_pairs] == ["v2", "v3"]
         assert [
             (read.statement, read.table)

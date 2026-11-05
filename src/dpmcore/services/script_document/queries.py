@@ -2,7 +2,8 @@
 
 The module metadata and taxonomy URI of a module version, the table
 versions read at a release, and the module versions holding each table
-read. Shared by every document that writes ``modules``.
+or filing indicator read. Shared by every document that writes
+``modules``.
 
 Release IDs became opaque at DPM 4.2.1 and the perpetual release is
 identified by :func:`~dpmcore.orm.release_sort_order.compute_sort_order`,
@@ -31,12 +32,14 @@ from dpmcore.orm.infrastructure import Organisation, Release
 from dpmcore.orm.packaging import (
     Framework,
     Module,
+    ModuleParameters,
     ModuleVersion,
     ModuleVersionComposition,
 )
 from dpmcore.orm.query_utils import chunked_in
 from dpmcore.orm.release_sort_order import compute_sort_order
 from dpmcore.orm.rendering import TableVersion
+from dpmcore.orm.variables import VariableVersion
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Query, Session
@@ -347,4 +350,53 @@ def modules_of_table_vids(
         query, ModuleVersionComposition.table_vid, sorted(table_vids)
     ):
         grouped.setdefault(int(row.table_vid), []).append(row)
+    return grouped
+
+
+def modules_of_filing_indicators(
+    session: "Session",
+    variable_ids: "set[int]",
+    release_id: Optional[int],
+) -> Dict[int, List[Any]]:
+    """Return the module versions declaring each filing indicator.
+
+    Args:
+        session: SQLAlchemy session.
+        variable_ids: The filing indicators, by ``VariableID``.
+        release_id: Release to window the module versions at.
+
+    Returns:
+        ``{VariableID: [row, ...]}`` where each row carries
+        ``module_vid``, ``module_id`` and ``module_code``.
+    """
+    query: Any = (
+        session.query(
+            VariableVersion.variable_id.label("variable_id"),
+            ModuleParameters.module_vid.label("module_vid"),
+            ModuleVersion.module_id.label("module_id"),
+            ModuleVersion.code.label("module_code"),
+        )
+        .select_from(ModuleParameters)
+        .join(
+            VariableVersion,
+            VariableVersion.variable_vid == ModuleParameters.variable_vid,
+        )
+        .join(
+            ModuleVersion,
+            ModuleVersion.module_vid == ModuleParameters.module_vid,
+        )
+        .distinct()
+        .order_by(ModuleParameters.module_vid)
+    )
+    query = release_window(
+        query,
+        ModuleVersion.start_release_id,
+        ModuleVersion.end_release_id,
+        release_id,
+    )
+    grouped: Dict[int, List[Any]] = {}
+    for row in chunked_in(
+        query, VariableVersion.variable_id, sorted(variable_ids)
+    ):
+        grouped.setdefault(int(row.variable_id), []).append(row)
     return grouped
