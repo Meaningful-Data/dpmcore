@@ -6,7 +6,7 @@ and at which lag, for the ``modules`` section.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from dpmcore.dpm_xl.ast.nodes import (
     Constant,
@@ -51,7 +51,8 @@ class DependencyTableExtractor(ASTTemplate):
     ``time_shift`` without component, or on ``refPeriod``, moves its
     operand's lag by the period shifted. A ``where`` or ``sub`` on
     ``refPeriod``, and an analytic ordered by it, read periods no lag
-    describes, so their operands get the lag ``None``.
+    describes, so their operands get the lag ``None``. Each read also
+    records the ``if-then-else`` branches it sits in.
     """
 
     def __init__(self, session: "Session") -> None:
@@ -61,6 +62,8 @@ class DependencyTableExtractor(ASTTemplate):
         self.reads: List[Read] = []
         self._statement = 0
         self._lag: Optional[RefDateLag] = AT_T
+        self._branch: Tuple[Tuple[int, str], ...] = ()
+        self._conditionals = 0
         # Operands repeat across a module's calculations, and
         # get_filtered_datapoints is uncached: without this, the same
         # selection is resolved once per occurrence, each time reloading
@@ -91,6 +94,21 @@ class DependencyTableExtractor(ASTTemplate):
         self._lag = lag
         self.visit(operand)
         self._lag = previous
+
+    def visit_CondExpr(self, node: Any) -> None:
+        """Mark the reads of each branch with the branch they sit in."""
+        self.visit(node.condition)
+        self._conditionals += 1
+        conditional = self._conditionals
+        previous = self._branch
+        for side, operand in (
+            ("then", node.then_expr),
+            ("else", node.else_expr),
+        ):
+            if operand is not None:
+                self._branch = (*previous, (conditional, side))
+                self.visit(operand)
+        self._branch = previous
 
     def visit_TimeShiftOp(self, node: Any) -> None:
         """A shift without component, or on ``refPeriod``, moves the lag."""
@@ -180,7 +198,13 @@ class DependencyTableExtractor(ASTTemplate):
         if not variable_ids:
             return
         self.reads.append(
-            Read(self._statement, table, frozenset(variable_ids), self._lag)
+            Read(
+                self._statement,
+                table,
+                frozenset(variable_ids),
+                self._lag,
+                self._branch,
+            )
         )
 
 

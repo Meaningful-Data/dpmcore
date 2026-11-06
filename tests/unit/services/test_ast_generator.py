@@ -165,17 +165,6 @@ def _bare_svc():
     return svc, Cls, mod
 
 
-def _scope_calc_mock(detect_return=None, alt_return=None):
-    sc = MagicMock()
-    sc.detect_cross_module_dependencies.return_value = detect_return or {
-        "intra_instance_validations": [],
-        "cross_instance_dependencies": [],
-        "dependency_modules": {},
-    }
-    sc.detect_alternative_dependencies.return_value = alt_return or []
-    return sc
-
-
 # ------------------------------------------------------------------ #
 # _resolve_severities
 # ------------------------------------------------------------------ #
@@ -349,93 +338,6 @@ class TestCleanAstDataEntries:
     def test_non_dict_input_returns_unchanged(self):
         _, Cls, _ = _bare_svc()
         assert Cls._clean_ast_data_entries("hello") == "hello"
-
-
-# ------------------------------------------------------------------ #
-# _extract_referenced_tables
-# ------------------------------------------------------------------ #
-
-
-class TestExtractReferencedTables:
-    def test_collects_table_codes_from_varid(self):
-        _, Cls, _ = _bare_svc()
-        ast = {
-            "class_name": "BinOp",
-            "left": {"class_name": "FactVarID", "table": "C_01.00"},
-            "right": {"class_name": "FactVarID", "table": "C_02.00"},
-        }
-        assert Cls._extract_referenced_tables(ast) == {
-            "C_01.00",
-            "C_02.00",
-        }
-
-    def test_ignores_non_varid_nodes(self):
-        _, Cls, _ = _bare_svc()
-        ast = {"class_name": "Constant", "value": 0}
-        assert Cls._extract_referenced_tables(ast) == set()
-
-
-# ------------------------------------------------------------------ #
-# _extract_operand_datapoints (#251)
-# ------------------------------------------------------------------ #
-
-
-class TestExtractOperandDatapoints:
-    def test_collects_datapoints_with_types_across_modules(self):
-        """Both sides of a cross-module rule are collected (#251)."""
-        _, Cls, _ = _bare_svc()
-        ast = {
-            "class_name": "BinOp",
-            "op": "<=",
-            "left": {
-                "class_name": "FactVarID",
-                "table": "C_01.00",
-                "data": [{"datapoint": 32673, "data_type": "m"}],
-            },
-            "right": {
-                "class_name": "FactVarID",
-                "table": "F_01.03",
-                "data": [{"datapoint": 56987, "data_type": "m"}],
-            },
-        }
-        assert Cls._extract_operand_datapoints(ast) == {
-            "32673": "m",
-            "56987": "m",
-        }
-
-    def test_collects_every_datapoint_of_a_multi_cell_operand(self):
-        _, Cls, _ = _bare_svc()
-        ast = {
-            "class_name": "FactVarID",
-            "table": "C_04.00",
-            "data": [
-                {"datapoint": 1, "data_type": "i"},
-                {"datapoint": 2, "data_type": "e"},
-            ],
-        }
-        assert Cls._extract_operand_datapoints(ast) == {"1": "i", "2": "e"}
-
-    def test_missing_type_falls_back_to_empty_string(self):
-        _, Cls, _ = _bare_svc()
-        ast = {"class_name": "FactVarID", "data": [{"datapoint": 9}]}
-        assert Cls._extract_operand_datapoints(ast) == {"9": ""}
-
-    def test_entries_without_datapoint_are_skipped(self):
-        _, Cls, _ = _bare_svc()
-        ast = {
-            "class_name": "FactVarID",
-            "data": [{"data_type": "m"}, {"datapoint": None}, "junk"],
-        }
-        assert Cls._extract_operand_datapoints(ast) == {}
-
-    def test_ignores_non_varid_nodes(self):
-        _, Cls, _ = _bare_svc()
-        ast = {
-            "class_name": "Constant",
-            "value": 0,
-            "data": [{"datapoint": 5}],
-        }
-        assert Cls._extract_operand_datapoints(ast) == {}
 
 
 # ------------------------------------------------------------------ #
@@ -1539,351 +1441,12 @@ class TestLatestReleaseInWindow:
             svc._latest_release_in_window(mv)
 
 
-# ------------------------------------------------------------------ #
-# _build_dependency_info
-# ------------------------------------------------------------------ #
-
-
-class TestBuildDependencyInfo:
-    def test_none_when_scope_calc_missing(self):
-        svc, _, _ = _bare_svc()
-        svc._scope_calc = None
-        assert (
-            svc._build_dependency_info(
-                scope_pairs=[("X",)],
-                primary_module_vid=1,
-                release_id=None,
-            )
-            is None
-        )
-
-    def test_none_when_primary_missing(self):
-        svc, _, mod = _bare_svc()
-        svc._scope_calc = _scope_calc_mock()
-        assert (
-            svc._build_dependency_info(
-                scope_pairs=[(("e",), MagicMock(), {}, mod._OperandRefs())],
-                primary_module_vid=None,
-                release_id=None,
-            )
-            is None
-        )
-
-    def test_none_when_pairs_empty(self):
-        svc, _, _ = _bare_svc()
-        svc._scope_calc = _scope_calc_mock()
-        assert (
-            svc._build_dependency_info(
-                scope_pairs=[], primary_module_vid=1, release_id=None
-            )
-            is None
-        )
-
-    def test_aggregates_and_dedupes_intra(self):
-        svc, _, mod = _bare_svc()
-        svc._scope_calc = _scope_calc_mock(
-            detect_return={
-                "intra_instance_validations": ["v1"],
-                "cross_instance_dependencies": [],
-                "dependency_modules": {},
-            }
-        )
-        scope_pairs = [
-            (("e1", "v1"), MagicMock(), {}, mod._OperandRefs()),
-            (("e2", "v1"), MagicMock(), {}, mod._OperandRefs()),
-        ]
-        out = svc._build_dependency_info(
-            scope_pairs=scope_pairs,
-            primary_module_vid=1,
-            release_id=None,
-        )
-        assert out["dependency_information"]["intra_instance_validations"] == [
-            "v1"
-        ]
-
-
-# ------------------------------------------------------------------ #
-# _merge_dep_modules
-# ------------------------------------------------------------------ #
-
-
-class TestMergeDepModules:
-    def test_new_uri_inserted(self):
-        _, Cls, _ = _bare_svc()
-        existing = {}
-        Cls._merge_dep_modules(
-            existing, {"http://a": {"tables": {"T": {}}, "variables": {}}}
-        )
-        assert "http://a" in existing
-
-    def test_existing_uri_unions_repeated_table_variables(self):
-        """Two operations referencing different cells of the same
-        dependency table must both end up declared (#250).
-        """
-        _, Cls, _ = _bare_svc()
-        existing = {
-            "http://a": {
-                "tables": {
-                    "T1": {"variables": {"v1": "x"}, "open_keys": {"qA": "e"}}
-                },
-                "variables": {"v1": "x"},
-            }
-        }
-        new = {
-            "http://a": {
-                "tables": {
-                    "T1": {"variables": {"v2": "y"}, "open_keys": {"qA": "e"}},
-                    "T2": {"variables": {"v3": "z"}, "open_keys": {}},
-                },
-                "variables": {"v2": "y", "v3": "z"},
-            }
-        }
-        Cls._merge_dep_modules(existing, new)
-        t1 = existing["http://a"]["tables"]["T1"]
-        assert t1["variables"] == {"v1": "x", "v2": "y"}
-        assert t1["open_keys"] == {"qA": "e"}
-        assert "T2" in existing["http://a"]["tables"]
-        assert existing["http://a"]["variables"] == {
-            "v1": "x",
-            "v2": "y",
-            "v3": "z",
-        }
-
-
-# ------------------------------------------------------------------ #
-# _extract_time_shifts
-# ------------------------------------------------------------------ #
-
-
-class _FakeTimeShiftOp:
-    def __init__(self, period_indicator, shift_number, operand):
-        self.period_indicator = period_indicator
-        self.shift_number = shift_number
-        self.operand = operand
-
-
-_FakeTimeShiftOp.__name__ = "TimeShiftOp"
-
-
 class _FakeVarID:
     def __init__(self, table):
         self.table = table
 
 
 _FakeVarID.__name__ = "VarID"
-
-
-class _FakeBinOp:
-    """Two-operand node the AST template walks into generically."""
-
-    def __init__(self, left, right):
-        self.op = "and"
-        self.left = left
-        self.right = right
-
-
-_FakeBinOp.__name__ = "BinOp"
-
-
-class TestExtractTimeShifts:
-    def test_empty_returns_empty(self):
-        _, Cls, _ = _bare_svc()
-        assert Cls._extract_time_shifts(SimpleNamespace()) == {}
-
-    def test_positive_constant_shift_produces_T_minus(self):
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        sn = Constant(type_="Integer", value=1)
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_01"))
-        assert Cls._extract_time_shifts(node) == {"T_01": ["T-1Q"]}
-
-    def test_negative_unary_shift_produces_T_plus(self):
-        """The declared period inverts the shift: ``-2`` needs ``T+2Y``."""
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
-
-        sn = UnaryOp(op="-", operand=Constant(type_="Integer", value=2))
-        node = _FakeTimeShiftOp("Y", sn, _FakeVarID(table="T_02"))
-        assert Cls._extract_time_shifts(node) == {"T_02": ["T+2Y"]}
-
-    def test_negated_non_literal_shift_is_rejected(self):
-        """A negated non-literal shift names no resolvable period."""
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import BinOp, Constant, UnaryOp
-
-        sn = UnaryOp(
-            op="-",
-            operand=BinOp(
-                op="*",
-                left=Constant(type_="Integer", value=2),
-                right=Constant(type_="Integer", value=2),
-            ),
-        )
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_04"))
-        with pytest.raises(errors.SemanticError) as exc:
-            Cls._extract_time_shifts(node)
-        assert exc.value.code == "4-7-5"
-
-    def test_var_without_table_ignored(self):
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        sn = Constant(type_="Integer", value=1)
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table=None))
-        assert Cls._extract_time_shifts(node) == {}
-
-    def test_non_literal_shift_is_rejected(self):
-        """``2 * 2`` used to render as ``T-nQ``, which resolves to no
-        instance; the operation is now skipped instead (#326).
-        """
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import BinOp, Constant
-
-        sn = BinOp(
-            op="*",
-            left=Constant(type_="Integer", value=5),
-            right=Constant(type_="Integer", value=12),
-        )
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_03"))
-        with pytest.raises(errors.SemanticError) as exc:
-            Cls._extract_time_shifts(node)
-        assert exc.value.code == "4-7-5"
-
-    def test_plain_reference_is_recorded_as_t(self):
-        """An unshifted table is recorded at ``T`` so a module read at
-        both the current and a shifted instance stays visible.
-        """
-        _, Cls, _ = _bare_svc()
-
-        assert Cls._extract_time_shifts(_FakeVarID(table="T_05")) == {
-            "T_05": ["T"]
-        }
-
-    def test_a_table_read_plain_and_shifted_keeps_both_periods(self):
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        sn = Constant(type_="Integer", value=1)
-        shifted = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_06"))
-        node = _FakeBinOp(_FakeVarID(table="T_06"), shifted)
-        assert Cls._extract_time_shifts(node) == {"T_06": ["T", "T-1Q"]}
-
-    def test_a_table_shifted_twice_keeps_both_periods(self):
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        node = _FakeBinOp(
-            _FakeTimeShiftOp(
-                "Q", Constant(type_="Integer", value=1), _FakeVarID("T_07")
-            ),
-            _FakeTimeShiftOp(
-                "Q", Constant(type_="Integer", value=4), _FakeVarID("T_07")
-            ),
-        )
-        assert Cls._extract_time_shifts(node) == {"T_07": ["T-1Q", "T-4Q"]}
-
-    def test_the_shift_does_not_leak_past_the_operand(self):
-        """A plain table read after a shifted one stays at ``T``."""
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        node = _FakeBinOp(
-            _FakeTimeShiftOp(
-                "Q", Constant(type_="Integer", value=1), _FakeVarID("T_08")
-            ),
-            _FakeVarID(table="T_09"),
-        )
-        assert Cls._extract_time_shifts(node) == {
-            "T_08": ["T-1Q"],
-            "T_09": ["T"],
-        }
-
-    def test_a_zero_shift_is_no_shift(self):
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        sn = Constant(type_="Integer", value=0)
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_10"))
-        assert Cls._extract_time_shifts(node) == {"T_10": ["T"]}
-
-    def test_unary_plus_shift_keeps_its_size(self):
-        """``+1`` is a UnaryOp, not a bare Constant: it still means 1."""
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
-
-        sn = UnaryOp(op="+", operand=Constant(type_="Integer", value=1))
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_11"))
-        assert Cls._extract_time_shifts(node) == {"T_11": ["T-1Q"]}
-
-    def test_parenthesised_shift_is_unwrapped(self):
-        """``( -1 )`` parses as a ParExpr around the unary minus."""
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant, ParExpr, UnaryOp
-
-        sn = ParExpr(
-            expression=UnaryOp(
-                op="-", operand=Constant(type_="Integer", value=1)
-            )
-        )
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_12"))
-        assert Cls._extract_time_shifts(node) == {"T_12": ["T+1Q"]}
-
-    def test_negative_constant_renders_a_single_sign(self):
-        """``(-1)`` is lexed as a negative Constant, not a unary minus."""
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        sn = Constant(type_="Integer", value=-1)
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_13"))
-        assert Cls._extract_time_shifts(node) == {"T_13": ["T+1Q"]}
-
-    def test_double_negation_shift_is_positive(self):
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
-
-        sn = UnaryOp(
-            op="-",
-            operand=UnaryOp(
-                op="-", operand=Constant(type_="Integer", value=1)
-            ),
-        )
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_14"))
-        assert Cls._extract_time_shifts(node) == {"T_14": ["T-1Q"]}
-
-    def test_exception_returns_empty(self):
-        _, Cls, _ = _bare_svc()
-
-        class Boom:
-            def __getattr__(self, item):
-                raise AttributeError("boom")
-
-        assert Cls._extract_time_shifts(Boom()) == {}
-
-    def test_db_sub_clause_op_stand_in_is_walked(self):
-        """dpmcore#364: ``db_ast.py``'s DB-only ``sub`` stand-in
-        (``_DbSubClauseOp``) isn't a real ``dpm_xl.ast.nodes`` class —
-        without its own ``visit_*``, ``ASTTemplate``'s ``generic_visit``
-        would raise ``NotImplementedError`` and silently drop every
-        time shift elsewhere in the same expression, not just the part
-        inside the ``sub`` clause.
-        """
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        class _FakeDbSubClauseOp:
-            def __init__(self, operand, condition):
-                self.operand = operand
-                self.condition = condition
-
-        _FakeDbSubClauseOp.__name__ = "_DbSubClauseOp"
-
-        sn = Constant(type_="Integer", value=1)
-        shifted = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_15"))
-        node = _FakeDbSubClauseOp(
-            operand=shifted, condition=_FakeVarID(table=None)
-        )
-        assert Cls._extract_time_shifts(node) == {"T_15": ["T-1Q"]}
 
 
 # ------------------------------------------------------------------ #
@@ -1905,6 +1468,15 @@ class TestBuildPreconditionIndex:
         assert idx["v1"] == ["P1"]
         assert idx["v2"] == ["P1", "P2"]
         assert idx["v3"] == ["P2"]
+
+    def test_codes_come_from_the_extractor_given(self):
+        svc, _, _ = _bare_svc()
+        svc._syntax = MagicMock()
+        svc._syntax.parse.side_effect = lambda expr: f"AST_{expr}"
+        idx = svc._build_precondition_index(
+            [("a", ["v1"])], lambda ast: [f"{ast}_required"]
+        )
+        assert idx == {"v1": ["AST_a_required"]}
 
     def test_parse_failure_raises_value_error(self):
         svc, _, _ = _bare_svc()
@@ -1978,23 +1550,17 @@ class TestScript:
             return_value=({"MOD": {"versions": []}}, (date(2026, 3, 31), None))
         )
         svc._module_owner = MagicMock(return_value="EBA")
+        # Every operation needs only the instance being validated.
+        svc._dependency_resolver = MagicMock(
+            return_value=SimpleNamespace(
+                requires=lambda code, scopes, reads: {}
+            )
+        )
 
-        svc._scope_calc._get_module_tables.return_value = {
-            "C_01.00": {
-                "variables": {"100": "m"},
-                "open_keys": {"BASE": "e"},
-            }
-        }
         svc._scope_calc._get_module_uri.return_value = "http://example/mod"
         svc._scope_calc.calculate_from_expression.return_value = (
             SimpleNamespace(has_error=False, scopes=[])
         )
-        svc._scope_calc.detect_cross_module_dependencies.return_value = {
-            "intra_instance_validations": ["v1"],
-            "cross_instance_dependencies": [],
-            "dependency_modules": {},
-        }
-        svc._scope_calc.detect_alternative_dependencies.return_value = []
         return svc, mv, release_row, mod
 
     def _stub_serialize_ast(self, monkeypatch, return_value):
@@ -2194,44 +1760,6 @@ class TestScript:
         assert list(out["failed_operations"]) == ["v1"]
         assert "references a cell" in out["failed_operations"]["v1"]
 
-    def test_non_literal_shift_skips_op_preserves_others(self, monkeypatch):
-        """#326: a shift whose period cannot be declared skips that op.
-
-        Emitting the old ``T-nQ`` sent the operation to an instance no
-        engine can resolve, and failing the whole module would drop the
-        operations that are fine.
-        """
-        self._stub_serialize_ast(
-            monkeypatch,
-            {"class_name": "VarID", "table": "C_01.00", "data": []},
-        )
-        svc, *_ = self._build_svc()
-        svc._semantic.ast = "AST"
-
-        calls = iter(["bad", "ok", "ok"])
-
-        def _extract(ast):
-            if next(calls) == "bad":
-                raise errors.SemanticError("4-7-5")
-            return {"C_01.00": ["T"]}
-
-        monkeypatch.setattr(
-            type(svc), "_extract_time_shifts", staticmethod(_extract)
-        )
-
-        out = svc.script(
-            expressions=[("e_bad", "v1"), ("e2", "v2"), ("e3", "v3")],
-            module_code="MOD",
-            module_version="1.0",
-        )
-        assert out["success"] is True
-        doc = out["enriched_ast"]
-        # Skipped before any accumulation: no operation entry either.
-        assert "v1" not in doc["operations"]
-        assert {"v2", "v3"} <= set(doc["operations"])
-        assert list(out["failed_operations"]) == ["v1"]
-        assert "integer literal" in out["failed_operations"]["v1"]
-
     def test_unreadable_operation_skips_op_preserves_others(self, monkeypatch):
         """An operation listed without what it reads would leave
         ``modules`` short of it, so it is skipped instead.
@@ -2308,6 +1836,44 @@ class TestScript:
             for *_, refs in scope_pairs
             for read in refs.reads
         ] == [(0, "A"), (1, "B"), (1, "C")]
+
+    def test_an_operation_with_no_dependency_group_leaves_no_trace(
+        self, monkeypatch
+    ):
+        """It is reported in ``failed_operations``; the rest is grouped."""
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        from dpmcore.services.script_document.dependency_groups import (
+            NoDependencyGroup,
+        )
+
+        svc, _, _, _ = self._build_svc()
+        svc._semantic.ast = "AST"
+        svc._dependency_resolver = MagicMock(
+            return_value=SimpleNamespace(
+                requires=MagicMock(
+                    side_effect=[NoDependencyGroup("It reads X"), {}]
+                )
+            )
+        )
+
+        out = svc.script(
+            expressions=[("e1", "v1"), ("e2", "v2")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+
+        assert out["success"], out["error"]
+        assert out["failed_operations"] == {"v1": "It reads X"}
+        doc = out["enriched_ast"]
+        assert list(doc["operations"]) == ["v2"]
+        assert doc["dependency_groups"] == {
+            "G1": {"requires": {}, "validations": ["v2"]}
+        }
+        scope_pairs = svc._build_modules.call_args.kwargs["scope_pairs"]
+        assert [item[1] for item, *_ in scope_pairs] == ["v2"]
 
     def test_preconditions_only_gate_emitted_operations(
         self, monkeypatch, real_syntax
@@ -2784,13 +2350,13 @@ class TestScriptFromDb:
             return_value=({"MOD": {"versions": []}}, (date(2026, 3, 31), None))
         )
         svc._module_owner = MagicMock(return_value="EBA")
+        # Every operation needs only the instance being validated.
+        svc._dependency_resolver = MagicMock(
+            return_value=SimpleNamespace(
+                requires=lambda code, scopes, reads: {}
+            )
+        )
 
-        svc._scope_calc._get_module_tables.return_value = {
-            "C_01.00": {
-                "variables": {"100": "m"},
-                "open_keys": {"BASE": "e"},
-            }
-        }
         svc._scope_calc._get_module_uri.return_value = "http://example/mod"
         svc._scope_calc.calculate_from_expression.return_value = (
             SimpleNamespace(has_error=False, scopes=[])
@@ -2801,12 +2367,6 @@ class TestScriptFromDb:
         svc._scope_calc.build_scope_result_from_db.side_effect = (
             _FakeUnsupportedDbScope("no persisted scope in fixture")
         )
-        svc._scope_calc.detect_cross_module_dependencies.return_value = {
-            "intra_instance_validations": ["v1"],
-            "cross_instance_dependencies": [],
-            "dependency_modules": {},
-        }
-        svc._scope_calc.detect_alternative_dependencies.return_value = []
         return svc, mv, release_row, mod
 
     def _stub_serialize_ast(self, monkeypatch, return_value):
@@ -2936,96 +2496,11 @@ class TestScriptFromDb:
         assert doc["dpm_release"] == release_info
         build.assert_called_once_with(svc.session, 555, release_row.release_id)
 
-    def test_db_native_time_shift_reaches_dependency_detection(
-        self, monkeypatch
-    ):
-        """dpmcore#364 follow-up: a ``TimeShiftOp`` built straight from
-        the DB must still feed ``detect_cross_module_dependencies``'s
-        ``time_shifts`` — before ``db_ast.py`` supported ``TimeShiftOp``
-        this never mattered (every such operation fell back to
-        ``_prepare_expression``, which always computed it), but now the
-        DB-native branch has to compute it too, off the raw tree
-        (``ts`` is only meaningful pre-serialisation — see
-        ``_extract_time_shifts``).
-        """
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        built_ast = _FakeTimeShiftOp(
-            "Q",
-            Constant(type_="Integer", value=1),
-            _FakeVarID(table="C_01.00"),
-        )
-        build = MagicMock(return_value=(built_ast, 24))
-        mod = SimpleNamespace(
-            UnsupportedDbAst=_FakeUnsupportedDbAst,
-            build_ast_from_db=build,
-            serialize_built_ast=lambda built: {
-                "class_name": "VarID",
-                "table": "C_01.00",
-                "data": [],
-            },
-        )
-        monkeypatch.setitem(sys.modules, "dpmcore.dpm_xl.utils.db_ast", mod)
-        svc, mv, release_row, _ = self._build_svc()
-
-        out = svc.script_from_db(
-            expressions=[("e1", "v1")],
-            operation_vids={"v1": 555},
-            mv=mv,
-            release_row=release_row,
-        )
-
-        assert out["success"] is True, out["error"]
-        call = svc._scope_calc.detect_cross_module_dependencies.call_args
-        assert call.kwargs["time_shifts"] == {"C_01.00": ["T-1Q"]}
-
-    def test_db_native_non_literal_shift_excludes_only_that_operation(
-        self, monkeypatch
-    ):
-        """A shift number that isn't an integer literal names no
-        resolvable instance (#326) — the DB-native branch must reject
-        just this operation, the same way ``_prepare_expression``'s own
-        ``_extract_time_shifts`` call already does for the fallback.
-        """
-        from dpmcore.dpm_xl.ast.nodes import BinOp, Constant
-
-        non_literal_shift = BinOp(
-            op="*",
-            left=Constant(type_="Integer", value=2),
-            right=Constant(type_="Integer", value=2),
-        )
-        built_ast = _FakeTimeShiftOp(
-            "Q", non_literal_shift, _FakeVarID(table="C_01.00")
-        )
-        build = MagicMock(return_value=(built_ast, 24))
-        mod = SimpleNamespace(
-            UnsupportedDbAst=_FakeUnsupportedDbAst,
-            build_ast_from_db=build,
-            serialize_built_ast=lambda built: {
-                "class_name": "VarID",
-                "table": "C_01.00",
-                "data": [],
-            },
-        )
-        monkeypatch.setitem(sys.modules, "dpmcore.dpm_xl.utils.db_ast", mod)
-        svc, mv, release_row, _ = self._build_svc()
-
-        out = svc.script_from_db(
-            expressions=[("e1", "v1")],
-            operation_vids={"v1": 555},
-            mv=mv,
-            release_row=release_row,
-        )
-
-        assert out["success"] is True, out["error"]
-        assert "v1" in out["failed_operations"]
-        svc._scope_calc.calculate_from_expression.assert_not_called()
-
     def test_db_native_unreadable_operation_excludes_only_that_operation(
         self, monkeypatch
     ):
-        """Same as a shift that cannot be declared: just this operation
-        is rejected, without falling back to a re-parse.
+        """An operation whose reads cannot be collected: just it is
+        rejected, without falling back to a re-parse.
         """
         build = MagicMock(return_value=(_FakeVarID(table="C_01.00"), 24))
         db_ast = SimpleNamespace(

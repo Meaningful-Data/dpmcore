@@ -84,12 +84,12 @@ Window = Tuple[Optional[date], Optional[date]]
 class RefDateLag:
     """How far from the anchor's reference date a read lands.
 
-    Kept in months for ``A``, ``S``, ``Q`` and ``M`` shifts and in days
-    for ``W`` and ``D``, so that nested shifts add up.
+    Kept in the unit the ``time_shift`` was written in. Nested shifts in
+    two units add up in months, or in days for ``W`` and ``D``.
 
     Attributes:
         value: The offset in ``unit``; negative is earlier.
-        unit: ``"M"`` or ``"D"``.
+        unit: ``A``, ``S``, ``Q``, ``M``, ``W`` or ``D``.
     """
 
     value: int
@@ -112,11 +112,15 @@ class RefDateLag:
         Returns:
             The lag, or ``None`` for an unknown period indicator.
         """
-        if period in _MONTHS_PER_PERIOD:
-            return cls(-shift_number * _MONTHS_PER_PERIOD[period], "M")
-        if period in _DAYS_PER_PERIOD:
-            return cls(-shift_number * _DAYS_PER_PERIOD[period], "D")
-        return None
+        if period not in _MONTHS_PER_PERIOD and period not in _DAYS_PER_PERIOD:
+            return None
+        return cls(-shift_number, period) if shift_number else AT_T
+
+    def in_base_unit(self) -> "RefDateLag":
+        """Return the same lag in months, or in days for ``W`` and ``D``."""
+        if self.unit in _MONTHS_PER_PERIOD:
+            return RefDateLag(self.value * _MONTHS_PER_PERIOD[self.unit])
+        return RefDateLag(self.value * _DAYS_PER_PERIOD[self.unit], "D")
 
     def target(self, anchor: date) -> date:
         """Return the date a read at this lag lands on from ``anchor``.
@@ -124,11 +128,12 @@ class RefDateLag:
         A lag in months lands on the last day of the month reached, as
         Script Format 2.0 computes a reference's target date.
         """
-        if self.value == 0:
+        base = self.in_base_unit()
+        if base.value == 0:
             return anchor
-        if self.unit == "D":
-            return anchor + timedelta(days=self.value)
-        months = anchor.month - 1 + self.value
+        if base.unit == "D":
+            return anchor + timedelta(days=base.value)
+        months = anchor.month - 1 + base.value
         year, month = anchor.year + months // 12, months % 12 + 1
         return date(year, month, calendar.monthrange(year, month)[1])
 
@@ -142,8 +147,9 @@ def combine_lags(
 ) -> Optional[RefDateLag]:
     """Return the lag of a shift applied inside another.
 
-    ``None`` stands for a read that can land on any date. Months and days
-    do not add up into one lag, so mixing them gives ``None`` too.
+    ``None`` stands for a read that can land on any date. Shifts in two
+    units add up in months, or in days; months and days do not add up
+    into one lag, so mixing them gives ``None`` too.
     """
     if outer is None or inner is None:
         return None
@@ -152,8 +158,11 @@ def combine_lags(
     if inner.value == 0:
         return outer
     if outer.unit != inner.unit:
-        return None
-    return RefDateLag(outer.value + inner.value, outer.unit)
+        outer, inner = outer.in_base_unit(), inner.in_base_unit()
+        if outer.unit != inner.unit:
+            return None
+    value = outer.value + inner.value
+    return RefDateLag(value, outer.unit) if value else AT_T
 
 
 @dataclass(frozen=True)
@@ -167,12 +176,16 @@ class Read:
         lag: Where the read lands; ``None`` when no lag describes it (a
             ``where`` or ``sub`` on ``refPeriod``, or an analytic
             ordered by it) and it can land on any date.
+        branch: The ``if-then-else`` branches the read sits in,
+            outermost first, as ``(conditional, side)`` pairs where
+            ``side`` is ``"then"`` or ``"else"``.
     """
 
     statement: int
     table: str
     variable_ids: FrozenSet[int]
     lag: Optional[RefDateLag] = AT_T
+    branch: Tuple[Tuple[int, str], ...] = ()
 
 
 @dataclass(frozen=True)

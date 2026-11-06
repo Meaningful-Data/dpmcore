@@ -1438,7 +1438,7 @@ class TestCompositeShapes:
 class TestBuildAstFromDb:
     """``build_ast_dict_from_db`` is a thin ``build_ast_from_db`` +
     ``serialize_built_ast`` wrapper — callers that also need the raw
-    tree (``ASTGeneratorService._extract_time_shifts``) use the split
+    tree (``ASTGeneratorService._extract_reads``) use the split
     directly instead of re-deriving it from the serialised dict.
     """
 

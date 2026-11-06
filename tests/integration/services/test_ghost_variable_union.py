@@ -95,7 +95,7 @@ def test_ghost_only_variables_are_declared_in_the_fallback_script(
 ):
     """The rescued operation's ghost-only operands must be declared.
 
-    Without the fix, ``_get_module_tables`` only resolved the
+    Without the fix, the declared tables only resolved the
     fallback's own ``ModuleVersionComposition`` -- the script would
     still include ``v11131_m`` (the #182 scope rescue already handled
     that), but its table's ``variables`` map would be missing the
