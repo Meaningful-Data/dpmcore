@@ -56,49 +56,45 @@ def expressions_with_preconditions_file(tmp_path):
     return path
 
 
-_NS_URI = "http://example.org/mod"
-
-
 def _success_result():
     return {
         "success": True,
         "enriched_ast": {
-            _NS_URI: {
-                "module_code": "FINREP_Con",
-                "module_version": "2.0.1",
-                "framework_code": "FINREP",
-                "dpm_release": {
-                    "release": "4.2",
-                    "publication_date": "2025-04-28",
+            "owner": "EBA",
+            "module_code": "FINREP_Con",
+            "module_version": "2.0.1",
+            "module_owner": "EBA",
+            "module_uri": "http://example.org/mod",
+            "framework_code": "FINREP",
+            "format_version": "2.0",
+            "dpm_release": {
+                "release": "4.2",
+                "publication_date": "2025-04-28",
+            },
+            "dates": {"from": "2026-03-31", "to": None},
+            "operations": {
+                "v0001": {
+                    "version_id": 1234,
+                    "code": "v0001",
+                    "expression": "expr",
+                    "root_operator_id": 24,
+                    "ast": {"class_name": "BinOp"},
+                    "from_submission_date": "2026-03-31",
+                    "severity": "error",
+                }
+            },
+            "preconditions": {},
+            "modules": {
+                "FINREP_Con": {"versions": []},
+                "M1": {"versions": []},
+            },
+            "parameters": {},
+            "dependency_groups": {
+                "G1": {
+                    "requires": {"is": {"code": "M1", "ref_date_lag": 0}},
+                    "validations": ["v0001"],
                 },
-                "dates": {"from": "2026-03-31", "to": None},
-                "operations": {
-                    "v0001": {
-                        "version_id": 1234,
-                        "code": "v0001",
-                        "expression": "expr",
-                        "root_operator_id": 24,
-                        "ast": {"class_name": "BinOp"},
-                        "from_submission_date": "2026-03-31",
-                        "severity": "error",
-                    }
-                },
-                "variables": {},
-                "tables": {},
-                "preconditions": {},
-                "precondition_variables": {},
-                "dependency_information": {
-                    "intra_instance_validations": ["v0001"],
-                    "cross_instance_dependencies": [],
-                    "alternative_dependencies": [],
-                },
-                "dependency_modules": {
-                    "http://example.org/m1": {
-                        "tables": {},
-                        "variables": {},
-                    },
-                },
-            }
+            },
         },
         "error": None,
     }
@@ -132,8 +128,7 @@ class TestGenerateScriptSuccess:
         assert out.exists()
         payload = json.loads(out.read_text())
         assert payload["success"] is True
-        ns = payload["enriched_ast"][_NS_URI]
-        assert "dependency_modules" in ns
+        assert payload["enriched_ast"] == _success_result()["enriched_ast"]
         assert "1 dependency modules" in " ".join(result.output.split())
 
     def test_reports_skipped_validations(
@@ -215,6 +210,35 @@ class TestGenerateScriptSuccess:
         assert kwargs["preconditions"] is None
         assert kwargs["severities"] is None
         assert kwargs["from_submission_dates"] is None
+        assert kwargs["owner"] is None
+
+    def test_owner_passed_to_service(self, runner, expressions_file, tmp_path):
+        out = tmp_path / "script.json"
+        with patch(
+            "dpmcore.services.ast_generator.ASTGeneratorService"
+        ) as Svc:
+            Svc.return_value.script.return_value = _success_result()
+            result = runner.invoke(
+                main,
+                [
+                    "generate-script",
+                    "--expressions",
+                    str(expressions_file),
+                    "--database",
+                    "sqlite:///:memory:",
+                    "--output",
+                    str(out),
+                    "--module-code",
+                    "FINREP_Con",
+                    "--module-version",
+                    "2.0.1",
+                    "--owner",
+                    "ECB",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert Svc.return_value.script.call_args.kwargs["owner"] == "ECB"
 
     def test_propagates_preconditions(
         self, runner, expressions_with_preconditions_file, tmp_path

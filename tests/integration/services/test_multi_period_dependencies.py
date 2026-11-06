@@ -4,8 +4,8 @@ The reference period is a property of a declared module and only one was
 kept per module, so an operation reading two tables of the same
 dependency module at different instances — or one table both plain and
 shifted — was declared against a single instance and evaluated against
-the wrong one. Every distinct period is now its own
-``cross_instance_dependencies`` entry.
+the wrong one. Every distinct period is now its own module reference
+in the operation's ``requires``.
 
 A shift number that is not an integer literal used to render as
 ``T-nQ``, which names no resolvable instance; the operation is now
@@ -24,7 +24,7 @@ from dpmcore.services.ast_generator import ASTGeneratorService
 
 _MODULE_CODE = "COREP_LR"
 _MODULE_VERSION = "3.1.0"
-_DEPENDENCY = "corep_of"
+_DEPENDENCY = "COREP_OF"
 
 _SHIFT_Q1 = (
     "{tC_47.00, r0310, c0010} > "
@@ -61,33 +61,36 @@ def _script(session, expressions):
         module_version=_MODULE_VERSION,
     )
     assert result["success"], result["error"]
-    module = next(iter(result["enriched_ast"].values()))
+    module = result["enriched_ast"]
     return result, module
 
 
-def _declared(module):
-    """The ``(module code, ref_period, affected operations)`` triples."""
-    return [
-        (
-            entry["URI"].rsplit("/", 1)[-1],
-            entry["ref_period"],
-            tuple(dependency["affected_operations"]),
-        )
-        for dependency in module["dependency_information"][
-            "cross_instance_dependencies"
-        ]
-        for entry in dependency["modules"]
-    ]
+def _requires(module):
+    """The ``requires`` of each operation, by code."""
+    return {
+        code: group["requires"]
+        for group in module["dependency_groups"].values()
+        for code in group["validations"]
+    }
+
+
+def _ref(lag):
+    """A reference to the dependency module, ``lag`` quarters away."""
+    ref = {"code": _DEPENDENCY, "ref_date_lag": lag}
+    if lag:
+        ref["ref_date_lag_unit"] = "Q"
+    return ref
+
+
+def _both(left, right):
+    return {"and": {"left": left, "right": right, "decided_by": "scope"}}
 
 
 def test_two_shifted_tables_of_one_module_declare_both_instances(
     fixture_session,
 ):
     _, module = _script(fixture_session, [(_TWO_TABLES, "OP_BOTH")])
-    assert _declared(module) == [
-        (_DEPENDENCY, "T+1Q", ("OP_BOTH",)),
-        (_DEPENDENCY, "T+4Q", ("OP_BOTH",)),
-    ]
+    assert _requires(module) == {"OP_BOTH": _both(_ref(1), _ref(4))}
 
 
 def test_a_table_read_shifted_and_plain_declares_both_instances(
@@ -95,10 +98,7 @@ def test_a_table_read_shifted_and_plain_declares_both_instances(
 ):
     """The plain operand used to be sent to the shifted instance."""
     _, module = _script(fixture_session, [(_SHIFTED_AND_PLAIN, "OP_MIX")])
-    assert _declared(module) == [
-        (_DEPENDENCY, "T", ("OP_MIX",)),
-        (_DEPENDENCY, "T+1Q", ("OP_MIX",)),
-    ]
+    assert _requires(module) == {"OP_MIX": _both(_ref(0), _ref(1))}
 
 
 def test_the_declared_instances_do_not_depend_on_input_order(fixture_session):
@@ -109,17 +109,11 @@ def test_the_declared_instances_do_not_depend_on_input_order(fixture_session):
     _, reverse = _script(
         fixture_session, [(_SHIFT_Q4, "OP_Q4"), (_SHIFT_Q1, "OP_Q1")]
     )
-    assert sorted(_declared(forward)) == sorted(_declared(reverse))
-    assert sorted(_declared(forward)) == [
-        (_DEPENDENCY, "T+1Q", ("OP_Q1",)),
-        (_DEPENDENCY, "T+4Q", ("OP_Q4",)),
-    ]
-
-
-def test_the_dependency_module_is_declared_once(fixture_session):
-    """Two instances, one set of table and datapoint definitions."""
-    _, module = _script(fixture_session, [(_TWO_TABLES, "OP_BOTH")])
-    assert len(module["dependency_modules"]) == 1
+    assert _requires(forward) == _requires(reverse)
+    assert _requires(forward) == {
+        "OP_Q1": {"is": _ref(1)},
+        "OP_Q4": {"is": _ref(4)},
+    }
 
 
 def test_a_non_literal_shift_skips_only_its_own_operation(fixture_session):
@@ -128,15 +122,15 @@ def test_a_non_literal_shift_skips_only_its_own_operation(fixture_session):
         [(_NON_LITERAL_SHIFT, "OP_BAD"), (_SHIFT_Q1, "OP_GOOD")],
     )
     assert list(result["failed_operations"]) == ["OP_BAD"]
-    assert "integer literal" in result["failed_operations"]["OP_BAD"]
+    assert "computed amount" in result["failed_operations"]["OP_BAD"]
     assert "OP_BAD" not in module["operations"]
     assert "OP_GOOD" in module["operations"]
-    assert _declared(module) == [(_DEPENDENCY, "T+1Q", ("OP_GOOD",))]
+    assert _requires(module) == {"OP_GOOD": {"is": _ref(1)}}
 
 
 @pytest.mark.parametrize(
     ("shift", "expected"),
-    [("1", "T-1Q"), ("-1", "T+1Q"), ("4", "T-4Q"), ("-4", "T+4Q")],
+    [("1", -1), ("-1", 1), ("4", -4), ("-4", 4)],
 )
 def test_the_declared_period_inverts_the_shift_sign(
     fixture_session, shift, expected
@@ -148,4 +142,4 @@ def test_the_declared_period_inverts_the_shift_sign(
         "[get refPeriod]"
     )
     _, module = _script(fixture_session, [(expression, "OP")])
-    assert _declared(module) == [(_DEPENDENCY, expected, ("OP",))]
+    assert _requires(module) == {"OP": {"is": _ref(expected)}}

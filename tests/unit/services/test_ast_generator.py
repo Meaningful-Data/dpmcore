@@ -165,17 +165,6 @@ def _bare_svc():
     return svc, Cls, mod
 
 
-def _scope_calc_mock(detect_return=None, alt_return=None):
-    sc = MagicMock()
-    sc.detect_cross_module_dependencies.return_value = detect_return or {
-        "intra_instance_validations": [],
-        "cross_instance_dependencies": [],
-        "dependency_modules": {},
-    }
-    sc.detect_alternative_dependencies.return_value = alt_return or []
-    return sc
-
-
 # ------------------------------------------------------------------ #
 # _resolve_severities
 # ------------------------------------------------------------------ #
@@ -303,7 +292,7 @@ class TestCleanAstDataEntries:
     def test_strips_engine_internal_fields(self):
         _, Cls, _ = _bare_svc()
         ast = {
-            "class_name": "VarID",
+            "class_name": "FactVarID",
             "table": "C_01.00",
             "data": [
                 {
@@ -334,11 +323,11 @@ class TestCleanAstDataEntries:
             "class_name": "BinOp",
             "op": "=",
             "left": {
-                "class_name": "VarID",
+                "class_name": "FactVarID",
                 "data": [{"datapoint": 1, "data_type": "m"}],
             },
             "right": {
-                "class_name": "VarID",
+                "class_name": "FactVarID",
                 "data": [{"datapoint": 2, "table_code": "X"}],
             },
         }
@@ -349,93 +338,6 @@ class TestCleanAstDataEntries:
     def test_non_dict_input_returns_unchanged(self):
         _, Cls, _ = _bare_svc()
         assert Cls._clean_ast_data_entries("hello") == "hello"
-
-
-# ------------------------------------------------------------------ #
-# _extract_referenced_tables
-# ------------------------------------------------------------------ #
-
-
-class TestExtractReferencedTables:
-    def test_collects_table_codes_from_varid(self):
-        _, Cls, _ = _bare_svc()
-        ast = {
-            "class_name": "BinOp",
-            "left": {"class_name": "VarID", "table": "C_01.00"},
-            "right": {"class_name": "VarID", "table": "C_02.00"},
-        }
-        assert Cls._extract_referenced_tables(ast) == {
-            "C_01.00",
-            "C_02.00",
-        }
-
-    def test_ignores_non_varid_nodes(self):
-        _, Cls, _ = _bare_svc()
-        ast = {"class_name": "Constant", "value": 0}
-        assert Cls._extract_referenced_tables(ast) == set()
-
-
-# ------------------------------------------------------------------ #
-# _extract_operand_datapoints (#251)
-# ------------------------------------------------------------------ #
-
-
-class TestExtractOperandDatapoints:
-    def test_collects_datapoints_with_types_across_modules(self):
-        """Both sides of a cross-module rule are collected (#251)."""
-        _, Cls, _ = _bare_svc()
-        ast = {
-            "class_name": "BinOp",
-            "op": "<=",
-            "left": {
-                "class_name": "VarID",
-                "table": "C_01.00",
-                "data": [{"datapoint": 32673, "data_type": "m"}],
-            },
-            "right": {
-                "class_name": "VarID",
-                "table": "F_01.03",
-                "data": [{"datapoint": 56987, "data_type": "m"}],
-            },
-        }
-        assert Cls._extract_operand_datapoints(ast) == {
-            "32673": "m",
-            "56987": "m",
-        }
-
-    def test_collects_every_datapoint_of_a_multi_cell_operand(self):
-        _, Cls, _ = _bare_svc()
-        ast = {
-            "class_name": "VarID",
-            "table": "C_04.00",
-            "data": [
-                {"datapoint": 1, "data_type": "i"},
-                {"datapoint": 2, "data_type": "e"},
-            ],
-        }
-        assert Cls._extract_operand_datapoints(ast) == {"1": "i", "2": "e"}
-
-    def test_missing_type_falls_back_to_empty_string(self):
-        _, Cls, _ = _bare_svc()
-        ast = {"class_name": "VarID", "data": [{"datapoint": 9}]}
-        assert Cls._extract_operand_datapoints(ast) == {"9": ""}
-
-    def test_entries_without_datapoint_are_skipped(self):
-        _, Cls, _ = _bare_svc()
-        ast = {
-            "class_name": "VarID",
-            "data": [{"data_type": "m"}, {"datapoint": None}, "junk"],
-        }
-        assert Cls._extract_operand_datapoints(ast) == {}
-
-    def test_ignores_non_varid_nodes(self):
-        _, Cls, _ = _bare_svc()
-        ast = {
-            "class_name": "Constant",
-            "value": 0,
-            "data": [{"datapoint": 5}],
-        }
-        assert Cls._extract_operand_datapoints(ast) == {}
 
 
 # ------------------------------------------------------------------ #
@@ -481,11 +383,41 @@ class TestBuildReleaseInfo:
 class TestBuildDates:
     def test_emits_iso_dates(self):
         _, Cls, _ = _bare_svc()
-        mv = SimpleNamespace(
-            from_reference_date=date(2026, 3, 31),
-            to_reference_date=None,
-        )
-        assert Cls._build_dates(mv) == {"from": "2026-03-31", "to": None}
+        window = (date(2026, 3, 31), None)
+        assert Cls._build_dates(window) == {"from": "2026-03-31", "to": None}
+
+
+class TestTestedFilingIndicators:
+    def test_collects_every_filing_indicator_of_every_gate(self):
+        _, Cls, _ = _bare_svc()
+        preconditions = {
+            "p_1": {
+                "ast": {
+                    "class_name": "BinOp",
+                    "op": "and",
+                    "left": {
+                        "class_name": "FilingIndicatorVarID",
+                        "code": "C_01.00",
+                        "variable_id": 1,
+                    },
+                    "right": {
+                        "class_name": "FilingIndicatorVarID",
+                        "code": "C_02.00",
+                        "variable_id": 2,
+                    },
+                }
+            },
+            "p_2": {
+                "ast": {
+                    "class_name": "FilingIndicatorVarID",
+                    "code": "C_01.00",
+                    "variable_id": 1,
+                }
+            },
+            "p_3": {"ast": {"class_name": "ParameterRef", "code": "BM"}},
+        }
+
+        assert Cls._tested_filing_indicators(preconditions) == {1, 2}
 
 
 # ------------------------------------------------------------------ #
@@ -562,10 +494,7 @@ class TestBuildPreconditionsBlock:
     def test_empty_input_returns_empty(self):
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
-        assert svc._build_preconditions_block([], release_id=None) == (
-            {},
-            {},
-        )
+        assert svc._build_preconditions_block([], release_id=None) == {}
 
     @pytest.mark.parametrize(
         "expression",
@@ -585,17 +514,16 @@ class TestBuildPreconditionsBlock:
             {"C_01.00": {"variable_id": 11, "variable_vid": 110}},
         )
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [(expression, ["v1", "v2"])], release_id=5
         )
         assert "p_110" in preconds
         entry = preconds["p_110"]
-        assert entry["ast"]["class_name"] == "PreconditionItem"
+        assert entry["ast"]["class_name"] == "FilingIndicatorVarID"
         assert entry["ast"]["variable_id"] == 11
         assert entry["affected_operations"] == ["v1", "v2"]
         assert entry["version_id"] == 110
         assert entry["code"] == "p_110"
-        assert vars_ == {"110": "b"}
 
     def test_compound_emits_binop_tree(self, monkeypatch, real_syntax):
         """Compound gates preserve the ``and``/``or`` structure the source
@@ -614,7 +542,7 @@ class TestBuildPreconditionsBlock:
             },
         )
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_A} and {v_B} and {v_C}", ["v1"])], release_id=None
         )
         assert "p_10_20_30" in preconds
@@ -630,7 +558,7 @@ class TestBuildPreconditionsBlock:
         def _collect(node):
             if not isinstance(node, dict):
                 return
-            if node.get("class_name") == "PreconditionItem":
+            if node.get("class_name") == "FilingIndicatorVarID":
                 vids.add(node.get("variable_id"))
             for value in node.values():
                 if isinstance(value, (dict, list)):
@@ -638,7 +566,6 @@ class TestBuildPreconditionsBlock:
 
         _collect(ast)
         assert vids == {1, 2, 3}
-        assert vars_ == {"10": "b", "20": "b", "30": "b"}
 
     def test_unresolved_codes_silently_skipped(self, monkeypatch, real_syntax):
         svc, _, _ = _bare_svc()
@@ -646,11 +573,10 @@ class TestBuildPreconditionsBlock:
         svc._syntax = real_syntax
         _install_variable_resolver(monkeypatch, {})
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_unresolved}", ["v1"])], release_id=None
         )
         assert preconds == {}
-        assert vars_ == {}
 
     def test_parenthesized_unresolved_code_silently_skipped(
         self, monkeypatch, real_syntax
@@ -668,11 +594,10 @@ class TestBuildPreconditionsBlock:
         svc._syntax = real_syntax
         _install_variable_resolver(monkeypatch, {})
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("({v_unresolved})", ["v1"])], release_id=None
         )
         assert preconds == {}
-        assert vars_ == {}
 
     def test_unresolved_and_operand_keeps_the_other_side(
         self, monkeypatch, real_syntax
@@ -685,16 +610,15 @@ class TestBuildPreconditionsBlock:
             monkeypatch, {"A": {"variable_id": 1, "variable_vid": 10}}
         )
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_A} and {v_B}", ["v1"])], release_id=None
         )
         assert list(preconds) == ["p_10"]
         assert preconds["p_10"]["ast"] == {
-            "class_name": "PreconditionItem",
+            "class_name": "FilingIndicatorVarID",
             "variable_id": 1,
-            "variable_code": "A",
+            "code": "A",
         }
-        assert vars_ == {"10": "b"}
 
     @pytest.mark.parametrize("op", ["or", "xor"])
     def test_unresolved_operand_drops_the_whole_gate(
@@ -705,8 +629,7 @@ class TestBuildPreconditionsBlock:
         ``{v_A} or {v_B}`` with ``B`` unresolved must not collapse to
         ``{v_A}``: that is a *stricter* gate than the source, and the
         operations it guards would be skipped for filers that reported
-        only ``B``. The gate is dropped instead, and the vid of the
-        resolved side must not stay behind in ``precondition_variables``.
+        only ``B``. The gate is dropped instead.
         """
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
@@ -715,11 +638,10 @@ class TestBuildPreconditionsBlock:
             monkeypatch, {"A": {"variable_id": 1, "variable_vid": 10}}
         )
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [(f"{{v_A}} {op} {{v_B}}", ["v1"])], release_id=None
         )
         assert preconds == {}
-        assert vars_ == {}
 
     def test_unresolved_operand_under_not_reads_the_flipped_rule(
         self, monkeypatch, real_syntax
@@ -737,13 +659,12 @@ class TestBuildPreconditionsBlock:
             monkeypatch, {"A": {"variable_id": 1, "variable_vid": 10}}
         )
 
-        tightening, no_vars = svc._build_preconditions_block(
+        tightening = svc._build_preconditions_block(
             [("not({v_A} and {v_B})", ["v1"])], release_id=None
         )
         assert tightening == {}
-        assert no_vars == {}
 
-        relaxing, vars_ = svc._build_preconditions_block(
+        relaxing = svc._build_preconditions_block(
             [("not({v_A} or {v_B})", ["v1"])], release_id=None
         )
         # Not a conjunction of items, so the key carries the shape CRC.
@@ -753,12 +674,11 @@ class TestBuildPreconditionsBlock:
             "class_name": "UnaryOp",
             "op": "not",
             "operand": {
-                "class_name": "PreconditionItem",
+                "class_name": "FilingIndicatorVarID",
                 "variable_id": 1,
-                "variable_code": "A",
+                "code": "A",
             },
         }
-        assert vars_ == {"10": "b"}
 
     def test_collision_merges_affected_operations(
         self, monkeypatch, real_syntax
@@ -778,7 +698,7 @@ class TestBuildPreconditionsBlock:
             {"C_01.00": {"variable_id": 11, "variable_vid": 110}},
         )
 
-        preconds, _vars = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [
                 ("{v_C_01.00}", ["v1", "v2"]),
                 ("{v_C_01.00}", ["v2", "v3"]),
@@ -804,7 +724,7 @@ class TestBuildPreconditionsBlock:
             {"C_01.00": {"variable_id": 11, "variable_vid": 110}},
         )
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [
                 {
                     "expression": "{v_C_01.00}",
@@ -820,7 +740,6 @@ class TestBuildPreconditionsBlock:
         assert entry["code"] == "P_571"
         assert entry["version_id"] == 8341
         assert entry["affected_operations"] == ["v1", "v2"]
-        assert vars_ == {"110": "b"}
 
     def test_backward_compat_tuple_format_still_works(
         self, monkeypatch, real_syntax
@@ -834,7 +753,7 @@ class TestBuildPreconditionsBlock:
             {"C_01.00": {"variable_id": 11, "variable_vid": 110}},
         )
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_C_01.00}", ["v1", "v2"])],
             release_id=5,
         )
@@ -854,18 +773,17 @@ class TestBuildPreconditionsBlock:
             monkeypatch, {"C_01.00": {"variable_id": 11, "variable_vid": 110}}
         )
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_C_01.00}", ["v1", "v2", "v3"])],
             release_id=None,
             emitted_operations={"v1", "v3"},
         )
         assert preconds["p_110"]["affected_operations"] == ["v1", "v3"]
-        assert vars_ == {"110": "b"}
 
     def test_precondition_gating_nothing_emitted_is_dropped(
         self, monkeypatch, real_syntax
     ):
-        """A gate left with no operation drops, variables included."""
+        """A gate left with no operation drops."""
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
         svc._syntax = real_syntax
@@ -873,40 +791,12 @@ class TestBuildPreconditionsBlock:
             monkeypatch, {"C_01.00": {"variable_id": 11, "variable_vid": 110}}
         )
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_C_01.00}", ["v1"])],
             release_id=None,
             emitted_operations={"v2"},
         )
         assert preconds == {}
-        assert vars_ == {}
-
-    def test_dropped_gate_does_not_take_a_shared_variable_with_it(
-        self, monkeypatch, real_syntax
-    ):
-        """A variable a surviving gate also uses stays declared."""
-        svc, _, _ = _bare_svc()
-        svc.session = MagicMock()
-        svc._syntax = real_syntax
-        _install_variable_resolver(
-            monkeypatch,
-            {
-                "A": {"variable_id": 1, "variable_vid": 10},
-                "B": {"variable_id": 2, "variable_vid": 20},
-            },
-        )
-
-        preconds, vars_ = svc._build_preconditions_block(
-            [
-                ("{v_A}", ["v1"]),
-                ("{v_A} and {v_B}", ["v2"]),
-            ],
-            release_id=None,
-            emitted_operations={"v1"},
-        )
-        assert list(preconds) == ["p_10"]
-        # 20 belonged to the dropped compound gate only; 10 is shared.
-        assert vars_ == {"10": "b"}
 
     def test_no_emitted_operations_filter_keeps_every_code(
         self, monkeypatch, real_syntax
@@ -919,7 +809,7 @@ class TestBuildPreconditionsBlock:
             monkeypatch, {"C_01.00": {"variable_id": 11, "variable_vid": 110}}
         )
 
-        preconds, _vars = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_C_01.00}", ["v1", "v2"])], release_id=None
         )
         assert preconds["p_110"]["affected_operations"] == ["v1", "v2"]
@@ -951,7 +841,7 @@ class TestGateParameterPropagation:
         _install_variable_resolver(monkeypatch, {})
 
         referenced: dict = {}
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{p_flag, boolean}", ["v1"])],
             release_id=None,
             referenced_parameters=referenced,
@@ -967,7 +857,6 @@ class TestGateParameterPropagation:
         assert entry["affected_operations"] == ["v1"]
         assert entry["code"].startswith("p_")
         assert isinstance(entry["version_id"], int)
-        assert vars_ == {}
         assert referenced["flag"].declared_type == "Boolean"
 
     def test_parameter_default_is_preserved_on_the_node(
@@ -979,7 +868,7 @@ class TestGateParameterPropagation:
         _install_variable_resolver(monkeypatch, {})
 
         referenced: dict = {}
-        preconds, _vars = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{p_flag, boolean, default: true}", ["v1"])],
             release_id=None,
             referenced_parameters=referenced,
@@ -1005,7 +894,7 @@ class TestGateParameterPropagation:
         )
 
         referenced: dict = {}
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_F_01.02} and {p_flag, boolean}", ["v1"])],
             release_id=None,
             referenced_parameters=referenced,
@@ -1016,9 +905,9 @@ class TestGateParameterPropagation:
             "class_name": "BinOp",
             "op": "and",
             "left": {
-                "class_name": "PreconditionItem",
+                "class_name": "FilingIndicatorVarID",
                 "variable_id": 42,
-                "variable_code": "F_01.02",
+                "code": "F_01.02",
             },
             "right": {
                 "class_name": "ParameterRef",
@@ -1029,7 +918,6 @@ class TestGateParameterPropagation:
         }
         assert entry["code"].startswith("p_420_")
         assert entry["version_id"] == 420
-        assert vars_ == {"420": "b"}
         assert referenced["flag"].declared_type == "Boolean"
 
     def test_boolean_literal_is_emitted_as_constant(
@@ -1042,7 +930,7 @@ class TestGateParameterPropagation:
             monkeypatch, {"A": {"variable_id": 1, "variable_vid": 10}}
         )
 
-        preconds, _vars = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_A} and true", ["v1"])], release_id=None
         )
 
@@ -1089,7 +977,7 @@ class TestGateParameterPropagation:
             },
         )
 
-        preconds, _vars = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("{v_A} or {v_B}", ["v1"])], release_id=None
         )
         [entry] = preconds.values()
@@ -1122,7 +1010,7 @@ class TestGateParameterPropagation:
             },
         )
 
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [("not {v_A} or ({v_B} xor {v_C})", ["v1"])], release_id=None
         )
 
@@ -1137,9 +1025,9 @@ class TestGateParameterPropagation:
         assert negation["class_name"] == "UnaryOp"
         assert negation["op"] == "not"
         assert negation["operand"] == {
-            "class_name": "PreconditionItem",
+            "class_name": "FilingIndicatorVarID",
             "variable_id": 1,
-            "variable_code": "A",
+            "code": "A",
         }
 
         wrapped = ast["right"]
@@ -1148,16 +1036,15 @@ class TestGateParameterPropagation:
         assert xor_node["class_name"] == "BinOp"
         assert xor_node["op"] == "xor"
         assert xor_node["left"] == {
-            "class_name": "PreconditionItem",
+            "class_name": "FilingIndicatorVarID",
             "variable_id": 2,
-            "variable_code": "B",
+            "code": "B",
         }
         assert xor_node["right"] == {
-            "class_name": "PreconditionItem",
+            "class_name": "FilingIndicatorVarID",
             "variable_id": 3,
-            "variable_code": "C",
+            "code": "C",
         }
-        assert vars_ == {"10": "b", "20": "b", "30": "b"}
 
     def test_gates_with_different_shapes_never_share_a_key(
         self, monkeypatch, real_syntax
@@ -1179,7 +1066,7 @@ class TestGateParameterPropagation:
             },
         )
 
-        preconds, _vars = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [
                 ("{v_A} and {v_B}", ["v1"]),
                 ("{v_A} or {v_B}", ["v2"]),
@@ -1218,7 +1105,7 @@ class TestGateParameterPropagation:
             },
         )
 
-        preconds, _vars = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [
                 ("{v_A} and {v_B}", ["v1"]),
                 ("({v_A} and {v_B})", ["v2"]),
@@ -1245,7 +1132,7 @@ class TestGateParameterPropagation:
         # that ends up stored (single-entry check, order-independent).
         parenthesized_ast = svc._build_preconditions_block(
             [("({v_A} and {v_B})", ["v2"])], release_id=None
-        )[0]["p_10_20"]["ast"]
+        )["p_10_20"]["ast"]
         assert parenthesized_ast["class_name"] == "ParExpr"
 
 
@@ -1266,6 +1153,7 @@ class TestUnsupportedGates:
             ("{v_A} = true", "operator '='"),
             ("{tC_01.00, r0010, c0010}", "references a cell"),
             ("{v_A} and 3", "non-boolean literal 3"),
+            ("{v_A} or {p_flags, set-boolean}", "set-boolean parameter"),
         ],
     )
     def test_unsupported_shapes_are_reported(
@@ -1279,14 +1167,13 @@ class TestUnsupportedGates:
         )
 
         failures = svc._unsupported_gate_operations([(expression, ["v1"])])
-        preconds, vars_ = svc._build_preconditions_block(
+        preconds = svc._build_preconditions_block(
             [(expression, ["v1"])], release_id=None
         )
 
         assert reason in failures["v1"]
         assert "cannot be evaluated by the engine" in failures["v1"]
         assert preconds == {}
-        assert vars_ == {}
 
     def test_contract_shapes_report_nothing(self, monkeypatch, real_syntax):
         svc, _, _ = _bare_svc()
@@ -1555,351 +1442,12 @@ class TestLatestReleaseInWindow:
             svc._latest_release_in_window(mv)
 
 
-# ------------------------------------------------------------------ #
-# _build_dependency_info
-# ------------------------------------------------------------------ #
-
-
-class TestBuildDependencyInfo:
-    def test_none_when_scope_calc_missing(self):
-        svc, _, _ = _bare_svc()
-        svc._scope_calc = None
-        assert (
-            svc._build_dependency_info(
-                scope_pairs=[("X",)],
-                primary_module_vid=1,
-                release_id=None,
-            )
-            is None
-        )
-
-    def test_none_when_primary_missing(self):
-        svc, _, mod = _bare_svc()
-        svc._scope_calc = _scope_calc_mock()
-        assert (
-            svc._build_dependency_info(
-                scope_pairs=[(("e",), MagicMock(), {}, mod._OperandRefs())],
-                primary_module_vid=None,
-                release_id=None,
-            )
-            is None
-        )
-
-    def test_none_when_pairs_empty(self):
-        svc, _, _ = _bare_svc()
-        svc._scope_calc = _scope_calc_mock()
-        assert (
-            svc._build_dependency_info(
-                scope_pairs=[], primary_module_vid=1, release_id=None
-            )
-            is None
-        )
-
-    def test_aggregates_and_dedupes_intra(self):
-        svc, _, mod = _bare_svc()
-        svc._scope_calc = _scope_calc_mock(
-            detect_return={
-                "intra_instance_validations": ["v1"],
-                "cross_instance_dependencies": [],
-                "dependency_modules": {},
-            }
-        )
-        scope_pairs = [
-            (("e1", "v1"), MagicMock(), {}, mod._OperandRefs()),
-            (("e2", "v1"), MagicMock(), {}, mod._OperandRefs()),
-        ]
-        out = svc._build_dependency_info(
-            scope_pairs=scope_pairs,
-            primary_module_vid=1,
-            release_id=None,
-        )
-        assert out["dependency_information"]["intra_instance_validations"] == [
-            "v1"
-        ]
-
-
-# ------------------------------------------------------------------ #
-# _merge_dep_modules
-# ------------------------------------------------------------------ #
-
-
-class TestMergeDepModules:
-    def test_new_uri_inserted(self):
-        _, Cls, _ = _bare_svc()
-        existing = {}
-        Cls._merge_dep_modules(
-            existing, {"http://a": {"tables": {"T": {}}, "variables": {}}}
-        )
-        assert "http://a" in existing
-
-    def test_existing_uri_unions_repeated_table_variables(self):
-        """Two operations referencing different cells of the same
-        dependency table must both end up declared (#250).
-        """
-        _, Cls, _ = _bare_svc()
-        existing = {
-            "http://a": {
-                "tables": {
-                    "T1": {"variables": {"v1": "x"}, "open_keys": {"qA": "e"}}
-                },
-                "variables": {"v1": "x"},
-            }
-        }
-        new = {
-            "http://a": {
-                "tables": {
-                    "T1": {"variables": {"v2": "y"}, "open_keys": {"qA": "e"}},
-                    "T2": {"variables": {"v3": "z"}, "open_keys": {}},
-                },
-                "variables": {"v2": "y", "v3": "z"},
-            }
-        }
-        Cls._merge_dep_modules(existing, new)
-        t1 = existing["http://a"]["tables"]["T1"]
-        assert t1["variables"] == {"v1": "x", "v2": "y"}
-        assert t1["open_keys"] == {"qA": "e"}
-        assert "T2" in existing["http://a"]["tables"]
-        assert existing["http://a"]["variables"] == {
-            "v1": "x",
-            "v2": "y",
-            "v3": "z",
-        }
-
-
-# ------------------------------------------------------------------ #
-# _extract_time_shifts
-# ------------------------------------------------------------------ #
-
-
-class _FakeTimeShiftOp:
-    def __init__(self, period_indicator, shift_number, operand):
-        self.period_indicator = period_indicator
-        self.shift_number = shift_number
-        self.operand = operand
-
-
-_FakeTimeShiftOp.__name__ = "TimeShiftOp"
-
-
 class _FakeVarID:
     def __init__(self, table):
         self.table = table
 
 
 _FakeVarID.__name__ = "VarID"
-
-
-class _FakeBinOp:
-    """Two-operand node the AST template walks into generically."""
-
-    def __init__(self, left, right):
-        self.op = "and"
-        self.left = left
-        self.right = right
-
-
-_FakeBinOp.__name__ = "BinOp"
-
-
-class TestExtractTimeShifts:
-    def test_empty_returns_empty(self):
-        _, Cls, _ = _bare_svc()
-        assert Cls._extract_time_shifts(SimpleNamespace()) == {}
-
-    def test_positive_constant_shift_produces_T_minus(self):
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        sn = Constant(type_="Integer", value=1)
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_01"))
-        assert Cls._extract_time_shifts(node) == {"T_01": ["T-1Q"]}
-
-    def test_negative_unary_shift_produces_T_plus(self):
-        """The declared period inverts the shift: ``-2`` needs ``T+2Y``."""
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
-
-        sn = UnaryOp(op="-", operand=Constant(type_="Integer", value=2))
-        node = _FakeTimeShiftOp("Y", sn, _FakeVarID(table="T_02"))
-        assert Cls._extract_time_shifts(node) == {"T_02": ["T+2Y"]}
-
-    def test_negated_non_literal_shift_is_rejected(self):
-        """A negated non-literal shift names no resolvable period."""
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import BinOp, Constant, UnaryOp
-
-        sn = UnaryOp(
-            op="-",
-            operand=BinOp(
-                op="*",
-                left=Constant(type_="Integer", value=2),
-                right=Constant(type_="Integer", value=2),
-            ),
-        )
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_04"))
-        with pytest.raises(errors.SemanticError) as exc:
-            Cls._extract_time_shifts(node)
-        assert exc.value.code == "4-7-5"
-
-    def test_var_without_table_ignored(self):
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        sn = Constant(type_="Integer", value=1)
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table=None))
-        assert Cls._extract_time_shifts(node) == {}
-
-    def test_non_literal_shift_is_rejected(self):
-        """``2 * 2`` used to render as ``T-nQ``, which resolves to no
-        instance; the operation is now skipped instead (#326).
-        """
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import BinOp, Constant
-
-        sn = BinOp(
-            op="*",
-            left=Constant(type_="Integer", value=5),
-            right=Constant(type_="Integer", value=12),
-        )
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_03"))
-        with pytest.raises(errors.SemanticError) as exc:
-            Cls._extract_time_shifts(node)
-        assert exc.value.code == "4-7-5"
-
-    def test_plain_reference_is_recorded_as_t(self):
-        """An unshifted table is recorded at ``T`` so a module read at
-        both the current and a shifted instance stays visible.
-        """
-        _, Cls, _ = _bare_svc()
-
-        assert Cls._extract_time_shifts(_FakeVarID(table="T_05")) == {
-            "T_05": ["T"]
-        }
-
-    def test_a_table_read_plain_and_shifted_keeps_both_periods(self):
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        sn = Constant(type_="Integer", value=1)
-        shifted = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_06"))
-        node = _FakeBinOp(_FakeVarID(table="T_06"), shifted)
-        assert Cls._extract_time_shifts(node) == {"T_06": ["T", "T-1Q"]}
-
-    def test_a_table_shifted_twice_keeps_both_periods(self):
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        node = _FakeBinOp(
-            _FakeTimeShiftOp(
-                "Q", Constant(type_="Integer", value=1), _FakeVarID("T_07")
-            ),
-            _FakeTimeShiftOp(
-                "Q", Constant(type_="Integer", value=4), _FakeVarID("T_07")
-            ),
-        )
-        assert Cls._extract_time_shifts(node) == {"T_07": ["T-1Q", "T-4Q"]}
-
-    def test_the_shift_does_not_leak_past_the_operand(self):
-        """A plain table read after a shifted one stays at ``T``."""
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        node = _FakeBinOp(
-            _FakeTimeShiftOp(
-                "Q", Constant(type_="Integer", value=1), _FakeVarID("T_08")
-            ),
-            _FakeVarID(table="T_09"),
-        )
-        assert Cls._extract_time_shifts(node) == {
-            "T_08": ["T-1Q"],
-            "T_09": ["T"],
-        }
-
-    def test_a_zero_shift_is_no_shift(self):
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        sn = Constant(type_="Integer", value=0)
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_10"))
-        assert Cls._extract_time_shifts(node) == {"T_10": ["T"]}
-
-    def test_unary_plus_shift_keeps_its_size(self):
-        """``+1`` is a UnaryOp, not a bare Constant: it still means 1."""
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
-
-        sn = UnaryOp(op="+", operand=Constant(type_="Integer", value=1))
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_11"))
-        assert Cls._extract_time_shifts(node) == {"T_11": ["T-1Q"]}
-
-    def test_parenthesised_shift_is_unwrapped(self):
-        """``( -1 )`` parses as a ParExpr around the unary minus."""
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant, ParExpr, UnaryOp
-
-        sn = ParExpr(
-            expression=UnaryOp(
-                op="-", operand=Constant(type_="Integer", value=1)
-            )
-        )
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_12"))
-        assert Cls._extract_time_shifts(node) == {"T_12": ["T+1Q"]}
-
-    def test_negative_constant_renders_a_single_sign(self):
-        """``(-1)`` is lexed as a negative Constant, not a unary minus."""
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        sn = Constant(type_="Integer", value=-1)
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_13"))
-        assert Cls._extract_time_shifts(node) == {"T_13": ["T+1Q"]}
-
-    def test_double_negation_shift_is_positive(self):
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant, UnaryOp
-
-        sn = UnaryOp(
-            op="-",
-            operand=UnaryOp(
-                op="-", operand=Constant(type_="Integer", value=1)
-            ),
-        )
-        node = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_14"))
-        assert Cls._extract_time_shifts(node) == {"T_14": ["T-1Q"]}
-
-    def test_exception_returns_empty(self):
-        _, Cls, _ = _bare_svc()
-
-        class Boom:
-            def __getattr__(self, item):
-                raise AttributeError("boom")
-
-        assert Cls._extract_time_shifts(Boom()) == {}
-
-    def test_db_sub_clause_op_stand_in_is_walked(self):
-        """dpmcore#364: ``db_ast.py``'s DB-only ``sub`` stand-in
-        (``_DbSubClauseOp``) isn't a real ``dpm_xl.ast.nodes`` class —
-        without its own ``visit_*``, ``ASTTemplate``'s ``generic_visit``
-        would raise ``NotImplementedError`` and silently drop every
-        time shift elsewhere in the same expression, not just the part
-        inside the ``sub`` clause.
-        """
-        _, Cls, _ = _bare_svc()
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        class _FakeDbSubClauseOp:
-            def __init__(self, operand, condition):
-                self.operand = operand
-                self.condition = condition
-
-        _FakeDbSubClauseOp.__name__ = "_DbSubClauseOp"
-
-        sn = Constant(type_="Integer", value=1)
-        shifted = _FakeTimeShiftOp("Q", sn, _FakeVarID(table="T_15"))
-        node = _FakeDbSubClauseOp(
-            operand=shifted, condition=_FakeVarID(table=None)
-        )
-        assert Cls._extract_time_shifts(node) == {"T_15": ["T-1Q"]}
 
 
 # ------------------------------------------------------------------ #
@@ -1921,6 +1469,15 @@ class TestBuildPreconditionIndex:
         assert idx["v1"] == ["P1"]
         assert idx["v2"] == ["P1", "P2"]
         assert idx["v3"] == ["P2"]
+
+    def test_codes_come_from_the_extractor_given(self):
+        svc, _, _ = _bare_svc()
+        svc._syntax = MagicMock()
+        svc._syntax.parse.side_effect = lambda expr: f"AST_{expr}"
+        idx = svc._build_precondition_index(
+            [("a", ["v1"])], lambda ast: [f"{ast}_required"]
+        )
+        assert idx == {"v1": ["AST_a_required"]}
 
     def test_parse_failure_raises_value_error(self):
         svc, _, _ = _bare_svc()
@@ -1971,6 +1528,7 @@ class TestScript:
             framework = SimpleNamespace(code="COREP")
             module = SimpleNamespace(framework=framework)
             mv = SimpleNamespace(
+                module_id=7,
                 module_vid=1,
                 start_release_id=1,
                 end_release_id=None,
@@ -1987,23 +1545,23 @@ class TestScript:
 
         svc._resolve_release = lambda mc, mv_, rel: (mv, release_row)
         svc._resolve_root_operator_id = staticmethod(lambda ast, session: 24)
+        # The ASTs here are stand-ins with no operands to read.
+        svc._extract_reads = MagicMock(return_value=[])
+        svc._build_modules = MagicMock(
+            return_value=({"MOD": {"versions": []}}, (date(2026, 3, 31), None))
+        )
+        svc._module_owner = MagicMock(return_value="EBA")
+        # Every operation needs only the instance being validated.
+        svc._dependency_resolver = MagicMock(
+            return_value=SimpleNamespace(
+                requires=lambda code, scopes, reads: {}
+            )
+        )
 
-        svc._scope_calc._get_module_tables.return_value = {
-            "C_01.00": {
-                "variables": {"100": "m"},
-                "open_keys": {"BASE": "e"},
-            }
-        }
         svc._scope_calc._get_module_uri.return_value = "http://example/mod"
         svc._scope_calc.calculate_from_expression.return_value = (
             SimpleNamespace(has_error=False, scopes=[])
         )
-        svc._scope_calc.detect_cross_module_dependencies.return_value = {
-            "intra_instance_validations": ["v1"],
-            "cross_instance_dependencies": [],
-            "dependency_modules": {},
-        }
-        svc._scope_calc.detect_alternative_dependencies.return_value = []
         return svc, mv, release_row, mod
 
     def _stub_serialize_ast(self, monkeypatch, return_value):
@@ -2083,12 +1641,39 @@ class TestScript:
             module_version="1.0",
         )
         assert out["success"] is True
-        ns = next(iter(out["enriched_ast"].values()))
-        assert "v1" not in ns["operations"]
-        assert "v2" in ns["operations"]
-        assert "v3" in ns["operations"]
+        doc = out["enriched_ast"]
+        assert "v1" not in doc["operations"]
+        assert "v2" in doc["operations"]
+        assert "v3" in doc["operations"]
         assert out["failed_operations"] == {
             "v1": "Grey cells {F_32.03.a, r0040, c0010} were found."
+        }
+
+    def test_an_ast_the_format_cannot_express_fails_the_op(self, monkeypatch):
+        self._stub_serialize_ast(
+            monkeypatch,
+            {
+                "class_name": "UnaryOp",
+                "op": "not",
+                "operand": {"class_name": "VarRef", "variable": "F_01.01"},
+            },
+        )
+        svc, *_ = self._build_svc()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+
+        out = svc.script(
+            expressions=[("e1", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+
+        assert out["success"] is True
+        assert "v1" not in out["enriched_ast"]["operations"]
+        assert out["failed_operations"] == {
+            "v1": "VarRef is not a node of Script Format 2.0."
         }
 
     def _stub_serialize_ast_for_operations(self, monkeypatch, return_value):
@@ -2134,13 +1719,13 @@ class TestScript:
 
         assert out["success"] is True, out["error"]
         assert out["failed_operations"] == {}
-        ns = next(iter(out["enriched_ast"].values()))
-        assert {"v1", "v2"} <= set(ns["operations"])
-        [gate] = ns["preconditions"].values()
+        doc = out["enriched_ast"]
+        assert {"v1", "v2"} <= set(doc["operations"])
+        [gate] = doc["preconditions"].values()
         assert gate["ast"]["class_name"] == "ParameterRef"
         assert gate["ast"]["code"] == "flag"
         assert gate["affected_operations"] == ["v1"]
-        assert ns["parameters"] == {"flag": "Boolean"}
+        assert doc["parameters"] == {"flag": "Boolean"}
 
     def test_cell_reference_gate_skips_op_preserves_others(
         self, monkeypatch, real_syntax
@@ -2169,50 +1754,127 @@ class TestScript:
         )
 
         assert out["success"] is True
-        ns = next(iter(out["enriched_ast"].values()))
-        assert "v1" not in ns["operations"]
-        assert "v2" in ns["operations"]
-        assert ns["preconditions"] == {}
+        doc = out["enriched_ast"]
+        assert "v1" not in doc["operations"]
+        assert "v2" in doc["operations"]
+        assert doc["preconditions"] == {}
         assert list(out["failed_operations"]) == ["v1"]
         assert "references a cell" in out["failed_operations"]["v1"]
 
-    def test_non_literal_shift_skips_op_preserves_others(self, monkeypatch):
-        """#326: a shift whose period cannot be declared skips that op.
-
-        Emitting the old ``T-nQ`` sent the operation to an instance no
-        engine can resolve, and failing the whole module would drop the
-        operations that are fine.
+    def test_unreadable_operation_skips_op_preserves_others(self, monkeypatch):
+        """An operation listed without what it reads would leave
+        ``modules`` short of it, so it is skipped instead.
         """
         self._stub_serialize_ast(
             monkeypatch,
             {"class_name": "VarID", "table": "C_01.00", "data": []},
         )
-        svc, *_ = self._build_svc()
+        svc, _, _, mod = self._build_svc()
         svc._semantic.ast = "AST"
-
-        calls = iter(["bad", "ok", "ok"])
-
-        def _extract(ast):
-            if next(calls) == "bad":
-                raise errors.SemanticError("4-7-5")
-            return {"C_01.00": ["T"]}
-
-        monkeypatch.setattr(
-            type(svc), "_extract_time_shifts", staticmethod(_extract)
-        )
+        svc._extract_reads.side_effect = [
+            mod._UnreadableOperation("Could not collect what it reads"),
+            [],
+        ]
 
         out = svc.script(
-            expressions=[("e_bad", "v1"), ("e2", "v2"), ("e3", "v3")],
+            expressions=[("e_bad", "v1"), ("e2", "v2")],
             module_code="MOD",
             module_version="1.0",
         )
+
         assert out["success"] is True
-        ns = next(iter(out["enriched_ast"].values()))
-        # Skipped before any accumulation: no operation entry either.
-        assert "v1" not in ns["operations"]
-        assert {"v2", "v3"} <= set(ns["operations"])
-        assert list(out["failed_operations"]) == ["v1"]
-        assert "integer literal" in out["failed_operations"]["v1"]
+        assert list(out["enriched_ast"]["operations"]) == ["v2"]
+        assert out["failed_operations"] == {
+            "v1": "Could not collect what it reads"
+        }
+
+    def test_modules_are_built_from_what_each_operation_reads(
+        self, monkeypatch
+    ):
+        """Reads are numbered by the operation's place in ``operations``,
+        so a skipped operation shifts none of them; ``dates`` is the
+        window the own version has in ``modules``.
+        """
+        from dataclasses import dataclass
+
+        @dataclass(frozen=True)
+        class _Read:
+            statement: int
+            table: str
+
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, _, _, mod = self._build_svc()
+        svc._semantic.ast = "AST"
+        svc._extract_reads.side_effect = [
+            mod._UnreadableOperation("Could not collect what it reads"),
+            [_Read(0, "A")],
+            [_Read(0, "B"), _Read(0, "C")],
+        ]
+        modules = {"MOD": {"versions": [{"version": "1.0"}]}}
+        svc._build_modules.return_value = (
+            modules,
+            (date(2025, 12, 31), date(2026, 6, 29)),
+        )
+
+        out = svc.script(
+            expressions=[("e1", "v1"), ("e2", "v2"), ("e3", "v3")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+
+        doc = out["enriched_ast"]
+        assert doc["modules"] == modules
+        assert doc["dates"] == {"from": "2025-12-31", "to": "2026-06-29"}
+        kwargs = svc._build_modules.call_args.kwargs
+        assert kwargs["preconditions"] is doc["preconditions"]
+        scope_pairs = kwargs["scope_pairs"]
+        assert [item[1] for item, *_ in scope_pairs] == ["v2", "v3"]
+        assert [
+            (read.statement, read.table)
+            for *_, refs in scope_pairs
+            for read in refs.reads
+        ] == [(0, "A"), (1, "B"), (1, "C")]
+
+    def test_an_operation_with_no_dependency_group_leaves_no_trace(
+        self, monkeypatch
+    ):
+        """It is reported in ``failed_operations``; the rest is grouped."""
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        from dpmcore.services.script_document.dependency_groups import (
+            NoDependencyGroup,
+        )
+
+        svc, _, _, _ = self._build_svc()
+        svc._semantic.ast = "AST"
+        svc._dependency_resolver = MagicMock(
+            return_value=SimpleNamespace(
+                requires=MagicMock(
+                    side_effect=[NoDependencyGroup("It reads X"), {}]
+                )
+            )
+        )
+
+        out = svc.script(
+            expressions=[("e1", "v1"), ("e2", "v2")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+
+        assert out["success"], out["error"]
+        assert out["failed_operations"] == {"v1": "It reads X"}
+        doc = out["enriched_ast"]
+        assert list(doc["operations"]) == ["v2"]
+        assert doc["dependency_groups"] == {
+            "G1": {"requires": {}, "validations": ["v2"]}
+        }
+        scope_pairs = svc._build_modules.call_args.kwargs["scope_pairs"]
+        assert [item[1] for item, *_ in scope_pairs] == ["v2"]
 
     def test_preconditions_only_gate_emitted_operations(
         self, monkeypatch, real_syntax
@@ -2270,12 +1932,12 @@ class TestScript:
         )
         assert out["success"] is True
         assert "v0937_m" in out["failed_operations"]
-        ns = next(iter(out["enriched_ast"].values()))
-        # p_255 gated the rejected operation alone: entry and the
-        # variable it alone declared both go.
-        assert list(ns["preconditions"]) == ["p_9"]
-        assert ns["preconditions"]["p_9"]["affected_operations"] == ["v1000_m"]
-        assert ns["precondition_variables"] == {"220": "b"}
+        doc = out["enriched_ast"]
+        # p_255 gated the rejected operation alone, so it goes.
+        assert list(doc["preconditions"]) == ["p_9"]
+        assert doc["preconditions"]["p_9"]["affected_operations"] == [
+            "v1000_m"
+        ]
 
     def test_scope_error_fails_generation(self, monkeypatch):
         """Regression for #122: a scope-calculation error must fail the
@@ -2388,12 +2050,12 @@ class TestScript:
             from_submission_dates={"v2": date(2026, 6, 30)},
         )
         assert out["success"] is True
-        ops = out["enriched_ast"]["http://example/mod"]["operations"]
+        ops = out["enriched_ast"]["operations"]
         # v1 keeps the module version's from_reference_date.
         assert ops["v1"]["from_submission_date"] == "2026-03-31"
         assert ops["v2"]["from_submission_date"] == "2026-06-30"
 
-    def test_happy_path_returns_namespaced_shape(self, monkeypatch):
+    def test_happy_path_returns_flat_document(self, monkeypatch):
         self._stub_serialize_ast(
             monkeypatch,
             {
@@ -2415,35 +2077,47 @@ class TestScript:
             severities={"v2": "info"},
         )
         assert out["success"] is True
-        ns_block = out["enriched_ast"]["http://example/mod"]
-        assert ns_block["module_code"] == "MOD"
-        assert ns_block["module_version"] == "1.0"
-        assert ns_block["framework_code"] == "COREP"
-        assert ns_block["dpm_release"] == {
+        doc = out["enriched_ast"]
+        # Script Format 2.0: not keyed by URI, members in this order.
+        assert list(doc)[:13] == [
+            "owner",
+            "module_code",
+            "module_version",
+            "module_owner",
+            "module_uri",
+            "framework_code",
+            "format_version",
+            "dpm_release",
+            "dates",
+            "operations",
+            "preconditions",
+            "modules",
+            "parameters",
+        ]
+        assert doc["owner"] == "EBA"
+        assert doc["module_code"] == "MOD"
+        assert doc["module_version"] == "1.0"
+        assert doc["module_owner"] == "EBA"
+        assert doc["module_uri"] == "http://example/mod"
+        assert doc["framework_code"] == "COREP"
+        assert doc["format_version"] == "2.0"
+        assert doc["dpm_release"] == {
             "release": "4.2",
             "publication_date": "2025-04-28",
         }
-        assert ns_block["dates"] == {
+        assert doc["dates"] == {
             "from": "2026-03-31",
             "to": None,
         }
-        assert "v1" in ns_block["operations"]
-        assert ns_block["operations"]["v1"]["severity"] == "error"
-        assert ns_block["operations"]["v2"]["severity"] == "info"
-        assert ns_block["operations"]["v1"]["root_operator_id"] == 24
+        assert "v1" in doc["operations"]
+        assert doc["operations"]["v1"]["severity"] == "error"
+        assert doc["operations"]["v2"]["severity"] == "info"
+        assert doc["operations"]["v1"]["root_operator_id"] == 24
         # AST stripped
-        ast_data = ns_block["operations"]["v1"]["ast"]["data"][0]
+        ast_data = doc["operations"]["v1"]["ast"]["data"][0]
         assert "data_type" not in ast_data
-        # tables/variables seeded from the module composition
-        assert "C_01.00" in ns_block["tables"]
-        assert ns_block["variables"] == {"100": "m"}
 
-    def test_tables_block_includes_unreferenced_module_tables(
-        self, monkeypatch
-    ):
-        """#158: module-composition tables appear even when no expression
-        references them; abstract (empty-variable) tables stay excluded.
-        """
+    def test_owner_overrides_the_module_owner(self, monkeypatch):
         self._stub_serialize_ast(
             monkeypatch,
             {"class_name": "VarID", "table": "C_01.00", "data": []},
@@ -2453,22 +2127,15 @@ class TestScript:
             is_valid=True, error_message=None, parameters=()
         )
         svc._semantic.ast = "AST"
-        svc._scope_calc._get_module_tables.return_value = {
-            "C_01.00": {"variables": {"100": "m"}, "open_keys": {}},
-            "C_99.00": {"variables": {"900": "m"}, "open_keys": {}},
-            "C_ABS.00": {"variables": {}, "open_keys": {}},
-        }
         out = svc.script(
             expressions=[("e1", "v1")],
             module_code="MOD",
             module_version="1.0",
+            owner="ECB",
         )
         assert out["success"] is True
-        ns = next(iter(out["enriched_ast"].values()))
-        # Referenced (C_01.00) AND unreferenced-with-variables (C_99.00)
-        # are present; the empty-variable (abstract) table is dropped.
-        assert set(ns["tables"]) == {"C_01.00", "C_99.00"}
-        assert ns["variables"] == {"100": "m", "900": "m"}
+        assert out["enriched_ast"]["owner"] == "ECB"
+        assert out["enriched_ast"]["module_owner"] == "EBA"
 
     def test_default_severity_is_warning(self, monkeypatch):
         self._stub_serialize_ast(
@@ -2486,10 +2153,11 @@ class TestScript:
             module_version="1.0",
         )
         assert out["success"] is True
-        ns = next(iter(out["enriched_ast"].values()))
-        assert ns["operations"]["v1"]["severity"] == "warning"
+        doc = out["enriched_ast"]
+        assert doc["operations"]["v1"]["severity"] == "warning"
 
-    def test_namespace_falls_back_when_uri_missing(self, monkeypatch):
+    def test_fails_when_module_uri_missing(self, monkeypatch):
+        """``module_uri`` is an absolute URI, never a placeholder."""
         self._stub_serialize_ast(
             monkeypatch,
             {"class_name": "VarID", "table": "C_01.00", "data": []},
@@ -2505,7 +2173,29 @@ class TestScript:
             module_code="MOD",
             module_version="1.0",
         )
-        assert "default_module" in out["enriched_ast"]
+        assert out["success"] is False
+        assert out["enriched_ast"] is None
+        assert "URI" in out["error"]
+
+    def test_fails_when_module_has_no_owner(self, monkeypatch):
+        """``module_owner`` is a non-empty acronym."""
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, *_ = self._build_svc()
+        svc._module_owner.return_value = None
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=True, error_message=None, parameters=()
+        )
+        svc._semantic.ast = "AST"
+        out = svc.script(
+            expressions=[("e1", "v1")],
+            module_code="MOD",
+            module_version="1.0",
+        )
+        assert out["success"] is False
+        assert "owner" in out["error"]
 
     def test_parameters_block_in_enriched_ast(self, monkeypatch):
         # A VarID (for tables) plus a ParameterRef on the RHS — the script()
@@ -2522,7 +2212,7 @@ class TestScript:
                 "right": {
                     "class_name": "ParameterRef",
                     "code": "threshold",
-                    "param_type": "number",
+                    "param_type": "Number",
                     "default": 0,
                 },
             },
@@ -2545,14 +2235,14 @@ class TestScript:
             module_version="1.0",
         )
         assert out["success"] is True
-        ns = next(iter(out["enriched_ast"].values()))
+        doc = out["enriched_ast"]
         # The trimmed registry is a flat ``code -> declared_type`` map (no
         # nested is_set/default object), deduplicated across both expressions
         # to a single entry. Value correctness is covered by the real-module
         # tests on ``_accumulate_parameters``.
-        assert list(ns["parameters"]) == ["threshold"]
-        assert ns["parameters"]["threshold"] == "Number"
-        assert not isinstance(ns["parameters"]["threshold"], dict)
+        assert list(doc["parameters"]) == ["threshold"]
+        assert doc["parameters"]["threshold"] == "Number"
+        assert not isinstance(doc["parameters"]["threshold"], dict)
 
     def test_parameters_block_empty_when_none_referenced(self, monkeypatch):
         self._stub_serialize_ast(
@@ -2569,8 +2259,8 @@ class TestScript:
             module_code="MOD",
             module_version="1.0",
         )
-        ns = next(iter(out["enriched_ast"].values()))
-        assert ns["parameters"] == {}
+        doc = out["enriched_ast"]
+        assert doc["parameters"] == {}
 
     def test_script_validates_without_scope_opt_out(self, monkeypatch):
         # Regression: script() must validate each expression through the plain
@@ -2638,6 +2328,7 @@ class TestScriptFromDb:
             framework = SimpleNamespace(code="COREP")
             module = SimpleNamespace(framework=framework)
             mv = SimpleNamespace(
+                module_id=7,
                 module_vid=1,
                 start_release_id=1,
                 end_release_id=None,
@@ -2654,13 +2345,19 @@ class TestScriptFromDb:
 
         svc._resolve_release = lambda mc, mv_, rel: (mv, release_row)
         svc._resolve_root_operator_id = staticmethod(lambda ast, session: 24)
+        # The ASTs here are stand-ins with no operands to read.
+        svc._extract_reads = MagicMock(return_value=[])
+        svc._build_modules = MagicMock(
+            return_value=({"MOD": {"versions": []}}, (date(2026, 3, 31), None))
+        )
+        svc._module_owner = MagicMock(return_value="EBA")
+        # Every operation needs only the instance being validated.
+        svc._dependency_resolver = MagicMock(
+            return_value=SimpleNamespace(
+                requires=lambda code, scopes, reads: {}
+            )
+        )
 
-        svc._scope_calc._get_module_tables.return_value = {
-            "C_01.00": {
-                "variables": {"100": "m"},
-                "open_keys": {"BASE": "e"},
-            }
-        }
         svc._scope_calc._get_module_uri.return_value = "http://example/mod"
         svc._scope_calc.calculate_from_expression.return_value = (
             SimpleNamespace(has_error=False, scopes=[])
@@ -2671,12 +2368,6 @@ class TestScriptFromDb:
         svc._scope_calc.build_scope_result_from_db.side_effect = (
             _FakeUnsupportedDbScope("no persisted scope in fixture")
         )
-        svc._scope_calc.detect_cross_module_dependencies.return_value = {
-            "intra_instance_validations": ["v1"],
-            "cross_instance_dependencies": [],
-            "dependency_modules": {},
-        }
-        svc._scope_calc.detect_alternative_dependencies.return_value = []
         return svc, mv, release_row, mod
 
     def _stub_serialize_ast(self, monkeypatch, return_value):
@@ -2736,14 +2427,52 @@ class TestScriptFromDb:
         )
 
         assert out["success"] is True, out["error"]
-        ns = next(iter(out["enriched_ast"].values()))
-        op = ns["operations"]["v1"]
-        assert op["ast"] == db_ast_dict
+        doc = out["enriched_ast"]
+        op = doc["operations"]["v1"]
+        assert op["ast"] == {**db_ast_dict, "class_name": "FactVarID"}
         # The real OperationVID reaches the wire as version_id (dpm-xl
         # script-format spec §3.10), not the CRC32 fallback script() uses.
         assert op["version_id"] == 555
         build.assert_called_once_with(svc.session, 555, release_row.release_id)
         svc._semantic.validate.assert_not_called()
+
+    def test_owner_defaults_to_the_module_owner(self, monkeypatch):
+        """The caller picks the validations; without ``owner`` the
+        document is the module owner's.
+        """
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
+        self._stub_db_ast(
+            monkeypatch, MagicMock(return_value=(db_ast_dict, 24))
+        )
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 1},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        assert out["enriched_ast"]["owner"] == "EBA"
+        assert out["enriched_ast"]["module_owner"] == "EBA"
+
+    def test_explicit_owner_is_written(self, monkeypatch):
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
+        self._stub_db_ast(
+            monkeypatch, MagicMock(return_value=(db_ast_dict, 24))
+        )
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 1},
+            mv=mv,
+            release_row=release_row,
+            owner="ECB",
+        )
+
+        assert out["success"] is True, out["error"]
+        assert out["enriched_ast"]["owner"] == "ECB"
 
     def test_release_info_is_stamped_instead_of_release_row(self, monkeypatch):
         """A caller-supplied ``release_info`` names ``dpm_release``;
@@ -2764,31 +2493,18 @@ class TestScriptFromDb:
         )
 
         assert out["success"] is True, out["error"]
-        ns = next(iter(out["enriched_ast"].values()))
-        assert ns["dpm_release"] == release_info
+        doc = out["enriched_ast"]
+        assert doc["dpm_release"] == release_info
         build.assert_called_once_with(svc.session, 555, release_row.release_id)
 
-    def test_db_native_time_shift_reaches_dependency_detection(
+    def test_db_native_unreadable_operation_excludes_only_that_operation(
         self, monkeypatch
     ):
-        """dpmcore#364 follow-up: a ``TimeShiftOp`` built straight from
-        the DB must still feed ``detect_cross_module_dependencies``'s
-        ``time_shifts`` — before ``db_ast.py`` supported ``TimeShiftOp``
-        this never mattered (every such operation fell back to
-        ``_prepare_expression``, which always computed it), but now the
-        DB-native branch has to compute it too, off the raw tree
-        (``ts`` is only meaningful pre-serialisation — see
-        ``_extract_time_shifts``).
+        """An operation whose reads cannot be collected: just it is
+        rejected, without falling back to a re-parse.
         """
-        from dpmcore.dpm_xl.ast.nodes import Constant
-
-        built_ast = _FakeTimeShiftOp(
-            "Q",
-            Constant(type_="Integer", value=1),
-            _FakeVarID(table="C_01.00"),
-        )
-        build = MagicMock(return_value=(built_ast, 24))
-        mod = SimpleNamespace(
+        build = MagicMock(return_value=(_FakeVarID(table="C_01.00"), 24))
+        db_ast = SimpleNamespace(
             UnsupportedDbAst=_FakeUnsupportedDbAst,
             build_ast_from_db=build,
             serialize_built_ast=lambda built: {
@@ -2797,8 +2513,11 @@ class TestScriptFromDb:
                 "data": [],
             },
         )
-        monkeypatch.setitem(sys.modules, "dpmcore.dpm_xl.utils.db_ast", mod)
-        svc, mv, release_row, _ = self._build_svc()
+        monkeypatch.setitem(sys.modules, "dpmcore.dpm_xl.utils.db_ast", db_ast)
+        svc, mv, release_row, mod = self._build_svc()
+        svc._extract_reads.side_effect = mod._UnreadableOperation(
+            "Could not collect what it reads"
+        )
 
         out = svc.script_from_db(
             expressions=[("e1", "v1")],
@@ -2808,49 +2527,9 @@ class TestScriptFromDb:
         )
 
         assert out["success"] is True, out["error"]
-        call = svc._scope_calc.detect_cross_module_dependencies.call_args
-        assert call.kwargs["time_shifts"] == {"C_01.00": ["T-1Q"]}
-
-    def test_db_native_non_literal_shift_excludes_only_that_operation(
-        self, monkeypatch
-    ):
-        """A shift number that isn't an integer literal names no
-        resolvable instance (#326) — the DB-native branch must reject
-        just this operation, the same way ``_prepare_expression``'s own
-        ``_extract_time_shifts`` call already does for the fallback.
-        """
-        from dpmcore.dpm_xl.ast.nodes import BinOp, Constant
-
-        non_literal_shift = BinOp(
-            op="*",
-            left=Constant(type_="Integer", value=2),
-            right=Constant(type_="Integer", value=2),
-        )
-        built_ast = _FakeTimeShiftOp(
-            "Q", non_literal_shift, _FakeVarID(table="C_01.00")
-        )
-        build = MagicMock(return_value=(built_ast, 24))
-        mod = SimpleNamespace(
-            UnsupportedDbAst=_FakeUnsupportedDbAst,
-            build_ast_from_db=build,
-            serialize_built_ast=lambda built: {
-                "class_name": "VarID",
-                "table": "C_01.00",
-                "data": [],
-            },
-        )
-        monkeypatch.setitem(sys.modules, "dpmcore.dpm_xl.utils.db_ast", mod)
-        svc, mv, release_row, _ = self._build_svc()
-
-        out = svc.script_from_db(
-            expressions=[("e1", "v1")],
-            operation_vids={"v1": 555},
-            mv=mv,
-            release_row=release_row,
-        )
-
-        assert out["success"] is True, out["error"]
-        assert "v1" in out["failed_operations"]
+        assert out["failed_operations"] == {
+            "v1": "Could not collect what it reads"
+        }
         svc._scope_calc.calculate_from_expression.assert_not_called()
 
     def test_db_path_parameters_reach_the_parameters_block(
@@ -2890,8 +2569,8 @@ class TestScriptFromDb:
         )
 
         assert out["success"] is True, out["error"]
-        ns = next(iter(out["enriched_ast"].values()))
-        assert ns["parameters"] == {"p_x": "Number"}
+        doc = out["enriched_ast"]
+        assert doc["parameters"] == {"p_x": "Number"}
         svc._semantic.validate.assert_not_called()
 
     def test_db_native_scope_used_and_reparse_skipped(self, monkeypatch):
@@ -2923,8 +2602,8 @@ class TestScriptFromDb:
             555, mv.module_vid, release_row.release_id
         )
         svc._scope_calc.calculate_from_expression.assert_not_called()
-        ns = next(iter(out["enriched_ast"].values()))
-        assert "v1" in ns["operations"]
+        doc = out["enriched_ast"]
+        assert "v1" in doc["operations"]
 
     def test_db_native_scope_falls_back_when_unsupported(self, monkeypatch):
         """``UnsupportedDbScope`` falls back to
@@ -2949,8 +2628,8 @@ class TestScriptFromDb:
             555, mv.module_vid, release_row.release_id
         )
         svc._scope_calc.calculate_from_expression.assert_called_once()
-        ns = next(iter(out["enriched_ast"].values()))
-        assert "v1" in ns["operations"]
+        doc = out["enriched_ast"]
+        assert "v1" in doc["operations"]
 
     def test_db_native_scope_error_excludes_only_that_operation(
         self, monkeypatch
@@ -2980,6 +2659,46 @@ class TestScriptFromDb:
         assert "boom" in out["failed_operations"]["v1"]
         svc._scope_calc.calculate_from_expression.assert_not_called()
 
+    def test_a_window_bound_keeps_its_period(self, monkeypatch):
+        bound = {"bound_type": "n_preceding", "n": 4, "period": "Q"}
+        db_ast_dict = {
+            "class_name": "AggregationOp",
+            "op": "avg",
+            "operand": {"class_name": "VarID", "table": "C_01.00", "data": []},
+            "grouping_clause": None,
+            "analytic_clause": {
+                "class_name": "AnalyticClause",
+                "partition_by": [],
+                "order_by": [{"key_name": "refPeriod", "direction": "asc"}],
+                "window": {
+                    "frame_type": "range",
+                    "start": bound,
+                    "end": {"bound_type": "current_data_point"},
+                },
+            },
+        }
+        self._stub_db_ast(
+            monkeypatch, MagicMock(return_value=(db_ast_dict, 1))
+        )
+        svc, mv, release_row, _ = self._build_svc()
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1")],
+            operation_vids={"v1": 555},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        assert "v1" not in out["failed_operations"]
+        operation = out["enriched_ast"]["operations"]["v1"]
+        window = operation["ast"]["analytic_clause"]["window"]
+        assert window["start"] == {
+            "bound_type": "n_preceding",
+            "n": 4,
+            "period_indicator": "Q",
+        }
+
     def test_falls_back_to_text_reparse_when_unsupported(self, monkeypatch):
         build = MagicMock(
             side_effect=_FakeUnsupportedDbAst("unsupported construct")
@@ -3003,10 +2722,10 @@ class TestScriptFromDb:
         )
 
         assert out["success"] is True, out["error"]
-        ns = next(iter(out["enriched_ast"].values()))
-        op = ns["operations"]["v1"]
+        doc = out["enriched_ast"]
+        op = doc["operations"]["v1"]
         # Falls back to the text-reparsed AST...
-        assert op["ast"]["class_name"] == "VarID"
+        assert op["ast"]["class_name"] == "FactVarID"
         # ...but version_id still uses the already-known real
         # OperationVID — the fallback is per-AST, not per-identity.
         assert op["version_id"] == 555
@@ -3040,8 +2759,8 @@ class TestScriptFromDb:
 
         assert out["success"] is True, out["error"]
         assert out["failed_operations"] == {"v1": "bad expr"}
-        ns = next(iter(out["enriched_ast"].values()))
-        assert "v1" not in ns["operations"]
+        doc = out["enriched_ast"]
+        assert "v1" not in doc["operations"]
 
     def test_no_operation_vid_skips_db_and_uses_crc32(self, monkeypatch):
         """A code with no entry in ``operation_vids`` never even attempts
@@ -3069,8 +2788,8 @@ class TestScriptFromDb:
 
         assert out["success"] is True, out["error"]
         build.assert_not_called()
-        ns = next(iter(out["enriched_ast"].values()))
-        op = ns["operations"]["v1"]
+        doc = out["enriched_ast"]
+        op = doc["operations"]["v1"]
         assert op["version_id"] == zlib.crc32(b"e1") % 10000
 
     def test_gate_failure_skips_before_any_ast_attempt(self, monkeypatch):
@@ -3132,9 +2851,9 @@ class TestScriptFromDb:
         assert out["success"] is True, out["error"]
         assert "v1" in out["failed_operations"]
         assert "boom" in out["failed_operations"]["v1"]
-        ns = next(iter(out["enriched_ast"].values()))
-        assert "v1" not in ns["operations"]
-        assert "v2" in ns["operations"]
+        doc = out["enriched_ast"]
+        assert "v1" not in doc["operations"]
+        assert "v2" in doc["operations"]
 
 
 # ------------------------------------------------------------------ #
@@ -3155,15 +2874,19 @@ class TestScriptForModuleReleaseResolution:
     def _build_svc(self):
         svc, _, _ = _bare_svc()
         svc.session = MagicMock()
-        mv = SimpleNamespace(module_vid=10)
+        mv = SimpleNamespace(module_vid=10, module_id=7)
         release_row = SimpleNamespace(release_id=5)
         svc._resolve_release = MagicMock(return_value=(mv, release_row))
         svc._discover_module_validations = MagicMock(
-            return_value=([], {}, [], {}, {})
+            return_value=_load_ast_generator()._DiscoveredValidations(
+                [], {}, [], {}, {}
+            )
         )
         svc._database_release_info = MagicMock(
             return_value={"release": "4.4", "publication_date": "2026-12-30"}
         )
+        svc._module_owner = MagicMock(return_value="EBA")
+        svc._operation_owners = MagicMock(return_value={})
         svc.script_from_db = MagicMock(return_value={"success": True})
         return svc, mv, release_row
 
@@ -3222,6 +2945,120 @@ class TestScriptForModuleReleaseResolution:
         assert out["success"] is False
         assert "No Release rows" in out["error"]
         svc.script_from_db.assert_not_called()
+
+
+def _discovered_two_owners():
+    """Three validations: ``v1`` of the EBA, ``v2`` of the ECB and ``v3``
+    with no owner; one precondition gating ``v1`` and ``v2``.
+    """
+    return _load_ast_generator()._DiscoveredValidations(
+        expressions=[("e1", "v1"), ("e2", "v2"), ("e3", "v3")],
+        operation_vids={"v1": 1, "v2": 2, "v3": 3},
+        preconditions=[
+            {
+                "expression": "{v_F_01.01}",
+                "affected_operations": ["v1", "v2"],
+                "code": "p1",
+                "version_id": 90,
+            }
+        ],
+        severities={"v1": "error", "v2": "warning", "v3": "error"},
+        from_submission_dates={"v1": "2026-03-31", "v2": "2026-06-30"},
+    )
+
+
+class TestScriptForModuleOwner:
+    """Script Format 2.0: a document holds the validations of one
+    owner (``Operation.OwnerID``, or the module's owner for a
+    validation with none).
+    """
+
+    def _build_svc(self, vid_owners=None):
+        svc, _, _ = _bare_svc()
+        svc.session = MagicMock()
+        mv = SimpleNamespace(module_vid=10, module_id=7)
+        release_row = SimpleNamespace(release_id=5)
+        svc._resolve_release = MagicMock(return_value=(mv, release_row))
+        svc._discover_module_validations = MagicMock(
+            return_value=_discovered_two_owners()
+        )
+        svc._database_release_info = MagicMock(
+            return_value={"release": "4.4", "publication_date": "2026-12-30"}
+        )
+        svc._module_owner = MagicMock(return_value="EBA")
+        svc._operation_owners = MagicMock(
+            return_value=(
+                {1: "EBA", 2: "ECB", 3: None}
+                if vid_owners is None
+                else vid_owners
+            )
+        )
+        svc.script_from_db = MagicMock(return_value={"success": True})
+        return svc
+
+    def test_defaults_to_the_module_owners_validations(self):
+        svc = self._build_svc()
+
+        svc.script_for_module("MOD", "1.0.0")
+
+        kwargs = svc.script_from_db.call_args.kwargs
+        assert kwargs["owner"] == "EBA"
+        # v3 has no owner: it belongs to the module's owner.
+        assert kwargs["expressions"] == [("e1", "v1"), ("e3", "v3")]
+        assert kwargs["operation_vids"] == {"v1": 1, "v3": 3}
+        assert kwargs["severities"] == {"v1": "error", "v3": "error"}
+        assert kwargs["from_submission_dates"] == {"v1": "2026-03-31"}
+
+    def test_scripts_the_given_owners_validations(self):
+        svc = self._build_svc()
+
+        svc.script_for_module("MOD", "1.0.0", owner="ECB")
+
+        kwargs = svc.script_from_db.call_args.kwargs
+        assert kwargs["owner"] == "ECB"
+        assert kwargs["expressions"] == [("e2", "v2")]
+        assert kwargs["operation_vids"] == {"v2": 2}
+        assert kwargs["severities"] == {"v2": "warning"}
+        assert kwargs["from_submission_dates"] == {"v2": "2026-06-30"}
+
+    def test_preconditions_keep_only_the_owners_validations(self):
+        svc = self._build_svc()
+
+        svc.script_for_module("MOD", "1.0.0", owner="ECB")
+
+        assert svc.script_from_db.call_args.kwargs["preconditions"] == [
+            {
+                "expression": "{v_F_01.01}",
+                "affected_operations": ["v2"],
+                "code": "p1",
+                "version_id": 90,
+            }
+        ]
+
+    def test_precondition_gating_none_of_the_owners_is_dropped(self):
+        svc = self._build_svc(vid_owners={1: "ECB", 2: "ECB", 3: None})
+
+        svc.script_for_module("MOD", "1.0.0")
+
+        assert svc.script_from_db.call_args.kwargs["preconditions"] is None
+
+    def test_owners_looked_up_by_operation_version(self):
+        svc = self._build_svc()
+
+        svc.script_for_module("MOD", "1.0.0")
+
+        svc._operation_owners.assert_called_once_with([1, 2, 3])
+        svc._module_owner.assert_called_once_with(7)
+
+    def test_owner_without_validations_gets_an_empty_script(self):
+        svc = self._build_svc()
+
+        svc.script_for_module("MOD", "1.0.0", owner="SRB")
+
+        kwargs = svc.script_from_db.call_args.kwargs
+        assert kwargs["owner"] == "SRB"
+        assert kwargs["expressions"] == []
+        assert kwargs["operation_vids"] == {}
 
 
 # ------------------------------------------------------------------ #

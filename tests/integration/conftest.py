@@ -5,9 +5,15 @@ This module provides:
 - Database fixtures with proper cleanup
 - Session management with nested transaction rollback pattern
 - Shared SQLite fixture for tests that need real DPM data
+- Every validations script a test generates checked with
+  ``tests/validate_script.py``
 """
 
+import importlib.util
+import json
 import os
+from functools import cache
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine
@@ -17,6 +23,7 @@ from sqlalchemy.pool import StaticPool
 FIXTURE_DB_PATH = os.path.join(
     os.path.dirname(__file__), "..", "fixtures", "test_data.db"
 )
+VALIDATOR_PATH = Path(__file__).parent.parent / "validate_script.py"
 
 
 def pytest_collection_modifyitems(items):
@@ -34,6 +41,52 @@ def cleanup_caches():
     from dpmcore.dpm_xl.ast.operands import _HEADERS_CACHE
 
     _HEADERS_CACHE.clear()
+
+
+@cache
+def _validator():
+    spec = importlib.util.spec_from_file_location(
+        "validate_script", VALIDATOR_PATH
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture(autouse=True)
+def validate_scripts(monkeypatch, tmp_path_factory):
+    """Fail a test whose validations script breaks a Script Format 2.0 rule.
+
+    Every document ``script()`` or ``script_from_db()`` returns is written
+    under its file name and checked with ``tests/validate_script.py``.
+    The tests that generate one need the fixture DB, so this only runs
+    where it is present.
+    """
+    from dpmcore.services.ast_generator import ASTGeneratorService
+    from dpmcore.services.script_document.script_format import (
+        script_file_name,
+    )
+
+    def checked(method):
+        def run(self, *args, **kwargs):
+            result = method(self, *args, **kwargs)
+            document = result.get("enriched_ast")
+            if result.get("success") and document:
+                path = tmp_path_factory.mktemp("script") / script_file_name(
+                    document["owner"],
+                    document["module_code"],
+                    document["module_version"],
+                )
+                path.write_text(json.dumps(document, default=str))
+                report = _validator().validate(path)
+                assert report.valid, dict(report.violations)
+            return result
+
+        return run
+
+    for name in ("script", "script_from_db"):
+        method = getattr(ASTGeneratorService, name)
+        monkeypatch.setattr(ASTGeneratorService, name, checked(method))
 
 
 @pytest.fixture
