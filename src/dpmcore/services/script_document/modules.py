@@ -835,7 +835,8 @@ class _ModulesBuilder:
         Returns:
             ``{table code: {"variables": {...}, "open_keys": {...}}}``,
             ordered by code. Open keys are named as of the version's
-            own release. A table without Variables, such as an abstract
+            own release, or the table's when it starts later (a ghost's
+            table). A table without Variables, such as an abstract
             one, is left out.
         """
         if not listed:
@@ -843,10 +844,30 @@ class _ModulesBuilder:
         release = version.start_release_id
         if release is not None and release not in self.sort_orders:
             release = None
-        codes = sorted({table_codes[vid] for vid in listed})
-        open_keys = get_open_keys_for_tables(
-            self.session, codes, release_id=release, table_vids=list(listed)
-        )
+        by_release: Dict[Optional[int], List[int]] = {}
+        for row in chunked_in(
+            self.session.query(
+                TableVersion.table_vid, TableVersion.start_release_id
+            ),
+            TableVersion.table_vid,
+            list(listed),
+        ):
+            starts_later = release is not None and self.sort_orders.get(
+                row.start_release_id, -1
+            ) > self.sort_orders.get(release, -1)
+            by_release.setdefault(
+                row.start_release_id if starts_later else release, []
+            ).append(int(row.table_vid))
+        open_keys: Dict[str, Dict[str, str]] = {}
+        for at, vids in by_release.items():
+            found = get_open_keys_for_tables(
+                self.session,
+                sorted({table_codes[vid] for vid in vids}),
+                release_id=at,
+                table_vids=vids,
+            )
+            for code, keys in found.items():
+                open_keys.setdefault(code, {}).update(keys)
         tables: Dict[str, Dict[str, Any]] = {}
         for vid in sorted(listed, key=lambda v: (table_codes[v], v)):
             code = table_codes[vid]

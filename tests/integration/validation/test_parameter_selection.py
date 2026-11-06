@@ -19,6 +19,7 @@ from dpmcore.orm.operations import (
     OperationVersion,
 )
 from dpmcore.orm.packaging import ModuleVersion
+from dpmcore.services.ast_generator import ASTGeneratorService
 from dpmcore.services.dpm_xl import DpmXlService
 from dpmcore.services.semantic import (
     ParameterInfo,
@@ -290,3 +291,23 @@ def test_scope_wide_check_matches_whitespace_after_brace(fixture_session):
     )
     assert clash.is_valid is False
     assert clash.error_code == "3-8"
+
+
+def test_set_parameter_sends_its_validation_to_failed_operations(
+    fixture_session,
+):
+    """Script Format 2.0 only declares the six scalar parameter types."""
+    result = ASTGeneratorService(fixture_session).script(
+        expressions=[
+            ("{tF_01.01, r0010, c0010} in {p_amounts, set-number}", "v_set"),
+            ("{tF_01.01, r0010, c0010} >= {p_floor, number}", "v_scalar"),
+        ],
+        module_code="FINREP9",
+        module_version="3.3.0",
+    )
+
+    assert result["success"], result["error"]
+    assert list(result["failed_operations"]) == ["v_set"]
+    assert "'SetNumber'" in result["failed_operations"]["v_set"]
+    assert list(result["enriched_ast"]["operations"]) == ["v_scalar"]
+    assert result["enriched_ast"]["parameters"] == {"floor": "Number"}

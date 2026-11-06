@@ -4,6 +4,7 @@ import pytest
 
 from dpmcore.services.script_document.script_format import (
     FORMAT_VERSION,
+    PARAMETER_TYPES,
     UnsupportedNode,
     script_ast,
     script_file_name,
@@ -211,4 +212,32 @@ class TestScriptAstOtherNodes:
             "operand": {"class_name": class_name},
         }
         with pytest.raises(UnsupportedNode, match=class_name):
+            script_ast(node)
+
+
+class TestScriptAstParameterRef:
+    @pytest.mark.parametrize("param_type", PARAMETER_TYPES)
+    def test_keeps_a_scalar_parameter(self, param_type):
+        node = {
+            "class_name": "ParameterRef",
+            "code": "p",
+            "param_type": param_type,
+            "default": None,
+        }
+        assert script_ast(node) == node
+
+    @pytest.mark.parametrize("param_type", ["SetNumber", "SetItem"])
+    def test_rejects_a_set_parameter(self, param_type):
+        node = {
+            "class_name": "BinOp",
+            "op": "in",
+            "left": {"class_name": "Constant", "type_": "Integer", "value": 1},
+            "right": {
+                "class_name": "ParameterRef",
+                "code": "ccys",
+                "param_type": param_type,
+                "default": None,
+            },
+        }
+        with pytest.raises(UnsupportedNode, match=f"'ccys'.*'{param_type}'"):
             script_ast(node)

@@ -36,6 +36,7 @@ NODE_CLASSES = [
 ]
 """The twenty-five node classes of Script Format 2.0."""
 
+PARAMETER_TYPES = ("Number", "Integer", "String", "Date", "Boolean", "Item")
 CELL_POSITION = ("row", "column", "sheet")
 DATE_PARTS = ("year", "month", "day")
 
@@ -79,8 +80,8 @@ def script_ast(node: Any) -> Any:
         A new tree in the format's shape; *node* is not modified.
 
     Raises:
-        UnsupportedNode: If a node is of a class outside the format,
-            or a filing indicator has no code.
+        UnsupportedNode: If a node is of a class outside the format, a
+            filing indicator has no code, or a parameter is a Set type.
     """
     if isinstance(node, list):
         return [script_ast(item) for item in node]
@@ -106,13 +107,15 @@ def script_node(node: dict[str, Any]) -> dict[str, Any]:
     - ``Scalar`` drops ``member``.
     - ``AnalyticClause`` renames the ``period`` of its window bounds to
       ``period_indicator``.
+    - ``ParameterRef`` must be of one of the :data:`PARAMETER_TYPES`.
 
     Every other class of the format is returned as it is. *node* may
     be modified in place.
 
     Raises:
-        UnsupportedNode: If *node* is of a class outside the format, or
-            a ``PreconditionItem`` has no ``variable_code``.
+        UnsupportedNode: If *node* is of a class outside the format, a
+            ``PreconditionItem`` has no ``variable_code``, or a
+            ``ParameterRef`` is a Set type.
     """
     class_name = node.get("class_name")
     if class_name == "VarID":
@@ -145,6 +148,15 @@ def script_node(node: dict[str, Any]) -> dict[str, Any]:
                 "period_indicator" if k == "period" else k: v
                 for k, v in window[side].items()
             }
+    elif (
+        class_name == "ParameterRef"
+        and node.get("param_type") not in PARAMETER_TYPES
+    ):
+        raise UnsupportedNode(
+            f"The parameter {node.get('code')!r} is of type "
+            f"{node.get('param_type')!r}; Script Format 2.0 only declares "
+            f"{', '.join(PARAMETER_TYPES)}."
+        )
     elif class_name is not None and class_name not in NODE_CLASSES:
         raise UnsupportedNode(
             f"{class_name} is not a node of Script Format 2.0."

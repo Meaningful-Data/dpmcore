@@ -1153,6 +1153,7 @@ class TestUnsupportedGates:
             ("{v_A} = true", "operator '='"),
             ("{tC_01.00, r0010, c0010}", "references a cell"),
             ("{v_A} and 3", "non-boolean literal 3"),
+            ("{v_A} or {p_flags, set-boolean}", "set-boolean parameter"),
         ],
     )
     def test_unsupported_shapes_are_reported(
@@ -2211,7 +2212,7 @@ class TestScript:
                 "right": {
                     "class_name": "ParameterRef",
                     "code": "threshold",
-                    "param_type": "number",
+                    "param_type": "Number",
                     "default": 0,
                 },
             },
