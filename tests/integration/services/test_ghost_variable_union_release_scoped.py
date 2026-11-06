@@ -146,3 +146,15 @@ def test_ghost_union_is_scoped_to_the_release_covering_ghost(
             f"{release} is only covered by the second ghost -- the "
             "first ghost's variable must not leak in"
         )
+
+
+def test_a_ghost_table_has_the_open_keys_of_its_own_release(fixture_session):
+    """``C_92.01`` is only in the ghosts, which start after 3.1.0 does."""
+    result = ASTGeneratorService(fixture_session).script_for_module(
+        module_code=_MODULE,
+        module_version=_FALLBACK,
+        release=_RELEASE_UNDER_FIRST_GHOST,
+    )
+    assert result["success"], result.get("error")
+    table = _own_version(result["enriched_ast"])["tables"]["C_92.01"]
+    assert set(table["open_keys"]) == {"CUB", "OGS", "SOP"}
