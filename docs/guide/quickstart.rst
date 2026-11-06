@@ -106,7 +106,7 @@ Generate an engine-ready validations script
            from_submission_dates={"v0002": "2026-06-30"},
            release="4.2",                   # optional; latest if omitted
        )
-       # script["enriched_ast"] is keyed by the resolved module URI;
+       # script["enriched_ast"] is the Script Format 2.0 document;
        # script["failed_operations"] lists expressions skipped due to
        # semantic errors (e.g. grey cells).
 
