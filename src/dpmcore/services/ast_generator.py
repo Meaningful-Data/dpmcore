@@ -622,7 +622,7 @@ class ASTGeneratorService:
 
         # Runtime-binding contract: the declared type of every parameter
         # this script needs, keyed by code. This is the scope-wide
-        # invariant. ``is_set`` is recoverable from the ``set-`` prefix
+        # invariant. A ``set-*`` type never gets here (``script_ast``)
         # and ``default`` is a per-reference fallback the engine binds
         # per scope, so neither belongs in this registry. Built after
         # the gates so a parameter that only appears in a gate is
@@ -2933,7 +2933,7 @@ class ASTGeneratorService:
 
         Walks the parsed gate and returns a short reason for the first
         node outside the contract: filing-indicator selections
-        (``VarRef`` / ``PreconditionItem``), ``ParameterRef`` and boolean
+        (``VarRef`` / ``PreconditionItem``), scalar ``ParameterRef``, boolean
         ``Constant`` leaves joined by ``_GATE_BINARY_OPS`` /
         ``_GATE_UNARY_OPS``, optionally grouped.
         """
@@ -2946,6 +2946,8 @@ class ASTGeneratorService:
             return cls._gate_unsupported_reason(node.expression)
         if isinstance(node, (ast_nodes.BinOp, ast_nodes.UnaryOp)):
             return cls._gate_operator_unsupported_reason(node, ast_nodes)
+        if isinstance(node, ast_nodes.ParameterRef) and node.is_set:
+            return f"it reads the {node.param_type} parameter {node.code!r}"
         if isinstance(
             node,
             (
