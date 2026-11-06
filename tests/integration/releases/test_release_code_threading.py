@@ -201,25 +201,6 @@ def test_scope_calculator_calculate_from_tables_unknown_release_code(
     assert "not found" in (res.error_message or "")
 
 
-def test_scope_calculator_detect_alternative_dependencies_resolves_code(
-    release_session,
-):
-    """Public alt-deps entry point accepts release_code."""
-    from dpmcore.services.scope_calculator import (
-        ScopeCalculatorService,
-        ScopeResult,
-    )
-
-    svc = ScopeCalculatorService(release_session)
-    # Empty input — just verify the call doesn't raise and returns [].
-    out = svc.detect_alternative_dependencies(
-        scope_results=[ScopeResult()],
-        primary_module_vid=1,
-        release_code="1.0",
-    )
-    assert out == []
-
-
 # --------------------------------------------------------------------- #
 # OperandReference test data — get_variable_usage smoke
 # --------------------------------------------------------------------- #

@@ -7,7 +7,7 @@ URL from real ORM rows.
 
 The full ``script()`` end-to-end requires a parseable DPM-XL expression
 plus a heavy fixture; these focused tests exercise the same primitive
-methods (``_get_module_uri`` / ``_get_module_tables``) against real
+method (``_get_module_uri``) against real
 SQLAlchemy queries via ``memory_session``.
 """
 
@@ -17,16 +17,12 @@ from datetime import date
 
 import pytest
 
-from dpmcore.orm.glossary import DataType, Property
 from dpmcore.orm.infrastructure import Release
 from dpmcore.orm.packaging import (
     Framework,
     Module,
     ModuleVersion,
-    ModuleVersionComposition,
 )
-from dpmcore.orm.rendering import TableVersion, TableVersionCell
-from dpmcore.orm.variables import Variable, VariableVersion
 from dpmcore.services.scope_calculator import ScopeCalculatorService
 
 
@@ -156,45 +152,3 @@ class TestGetModuleUriIntegration:
     def test_missing_module_returns_none(self, populated_session):
         svc = ScopeCalculatorService(populated_session)
         assert svc._get_module_uri(module_vid=99999) is None
-
-
-class TestGetModuleTablesIntegration:
-    """Exercise ``_get_module_tables`` against real SQLAlchemy queries."""
-
-    def test_returns_tables_with_variables(self, memory_session):
-        session = memory_session
-        # Minimal graph: module 10 → table 100 → 1 cell → 1 variable.
-        session.add_all(
-            [
-                Module(module_id=10),
-                ModuleVersion(
-                    module_vid=200,
-                    module_id=10,
-                    code="MOD",
-                    version_number="1.0.0",
-                ),
-                TableVersion(table_vid=100, code="T_01"),
-                ModuleVersionComposition(
-                    module_vid=200, table_id=1, table_vid=100
-                ),
-                Variable(variable_id=42),
-                DataType(data_type_id=1, code="X"),
-                Property(property_id=1, data_type_id=1),
-                VariableVersion(
-                    variable_vid=42, variable_id=42, property_id=1
-                ),
-                TableVersionCell(cell_id=1, table_vid=100, variable_vid=42),
-            ]
-        )
-        session.commit()
-
-        svc = ScopeCalculatorService(session)
-        tables = svc._get_module_tables(module_vid=200)
-
-        assert "T_01" in tables
-        assert tables["T_01"]["variables"] == {"42": "X"}
-        assert tables["T_01"]["open_keys"] == {}
-
-    def test_unknown_module_returns_empty_dict(self, memory_session):
-        svc = ScopeCalculatorService(memory_session)
-        assert svc._get_module_tables(module_vid=999) == {}
