@@ -692,6 +692,61 @@ class TestReadLags:
         }
 
     @pytest.mark.parametrize(
+        ("operand", "lag"),
+        [
+            (
+                "time_shift({tA, r0010, c0010}, A, {p_FREQ, integer}, "
+                "refPeriod)",
+                RefDateLag(None, "A"),
+            ),
+            (
+                "time_shift({tA, r0010, c0010}, Q, 2 * 2)",
+                RefDateLag(None, "Q"),
+            ),
+            (
+                "time_shift(time_shift({tA, r0010, c0010}, A, "
+                "{p_FREQ, integer}), Q, 1)",
+                RefDateLag(None),
+            ),
+        ],
+    )
+    def test_a_shift_that_is_not_a_literal_is_known_at_run_time(
+        self, operand, lag
+    ):
+        reads = _reads(f"x := {operand};").reads
+
+        assert {(read.table, read.lag) for read in reads} == {("A", lag)}
+
+    @pytest.mark.parametrize(
+        ("window", "lags"),
+        [
+            (
+                "4 Q preceding and 1 Q preceding",
+                {RefDateLag(-n, "Q") for n in (1, 2, 3, 4)},
+            ),
+            (
+                "2 M preceding and current data point",
+                {AT_T, RefDateLag(-1), RefDateLag(-2)},
+            ),
+            (
+                "current data point and 1 A following",
+                {AT_T, RefDateLag(1, "A")},
+            ),
+            (
+                "23 M preceding and 1 A preceding",
+                {RefDateLag(-n) for n in range(12, 24)},
+            ),
+        ],
+    )
+    def test_a_range_window_reads_every_period_it_covers(self, window, lags):
+        reads = _reads(
+            "x := avg({tA, r0010, c0010} over (order by refPeriod "
+            f"range between {window}));"
+        ).reads
+
+        assert {read.lag for read in reads} == lags
+
+    @pytest.mark.parametrize(
         "operand",
         [
             "{tA, r0010, c0010}[where refPeriod = #2025-12-31#]",
@@ -700,6 +755,8 @@ class TestReadLags:
             "data points between 11 preceding and current data point))",
             "sum({tA, r0010, c0010} over (partition by qEGS "
             "order by refPeriod desc))",
+            "sum({tA, r0010, c0010} over (order by refPeriod "
+            "range between unbounded preceding and current data point))",
             "time_shift({tA, r0010, c0010}[where refPeriod = #2025-12-31#]"
             ", A, 1)",
         ],
@@ -786,6 +843,7 @@ class TestRefDateLag:
             ("W", 1, RefDateLag(-1, "W")),
             ("D", 3, RefDateLag(-3, "D")),
             ("Q", 0, AT_T),
+            ("A", None, RefDateLag(None, "A")),
             ("X", 1, None),
         ],
     )
@@ -810,6 +868,10 @@ class TestRefDateLag:
     def test_target(self, lag, anchor, target):
         assert lag.target(anchor) == target
 
+    def test_a_lag_known_at_run_time_has_no_target(self):
+        with pytest.raises(ValueError, match="only at run time"):
+            RefDateLag(None, "A").target(date(2026, 6, 30))
+
     @pytest.mark.parametrize(
         ("outer", "inner", "combined"),
         [
@@ -824,6 +886,14 @@ class TestRefDateLag:
             (RefDateLag(-1, "W"), RefDateLag(-1), None),
             (None, RefDateLag(-1), None),
             (RefDateLag(-1), None, None),
+            (
+                RefDateLag(None, "A"),
+                RefDateLag(-1, "A"),
+                RefDateLag(None, "A"),
+            ),
+            (RefDateLag(-1, "Q"), RefDateLag(None, "A"), RefDateLag(None)),
+            (AT_T, RefDateLag(None, "Q"), RefDateLag(None, "Q")),
+            (RefDateLag(None, "W"), RefDateLag(-1), None),
         ],
     )
     def test_combine_lags(self, outer, inner, combined):
@@ -1038,6 +1108,9 @@ class TestReachableVersions:
 
     def test_a_read_no_lag_describes_reaches_them_all(self):
         assert self._reached(None) == [1, 2, 3, 4]
+
+    def test_a_lag_known_at_run_time_reaches_them_all(self):
+        assert self._reached(RefDateLag(None, "A")) == [1, 2, 3, 4]
 
 
 class TestMergeVariables:

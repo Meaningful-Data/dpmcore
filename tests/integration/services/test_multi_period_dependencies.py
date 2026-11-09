@@ -8,8 +8,9 @@ the wrong one. Every distinct period is now its own module reference
 in the operation's ``requires``.
 
 A shift number that is not an integer literal used to render as
-``T-nQ``, which names no resolvable instance; the operation is now
-skipped with a reason instead.
+``T-nQ``, which names no resolvable instance; it now needs the module
+at a lag only known at run time. A range over refPeriod needs every
+period it covers.
 
 ``C_47.00`` is a COREP_LR table (the home module here) and ``C_01.00`` /
 ``C_05.01`` are COREP_OF tables, so each expression crosses into a real
@@ -51,6 +52,20 @@ _SHIFTED_AND_PLAIN = (
 _NON_LITERAL_SHIFT = (
     "{tC_47.00, r0310, c0010} > "
     "time_shift({tC_01.00, r0020, c0010}, Q, 2 * 2, refPeriod)[get refPeriod]"
+)
+_PARAMETER_SHIFT = (
+    "{tC_47.00, r0310, c0010} > time_shift({tC_47.00, r0310, c0010}, "
+    "A, {p_FREQ, integer}, refPeriod)[get refPeriod]"
+)
+_RANGE = (
+    "{tC_47.00, r0310, c0010} <= 1.5 * avg({tC_01.00, r0020, c0010} "
+    "over (order by refPeriod range between 2 Q preceding "
+    "and current data point))"
+)
+_UNBOUNDED_RANGE = (
+    "{tC_47.00, r0310, c0010} <= 1.5 * avg({tC_01.00, r0020, c0010} "
+    "over (order by refPeriod range between unbounded preceding "
+    "and current data point))"
 )
 
 
@@ -116,15 +131,45 @@ def test_the_declared_instances_do_not_depend_on_input_order(fixture_session):
     }
 
 
-def test_a_non_literal_shift_skips_only_its_own_operation(fixture_session):
+def test_a_non_literal_shift_needs_the_module_at_a_run_time_lag(
+    fixture_session,
+):
     result, module = _script(
         fixture_session,
-        [(_NON_LITERAL_SHIFT, "OP_BAD"), (_SHIFT_Q1, "OP_GOOD")],
+        [(_NON_LITERAL_SHIFT, "OP_COMPUTED"), (_PARAMETER_SHIFT, "OP_PARAM")],
+    )
+    assert result["failed_operations"] == {}
+    assert _requires(module) == {
+        "OP_COMPUTED": {
+            "is": {
+                "code": _DEPENDENCY,
+                "ref_date_lag": None,
+                "ref_date_lag_unit": "Q",
+            }
+        },
+        "OP_PARAM": {
+            "is": {
+                "code": _MODULE_CODE,
+                "ref_date_lag": None,
+                "ref_date_lag_unit": "A",
+            }
+        },
+    }
+
+
+def test_a_range_needs_every_period_it_covers(fixture_session):
+    _, module = _script(fixture_session, [(_RANGE, "OP_RANGE")])
+    assert _requires(module) == {
+        "OP_RANGE": _both(_ref(0), _both(_ref(-1), _ref(-2)))
+    }
+
+
+def test_an_unbounded_range_has_no_group(fixture_session):
+    result, module = _script(
+        fixture_session, [(_UNBOUNDED_RANGE, "OP_BAD"), (_SHIFT_Q1, "OP_GOOD")]
     )
     assert list(result["failed_operations"]) == ["OP_BAD"]
-    assert "computed amount" in result["failed_operations"]["OP_BAD"]
-    assert "OP_BAD" not in module["operations"]
-    assert "OP_GOOD" in module["operations"]
+    assert "range window" in result["failed_operations"]["OP_BAD"]
     assert _requires(module) == {"OP_GOOD": {"is": _ref(1)}}
 
 

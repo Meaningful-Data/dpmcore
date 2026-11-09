@@ -89,6 +89,28 @@ class TestRequires:
 
         assert requires == {"is": _ref("OWN", -1, "A")}
 
+    def test_a_shift_known_at_run_time_needs_the_module_then(self):
+        resolver = _resolver({"F_01.01": {OWN}, "C_01.00": {COREP_OF}})
+
+        requires = resolver.requires(
+            "v",
+            [frozenset({10, 40})],
+            [
+                _read("F_01.01", RefDateLag(None, "A")),
+                _read("C_01.00", RefDateLag(None, "Q")),
+            ],
+        )
+
+        assert requires == _op(
+            "and",
+            {
+                "code": "COREP_OF",
+                "ref_date_lag": None,
+                "ref_date_lag_unit": "Q",
+            },
+            {"code": "OWN", "ref_date_lag": None, "ref_date_lag_unit": "A"},
+        )
+
     def test_a_table_of_another_module_needs_that_module(self):
         resolver = _resolver({"F_01.01": {OWN}, "C_01.00": {COREP_OF}})
 
@@ -152,7 +174,9 @@ class TestRequires:
         requires = resolver.requires(
             "v",
             [frozenset({10, 40})],
-            [_read("C_01.00")] + [_read("F_01.01", lag) for lag in lags],
+            [_read("C_01.00")]
+            + [_read("F_01.01", lag) for lag in lags]
+            + [_read("F_01.01", RefDateLag(None, "Q"))],
         )
 
         assert requires == _op(
@@ -164,7 +188,19 @@ class TestRequires:
                 _op(
                     "and",
                     _ref("OWN", -1, "Q"),
-                    _op("and", _ref("OWN", 1, "Q"), _ref("OWN", -3, "M")),
+                    _op(
+                        "and",
+                        _ref("OWN", 1, "Q"),
+                        _op(
+                            "and",
+                            _ref("OWN", -3, "M"),
+                            {
+                                "code": "OWN",
+                                "ref_date_lag": None,
+                                "ref_date_lag_unit": "Q",
+                            },
+                        ),
+                    ),
                 ),
             ),
         )
@@ -198,7 +234,9 @@ class TestRequires:
     def test_a_read_no_lag_describes_has_no_group(self):
         resolver = _resolver({"F_01.01": {OWN}})
 
-        with pytest.raises(NoDependencyGroup, match="F_01.01 at a reference"):
+        with pytest.raises(
+            NoDependencyGroup, match="F_01.01 at reference dates"
+        ):
             resolver.requires("v", [frozenset({10})], [_read("F_01.01", None)])
 
     def test_branches_reading_different_instances_have_no_group(self):
