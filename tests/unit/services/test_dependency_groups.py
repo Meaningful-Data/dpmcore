@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -11,10 +12,13 @@ from dpmcore.services.ast_generator import ASTGeneratorService
 from dpmcore.services.script_document import dependency_groups
 from dpmcore.services.script_document.dependency_groups import (
     DependencyResolver,
+    ModuleRef,
     NoDependencyGroup,
+    Requires,
     build_dependency_groups,
 )
 from dpmcore.services.script_document.modules import AT_T, Read, RefDateLag
+from tests.validate_script import Report, check_canonical
 
 # Module versions of the scopes: ``ModuleVID -> (ModuleID, code)``. The
 # script is for OWN, ModuleID 1.
@@ -49,8 +53,21 @@ def _ref(code, lag=0, unit=None):
     return ref
 
 
-def _op(operator, left, right):
-    return {operator: {"left": left, "right": right, "decided_by": "scope"}}
+def _op(operator, left, right, decided_by="scope"):
+    return {operator: {"left": left, "right": right, "decided_by": decided_by}}
+
+
+def _module(code, lag=0, unit="M"):
+    return ModuleRef(code, RefDateLag(lag, unit) if lag else AT_T)
+
+
+def _written(requirement):
+    """The chain of ``requirement``, checked by the validator."""
+    requires = requirement.to_json()
+    report = Report()
+    check_canonical(requires, report, "G1")
+    assert dict(report.violations) == {}
+    return requires
 
 
 class TestRequires:
@@ -366,6 +383,169 @@ class TestScriptResolver:
         }
 
 
+class TestCanonicalForm:
+    """``requires`` built with :meth:`Requires.combine`."""
+
+    def test_a_chain_is_written_the_same_whatever_the_input_order(self):
+        modules = [
+            _module("FINREP9", -12),
+            _module("FINREP9", -3),
+            _module("COREP_OF"),
+            _module("FINREP9", -6),
+        ]
+
+        written = {
+            json.dumps(_written(Requires.combine("and", order)))
+            for order in (modules, modules[::-1], sorted(modules, key=str))
+        }
+
+        assert written == {
+            json.dumps(
+                _op(
+                    "and",
+                    _ref("COREP_OF"),
+                    _op(
+                        "and",
+                        _ref("FINREP9", -3, "M"),
+                        _op(
+                            "and",
+                            _ref("FINREP9", -6, "M"),
+                            _ref("FINREP9", -12, "M"),
+                        ),
+                    ),
+                )
+            )
+        }
+
+    def test_periods_a_condition_picks_from_are_alternatives(self):
+        requirement = Requires.combine(
+            "or",
+            [_module("FINREP9", -lag) for lag in (12, 9, 6, 3)],
+            "condition",
+        )
+
+        assert _written(requirement) == _op(
+            "or",
+            _ref("FINREP9", -3, "M"),
+            _op(
+                "or",
+                _ref("FINREP9", -6, "M"),
+                _op(
+                    "or",
+                    _ref("FINREP9", -9, "M"),
+                    _ref("FINREP9", -12, "M"),
+                    "condition",
+                ),
+                "condition",
+            ),
+            "condition",
+        )
+
+    def test_a_range_needs_every_period(self):
+        requirement = Requires.combine(
+            "and", [_module("FINREP9", -lag, "Q") for lag in (4, 3, 2, 1)]
+        )
+
+        assert _written(requirement) == _op(
+            "and",
+            _ref("FINREP9", -1, "Q"),
+            _op(
+                "and",
+                _ref("FINREP9", -2, "Q"),
+                _op(
+                    "and",
+                    _ref("FINREP9", -3, "Q"),
+                    _ref("FINREP9", -4, "Q"),
+                ),
+            ),
+        )
+
+    def test_an_alternative_decided_otherwise_is_a_chain_of_its_own(self):
+        scopes = Requires.combine(
+            "or", [_module("IF_CLASS2"), _module("COREP_OF")]
+        )
+
+        requirement = Requires.combine(
+            "or",
+            [scopes] + [_module("FINREP9", -lag) for lag in (12, 3, 9)],
+            "condition",
+        )
+
+        assert _written(requirement) == _op(
+            "or",
+            _ref("FINREP9", -3, "M"),
+            _op(
+                "or",
+                _ref("FINREP9", -9, "M"),
+                _op(
+                    "or",
+                    _ref("FINREP9", -12, "M"),
+                    _op("or", _ref("COREP_OF"), _ref("IF_CLASS2")),
+                    "condition",
+                ),
+                "condition",
+            ),
+            "condition",
+        )
+
+    def test_operands_are_merged_kept_once_or_dropped(self):
+        a, b, c = _module("A"), _module("B"), _module("C")
+        combine = Requires.combine
+
+        # The same operator is merged into one chain.
+        assert combine("or", [a, combine("or", [b, c])]) == combine(
+            "or", [a, b, c]
+        )
+        # A repeated operand is kept once.
+        assert combine("and", [a, b, a, combine("and", [a, b])]) == combine(
+            "and", [a, b]
+        )
+        # An operand holding another adds nothing.
+        assert combine("or", [combine("and", [a, b]), a]) == combine("or", [a])
+        assert combine("and", [combine("or", [a, b]), a]) == combine("or", [a])
+        # One module reference is the same, whichever the operator.
+        assert combine("or", [a], "condition") == combine("and", [a])
+
+    def test_nested_operators_follow_by_their_first_reference(self):
+        a, b, c, d, e = (_module(code) for code in "ABCDE")
+
+        requirement = Requires.combine(
+            "or",
+            [
+                Requires.combine("and", [e, d]),
+                Requires.combine("and", [c, b]),
+                Requires.combine("and", [b, e]),
+                a,
+            ],
+        )
+
+        assert _written(requirement) == _op(
+            "or",
+            _ref("A"),
+            _op(
+                "or",
+                _op("and", _ref("B"), _ref("C")),
+                _op(
+                    "or",
+                    _op("and", _ref("B"), _ref("E")),
+                    _op("and", _ref("D"), _ref("E")),
+                ),
+            ),
+        )
+
+    def test_operands_needing_nothing(self):
+        a = _module("A")
+        nothing = Requires.combine("and", [])
+
+        assert nothing.to_json() == {}
+        assert Requires.combine("and", [nothing, a]).to_json() == {
+            "is": _ref("A")
+        }
+        assert Requires.combine("or", [a, nothing], "condition") == nothing
+        with pytest.raises(ValueError, match="at least one operand"):
+            Requires.combine("or", [])
+
+
 class TestBuildDependencyGroups:
     def test_validations_with_the_same_requires_share_a_group(self):
         corep_of = {"is": _ref("COREP_OF")}
@@ -380,6 +560,19 @@ class TestBuildDependencyGroups:
             "G2": {"requires": corep_of, "validations": ["v1", "v3"]},
             "G3": {"requires": shifted, "validations": ["v4"]},
         }
+
+    def test_requires_built_in_any_order_share_a_group(self):
+        a, b = _module("A"), _module("B", -1, "Q")
+
+        groups = build_dependency_groups(
+            {
+                "v1": Requires.combine("or", [a, b]).to_json(),
+                "v2": Requires.combine("or", [b, a]).to_json(),
+            }
+        )
+
+        assert list(groups) == ["G1"]
+        assert groups["G1"]["validations"] == ["v1", "v2"]
 
     def test_no_validations_no_groups(self):
         assert build_dependency_groups({}) == {}
