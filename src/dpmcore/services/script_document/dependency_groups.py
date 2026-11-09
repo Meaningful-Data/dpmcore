@@ -54,10 +54,15 @@ class ModuleRef:
     lag: RefDateLag
 
     def sort_key(self) -> Tuple[Any, ...]:
-        """Order by code; then lag ``0``, unit, size, earlier first."""
+        """Order by code; then lag ``0``, unit, size, earlier first.
+
+        A lag only known at run time comes last.
+        """
         value, unit = self.lag.value, self.lag.unit
         if value == 0:
             return (self.code, 0)
+        if value is None:
+            return (self.code, 2, _UNIT_ORDER.index(unit))
         return (self.code, 1, _UNIT_ORDER.index(unit), abs(value), value)
 
     def to_json(self) -> Dict[str, Any]:
@@ -66,7 +71,7 @@ class ModuleRef:
             "code": self.code,
             "ref_date_lag": self.lag.value,
         }
-        if self.lag.value:
+        if self.lag.value != 0:
             ref["ref_date_lag_unit"] = self.lag.unit
         return ref
 
@@ -124,17 +129,17 @@ class DependencyResolver:
             reads: What it reads.
 
         Raises:
-            NoDependencyGroup: When it reads a date no fixed lag gives,
+            NoDependencyGroup: When it reads dates no lag gives,
                 its ``if-then-else`` branches read different instances,
                 or no scope with the own module holds what it reads.
         """
         unfixed = sorted({read.table for read in reads if read.lag is None})
         if unfixed:
             raise NoDependencyGroup(
-                f"It reads {', '.join(unfixed)} at a reference date no "
-                "fixed lag gives (a range of periods, a where or sub on "
-                "refPeriod, or a time_shift by a computed amount), which "
-                "its dependency group cannot state yet."
+                f"It reads {', '.join(unfixed)} at reference dates no lag "
+                "gives (a where or sub on refPeriod, or an analytic over "
+                "refPeriod without a range window bounded on both sides), "
+                "which its dependency group cannot state."
             )
 
         holders = self._holders({read.table for read in reads})

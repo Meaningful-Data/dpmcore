@@ -49,9 +49,12 @@ class DependencyTableExtractor(ASTTemplate):
 
     Every ``VarID`` read becomes a :class:`~.modules.Read`. A
     ``time_shift`` without component, or on ``refPeriod``, moves its
-    operand's lag by the period shifted. A ``where`` or ``sub`` on
-    ``refPeriod``, and an analytic ordered by it, read periods no lag
-    describes, so their operands get the lag ``None``. Each read also
+    operand's lag by the period shifted, or by a lag only known at run
+    time when the shift is not a literal. An analytic ordered by
+    ``refPeriod`` over a ``range`` window bounded on both sides reads its
+    operand once per period of the window. A ``where`` or ``sub`` on
+    ``refPeriod``, and any other analytic ordered by it, read periods no
+    lag describes, so their operands get the lag ``None``. Each read also
     records the ``if-then-else`` branches it sits in.
     """
 
@@ -135,12 +138,53 @@ class DependencyTableExtractor(ASTTemplate):
             self.visit(sub.value)
 
     def visit_AggregationOp(self, node: Any) -> None:
-        """An analytic ordered by ``refPeriod`` reads other periods."""
+        """An analytic ordered by ``refPeriod`` reads other periods.
+
+        A ``range`` window bounded on both sides, such as ``between 4 Q
+        preceding and 1 Q preceding``, reads every period it covers, each
+        at its own lag. Any other window reads periods no lag describes.
+        """
         clause = node.analytic_clause
-        shifted = clause is not None and any(
+        if clause is None or not any(
             item.key_name == tokens.REF_PERIOD for item in clause.order_by
-        )
-        self._visit_at(node.operand, None if shifted else self._lag)
+        ):
+            self.visit(node.operand)
+            return
+
+        lags: List[Optional[RefDateLag]] = [None]
+        window = clause.window
+        if window is not None and window.frame_type == "range":
+            start, end = (
+                AT_T
+                if bound.bound_type == "current_data_point"
+                else RefDateLag.of_time_shift(
+                    bound.period,
+                    bound.n if bound.bound_type == "n_preceding" else -bound.n,
+                )
+                if bound.bound_type in ("n_preceding", "n_following")
+                and bound.period
+                and bound.n is not None
+                else None
+                for bound in (window.start, window.end)
+            )
+            if start is not None and end is not None:
+                # Both bounds in one unit: the other's when one is the
+                # current period, months or days when they differ.
+                if start.value and end.value and start.unit != end.unit:
+                    start, end = start.in_base_unit(), end.in_base_unit()
+                unit = start.unit if start.value else end.unit
+                if (
+                    start.value is not None
+                    and end.value is not None
+                    and start.value <= end.value
+                    and (end.value == 0 or end.unit == unit)
+                ):
+                    lags = [
+                        RefDateLag(value, unit) if value else AT_T
+                        for value in range(start.value, end.value + 1)
+                    ]
+        for lag in lags:
+            self._visit_at(node.operand, combine_lags(self._lag, lag))
 
     def _variable_ids(self, table: str, node: VarID) -> List[int]:
         """Return the datapoint ids *node* selects, resolved once per key.
@@ -209,11 +253,15 @@ class DependencyTableExtractor(ASTTemplate):
 
 
 def _time_shift_lag(node: Any) -> Optional[RefDateLag]:
-    """Return the lag a ``time_shift`` adds, ``None`` if not a literal."""
+    """Return the lag a ``time_shift`` adds.
+
+    A shift that is not an integer literal, such as a Parameter, gives a
+    lag only known at run time.
+    """
     try:
-        shift = int(shift_number_text(node.shift_number))
+        shift: Optional[int] = int(shift_number_text(node.shift_number))
     except Invalid:
-        return None
+        shift = None
     return RefDateLag.of_time_shift(node.period_indicator, shift)
 
 

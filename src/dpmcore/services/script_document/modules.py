@@ -88,16 +88,18 @@ class RefDateLag:
     two units add up in months, or in days for ``W`` and ``D``.
 
     Attributes:
-        value: The offset in ``unit``; negative is earlier.
+        value: The offset in ``unit``; negative is earlier. ``None`` when
+            only known at run time, as a shift by a Parameter: any whole
+            number of ``unit``.
         unit: ``A``, ``S``, ``Q``, ``M``, ``W`` or ``D``.
     """
 
-    value: int
+    value: Optional[int]
     unit: str = "M"
 
     @classmethod
     def of_time_shift(
-        cls, period: str, shift_number: int
+        cls, period: str, shift_number: Optional[int]
     ) -> Optional["RefDateLag"]:
         """Return the lag of ``time_shift(x, period, shift_number)``.
 
@@ -107,33 +109,45 @@ class RefDateLag:
         Args:
             period: The period indicator (``A``, ``S``, ``Q``, ``M``,
                 ``W`` or ``D``).
-            shift_number: The number of periods shifted.
+            shift_number: The number of periods shifted; ``None`` when it
+                is not an integer literal.
 
         Returns:
             The lag, or ``None`` for an unknown period indicator.
         """
         if period not in _MONTHS_PER_PERIOD and period not in _DAYS_PER_PERIOD:
             return None
+        if shift_number is None:
+            return cls(None, period)
         return cls(-shift_number, period) if shift_number else AT_T
 
     def in_base_unit(self) -> "RefDateLag":
         """Return the same lag in months, or in days for ``W`` and ``D``."""
         if self.unit in _MONTHS_PER_PERIOD:
-            return RefDateLag(self.value * _MONTHS_PER_PERIOD[self.unit])
-        return RefDateLag(self.value * _DAYS_PER_PERIOD[self.unit], "D")
+            factor, unit = _MONTHS_PER_PERIOD[self.unit], "M"
+        else:
+            factor, unit = _DAYS_PER_PERIOD[self.unit], "D"
+        return RefDateLag(
+            None if self.value is None else self.value * factor, unit
+        )
 
     def target(self, anchor: date) -> date:
         """Return the date a read at this lag lands on from ``anchor``.
 
         A lag in months lands on the last day of the month reached, as
         Script Format 2.0 computes a reference's target date.
+
+        Raises:
+            ValueError: For a lag only known at run time.
         """
-        base = self.in_base_unit()
-        if base.value == 0:
+        if self.value is None:
+            raise ValueError("A lag known only at run time has no date.")
+        if self.value == 0:
             return anchor
-        if base.unit == "D":
-            return anchor + timedelta(days=base.value)
-        months = anchor.month - 1 + base.value
+        if self.unit in _DAYS_PER_PERIOD:
+            days = self.value * _DAYS_PER_PERIOD[self.unit]
+            return anchor + timedelta(days=days)
+        months = anchor.month - 1 + self.value * _MONTHS_PER_PERIOD[self.unit]
         year, month = anchor.year + months // 12, months % 12 + 1
         return date(year, month, calendar.monthrange(year, month)[1])
 
@@ -149,7 +163,8 @@ def combine_lags(
 
     ``None`` stands for a read that can land on any date. Shifts in two
     units add up in months, or in days; months and days do not add up
-    into one lag, so mixing them gives ``None`` too.
+    into one lag, so mixing them gives ``None`` too. A lag only known at
+    run time keeps the sum unknown, in the unit both add up in.
     """
     if outer is None or inner is None:
         return None
@@ -161,6 +176,8 @@ def combine_lags(
         outer, inner = outer.in_base_unit(), inner.in_base_unit()
         if outer.unit != inner.unit:
             return None
+    if outer.value is None or inner.value is None:
+        return RefDateLag(None, outer.unit)
     value = outer.value + inner.value
     return RefDateLag(value, outer.unit) if value else AT_T
 
@@ -175,7 +192,8 @@ class Read:
         variable_ids: The ``VariableID``s the selection covers.
         lag: Where the read lands; ``None`` when no lag describes it (a
             ``where`` or ``sub`` on ``refPeriod``, or an analytic
-            ordered by it) and it can land on any date.
+            ordered by it without a bounded ``range`` window) and it can
+            land on any date.
         branch: The ``if-then-else`` branches the read sits in,
             outermost first, as ``(conditional, side)`` pairs where
             ``side`` is ``"then"`` or ``"else"``.
@@ -351,12 +369,13 @@ def target_window(window: Window, lag: Optional[RefDateLag]) -> Window:
 
     Args:
         window: The anchor dates, the export's own version window.
-        lag: The read's lag; ``None`` lands anywhere.
+        lag: The read's lag; ``None``, or one only known at run time,
+            lands anywhere.
 
     Returns:
         The window of target dates.
     """
-    if lag is None:
+    if lag is None or lag.value is None:
         return (None, None)
     start, end = window
     return (
