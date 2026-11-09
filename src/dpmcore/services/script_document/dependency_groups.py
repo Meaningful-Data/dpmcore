@@ -17,11 +17,14 @@ from typing import (
     Dict,
     FrozenSet,
     Hashable,
+    Iterable,
     List,
+    Literal,
     Mapping,
     Sequence,
     Set,
     Tuple,
+    Union,
 )
 
 from sqlalchemy.orm import Session
@@ -187,7 +190,10 @@ class DependencyResolver:
                 for refs in alternatives
                 for module_code in codes
             ]
-        return _write(alternatives)
+        return Requires.combine(
+            "or",
+            (Requires.combine("and", refs) for refs in alternatives),
+        ).to_json()
 
     def _alternatives(
         self,
@@ -315,49 +321,135 @@ class DependencyResolver:
         return self._version_modules
 
 
-def _write(alternatives: List[Set[ModuleRef]]) -> Dict[str, Any]:
-    """Write ``alternatives`` as ``requires``, in canonical form.
+@dataclass(frozen=True)
+class Requires:
+    """What a validation needs besides the instance being validated.
 
-    One alternative is ``{}``, an ``is`` or an ``and``; several are an
-    ``or`` whose single module references come first and whose ``and``
-    operands follow, by their first reference. An alternative holding
-    another adds nothing and is dropped, as is a repeated one.
+    Nothing else when it has no operands, one module reference when it
+    has one, and otherwise an ``and`` or an ``or`` over module references
+    and other :class:`Requires`. Built by :meth:`combine`, which keeps it
+    in the canonical form of ``requires``.
+
+    Attributes:
+        operator: ``"and"`` or ``"or"``; ``"and"`` with fewer than two
+            operands.
+        decided_by: ``"scope"`` or ``"condition"``; ``"scope"`` with fewer
+            than two operands.
+        operands: The module references and :class:`Requires` joined.
     """
-    unique = {frozenset(refs) for refs in alternatives}
-    conjunctions = [
-        sorted(refs, key=ModuleRef.sort_key)
-        for refs in unique
-        if not any(other < refs for other in unique)
-    ]
-    if len(conjunctions) == 1:
-        (refs,) = conjunctions
-        if not refs:
-            return {}
-        if len(refs) == 1:
-            return {"is": refs[0].to_json()}
-        return _chain("and", [ref.to_json() for ref in refs])
-    conjunctions.sort(
-        key=lambda refs: (len(refs) > 1, [ref.sort_key() for ref in refs])
-    )
-    return _chain(
-        "or",
-        [
-            refs[0].to_json()
-            if len(refs) == 1
-            else _chain("and", [ref.to_json() for ref in refs])
-            for refs in conjunctions
-        ],
-    )
 
+    operator: Literal["and", "or"]
+    decided_by: Literal["scope", "condition"]
+    operands: FrozenSet[Union[ModuleRef, Requires]]
 
-def _chain(operator: str, operands: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Nest ``operands`` to the right under ``operator``, from the scopes."""
-    right = operands[-1]
-    for left in reversed(operands[:-1]):
-        right = {
-            operator: {"left": left, "right": right, "decided_by": "scope"}
+    @classmethod
+    def combine(
+        cls,
+        operator: Literal["and", "or"],
+        operands: Iterable[Union[ModuleRef, Requires]],
+        decided_by: Literal["scope", "condition"] = "scope",
+    ) -> Requires:
+        """Join ``operands`` with ``operator``, in canonical form.
+
+        An operand that needs nothing is left out of an ``and`` and makes
+        an ``or`` need nothing. An operand that is the same operator,
+        decided the same way, is merged into it, so that a chain is one
+        :class:`Requires`. A repeated operand is kept once. An operand of
+        an ``or`` that needs all another needs, or of an ``and`` that
+        allows all another allows, adds nothing and is dropped.
+
+        Raises:
+            ValueError: When an ``or`` has no operand.
+        """
+        flat: Set[Union[ModuleRef, Requires]] = set()
+        for operand in operands:
+            if isinstance(operand, Requires) and len(operand.operands) == 1:
+                (operand,) = operand.operands
+            if isinstance(operand, ModuleRef):
+                flat.add(operand)
+            elif not operand.operands:
+                if operator == "or":
+                    return cls("and", "scope", frozenset())
+            elif (operand.operator, operand.decided_by) == (
+                operator,
+                decided_by,
+            ):
+                flat.update(operand.operands)
+            else:
+                flat.add(operand)
+        if not flat and operator == "or":
+            raise ValueError("An or needs at least one operand.")
+
+        # What each operand needs (``or``) or allows (``and``), as a set.
+        dual = "and" if operator == "or" else "or"
+        terms = {
+            operand: operand.operands
+            if isinstance(operand, Requires) and operand.operator == dual
+            else frozenset({operand})
+            for operand in flat
         }
-    return right
+        kept = [
+            operand
+            for operand in flat
+            if not any(terms[other] < terms[operand] for other in flat)
+        ]
+        if len(kept) == 1 and isinstance(kept[0], Requires):
+            return kept[0]
+        if len(kept) < 2:
+            # Nothing else, or one module reference: no operator joins them.
+            return cls("and", "scope", frozenset(kept))
+        return cls(operator, decided_by, frozenset(kept))
+
+    def _ordered(self) -> List[Union[ModuleRef, Requires]]:
+        """Return the operands in the order they are written.
+
+        Module references first, by :meth:`ModuleRef.sort_key`, then
+        operators, by their references as written.
+        """
+        return sorted(
+            self.operands,
+            key=lambda operand: (
+                isinstance(operand, Requires),
+                operand.sort_key(),
+            ),
+        )
+
+    def sort_key(self) -> Tuple[Any, ...]:
+        """Order by the references as written, then by the whole chain.
+
+        The chain itself breaks ties between operators over the same
+        references, so the order never depends on the input's.
+        """
+        keys: List[Tuple[Any, ...]] = []
+        for operand in self._ordered():
+            if isinstance(operand, Requires):
+                references, _ = operand.sort_key()
+                keys.extend(references)
+            else:
+                keys.append(operand.sort_key())
+        return (keys, json.dumps(self.to_json()))
+
+    def to_json(self) -> Dict[str, Any]:
+        """Return it as ``requires`` writes it.
+
+        ``{}`` when it needs nothing else, an ``is`` for one module
+        reference, and otherwise a chain nested to the right.
+        """
+        operands = self._ordered()
+        if not operands:
+            return {}
+        if len(operands) == 1:
+            return {"is": operands[0].to_json()}
+        right = operands[-1].to_json()
+        for left in reversed(operands[:-1]):
+            right = {
+                self.operator: {
+                    "left": left.to_json(),
+                    "right": right,
+                    "decided_by": self.decided_by,
+                }
+            }
+        return right
 
 
 def build_dependency_groups(
