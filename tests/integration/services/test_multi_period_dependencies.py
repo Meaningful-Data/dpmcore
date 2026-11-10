@@ -10,7 +10,7 @@ in the operation's ``requires``.
 A shift number that is not an integer literal used to render as
 ``T-nQ``, which names no resolvable instance; it now needs the module
 at a lag only known at run time. A range over refPeriod needs every
-period it covers.
+period it covers, and an if-then-else needs one of its branches.
 
 ``C_47.00`` is a COREP_LR table (the home module here) and ``C_01.00`` /
 ``C_05.01`` are COREP_OF tables, so each expression crosses into a real
@@ -61,6 +61,39 @@ _RANGE = (
     "{tC_47.00, r0310, c0010} <= 1.5 * avg({tC_01.00, r0020, c0010} "
     "over (order by refPeriod range between 2 Q preceding "
     "and current data point))"
+)
+_CONDITIONAL = (
+    "{tC_47.00, r0310, c0010} > if {tC_47.00, r0370, c0010} > 0 "
+    "then time_shift({tC_01.00, r0020, c0010}, Q, 1, refPeriod)"
+    "[get refPeriod] "
+    "else time_shift({tC_01.00, r0020, c0010}, Q, 2, refPeriod)"
+    "[get refPeriod] endif"
+)
+_ONE_ARM_READING = (
+    "{tC_47.00, r0310, c0010} > if {tC_47.00, r0370, c0010} > 0 "
+    "then {tC_01.00, r0020, c0010} else 0 endif"
+)
+# The end of the previous financial year, one of four periods back.
+_YEAR_END = (
+    "with {tF_25.01.a, (c0030, c0040), default: 0, interval: true}: "
+    "{r0010} = "
+    "if (month({r0010}[get refPeriod]) - "
+    "{p_FINANCIAL_YEAR_END_MONTH, integer}) in {0} "
+    "then time_shift({r0120}, M, 12, refPeriod) "
+    "else if (month({r0010}[get refPeriod]) - "
+    "{p_FINANCIAL_YEAR_END_MONTH, integer}) in {(-9), 3} "
+    "then time_shift({r0120}, M, 3, refPeriod) "
+    "else if (month({r0010}[get refPeriod]) - "
+    "{p_FINANCIAL_YEAR_END_MONTH, integer}) in {(-6), 6} "
+    "then time_shift({r0120}, M, 6, refPeriod) "
+    "else if (month({r0010}[get refPeriod]) - "
+    "{p_FINANCIAL_YEAR_END_MONTH, integer}) in {(-3), 9} "
+    "then time_shift({r0120}, M, 9, refPeriod) "
+    "endif endif endif endif"
+)
+# The third branch reads C_18.00, of COREP_OF and of IF_CLASS2.
+_YEAR_END_OR_OWN_FUNDS = _YEAR_END.replace(
+    "time_shift({r0120}, M, 6, refPeriod)", "{tC_18.00, r0012, c0010, s0001}"
 )
 _UNBOUNDED_RANGE = (
     "{tC_47.00, r0310, c0010} <= 1.5 * avg({tC_01.00, r0020, c0010} "
@@ -188,3 +221,58 @@ def test_the_declared_period_inverts_the_shift_sign(
     )
     _, module = _script(fixture_session, [(expression, "OP")])
     assert _requires(module) == {"OP": {"is": _ref(expected)}}
+
+
+def _either(left, right):
+    return {"or": {"left": left, "right": right, "decided_by": "condition"}}
+
+
+def test_an_if_then_else_needs_one_of_its_branches(fixture_session):
+    _, module = _script(
+        fixture_session,
+        [(_CONDITIONAL, "OP_COND"), (_ONE_ARM_READING, "OP_ONE_ARM")],
+    )
+    assert _requires(module) == {
+        "OP_COND": _either(_ref(-1), _ref(-2)),
+        # The else branch reads nothing else: no alternative to the then.
+        "OP_ONE_ARM": {"is": _ref(0)},
+    }
+
+
+def _year_end(months):
+    return {
+        "code": "FINREP9",
+        "ref_date_lag": -months,
+        "ref_date_lag_unit": "M",
+    }
+
+
+def test_a_chain_of_conditions_needs_any_of_its_periods(fixture_session):
+    result = ASTGeneratorService(fixture_session).script(
+        expressions=[
+            (_YEAR_END, "EGDQ_0663"),
+            (_YEAR_END_OR_OWN_FUNDS, "EGDQ_0663_OF"),
+        ],
+        module_code="FINREP9",
+        module_version="3.3.0",
+    )
+    assert result["success"], result["error"]
+
+    either_module = {
+        "or": {
+            "left": {"code": "COREP_OF", "ref_date_lag": 0},
+            "right": {"code": "IF_CLASS2", "ref_date_lag": 0},
+            "decided_by": "scope",
+        }
+    }
+    assert _requires(result["enriched_ast"]) == {
+        "EGDQ_0663": _either(
+            _year_end(3),
+            _either(_year_end(6), _either(_year_end(9), _year_end(12))),
+        ),
+        # The modules either scope admits, inside the branch reading them.
+        "EGDQ_0663_OF": _either(
+            _year_end(3),
+            _either(_year_end(9), _either(_year_end(12), either_module)),
+        ),
+    }

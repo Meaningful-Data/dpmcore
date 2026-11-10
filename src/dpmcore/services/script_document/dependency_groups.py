@@ -16,7 +16,6 @@ from typing import (
     Any,
     Dict,
     FrozenSet,
-    Hashable,
     Iterable,
     List,
     Literal,
@@ -83,7 +82,8 @@ class DependencyResolver:
     validated, or from the own module at another date when shifted. A
     table it does not hold is read from the modules holding it, and each
     scope that combines the own module with some of them is one
-    alternative. A filing indicator a precondition needs to be true,
+    alternative. Each ``if-then-else`` needs one of its branches. A
+    filing indicator a precondition needs to be true,
     when only other modules declare it, needs one of them as well. Tables
     and filing indicators are resolved to modules as ``modules`` resolves
     them, so every module ``requires`` names is listed there.
@@ -129,9 +129,8 @@ class DependencyResolver:
             reads: What it reads.
 
         Raises:
-            NoDependencyGroup: When it reads dates no lag gives,
-                its ``if-then-else`` branches read different instances,
-                or no scope with the own module holds what it reads.
+            NoDependencyGroup: When it reads dates no lag gives, or no
+                scope with the own module holds what it reads.
         """
         unfixed = sorted({read.table for read in reads if read.lag is None})
         if unfixed:
@@ -143,79 +142,111 @@ class DependencyResolver:
             )
 
         holders = self._holders({read.table for read in reads})
-        own_refs: Set[ModuleRef] = set()
-        # The tables only other modules hold, with the lags they are read at.
-        external: Dict[str, Set[RefDateLag]] = {}
-        # The instances each branch reads: the own module at a lag, or
-        # the modules holding a table at a lag.
-        branch_reads: Dict[Tuple[int, str], Set[Hashable]] = {}
-        for read in reads:
-            modules = holders[read.table]
-            lag = read.lag
-            # No version at the script's release, or read from the
-            # instance being validated: nothing else is needed.
-            if lag is None or not modules:
-                continue
-            need: Hashable
-            if any(
-                module_id == self.own_module_id for module_id, _ in modules
-            ):
-                if lag.value == 0:
+        own_tables = {
+            read.table
+            for read in reads
+            if any(mid == self.own_module_id for mid, _ in holders[read.table])
+        }
+        external = {
+            read.table
+            for read in reads
+            if holders[read.table] and read.table not in own_tables
+        }
+        # One alternative per scope with the own module: what every read
+        # needs, with the branches it sits in, joined by _branches.
+        alternatives = []
+        for holding in (
+            self._alternatives(scopes, external, holders) if external else [{}]
+        ):
+            needs: List[Tuple[Tuple[Tuple[int, str], ...], Requires]] = []
+            for read in reads:
+                lag = read.lag
+                # No version at the script's release, or read from the
+                # instance being validated: nothing else is needed.
+                if lag is None or not holders[read.table]:
                     continue
-                need = ModuleRef(self.own_code, lag)
-                own_refs.add(need)
-            else:
-                external.setdefault(read.table, set()).add(lag)
-                need = (frozenset(code for _, code in modules), lag)
-            for branch in read.branch:
-                branch_reads.setdefault(branch, set()).add(need)
+                if read.table in own_tables:
+                    if lag.value == 0:
+                        continue
+                    need = Requires.combine(
+                        "and", [ModuleRef(self.own_code, lag)]
+                    )
+                else:
+                    need = Requires.combine(
+                        "and",
+                        [ModuleRef(code, lag) for code in holding[read.table]],
+                    )
+                needs.append((read.branch, need))
+            alternatives.append(self._branches(needs, 0))
 
-        for (conditional, side), then_reads in branch_reads.items():
-            else_reads = branch_reads.get((conditional, "else"))
-            if side == "then" and else_reads and then_reads != else_reads:
-                raise NoDependencyGroup(
-                    "Its if-then-else branches read different instances, "
-                    "so it needs one or the other, which its dependency "
-                    "group cannot state yet."
-                )
-
-        alternatives = (
-            [
-                refs | own_refs
-                for refs in self._alternatives(scopes, external, holders)
-            ]
-            if external
-            else [own_refs]
-        )
         for codes in self._filing_indicator_modules(
             self.filing_indicators.get(code, [])
         ):
             alternatives = [
-                refs | {ModuleRef(module_code, AT_T)}
-                for refs in alternatives
+                Requires.combine(
+                    "and", [alternative, ModuleRef(module_code, AT_T)]
+                )
+                for alternative in alternatives
                 for module_code in codes
             ]
-        return Requires.combine(
-            "or",
-            (Requires.combine("and", refs) for refs in alternatives),
-        ).to_json()
+        return Requires.of_scopes(alternatives).to_json()
+
+    def _branches(
+        self,
+        needs: Sequence[Tuple[Tuple[Tuple[int, str], ...], Requires]],
+        depth: int,
+    ) -> Requires:
+        """Join what the reads of one branch need, ``depth`` deep.
+
+        A read outside any deeper ``if-then-else`` is always needed. Each
+        conditional needs one of its branches, an ``or`` decided by the
+        condition. A branch that needs nothing else is no alternative:
+        the validation reads the instance validated there, and the
+        others name what it needs when the condition picks them.
+
+        Args:
+            needs: What each read needs, with the branches it sits in,
+                outermost first.
+            depth: How many branches deep ``needs`` all sit.
+        """
+        joined = [need for branch, need in needs if len(branch) == depth]
+        sides: Dict[int, Dict[str, List[Any]]] = {}
+        for branch, need in needs:
+            if len(branch) > depth:
+                conditional, side = branch[depth]
+                sides.setdefault(conditional, {}).setdefault(side, []).append(
+                    (branch, need)
+                )
+        for by_side in sides.values():
+            options = [
+                option
+                for option in (
+                    self._branches(side_needs, depth + 1)
+                    for side_needs in by_side.values()
+                )
+                if option.operands
+            ]
+            if options:
+                joined.append(Requires.combine("or", options, "condition"))
+        return Requires.combine("and", joined)
 
     def _alternatives(
         self,
         scopes: Sequence[FrozenSet[int]],
-        external: Mapping[str, Set[RefDateLag]],
+        external: Set[str],
         holders: Mapping[str, Set[Tuple[int, str]]],
-    ) -> List[Set[ModuleRef]]:
-        """Return the instances each scope with the own module reads.
+    ) -> List[Dict[str, Set[str]]]:
+        """Return the modules each scope with the own module reads from.
 
-        A scope missing a module for some table in ``external`` is no
+        For each such scope, the codes of its modules holding each table
+        in ``external``. A scope missing a module for one of them is no
         alternative.
 
         Raises:
             NoDependencyGroup: When no scope is an alternative.
         """
         versions = self._modules(set().union(*scopes))
-        alternatives: List[Set[ModuleRef]] = []
+        alternatives: List[Dict[str, Set[str]]] = []
         with_own = False
         for scope in scopes:
             modules = {versions.get(vid, (0, "")) for vid in scope}
@@ -225,17 +256,12 @@ class DependencyResolver:
             codes = {
                 code for mid, code in modules if mid != self.own_module_id
             }
-            refs: Set[ModuleRef] = set()
-            for table, lags in external.items():
-                holding = codes & {code for _, code in holders[table]}
-                if not holding:
-                    break
-                refs.update(
-                    ModuleRef(code, lag) for code in holding for lag in lags
-                )
-            else:
-                if refs not in alternatives:
-                    alternatives.append(refs)
+            holding = {
+                table: codes & {code for _, code in holders[table]}
+                for table in external
+            }
+            if all(holding.values()) and holding not in alternatives:
+                alternatives.append(holding)
         if alternatives:
             return alternatives
 
@@ -404,6 +430,40 @@ class Requires:
             # Nothing else, or one module reference: no operator joins them.
             return cls("and", "scope", frozenset(kept))
         return cls(operator, decided_by, frozenset(kept))
+
+    @classmethod
+    def of_scopes(cls, options: Sequence[Requires]) -> Requires:
+        """Return what needs one of ``options``, each that of a scope.
+
+        An ``or`` decided by the scopes, written where the options differ.
+        When they are all the same operator, the operands they share stay
+        outside it: ``A or B`` and ``A or C`` give ``A or (B or C)``, and
+        ``A and B`` and ``A and C`` give ``A and (B or C)``. What differs
+        is kept whole for each scope, so that a scope still needs all it
+        reads.
+        """
+        first = options[0]
+        if all(option == first for option in options):
+            return first
+        kind = (first.operator, first.decided_by)
+        common = frozenset.intersection(*(o.operands for o in options))
+        if not common or any(
+            (option.operator, option.decided_by) != kind
+            or len(option.operands) < 2
+            for option in options
+        ):
+            return cls.combine("or", options)
+        rests = [option.operands - common for option in options]
+        if first.operator == "or":
+            # An option that is the shared part alone adds no alternative.
+            rests = [rest for rest in rests if rest]
+        inner = cls.of_scopes(
+            [
+                cls.combine(first.operator, rest, first.decided_by)
+                for rest in rests
+            ]
+        )
+        return cls.combine(first.operator, [*common, inner], first.decided_by)
 
     def _ordered(self) -> List[Union[ModuleRef, Requires]]:
         """Return the operands in the order they are written.

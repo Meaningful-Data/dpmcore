@@ -239,19 +239,115 @@ class TestRequires:
         ):
             resolver.requires("v", [frozenset({10})], [_read("F_01.01", None)])
 
-    def test_branches_reading_different_instances_have_no_group(self):
-        resolver = _resolver({"F_01.01": {OWN}})
+    def test_branches_reading_different_instances_need_either(self):
+        resolver = _resolver({"F_01.01": {OWN}, "C_01.00": {COREP_OF}})
 
-        with pytest.raises(NoDependencyGroup, match="if-then-else branches"):
-            resolver.requires(
-                "v",
-                [frozenset({10})],
-                [
-                    _read("F_01.01"),
-                    _read("F_01.01", RefDateLag(-1, "Q"), ((1, "then"),)),
-                    _read("F_01.01", RefDateLag(-2, "Q"), ((1, "else"),)),
-                ],
-            )
+        requires = resolver.requires(
+            "v",
+            [frozenset({10, 40})],
+            [
+                _read("C_01.00"),
+                _read("F_01.01", RefDateLag(-1, "Q"), ((1, "then"),)),
+                _read("F_01.01", RefDateLag(-2, "Q"), ((1, "else"),)),
+            ],
+        )
+
+        assert requires == _op(
+            "and",
+            _ref("COREP_OF"),
+            _op(
+                "or",
+                _ref("OWN", -1, "Q"),
+                _ref("OWN", -2, "Q"),
+                "condition",
+            ),
+        )
+
+    def test_a_chain_of_conditionals_needs_any_of_its_branches(self):
+        resolver = _resolver({"F_25.01": {OWN}})
+        branches = [
+            ((1, "then"),),
+            ((1, "else"), (2, "then")),
+            ((1, "else"), (2, "else"), (3, "then")),
+            ((1, "else"), (2, "else"), (3, "else"), (4, "then")),
+        ]
+
+        requires = resolver.requires(
+            "v",
+            [frozenset({10})],
+            [
+                _read("F_25.01", RefDateLag(-months), branch)
+                for months, branch in zip((12, 3, 6, 9), branches, strict=True)
+            ],
+        )
+
+        assert requires == _op(
+            "or",
+            _ref("OWN", -3, "M"),
+            _op(
+                "or",
+                _ref("OWN", -6, "M"),
+                _op(
+                    "or",
+                    _ref("OWN", -9, "M"),
+                    _ref("OWN", -12, "M"),
+                    "condition",
+                ),
+                "condition",
+            ),
+            "condition",
+        )
+
+    def test_the_scopes_are_alternatives_inside_the_branch(self):
+        resolver = _resolver(
+            {"F_01.01": {OWN}, "C_18.00": {FINREP9, FINREP9DP}}
+        )
+
+        requires = resolver.requires(
+            "v",
+            [frozenset({10, 20}), frozenset({10, 30})],
+            [
+                _read("F_01.01", RefDateLag(-1, "Q"), ((1, "then"),)),
+                _read("C_18.00", AT_T, ((1, "else"),)),
+            ],
+        )
+
+        assert requires == _op(
+            "or",
+            _ref("OWN", -1, "Q"),
+            _op("or", _ref("FINREP9"), _ref("FINREP9DP")),
+            "condition",
+        )
+
+    def test_scopes_needing_several_modules_stay_whole(self):
+        resolver = _resolver(
+            {
+                "F_01.01": {OWN},
+                "C_01.00": {COREP_OF, FINREP9DP},
+                "C_02.00": {FINREP9, FINREP9DP},
+            }
+        )
+
+        requires = resolver.requires(
+            "v",
+            [frozenset({10, 20, 40}), frozenset({10, 30})],
+            [
+                _read("F_01.01", RefDateLag(-1, "Q"), ((1, "then"),)),
+                _read("C_01.00", AT_T, ((1, "else"),)),
+                _read("C_02.00", AT_T, ((1, "else"),)),
+            ],
+        )
+
+        assert requires == _op(
+            "or",
+            _ref("OWN", -1, "Q"),
+            _op(
+                "or",
+                _ref("FINREP9DP"),
+                _op("and", _ref("COREP_OF"), _ref("FINREP9")),
+            ),
+            "condition",
+        )
 
     def test_one_branch_reading_more_stands_for_both(self):
         resolver = _resolver({"F_01.01": {OWN}})
@@ -380,9 +476,9 @@ class TestFilingIndicators:
 
     def test_each_one_needs_its_module(self, declared):
         assert self._requires("I_04.00", "C_00.01") == _op(
-            "or",
-            _op("and", _ref("COREP_LR"), _ref("IF_CLASS2")),
-            _op("and", _ref("COREP_OF"), _ref("IF_CLASS2")),
+            "and",
+            _ref("IF_CLASS2"),
+            _op("or", _ref("COREP_LR"), _ref("COREP_OF")),
         )
 
     def test_they_add_to_what_the_tables_need(self, declared):
