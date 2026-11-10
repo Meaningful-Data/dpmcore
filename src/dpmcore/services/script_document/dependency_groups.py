@@ -120,19 +120,26 @@ class DependencyResolver:
         code: str,
         scopes: Sequence[FrozenSet[int]],
         reads: Sequence[Read],
+        gate_reads: Sequence[Read] = (),
     ) -> Dict[str, Any]:
         """Return the ``requires`` of one validation.
+
+        What its preconditions read is needed in every scope: a table only
+        other modules hold, from any one of them.
 
         Args:
             code: The validation's code.
             scopes: The module versions of each of its scopes.
             reads: What it reads.
+            gate_reads: What the preconditions gating it read.
 
         Raises:
             NoDependencyGroup: When it reads dates no lag gives, or no
                 scope with the own module holds what it reads.
         """
-        unfixed = sorted({read.table for read in reads if read.lag is None})
+        unfixed = sorted(
+            {read.table for read in [*reads, *gate_reads] if read.lag is None}
+        )
         if unfixed:
             raise NoDependencyGroup(
                 f"It reads {', '.join(unfixed)} at reference dates no lag "
@@ -141,43 +148,47 @@ class DependencyResolver:
                 "which its dependency group cannot state."
             )
 
-        holders = self._holders({read.table for read in reads})
+        holders = self._holders({read.table for read in [*reads, *gate_reads]})
         own_tables = {
-            read.table
-            for read in reads
-            if any(mid == self.own_module_id for mid, _ in holders[read.table])
+            table
+            for table, modules in holders.items()
+            if any(mid == self.own_module_id for mid, _ in modules)
         }
         external = {
             read.table
             for read in reads
             if holders[read.table] and read.table not in own_tables
         }
-        # One alternative per scope with the own module: what every read
-        # needs, with the branches it sits in, joined by _branches.
-        alternatives = []
-        for holding in (
-            self._alternatives(scopes, external, holders) if external else [{}]
-        ):
-            needs: List[Tuple[Tuple[Tuple[int, str], ...], Requires]] = []
-            for read in reads:
-                lag = read.lag
-                # No version at the script's release, or read from the
-                # instance being validated: nothing else is needed.
-                if lag is None or not holders[read.table]:
-                    continue
-                if read.table in own_tables:
-                    if lag.value == 0:
-                        continue
-                    need = Requires.combine(
-                        "and", [ModuleRef(self.own_code, lag)]
-                    )
-                else:
-                    need = Requires.combine(
-                        "and",
-                        [ModuleRef(code, lag) for code in holding[read.table]],
-                    )
-                needs.append((read.branch, need))
-            alternatives.append(self._branches(needs, 0))
+        gate = self._branches(
+            self._needs(
+                gate_reads,
+                own_tables,
+                {
+                    read.table: {code for _, code in holders[read.table]}
+                    for read in gate_reads
+                    if read.table not in own_tables
+                },
+                "or",
+            ),
+            0,
+        )
+        # One alternative per scope with the own module.
+        alternatives = [
+            Requires.combine(
+                "and",
+                [
+                    self._branches(
+                        self._needs(reads, own_tables, holding, "and"), 0
+                    ),
+                    gate,
+                ],
+            )
+            for holding in (
+                self._alternatives(scopes, external, holders)
+                if external
+                else [{}]
+            )
+        ]
 
         for codes in self._filing_indicator_modules(
             self.filing_indicators.get(code, [])
@@ -190,6 +201,51 @@ class DependencyResolver:
                 for module_code in codes
             ]
         return Requires.of_scopes(alternatives).to_json()
+
+    def _needs(
+        self,
+        reads: Sequence[Read],
+        own_tables: Set[str],
+        holding: Mapping[str, Set[str]],
+        operator: Literal["and", "or"],
+    ) -> List[Tuple[Tuple[Tuple[int, str], ...], Requires]]:
+        """Return what each read needs, with the branches it sits in.
+
+        A table of the own module read at another date needs the own
+        module then. Any other table needs its modules in ``holding``, at
+        the lag it is read at: all of them, or any one, as ``operator``
+        says. A table with no version at the script's release, or read
+        from the instance being validated, needs nothing else.
+        """
+        needs = []
+        for read in reads:
+            lag = read.lag
+            if lag is None:
+                continue
+            if read.table in own_tables:
+                if lag.value != 0:
+                    needs.append(
+                        (
+                            read.branch,
+                            Requires.combine(
+                                "and", [ModuleRef(self.own_code, lag)]
+                            ),
+                        )
+                    )
+            elif holding.get(read.table):
+                needs.append(
+                    (
+                        read.branch,
+                        Requires.combine(
+                            operator,
+                            [
+                                ModuleRef(module_code, lag)
+                                for module_code in holding[read.table]
+                            ],
+                        ),
+                    )
+                )
+        return needs
 
     def _branches(
         self,

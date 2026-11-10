@@ -511,9 +511,9 @@ aborting the whole sweep; the command exits non-zero if any target
 failed.
 
 Validations the semantic pass rejects are not part of the script, and
-neither are validations whose precondition falls outside what the engine
-can evaluate — a gate may only combine filing indicators, parameters and
-boolean literals with ``and`` / ``or`` / ``xor`` / ``not``. The console
+neither are validations whose precondition the semantic pass rejects —
+a gate may read facts, aggregates or parameters, but must yield a single
+boolean. The console
 reports how many were skipped next to how many were discovered, and
 lists the reason per validation; the output JSON file itself carries
 only the enriched script (matching mdpm's own export shape), so the

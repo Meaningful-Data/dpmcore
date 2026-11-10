@@ -1136,59 +1136,78 @@ class TestGateParameterPropagation:
         assert parenthesized_ast["class_name"] == "ParExpr"
 
 
-class TestUnsupportedGates:
-    """A gate outside the engine contract fails its operations explicitly.
+class TestPrepareGates:
+    """A gate beyond filing indicators is validated as an operation.
 
-    The engine's precondition evaluator binds filing indicators and
-    parameters and combines them with ``and`` / ``or`` / ``xor`` / ``not``;
-    a comparison, a cell reference or a non-boolean literal has no
-    evaluation there, so such a gate is kept out of the script and its
-    operations are reported through ``failed_operations`` instead of
-    running ungated.
+    One the semantic analysis rejects, such as a selection that is not a
+    single boolean, fails its operations explicitly instead of leaving
+    them ungated. A gate of filing indicators, parameters and boolean
+    literals is left to ``_build_preconditions_block``.
     """
 
-    @pytest.mark.parametrize(
-        ("expression", "reason"),
-        [
-            ("{v_A} = true", "operator '='"),
-            ("{tC_01.00, r0010, c0010}", "references a cell"),
-            ("{v_A} and 3", "non-boolean literal 3"),
-            ("{v_A} or {p_flags, set-boolean}", "set-boolean parameter"),
-        ],
-    )
-    def test_unsupported_shapes_are_reported(
-        self, expression, reason, monkeypatch, real_syntax
+    def test_a_gate_the_analysis_rejects_fails_its_operations(
+        self, real_syntax
     ):
-        svc, _, _ = _bare_svc()
+        svc, _, mod = _bare_svc()
         svc.session = MagicMock()
         svc._syntax = real_syntax
-        _install_variable_resolver(
-            monkeypatch, {"A": {"variable_id": 1, "variable_vid": 10}}
+        svc._semantic = MagicMock()
+        svc._semantic.validate.return_value = SimpleNamespace(
+            is_valid=False,
+            error_message="The result has to be a boolean scalar.",
         )
 
-        failures = svc._unsupported_gate_operations([(expression, ["v1"])])
-        preconds = svc._build_preconditions_block(
-            [(expression, ["v1"])], release_id=None
+        gates = svc._prepare_gates(
+            [("{tC_01.00, r0010, c0010}", ["v1", "v2"])], 1
         )
 
-        assert reason in failures["v1"]
-        assert "cannot be evaluated by the engine" in failures["v1"]
-        assert preconds == {}
+        assert gates.asts == {}
+        assert gates.reads == {}
+        assert set(gates.failures) == {"v1", "v2"}
+        assert "cannot be written" in gates.failures["v1"]
+        assert "boolean scalar" in gates.failures["v1"]
+        svc._semantic.validate.assert_called_once_with(
+            "{tC_01.00, r0010, c0010}", release_id=1, as_precondition=True
+        )
 
-    def test_contract_shapes_report_nothing(self, monkeypatch, real_syntax):
-        svc, _, _ = _bare_svc()
+    def test_filing_indicator_gates_are_left_to_the_block(self, real_syntax):
+        svc, _, mod = _bare_svc()
         svc._syntax = real_syntax
+        svc._semantic = MagicMock()
 
-        failures = svc._unsupported_gate_operations(
+        gates = svc._prepare_gates(
             [
                 ("not ({v_A} xor {v_B}) or {v_C}", ["v1"]),
                 ("{p_flag, boolean}", ["v2"]),
                 ("{v_A} and {p_flag, boolean, default: false}", ["v3"]),
                 ("{v_A} and true", ["v4"]),
-            ]
+            ],
+            1,
         )
 
-        assert failures == {}
+        assert gates == mod._PreparedGates()
+        svc._semantic.validate.assert_not_called()
+
+    def test_a_filing_indicator_beside_a_cell_is_one_too(self):
+        svc, _, _ = _bare_svc()
+        serialised = {
+            "class_name": "BinOp",
+            "op": "and",
+            "left": {"class_name": "VarRef", "variable": "C_47.00"},
+            "right": {"class_name": "VarRef", "variable": "X_99.99"},
+        }
+
+        items = svc._filing_indicator_items(
+            serialised, {"C_47.00": {"variable_id": 7, "variable_vid": 70}}
+        )
+
+        assert items["left"] == {
+            "class_name": "PreconditionItem",
+            "variable_id": 7,
+            "variable_code": "C_47.00",
+        }
+        # One the release does not resolve stays out of the format.
+        assert items["right"] == serialised["right"]
 
 
 # ------------------------------------------------------------------ #
@@ -1554,7 +1573,7 @@ class TestScript:
         # Every operation needs only the instance being validated.
         svc._dependency_resolver = MagicMock(
             return_value=SimpleNamespace(
-                requires=lambda code, scopes, reads: {}
+                requires=lambda code, scopes, reads, gate_reads=(): {}
             )
         )
 
@@ -1727,13 +1746,12 @@ class TestScript:
         assert gate["affected_operations"] == ["v1"]
         assert doc["parameters"] == {"flag": "Boolean"}
 
-    def test_cell_reference_gate_skips_op_preserves_others(
+    def test_a_gate_no_single_boolean_skips_op_preserves_others(
         self, monkeypatch, real_syntax
     ):
-        """An operation whose gate is outside the engine contract is
+        """An operation whose gate the semantic analysis rejects is
         reported in ``failed_operations`` and left out of the script,
-        instead of shipping an ungated operation or a gate the engine
-        cannot evaluate.
+        instead of shipping an ungated operation.
         """
         self._stub_serialize_ast(
             monkeypatch,
@@ -1741,8 +1759,18 @@ class TestScript:
         )
         svc, *_ = self._build_svc()
         svc._syntax = real_syntax
-        svc._semantic.validate.return_value = SimpleNamespace(
-            is_valid=True, error_message=None, parameters=()
+        gate = "{tC_01.00, r0010, c0010}"
+        svc._semantic.validate.side_effect = lambda expr, **kwargs: (
+            SimpleNamespace(
+                is_valid=expr != gate,
+                error_message=(
+                    "If preconditions are involved the result has to be "
+                    "a boolean scalar."
+                    if expr == gate
+                    else None
+                ),
+                parameters=(),
+            )
         )
         svc._semantic.ast = "AST"
 
@@ -1750,7 +1778,7 @@ class TestScript:
             expressions=[("e1", "v1"), ("e2", "v2")],
             module_code="MOD",
             module_version="1.0",
-            preconditions=[("{tC_01.00, r0010, c0010}", ["v1"])],
+            preconditions=[(gate, ["v1"])],
         )
 
         assert out["success"] is True
@@ -1759,7 +1787,7 @@ class TestScript:
         assert "v2" in doc["operations"]
         assert doc["preconditions"] == {}
         assert list(out["failed_operations"]) == ["v1"]
-        assert "references a cell" in out["failed_operations"]["v1"]
+        assert "boolean scalar" in out["failed_operations"]["v1"]
 
     def test_unreadable_operation_skips_op_preserves_others(self, monkeypatch):
         """An operation listed without what it reads would leave
@@ -2354,7 +2382,7 @@ class TestScriptFromDb:
         # Every operation needs only the instance being validated.
         svc._dependency_resolver = MagicMock(
             return_value=SimpleNamespace(
-                requires=lambda code, scopes, reads: {}
+                requires=lambda code, scopes, reads, gate_reads=(): {}
             )
         )
 
@@ -2804,9 +2832,11 @@ class TestScriptFromDb:
         # Bypass real gate-text parsing (covered by TestScript already;
         # not what this test is about): force v1's gate to be
         # unsupported so we can check the short-circuit in isolation.
-        svc._unsupported_gate_operations = lambda preconditions: {
-            "v1": "gate not supported"
-        }
+        svc._prepare_gates = lambda preconditions, release_id: (
+            _load_ast_generator()._PreparedGates(
+                failures={"v1": "gate not supported"}
+            )
+        )
 
         out = svc.script_from_db(
             expressions=[("e1", "v1"), ("e2", "v2")],
