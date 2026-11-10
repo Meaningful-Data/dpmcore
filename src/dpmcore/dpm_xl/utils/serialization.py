@@ -733,6 +733,10 @@ class ASTToJSONVisitor(NodeVisitor):
         """Serialize a RenameNode as a clause dictionary."""
         return {"from_component": node.old_name, "to_component": node.new_name}
 
+    def visit_VarRef(self, node: Any) -> NodeDict:
+        """Visit VarRef nodes, keeping the code of the variable."""
+        return {"class_name": "VarRef", "variable": node.variable}
+
     def visit_PreconditionItem(self, node: Any) -> NodeDict:
         """Visit PreconditionItem nodes."""
         result: NodeDict = {

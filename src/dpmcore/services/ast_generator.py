@@ -138,7 +138,7 @@ class _PreparedExpression:
 
     ``error`` is set when the expression cannot become a declarable
     operation — it failed semantic validation, what it reads cannot be
-    collected, or its precondition is one the engine cannot evaluate
+    collected, or its precondition is one that cannot be written
     (#338). All are reported the same
     way, through ``failed_operations``, and all must be caught before
     the caller accumulates anything for the operation: a skip afterwards
@@ -150,6 +150,21 @@ class _PreparedExpression:
     ast: Any = None
     reads: List[Read] = field(default_factory=list)
     error: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class _PreparedGates:
+    """The preconditions beyond filing indicators, readied for the script.
+
+    ``failures`` maps each operation gated by one that cannot be written
+    to the reason. ``asts`` holds the AST of each one that can, by its
+    position among the preconditions, and ``reads`` what each operation
+    it gates reads through it.
+    """
+
+    failures: Dict[str, str] = field(default_factory=dict)
+    asts: Dict[int, Dict[str, Any]] = field(default_factory=dict)
+    reads: Dict[str, List[Read]] = field(default_factory=dict)
 
 
 def _normalize_variable_code(code: str) -> str:
@@ -292,7 +307,7 @@ class ASTGeneratorService:
             ``error`` (str or ``None``), and ``failed_operations`` (a
             ``{validation_code: error_message}`` map of expressions
             skipped due to semantic errors, or because their
-            precondition cannot be evaluated by the engine).
+            precondition cannot be written).
         """
         session = self.session
         if (
@@ -342,12 +357,10 @@ class ASTGeneratorService:
                     mv.from_reference_date, fallback=_DEFAULT_FROM_DATE
                 ),
             )
-            # Operations whose gate the engine cannot evaluate leave the
-            # script here, before any accumulation, and are reported in
-            # ``failed_operations`` (see ``_unsupported_gate_operations``).
-            gate_failures = self._unsupported_gate_operations(
-                preconditions or []
-            )
+            # Operations whose gate cannot be written leave the script
+            # here, before any accumulation, and are reported in
+            # ``failed_operations`` (see ``_prepare_gates``).
+            gates = self._prepare_gates(preconditions or [], release_id)
 
             operations: Dict[str, Dict[str, Any]] = {}
             failed_operations: Dict[str, str] = {}
@@ -361,7 +374,7 @@ class ASTGeneratorService:
                 expr, code = item[0], item[1]
                 # Semantic validation plus what the expression
                 # reads; either can reject it, as can a gate
-                # the engine cannot evaluate. The _accumulate_parameters
+                # that cannot be written. The _accumulate_parameters
                 # call below is complementary to the scope check inside —
                 # it catches conflicts between two expressions in this
                 # same script.
@@ -369,7 +382,7 @@ class ASTGeneratorService:
                     self._semantic,
                     expr,
                     release_id,
-                    gate_failure=gate_failures.get(code),
+                    gate_failure=gates.failures.get(code),
                 )
                 if prepared.error is not None:
                     failed_operations[code] = prepared.error
@@ -393,6 +406,7 @@ class ASTGeneratorService:
                         parameters=result.parameters,
                         root_operator_id=root_operator_id,
                         reads=prepared.reads,
+                        gate_reads=gates.reads.get(code, []),
                         release_id=release_id,
                         resolved_severities=resolved_severities,
                         from_submission_date=resolved_dates[code],
@@ -422,6 +436,7 @@ class ASTGeneratorService:
                 primary_module_vid=primary_module_vid,
                 release_id=release_id,
                 preconditions=preconditions,
+                gate_asts=gates.asts,
                 operations=operations,
                 failed_operations=failed_operations,
                 scope_pairs=scope_pairs,
@@ -452,6 +467,7 @@ class ASTGeneratorService:
         parameters: List[ParameterInfo],
         root_operator_id: int,
         reads: Sequence[Read],
+        gate_reads: Sequence[Read],
         release_id: int,
         resolved_severities: Dict[str, str],
         from_submission_date: Optional[str],
@@ -501,7 +517,9 @@ class ASTGeneratorService:
         semantically wrong (#122).
 
         ``resolver`` writes what the operation needs besides the instance
-        being validated, the ``requires`` of its dependency group.
+        being validated, the ``requires`` of its dependency group, from
+        ``reads`` and from ``gate_reads``, what its preconditions read.
+        ``modules`` describes both.
 
         Raises:
             NoDependencyGroup: When no ``requires`` can state what the
@@ -536,9 +554,13 @@ class ASTGeneratorService:
                 for scope in sr.scopes or []
             ],
             reads,
+            gate_reads,
         )
         op_refs = _OperandRefs(
-            reads=[replace(r, statement=len(scope_pairs)) for r in reads],
+            reads=[
+                replace(r, statement=len(scope_pairs))
+                for r in [*reads, *gate_reads]
+            ],
             requires=requires,
         )
         self._clean_ast_data_entries(ast_dict)
@@ -566,6 +588,7 @@ class ASTGeneratorService:
         preconditions: Optional[
             List[Union[Tuple[str, List[str]], Dict[str, Any]]]
         ],
+        gate_asts: Mapping[int, Dict[str, Any]],
         operations: Dict[str, Dict[str, Any]],
         failed_operations: Dict[str, str],
         scope_pairs: List[Tuple[Tuple[str, str], _OperandRefs]],
@@ -618,6 +641,7 @@ class ASTGeneratorService:
             release_id=release_id,
             referenced_parameters=referenced_parameters,
             emitted_operations=set(operations),
+            gate_asts=gate_asts,
         )
 
         # Runtime-binding contract: the declared type of every parameter
@@ -938,7 +962,7 @@ class ASTGeneratorService:
         *,
         item: Tuple[str, str],
         session: Any,
-        gate_failures: Dict[str, str],
+        gates: _PreparedGates,
         operation_vids: Dict[str, int],
         primary_module_vid: int,
         release_id: int,
@@ -965,10 +989,10 @@ class ASTGeneratorService:
         expr, code = item[0], item[1]
 
         # Checked once, up front, for both resolution paths below — a
-        # precondition the engine cannot evaluate must reject the
+        # precondition that cannot be written must reject the
         # operation regardless of whether its own AST would otherwise
         # resolve from the DB or from re-parsed text.
-        gate_failure = gate_failures.get(code)
+        gate_failure = gates.failures.get(code)
         if gate_failure is not None:
             return gate_failure
 
@@ -1027,6 +1051,7 @@ class ASTGeneratorService:
                 parameters=parameters,
                 root_operator_id=root_operator_id,
                 reads=reads,
+                gate_reads=gates.reads.get(code, []),
                 release_id=release_id,
                 resolved_severities=resolved_severities,
                 from_submission_date=from_submission_dates.get(code),
@@ -1137,9 +1162,7 @@ class ASTGeneratorService:
                     "error": str(exc),
                     "failed_operations": {},
                 }
-            gate_failures = self._unsupported_gate_operations(
-                preconditions or []
-            )
+            gates = self._prepare_gates(preconditions or [], release_id)
             from_submission_dates = from_submission_dates or {}
 
             operations: Dict[str, Dict[str, Any]] = {}
@@ -1161,7 +1184,7 @@ class ASTGeneratorService:
                 error = self._process_db_expression_item(
                     item=item,
                     session=session,
-                    gate_failures=gate_failures,
+                    gates=gates,
                     operation_vids=operation_vids,
                     primary_module_vid=primary_module_vid,
                     release_id=release_id,
@@ -1182,6 +1205,7 @@ class ASTGeneratorService:
                 primary_module_vid=primary_module_vid,
                 release_id=release_id,
                 preconditions=preconditions,
+                gate_asts=gates.asts,
                 operations=operations,
                 failed_operations=failed_operations,
                 scope_pairs=scope_pairs,
@@ -2727,14 +2751,13 @@ class ASTGeneratorService:
             "severity": severity,
         }
 
-    # The gate contract shared with the engine's precondition evaluator:
-    # filing indicators, run-time parameters and boolean literals combined
-    # with these operators (grouping parentheses are preserved as
-    # ParExpr, not unwrapped). A gate
+    # The gates written from their parsed AST: filing indicators,
+    # run-time parameters and boolean literals combined with these
+    # operators (grouping parentheses are preserved as ParExpr, not
+    # unwrapped). A gate
     # carrying anything else — a comparison, arithmetic, a cell reference,
-    # a non-boolean literal — has no runtime meaning on the engine side, so
-    # it stays out of the script and its operations are reported through
-    # ``failed_operations`` (see ``_unsupported_gate_operations``).
+    # an aggregate — is validated and translated as an operation is, and
+    # what it reads goes to the operations it gates (see ``_prepare_gates``).
     _GATE_BINARY_OPS = frozenset({"and", "or", "xor"})
     _GATE_UNARY_OPS = frozenset({"not"})
 
@@ -2744,6 +2767,7 @@ class ASTGeneratorService:
         release_id: Optional[int],
         referenced_parameters: Optional[Dict[str, ParameterInfo]] = None,
         emitted_operations: Optional[Set[str]] = None,
+        gate_asts: Optional[Mapping[int, Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Build the ``preconditions`` block.
 
@@ -2768,11 +2792,11 @@ class ASTGeneratorService:
         :func:`~dpmcore.services._parameters.merge_parameters` runs
         against a single registry (``3-8`` on a conflicting type).
 
-        Gates outside that contract (a comparison, a cell reference, a
-        non-boolean literal) are excluded here, and :meth:`script`
-        reports their operations in ``failed_operations`` instead of
-        shipping a gate the engine cannot evaluate. Codes that don't
-        resolve are still skipped silently (matches pydpm).
+        Any other gate (a comparison, a cell reference, an aggregate) is
+        written from its AST in ``gate_asts``, by its position among the
+        preconditions, as :meth:`_prepare_gates` built it; one missing
+        there gated only operations in ``failed_operations``. Codes that
+        don't resolve are still skipped silently (matches pydpm).
 
         When *emitted_operations* is given, each entry's
         ``affected_operations`` is intersected with it, and an entry
@@ -2808,12 +2832,26 @@ class ASTGeneratorService:
             else {}
         )
 
+        gates = [
+            (
+                self._transform_precondition_ast(ast, resolved, serialize_ast),
+                validation_codes,
+                provided_code,
+                provided_version_id,
+            )
+            for ast, validation_codes, provided_code, provided_version_id in (
+                parsed_gates
+            )
+        ] + [
+            (gate_ast, *self._gate_spec_fields(preconditions[index])[1:])
+            for index, gate_ast in (gate_asts or {}).items()
+        ]
         for (
-            ast,
+            gate_ast,
             validation_codes,
             provided_code,
             provided_version_id,
-        ) in parsed_gates:
+        ) in gates:
             if emitted_operations is not None:
                 validation_codes = [
                     code
@@ -2822,9 +2860,6 @@ class ASTGeneratorService:
                 ]
                 if not validation_codes:
                     continue
-            gate_ast = self._transform_precondition_ast(
-                ast, resolved, serialize_ast
-            )
             if gate_ast is None:
                 # Nothing left standing: either every ``{v_*}`` position
                 # was dropped for lack of resolution, or an unresolved
@@ -2884,52 +2919,123 @@ class ASTGeneratorService:
         precond_expr, validation_codes = precond_spec
         return precond_expr, validation_codes, None, None
 
-    def _unsupported_gate_operations(
+    def _prepare_gates(
         self,
         preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
-    ) -> Dict[str, str]:
-        """Map each operation gated by an engine-unsupported gate to a reason.
+        release_id: int,
+    ) -> _PreparedGates:
+        """Ready the preconditions that go beyond filing indicators.
 
-        The gate contract is filing indicators, run-time parameters and
-        boolean literals combined with ``and`` / ``or`` / ``xor`` /
-        ``not``. The engine's precondition evaluator has no evaluation
-        for anything else — a comparison, arithmetic, a cell reference —
-        and such a node in a gate fails the run. A gate outside the
-        contract must therefore not be emitted, and silently dropping it
-        would ungate the operations it guards. This is the third option:
-        the operations are reported in :meth:`script`'s
-        ``failed_operations`` with the reason, and left out of the
-        script. Gates that fail to parse are ignored here —
-        ``_build_precondition_index`` already turns them into a
-        script-level error.
+        A gate of filing indicators, parameters and boolean literals
+        joined by ``and`` / ``or`` / ``xor`` / ``not`` is written by
+        :meth:`_build_preconditions_block` from its parsed AST. Any other
+        gate is readied by :meth:`_prepare_gate`, and what it reads is
+        read by every operation it gates. One that cannot be written
+        sends the operations it gates to ``failed_operations`` with the
+        reason, rather than leaving them ungated. Gates that fail to
+        parse are left to ``_build_precondition_index``.
         """
-        failures: Dict[str, str] = {}
-        for precond_spec in preconditions:
+        gates = _PreparedGates()
+        for index, precond_spec in enumerate(preconditions):
             precond_expr, validation_codes, _, _ = self._gate_spec_fields(
                 precond_spec
             )
             if not precond_expr:
                 continue
             try:
-                ast = self._syntax.parse(precond_expr)
+                parsed = self._syntax.parse(precond_expr)
             except Exception:  # noqa: S112 — see docstring above
                 continue
-            reason = self._gate_unsupported_reason(ast)
-            if reason is None:
+            if self._gate_unsupported_reason(parsed) is None:
                 continue
-            message = (
-                f"Precondition {precond_expr!r} cannot be evaluated by the "
-                f"engine: {reason}. A precondition may only combine "
-                "filing indicators, parameters and boolean literals with "
-                "and/or/xor/not."
-            )
+            prepared = self._prepare_gate(precond_expr, release_id)
             for validation_code in validation_codes:
-                failures.setdefault(validation_code, message)
-        return failures
+                if prepared.error is not None:
+                    gates.failures.setdefault(
+                        validation_code,
+                        f"Precondition {precond_expr!r} cannot be written: "
+                        f"{prepared.error}",
+                    )
+                else:
+                    gates.reads.setdefault(validation_code, []).extend(
+                        prepared.reads
+                    )
+            if prepared.error is None:
+                gates.asts[index] = prepared.ast
+        return gates
+
+    def _prepare_gate(
+        self, precond_expr: str, release_id: int
+    ) -> _PreparedExpression:
+        """Validate a gate and translate it as an operation, as a gate.
+
+        Its result must be a single boolean. Its AST is translated as an
+        operation's is, each filing indicator becoming a
+        ``FilingIndicatorVarID``, and ``ast`` holds the translated AST.
+        """
+        from dpmcore.dpm_xl.model_queries import VariableVersionQuery
+        from dpmcore.dpm_xl.utils.serialization import serialize_ast
+
+        if self._semantic is None or self.session is None:
+            raise InternalError(
+                "SemanticService not initialised",
+                "_prepare_gate requires a live DB session.",
+            )
+        result = self._semantic.validate(
+            precond_expr, release_id=release_id, as_precondition=True
+        )
+        if not result.is_valid:
+            return _PreparedExpression(error=result.error_message or "")
+        ast = self._semantic.ast
+        codes = self._extract_precondition_codes(ast)
+        resolved = (
+            VariableVersionQuery.get_variable_vids_by_codes(
+                self.session, codes, release_id=release_id
+            )
+            if codes
+            else {}
+        )
+        try:
+            gate_ast = script_ast(
+                self._filing_indicator_items(serialize_ast(ast), resolved)
+            )
+            reads = self._extract_reads(ast)
+        except (UnsupportedNode, _UnreadableOperation) as exc:
+            return _PreparedExpression(error=str(exc))
+        self._clean_ast_data_entries(gate_ast)
+        return _PreparedExpression(result=result, ast=gate_ast, reads=reads)
+
+    @classmethod
+    def _filing_indicator_items(
+        cls, node: Any, resolved: Mapping[str, Dict[str, int]]
+    ) -> Any:
+        """Turn each ``VarRef`` of a serialised AST into a filing indicator.
+
+        A ``{v_*}`` selection the release resolves becomes the
+        ``PreconditionItem`` the database path writes. One it does not
+        resolve stays a ``VarRef``, which no script can carry.
+        """
+        if isinstance(node, list):
+            return [
+                cls._filing_indicator_items(item, resolved) for item in node
+            ]
+        if not isinstance(node, dict):
+            return node
+        code = _normalize_variable_code(str(node.get("variable")))
+        if node.get("class_name") == "VarRef" and code in resolved:
+            return {
+                "class_name": "PreconditionItem",
+                "variable_id": resolved[code]["variable_id"],
+                "variable_code": code,
+            }
+        return {
+            key: cls._filing_indicator_items(value, resolved)
+            for key, value in node.items()
+        }
 
     @classmethod
     def _gate_unsupported_reason(cls, node: Any) -> Optional[str]:
-        """Why the engine could not evaluate this gate, or ``None`` if it can.
+        """Why this gate is not one of filing indicators, or ``None``.
 
         Walks the parsed gate and returns a short reason for the first
         node outside the contract: filing-indicator selections
@@ -2995,9 +3101,9 @@ class ASTGeneratorService:
         ``all_codes`` is the deduplicated list of variable codes to feed
         the batched DB resolution. Two kinds of gate are left out: one
         that fails to parse — ``_build_precondition_index`` already
-        surfaces that as a script-level error — and one the engine
-        cannot evaluate, whose operations
-        ``_unsupported_gate_operations`` has already reported.
+        surfaces that as a script-level error — and one beyond filing
+        indicators, which ``_prepare_gates`` has already
+        readied or reported.
         """
         parsed_gates: List[
             Tuple[Any, List[str], Optional[str], Optional[int]]
@@ -3520,8 +3626,8 @@ extract_precondition_codes`, shared with
         catches conflicts between two expressions in the same script.
 
         ``gate_failure`` is the reason the operation's precondition
-        cannot be evaluated by the engine, when there is one (see
-        ``_unsupported_gate_operations``); such an operation is skipped
+        cannot be written, when there is one (see
+        ``_prepare_gates``); such an operation is skipped
         before validation, with that reason as its error.
         """
         if gate_failure is not None:

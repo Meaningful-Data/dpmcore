@@ -10,7 +10,8 @@ in the operation's ``requires``.
 A shift number that is not an integer literal used to render as
 ``T-nQ``, which names no resolvable instance; it now needs the module
 at a lag only known at run time. A range over refPeriod needs every
-period it covers, and an if-then-else needs one of its branches.
+period it covers, and an if-then-else needs one of its branches. What a
+precondition reads is needed by every operation it gates.
 
 ``C_47.00`` is a COREP_LR table (the home module here) and ``C_01.00`` /
 ``C_05.01`` are COREP_OF tables, so each expression crosses into a real
@@ -102,11 +103,12 @@ _UNBOUNDED_RANGE = (
 )
 
 
-def _script(session, expressions):
+def _script(session, expressions, preconditions=None):
     result = ASTGeneratorService(session).script(
         expressions=expressions,
         module_code=_MODULE_CODE,
         module_version=_MODULE_VERSION,
+        preconditions=preconditions,
     )
     assert result["success"], result["error"]
     module = result["enriched_ast"]
@@ -276,3 +278,57 @@ def test_a_chain_of_conditions_needs_any_of_its_periods(fixture_session):
             _either(_year_end(9), _either(_year_end(12), either_module)),
         ),
     }
+
+
+# _SHIFT_Q1 reads COREP_OF a quarter ahead, whatever gates it.
+@pytest.mark.parametrize(
+    ("gate", "requires"),
+    [
+        ("{tC_47.00, r0370, c0010} > 0", {"is": _ref(1)}),
+        ("{tC_01.00, r0020, c0010} > 0", _both(_ref(0), _ref(1))),
+        (
+            "time_shift({tC_47.00, r0370, c0010}, Q, 1, refPeriod) > 0",
+            _both(
+                {
+                    "code": _MODULE_CODE,
+                    "ref_date_lag": -1,
+                    "ref_date_lag_unit": "Q",
+                },
+                _ref(1),
+            ),
+        ),
+        (
+            "{v_C_47.00} and {tC_01.00, r0020, c0010} > 0",
+            _both(_ref(0), _ref(1)),
+        ),
+    ],
+)
+def test_what_a_precondition_reads_its_operations_need(
+    fixture_session, gate, requires
+):
+    result, module = _script(
+        fixture_session,
+        [(_SHIFT_Q1, "OP_GATED"), (_SHIFT_Q4, "OP_FREE")],
+        preconditions=[(gate, ["OP_GATED"])],
+    )
+    assert result["failed_operations"] == {}
+    (precondition,) = module["preconditions"].values()
+    assert precondition["affected_operations"] == ["OP_GATED"]
+    assert _requires(module) == {
+        "OP_GATED": requires,
+        "OP_FREE": {"is": _ref(4)},
+    }
+
+
+def test_a_precondition_that_is_no_single_boolean_fails_its_operations(
+    fixture_session,
+):
+    result, module = _script(
+        fixture_session,
+        [(_SHIFT_Q1, "OP_GATED"), (_SHIFT_Q4, "OP_FREE")],
+        preconditions=[("{tC_47.00, c0010} > 0", ["OP_GATED"])],
+    )
+    assert list(result["failed_operations"]) == ["OP_GATED"]
+    assert "boolean scalar" in result["failed_operations"]["OP_GATED"]
+    assert module["preconditions"] == {}
+    assert list(module["operations"]) == ["OP_FREE"]

@@ -241,6 +241,7 @@ class SemanticService:
         precondition_expression: Optional[str] = None,
         precondition_operation_vid: Optional[int] = None,
         is_scripting: bool = False,
+        as_precondition: bool = False,
     ) -> SemanticResult:
         """Full semantic validation of *expression* and its optional gate.
 
@@ -297,6 +298,9 @@ class SemanticService:
                 are validated in dependency order, so a name may be
                 declared after it is read. Applies to ``expression``
                 only, not the precondition.
+            as_precondition: Validates ``expression`` itself as a gate,
+                whose result must be a single boolean (``2-1``). Only
+                without ``precondition_expression``.
         """
         try:
             resolved = self._resolve_release(release_id, release_code)
@@ -312,7 +316,10 @@ class SemanticService:
 
         if precondition_expression is None:
             result = self._validate_resolved(
-                expression, resolved, is_scripting=is_scripting
+                expression,
+                resolved,
+                as_precondition=as_precondition,
+                is_scripting=is_scripting,
             )
         else:
             # Gate first, main expression last: the trailing ``self.ast`` /
