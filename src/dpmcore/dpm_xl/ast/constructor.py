@@ -832,10 +832,10 @@ class ASTVisitor(dpm_xlParserVisitor):
                 type_="Integer", value=self._int_literal_value(value)
             )
         elif type_ == dpm_xlParser.DECIMAL_LITERAL:
-            return Constant(type_="Number", value=float(value))
+            return Constant(type_="Number", value=float(value.strip("()")))
         elif type_ == dpm_xlParser.PERCENT_LITERAL:
             return Constant(
-                type_="Number", value=float(value.replace("%", "")) / 100
+                type_="Number", value=float(value.strip("()%")) / 100
             )
         elif type_ == dpm_xlParser.STRING_LITERAL:
             value = value[1:-1]

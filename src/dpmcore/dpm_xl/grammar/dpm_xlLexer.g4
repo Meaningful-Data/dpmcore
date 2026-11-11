@@ -150,12 +150,21 @@ DIGITS0_9:              '0'..'9';
 fragment
 DIGITS1_9:              '1'..'9';
 
-INTEGER_LITERAL:        DIGITS0_9+
-                        | LPAREN MINUS DIGITS0_9+ RPAREN;
-DECIMAL_LITERAL:        INTEGER_LITERAL '.' INTEGER_LITERAL;
-PERCENT_LITERAL:        INTEGER_LITERAL '%'
-                        | DECIMAL_LITERAL '%'
-                        ;
+fragment
+UNSIGNED_INTEGER:       DIGITS0_9+;
+fragment
+UNSIGNED_DECIMAL:       DIGITS0_9+ '.' DIGITS0_9+;
+fragment
+UNSIGNED_PERCENT:       (UNSIGNED_INTEGER | UNSIGNED_DECIMAL) '%';
+
+// A negative numeric literal is written between parentheses, `(-3)`,
+// `(-3.5)`, `(-0.5%)`; elsewhere `-3` is the unary minus Operator.
+INTEGER_LITERAL:        UNSIGNED_INTEGER
+                        | LPAREN MINUS UNSIGNED_INTEGER RPAREN;
+DECIMAL_LITERAL:        UNSIGNED_DECIMAL
+                        | LPAREN MINUS UNSIGNED_DECIMAL RPAREN;
+PERCENT_LITERAL:        UNSIGNED_PERCENT
+                        | LPAREN MINUS UNSIGNED_PERCENT RPAREN;
 NULL_LITERAL:           'null';
 STRING_LITERAL:         '"' (~'"')+ '"' | '\'' (~'\'')+ '\'';
 EMPTY_LITERAL:          '\'\'' | '""';
@@ -293,9 +302,13 @@ VAR_REFERENCE:                VAR_REF_PREFIX ('_'? VAR_CODE | ESCAPED_IDENTIFIER
 OPERATION_REFERENCE:          OPERATION_REF_PREFIX ('_'? OPERATION_CODE | ESCAPED_IDENTIFIER);
 PARAMETER_REFERENCE:          PARAMETER_REF_PREFIX ('_'? VAR_CODE | ESCAPED_IDENTIFIER);
 
-SELECTION_MODE_INTEGER_LITERAL: INTEGER_LITERAL -> type(INTEGER_LITERAL);
-SELECTION_MODE_DECIMAL_LITERAL: DECIMAL_LITERAL -> type(DECIMAL_LITERAL);
-SELECTION_MODE_PERCENT_LITERAL: PERCENT_LITERAL -> type(PERCENT_LITERAL);
+// Numeric literals between braces (set literal elements, `default:` values)
+// may carry a bare leading minus, `{-3, 9}`, as no expression is allowed
+// there to apply a unary minus to. Ranges such as `c0010-0070` are single
+// tokens, so a `-` can only start a token here as the sign of a number.
+SELECTION_MODE_INTEGER_LITERAL: (INTEGER_LITERAL | '-' UNSIGNED_INTEGER) -> type(INTEGER_LITERAL);
+SELECTION_MODE_DECIMAL_LITERAL: (DECIMAL_LITERAL | '-' UNSIGNED_DECIMAL) -> type(DECIMAL_LITERAL);
+SELECTION_MODE_PERCENT_LITERAL: (PERCENT_LITERAL | '-' UNSIGNED_PERCENT) -> type(PERCENT_LITERAL);
 
 SELECTION_MODE_STRING_LITERAL: STRING_LITERAL -> type(STRING_LITERAL);
 SELECTION_MODE_EMPTY_LITERAL: EMPTY_LITERAL -> type(EMPTY_LITERAL);
