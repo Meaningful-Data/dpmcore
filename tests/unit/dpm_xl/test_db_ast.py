@@ -175,10 +175,12 @@ def _add_location(
     row: Optional[str] = None,
     column: Optional[str] = None,
     sheet: Optional[str] = None,
+    has_cell: bool = True,
 ) -> None:
     session.add(
         OperandReferenceLocation(
             operand_reference_id=ref_id,
+            cell_id=500 + ref_id if has_cell else None,
             table=table,
             row=row,
             column=column,
@@ -707,7 +709,7 @@ class TestVarId:
         assert len(var_id["data"]) == 1
         entry = var_id["data"][0]
         assert entry["datapoint"] == 700
-        assert entry["operand_reference_id"] == 1
+        assert entry["operand_reference_id"] == 501
         assert entry["x"] == 0
         assert entry["row"] == "r0010"
         assert entry["y"] == 0
@@ -778,13 +780,13 @@ class TestVarId:
         with pytest.raises(UnsupportedDbAst):
             _build(session)
 
-    def test_non_numeric_fallback_value_becomes_empty_string(self, session):
+    def test_empty_string_fallback_value_becomes_empty_string(self, session):
         _add_variable(session, 700)
         _add_node(
             session,
             2,
             is_leaf=True,
-            fallback_value="N/A",
+            fallback_value='""',
             use_interval_arithmetics=False,
         )
         _add_ref(session, 1, node_id=2, x=0, kind="variable", variable_id=700)
@@ -793,6 +795,33 @@ class TestVarId:
 
         ast_dict, _ = _build(session)
         assert ast_dict["operand"]["default"] == ""
+
+    def test_non_numeric_fallback_value_raises(self, session):
+        """A default that is not a number is left to the re-parse path."""
+        _add_variable(session, 700)
+        _add_node(
+            session,
+            2,
+            is_leaf=True,
+            fallback_value="[eba_AS:x1]",
+            use_interval_arithmetics=False,
+        )
+        _add_ref(session, 1, node_id=2, x=0, kind="variable", variable_id=700)
+        _add_location(session, 1, table="F_01.01", row="r0010")
+        _wrap_unary(session, 2)
+
+        with pytest.raises(UnsupportedDbAst):
+            _build(session)
+
+    def test_location_without_cell_raises(self, session):
+        _add_variable(session, 700)
+        _add_node(session, 2, is_leaf=True, use_interval_arithmetics=False)
+        _add_ref(session, 1, node_id=2, x=0, kind="variable", variable_id=700)
+        _add_location(session, 1, table="F_01.01", row="r0010", has_cell=False)
+        _wrap_unary(session, 2)
+
+        with pytest.raises(UnsupportedDbAst):
+            _build(session)
 
 
 # ------------------------------------------------------------------ #
@@ -1344,10 +1373,10 @@ class TestCompositeShapes:
         assert ast_dict["period_indicator"]["value"] == "Q"
         assert ast_dict["shift_number"]["value"] == 2
 
-    def test_time_shift_op_preserves_real_operand_reference_id(self, session):
+    def test_time_shift_op_operand_carries_its_cell_id(self, session):
         """Regression: the shifted operand is a real ``VarID`` built the
         same way as any other — its ``operand_reference_id`` must be
-        the persisted ``OperandReferenceID``, not a re-parse artifact.
+        the ``CellID`` of its location, as on the re-parse path.
         """
         args = _add_operator(
             session,
@@ -1388,7 +1417,7 @@ class TestCompositeShapes:
         ast_dict, _ = _build(session)
         operand = ast_dict["operand"]
         assert operand["class_name"] == "VarID"
-        assert operand["data"][0]["operand_reference_id"] == 42
+        assert operand["data"][0]["operand_reference_id"] == 542
 
     def test_time_shift_op_missing_period_indicator_scalar_raises(
         self, session
