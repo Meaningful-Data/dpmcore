@@ -314,9 +314,8 @@ class _DbAstToJSONVisitor(ASTToJSONVisitor):
 
     def visit_VarID(self, node: Any) -> Dict[str, Any]:
         """Base ``visit_VarID`` recomputes ``node.data`` from a pandas
-        DataFrame and reads the wrong field for ``operand_reference_id``
-        (dpmcore#364). :meth:`_Builder._build_varid` already built the
-        correct dict; this just returns it.
+        DataFrame (dpmcore#364). :meth:`_Builder._build_varid` already
+        built the correct dict; this just returns it.
         """
         return node._db_ast_dict
 
@@ -676,10 +675,10 @@ class _Builder:
         entries: List[Dict[str, Any]] = []
         for ref in refs:
             loc = self._tree.locations_by_ref.get(ref.operand_reference_id)
-            if loc is None or ref.variable_id is None:
+            if loc is None or loc.cell_id is None or ref.variable_id is None:
                 raise UnsupportedDbAst(
                     f"VarID reference {ref.operand_reference_id} has no "
-                    "location or variable"
+                    "location, cell or variable"
                 )
             if loc.table:
                 tables.add(loc.table)
@@ -706,7 +705,7 @@ class _Builder:
             if loc.sheet is not None:
                 entry["sheet"] = loc.sheet
             entry["datapoint"] = int(ref.variable_id)
-            entry["operand_reference_id"] = int(ref.operand_reference_id)
+            entry["operand_reference_id"] = int(loc.cell_id)
             # Not part of mdpm's own dict — a transient field
             # ast_generator.py's shared pipeline needs to build
             # ``variables``, stripped before the final script the same
@@ -757,6 +756,11 @@ class _Builder:
                     int(default) if default.is_integer() else default
                 )
             except ValueError:
+                if node.fallback_value.strip('"'):
+                    raise UnsupportedDbAst(
+                        f"VarID node {node.node_id} has a default that is "
+                        "not a number"
+                    ) from None
                 result["default"] = ""
 
         result["interval"] = bool(node.use_interval_arithmetics)

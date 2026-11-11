@@ -80,6 +80,8 @@ class ASTToJSONVisitor(NodeVisitor):
                                 result[context_attr] = context_json.get(
                                     "value", context_value
                                 )
+                            elif context_value.__class__.__name__ == "Scalar":
+                                result[context_attr] = context_value.item
                             else:
                                 result[context_attr] = self.visit(
                                     context_value
@@ -142,6 +144,8 @@ class ASTToJSONVisitor(NodeVisitor):
                             result[node_attr] = node_json.get(
                                 "value", node_value
                             )
+                        elif node_value.__class__.__name__ == "Scalar":
+                            result[node_attr] = node_value.item
                         else:
                             result[node_attr] = self.visit(node_value)
                     else:
