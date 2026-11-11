@@ -18,7 +18,6 @@ from dpmcore.services.script_document.dependency_groups import (
     build_dependency_groups,
 )
 from dpmcore.services.script_document.modules import AT_T, Read, RefDateLag
-from tests.validate_script import Report, check_canonical
 
 # Module versions of the scopes: ``ModuleVID -> (ModuleID, code)``. The
 # script is for OWN, ModuleID 1.
@@ -61,13 +60,18 @@ def _module(code, lag=0, unit="M"):
     return ModuleRef(code, RefDateLag(lag, unit) if lag else AT_T)
 
 
-def _written(requirement):
-    """The chain of ``requirement``, checked by the validator."""
-    requires = requirement.to_json()
-    report = Report()
-    check_canonical(requires, report, "G1")
-    assert dict(report.violations) == {}
-    return requires
+@pytest.fixture
+def canonical(validator):
+    """The chain of a requirement, checked by the validator."""
+
+    def check(requirement):
+        requires = requirement.to_json()
+        report = validator.Report()
+        validator.check_canonical(requires, report, "G1")
+        assert dict(report.violations) == {}
+        return requires
+
+    return check
 
 
 class TestRequires:
@@ -520,7 +524,9 @@ class TestScriptResolver:
 class TestCanonicalForm:
     """``requires`` built with :meth:`Requires.combine`."""
 
-    def test_a_chain_is_written_the_same_whatever_the_input_order(self):
+    def test_a_chain_is_written_the_same_whatever_the_input_order(
+        self, canonical
+    ):
         modules = [
             _module("FINREP9", -12),
             _module("FINREP9", -3),
@@ -529,7 +535,7 @@ class TestCanonicalForm:
         ]
 
         written = {
-            json.dumps(_written(Requires.combine("and", order)))
+            json.dumps(canonical(Requires.combine("and", order)))
             for order in (modules, modules[::-1], sorted(modules, key=str))
         }
 
@@ -551,14 +557,14 @@ class TestCanonicalForm:
             )
         }
 
-    def test_periods_a_condition_picks_from_are_alternatives(self):
+    def test_periods_a_condition_picks_from_are_alternatives(self, canonical):
         requirement = Requires.combine(
             "or",
             [_module("FINREP9", -lag) for lag in (12, 9, 6, 3)],
             "condition",
         )
 
-        assert _written(requirement) == _op(
+        assert canonical(requirement) == _op(
             "or",
             _ref("FINREP9", -3, "M"),
             _op(
@@ -575,12 +581,12 @@ class TestCanonicalForm:
             "condition",
         )
 
-    def test_a_range_needs_every_period(self):
+    def test_a_range_needs_every_period(self, canonical):
         requirement = Requires.combine(
             "and", [_module("FINREP9", -lag, "Q") for lag in (4, 3, 2, 1)]
         )
 
-        assert _written(requirement) == _op(
+        assert canonical(requirement) == _op(
             "and",
             _ref("FINREP9", -1, "Q"),
             _op(
@@ -594,7 +600,9 @@ class TestCanonicalForm:
             ),
         )
 
-    def test_an_alternative_decided_otherwise_is_a_chain_of_its_own(self):
+    def test_an_alternative_decided_otherwise_is_a_chain_of_its_own(
+        self, canonical
+    ):
         scopes = Requires.combine(
             "or", [_module("IF_CLASS2"), _module("COREP_OF")]
         )
@@ -605,7 +613,7 @@ class TestCanonicalForm:
             "condition",
         )
 
-        assert _written(requirement) == _op(
+        assert canonical(requirement) == _op(
             "or",
             _ref("FINREP9", -3, "M"),
             _op(
@@ -640,7 +648,7 @@ class TestCanonicalForm:
         # One module reference is the same, whichever the operator.
         assert combine("or", [a], "condition") == combine("and", [a])
 
-    def test_nested_operators_follow_by_their_first_reference(self):
+    def test_nested_operators_follow_by_their_first_reference(self, canonical):
         a, b, c, d, e = (_module(code) for code in "ABCDE")
 
         requirement = Requires.combine(
@@ -653,7 +661,7 @@ class TestCanonicalForm:
             ],
         )
 
-        assert _written(requirement) == _op(
+        assert canonical(requirement) == _op(
             "or",
             _ref("A"),
             _op(
