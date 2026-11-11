@@ -15,15 +15,15 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      DPM_XL_DOCS_RAW_ROOT: https://gitlab.com/aollerosr/dpm-xl-docs/-/raw
-      DPM_XL_DOCS_BRANCHES: "dev main"
+      DPM_XL_DOCS_RAW_ROOT: https://raw.githubusercontent.com/dpm-alliance/dpm-xl-docs
+      DPM_XL_DOCS_BRANCHES: "main"
       LOCAL_GRAMMAR_DIR: src/dpmcore/dpm_xl/grammar
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Compare grammar with dpm-xl-docs (dev or main branch)
+      - name: Compare grammar with dpm-xl-docs (main branch)
         run: |
           set -uo pipefail
 
@@ -67,7 +67,7 @@ jobs:
                 fi
               done
             done
-            echo "::error::Grammar files match neither the dev nor the main branch of dpm-xl-docs"
+            echo "::error::Grammar files do not match the main branch of dpm-xl-docs"
             echo ""
             echo "This check only verifies synchronization; update dpm-xl-docs manually to match dpmcore."
             exit 1
