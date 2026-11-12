@@ -95,5 +95,4 @@ def accumulate_ast_parameters(
     else:
         return
     for child in children:
-        if isinstance(child, (dict, list)):
-            accumulate_ast_parameters(accumulated, child)
+        accumulate_ast_parameters(accumulated, child)

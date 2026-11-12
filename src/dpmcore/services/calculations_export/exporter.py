@@ -187,7 +187,7 @@ class CalculationsExporter:
             ast
         )
         # The same {code: declared type} block as the validation script
-        parameters: Dict[str, "ParameterInfo"] = {}
+        parameters: Dict[str, ParameterInfo] = {}
         accumulate_ast_parameters(parameters, calculations_ast)
 
         # Not keyed by URI: several owners can export over one version.
