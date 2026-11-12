@@ -184,13 +184,15 @@ class MigrationService:
             dialect name (e.g. ``"mssql"``).
 
         Raises:
-            MigrationError: If source and target are the same
-                database, the source holds no DPM table, the source
-                cannot be read or the target rejects the data.
+            MigrationError: If the source SQLite file does not exist,
+                source and target are the same database, the source
+                holds no DPM table, the source cannot be read or the
+                target rejects the data.
         """
         warnings: List[str] = []
         try:
             self._ensure_distinct_database(source, source_schema)
+            self._ensure_source_file_exists(source)
             reader = self._snapshot_reader(source, source_schema, warnings)
             with reader.connect() as conn:
                 if conn.dialect.name == "sqlite":
@@ -221,6 +223,27 @@ class MigrationService:
     # -------------------------------------------------------------- #
     # Database-to-database copy
     # -------------------------------------------------------------- #
+
+    @staticmethod
+    def _ensure_source_file_exists(source: Engine) -> None:
+        """Raise if *source* is a SQLite file that does not exist.
+
+        SQLite creates the file on connect, so a mistyped path would
+        otherwise leave an empty database behind. URI filenames
+        (``?uri=true``) are not checked.
+        """
+        url = source.url
+        if (
+            url.get_backend_name() != "sqlite"
+            or not url.database
+            or url.database == ":memory:"
+            or "uri" in url.query
+        ):
+            return
+        if not Path(url.database).is_file():
+            raise MigrationError(
+                f"Source database file not found: {url.database}"
+            )
 
     def _ensure_distinct_database(
         self, source: Engine, source_schema: Optional[str]

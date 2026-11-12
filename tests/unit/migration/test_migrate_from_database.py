@@ -310,6 +310,7 @@ class TestRefusals:
         Base.metadata.create_all(target)
         with target.begin() as conn:
             conn.execute(insert(RELEASE), [{"ReleaseID": 99, "Code": "old"}])
+        sqlite3.connect(tmp_path / "empty.db").close()
         empty = _file_engine(tmp_path / "empty.db")
 
         with pytest.raises(MigrationError, match="No DPM tables"):
@@ -318,8 +319,26 @@ class TestRefusals:
         with target.connect() as conn:
             assert conn.execute(select(RELEASE.c.Code)).scalar() == "old"
 
+    def test_missing_source_file_is_not_created(self, tmp_path, target):
+        missing = _file_engine(tmp_path / "nope.db")
+
+        with pytest.raises(MigrationError, match="file not found"):
+            MigrationService(target).migrate_from_database(missing)
+
+        assert not (tmp_path / "nope.db").exists()
+
+    def test_uri_filename_source_is_not_checked(self, source, target):
+        uri = create_engine(
+            f"sqlite:///file:{source.url.database}?mode=ro&uri=true"
+        )
+
+        result = MigrationService(target).migrate_from_database(uri)
+
+        assert result.table_details["Release"] == 3
+
     def test_unreadable_source(self, tmp_path, target):
-        broken = _file_engine(tmp_path / "missing_dir" / "source.db")
+        (tmp_path / "source.db").write_bytes(b"not a database" * 100)
+        broken = _file_engine(tmp_path / "source.db")
 
         with pytest.raises(MigrationError, match="Database copy failed"):
             MigrationService(target).migrate_from_database(broken)
