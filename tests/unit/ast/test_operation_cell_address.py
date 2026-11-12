@@ -56,3 +56,12 @@ def test_operation_cell_address_row_and_col_produces_varid():
     assert varid.operation == "Op1"
     assert varid.rows == ["010"]
     assert varid.cols == ["0010"]
+
+
+def test_cell_list_mixes_codes_and_ranges():
+    ast = SyntaxService().parse(
+        "{tT1, (r0010-0050, r0090), (c0010, c0030-0040)}"
+    )
+    varid = ast.children[0]
+    assert varid.rows == ["0010-0050", "0090"]
+    assert varid.cols == ["0010", "0030-0040"]
