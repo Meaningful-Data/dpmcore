@@ -1,10 +1,11 @@
-"""Access-to-database migration service.
+"""Migration service: build a DPM database from an external source.
 
-Extracts tables from a Microsoft Access ``.accdb`` / ``.mdb`` file and
-loads them into any SQLAlchemy-supported database, preserving the ORM
-schema created by ``Base.metadata.create_all``.
+Extracts tables from a Microsoft Access ``.accdb`` / ``.mdb`` file, a
+folder of per-table CSV files, or another DPM database, and loads them
+into any SQLAlchemy-supported database, preserving the ORM schema
+created by ``Base.metadata.create_all``.
 
-Two extraction backends are tried in order:
+Two Access extraction backends are tried in order:
 
 1. **mdb-tools** (``mdb-tables`` + ``mdb-export``) — works on Linux
    without ODBC drivers.
@@ -25,10 +26,11 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import inspect, select, text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.exc import SQLAlchemyError
 
 from dpmcore.orm.base import Base
 from dpmcore.orm.infrastructure import Release
@@ -37,6 +39,10 @@ logger = logging.getLogger(__name__)
 
 # Access system tables that should never be migrated.
 _SYSTEM_TABLE_PREFIXES = ("MSys", "~")
+
+# Rows read from / written to a database per round trip when copying
+# from another DPM database.
+_COPY_CHUNK_ROWS = 10_000
 
 
 class MigrationError(Exception):
@@ -56,7 +62,10 @@ class MigrationResult:
 
 
 class MigrationService:
-    """Migrate an Access database into a SQLAlchemy-managed database.
+    """Build a SQLAlchemy-managed DPM database from an external source.
+
+    Sources are an Access file, a folder of CSV files, or another DPM
+    database.
 
     Unlike other dpmcore services that accept a ``Session``, this
     service requires an ``Engine`` because it needs to run
@@ -134,6 +143,262 @@ class MigrationService:
             backend="csv",
             output_path=output_path,
         )
+
+    def migrate_from_database(
+        self,
+        source: Engine,
+        *,
+        source_schema: Optional[str] = None,
+        output_path: Optional[Path] = None,
+    ) -> MigrationResult:
+        """Copy the DPM tables of another database into the target.
+
+        Only the tables defined in the dpmcore ORM are copied; any
+        other table in *source* is ignored. The target's ORM tables
+        are dropped and recreated first, so *source* must not be the
+        target database.
+
+        Every table is read inside one source transaction so that a
+        source being edited during the copy cannot leave dangling
+        references in the target: ``REPEATABLE READ`` on PostgreSQL,
+        ``SNAPSHOT`` on SQL Server when the database allows it
+        (``ALLOW_SNAPSHOT_ISOLATION ON``), and a single read
+        transaction on SQLite. When SQL Server snapshot isolation is
+        off the copy runs under the connection's default isolation
+        level and a warning is recorded.
+
+        A source created with a different dpmcore version is accepted:
+        an ORM table or column missing in the source, or a source
+        column unknown to the ORM, is reported in
+        :attr:`MigrationResult.warnings`.
+
+        Args:
+            source: Engine of the database to read from.
+            source_schema: Schema holding the DPM tables in *source*.
+                Defaults to the source connection's default schema.
+            output_path: Optional final path for the resulting SQLite
+                file. See :meth:`migrate_from_access` for details.
+
+        Returns:
+            A :class:`MigrationResult`; ``backend_used`` is the source
+            dialect name (e.g. ``"mssql"``).
+
+        Raises:
+            MigrationError: If source and target are the same
+                database, the source holds no DPM table, the source
+                cannot be read or the target rejects the data.
+        """
+        warnings: List[str] = []
+        try:
+            self._ensure_distinct_database(source, source_schema)
+            reader = self._snapshot_reader(source, source_schema, warnings)
+            with reader.connect() as conn:
+                if conn.dialect.name == "sqlite":
+                    # pysqlite opens no transaction for SELECTs.
+                    conn.exec_driver_sql("BEGIN")
+                plan = self._plan_database_copy(conn, source_schema, warnings)
+                if not plan:
+                    raise MigrationError(
+                        "No DPM tables found in the source database."
+                    )
+                self._create_schema()
+                table_details = self._copy_tables(conn, plan, warnings)
+        except SQLAlchemyError as exc:
+            raise MigrationError(f"Database copy failed: {exc}") from exc
+
+        self._resync_postgresql_sequences(table_details)
+        database_path = self._relocate_database(output_path)
+
+        return MigrationResult(
+            tables_migrated=len(table_details),
+            total_rows=sum(table_details.values()),
+            table_details=table_details,
+            warnings=warnings,
+            backend_used=source.dialect.name,
+            database_path=database_path,
+        )
+
+    # -------------------------------------------------------------- #
+    # Database-to-database copy
+    # -------------------------------------------------------------- #
+
+    def _ensure_distinct_database(
+        self, source: Engine, source_schema: Optional[str]
+    ) -> None:
+        """Raise if *source* is the database this service writes to.
+
+        Databases are compared by URL (resolved file path for SQLite;
+        host, port, database name and schema otherwise), so two
+        different spellings of the same server are not detected.
+        """
+        if source.pool is not self._engine.pool:
+            source_id = self._database_identity(source)
+            if source_id is None or source_id != self._database_identity(
+                self._engine
+            ):
+                return
+            if source.dialect.name != "sqlite" and self._effective_schema(
+                source, source_schema
+            ) != self._effective_schema(self._engine, self._schema):
+                return
+
+        raise MigrationError(
+            "The source and the target are the same database. The "
+            "target's tables are dropped before loading, so the copy "
+            "would destroy the source."
+        )
+
+    @staticmethod
+    def _database_identity(engine: Engine) -> Optional[Tuple[Any, ...]]:
+        """Return a comparable key for the database behind *engine*.
+
+        ``None`` means the database is private to the engine (SQLite
+        ``:memory:``) and can only equal itself.
+        """
+        url = engine.url
+        backend = url.get_backend_name()
+        if backend == "sqlite":
+            if not url.database or url.database == ":memory:":
+                return None
+            return (backend, Path(url.database).resolve())
+        return (
+            backend,
+            (url.host or "").lower(),
+            url.port,
+            url.database,
+            tuple(sorted((k, str(v)) for k, v in url.query.items())),
+        )
+
+    @staticmethod
+    def _effective_schema(engine: Engine, schema: Optional[str]) -> str:
+        """Return *schema*, or the connection's default schema."""
+        if schema is not None:
+            return schema
+        return inspect(engine).default_schema_name or ""
+
+    @staticmethod
+    def _snapshot_reader(
+        source: Engine,
+        source_schema: Optional[str],
+        warnings: List[str],
+    ) -> Engine:
+        """Return *source* configured for one consistent read."""
+        options: Dict[str, Any] = {}
+        if source_schema is not None:
+            options["schema_translate_map"] = {None: source_schema}
+
+        dialect = source.dialect.name
+        if dialect == "postgresql":
+            options["isolation_level"] = "REPEATABLE READ"
+        elif dialect == "mssql":
+            with source.connect() as conn:
+                snapshot_state = conn.execute(
+                    text(
+                        "SELECT snapshot_isolation_state "
+                        "FROM sys.databases WHERE database_id = DB_ID()"
+                    )
+                ).scalar()
+            if snapshot_state == 1:
+                options["isolation_level"] = "SNAPSHOT"
+            else:
+                msg = (
+                    "SNAPSHOT isolation is not enabled on the source "
+                    "database; tables are read under the default "
+                    "isolation level, so changes made to the source "
+                    "during the copy may be only partially included."
+                )
+                logger.warning(msg)
+                warnings.append(msg)
+
+        return source.execution_options(**options) if options else source
+
+    @staticmethod
+    def _plan_database_copy(
+        conn: Connection,
+        source_schema: Optional[str],
+        warnings: List[str],
+    ) -> List[Tuple[Any, List[str]]]:
+        """Match the ORM tables against what the source really has.
+
+        Returns ``(orm_table, column_names)`` pairs in dependency
+        order, where *column_names* are the ORM columns that exist in
+        the source. Differences are appended to *warnings*.
+        """
+        inspector = inspect(conn)
+        source_tables = set(inspector.get_table_names(schema=source_schema))
+
+        plan: List[Tuple[Any, List[str]]] = []
+        for orm_table in Base.metadata.sorted_tables:
+            name = orm_table.name
+            if name not in source_tables:
+                warnings.append(
+                    f"Table '{name}': not found in the source "
+                    "database; left empty"
+                )
+                continue
+
+            source_columns = {
+                column["name"]
+                for column in inspector.get_columns(name, schema=source_schema)
+            }
+            orm_columns = [column.name for column in orm_table.columns]
+            missing = [c for c in orm_columns if c not in source_columns]
+            if missing:
+                warnings.append(
+                    f"Table '{name}': columns {missing} not found in "
+                    "the source database; left empty"
+                )
+            extra = sorted(source_columns.difference(orm_columns))
+            if extra:
+                warnings.append(
+                    f"Table '{name}': ignoring unknown source columns {extra}"
+                )
+            plan.append(
+                (orm_table, [c for c in orm_columns if c in source_columns])
+            )
+
+        for warning in warnings:
+            logger.info(warning)
+        return plan
+
+    def _copy_tables(
+        self,
+        conn: Connection,
+        plan: List[Tuple[Any, List[str]]],
+        warnings: List[str],
+    ) -> Dict[str, int]:
+        """Stream every planned table from *conn* into the target.
+
+        Rows keep the Python types the source driver returned, so the
+        string-based numeric guessing used for CSV input is skipped.
+        """
+        import pandas as pd  # lazy
+
+        identity_cols = (
+            self._mssql_identity_columns()
+            if self._engine.dialect.name == "mssql"
+            else {}
+        )
+
+        table_details: Dict[str, int] = {}
+        for orm_table, column_names in plan:
+            by_name = {column.name: column for column in orm_table.columns}
+            statement = select(
+                *[by_name[name] for name in column_names]
+            ).execution_options(stream_results=True)
+
+            copied = 0
+            for chunk in conn.execute(statement).partitions(_COPY_CHUNK_ROWS):
+                df = pd.DataFrame(
+                    [tuple(row) for row in chunk],
+                    columns=column_names,
+                    dtype=object,
+                )
+                self._load_table(orm_table.name, df, warnings, identity_cols)
+                copied += len(df)
+            table_details[orm_table.name] = copied
+
+        return table_details
 
     # -------------------------------------------------------------- #
     # Extraction

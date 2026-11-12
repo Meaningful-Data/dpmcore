@@ -3,6 +3,7 @@ r"""CLI entry point for dpmcore.
 Usage::
 
     dpmcore migrate --source /path/to/file.accdb --database sqlite:///dpm.db
+    dpmcore migrate --source-db mssql+pyodbc://... --database sqlite:///dpm.db
     dpmcore serve --database sqlite:///dpm.db
     dpmcore generate-script --expressions ./rules.json \
         --module-code COREP_Con --module-version 2.0.1 \
@@ -56,9 +57,26 @@ def main() -> None:
 @main.command()
 @click.option(
     "--source",
-    required=True,
+    default=None,
     type=click.Path(exists=True),
     help="Path to Access .accdb / .mdb file.",
+)
+@click.option(
+    "--source-db",
+    default=None,
+    help=(
+        "SQLAlchemy URL of an existing DPM database to copy from "
+        "(SQLite, PostgreSQL or SQL Server). Mutually exclusive "
+        "with --source."
+    ),
+)
+@click.option(
+    "--source-schema",
+    default=None,
+    help=(
+        "Schema holding the DPM tables in --source-db. Defaults to "
+        "the source connection's default schema."
+    ),
 )
 @click.option(
     "--database",
@@ -76,9 +94,22 @@ def main() -> None:
         "input --database path. Ignored for non-SQLite engines."
     ),
 )
-def migrate(source: str, database: str, output_path: str | None) -> None:
-    """Migrate an Access database into a SQL database."""
+def migrate(
+    source: str | None,
+    source_db: str | None,
+    source_schema: str | None,
+    database: str,
+    output_path: str | None,
+) -> None:
+    """Build a SQL database from an Access file or another DPM database."""
     from pathlib import Path
+
+    if (source is None) == (source_db is None):
+        raise click.UsageError(
+            "Provide exactly one of --source or --source-db."
+        )
+    if source_schema is not None and source_db is None:
+        raise click.UsageError("--source-schema requires --source-db.")
 
     try:
         from rich.console import Console
@@ -101,12 +132,24 @@ def migrate(source: str, database: str, output_path: str | None) -> None:
 
     engine = create_engine(database)
     service = MigrationService(engine)
+    output = Path(output_path) if output_path else None
 
     try:
-        result = service.migrate_from_access(
-            source,
-            output_path=Path(output_path) if output_path else None,
-        )
+        if source_db is not None:
+            source_engine = create_engine(source_db)
+            try:
+                result = service.migrate_from_database(
+                    source_engine,
+                    source_schema=source_schema,
+                    output_path=output,
+                )
+            finally:
+                source_engine.dispose()
+        else:
+            result = service.migrate_from_access(
+                cast("str", source),
+                output_path=output,
+            )
     except MigrationError as exc:
         console.print(f"[red]Error:[/red] {exc}")
         sys.exit(1)
