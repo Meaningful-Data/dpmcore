@@ -17,8 +17,8 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     SmallInteger,
-    String,
-    Text,
+    Unicode,
+    UnicodeText,
     UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
@@ -61,9 +61,9 @@ class Operation(Base):
     operation_id: Mapped[int] = mapped_column(
         "OperationID", Integer, primary_key=True
     )
-    code: Mapped[Optional[str]] = mapped_column("Code", String(255))
-    type: Mapped[Optional[str]] = mapped_column("Type", String(20))
-    source: Mapped[Optional[str]] = mapped_column("Source", String(20))
+    code: Mapped[Optional[str]] = mapped_column("Code", Unicode(255))
+    type: Mapped[Optional[str]] = mapped_column("Type", Unicode(20))
+    source: Mapped[Optional[str]] = mapped_column("Source", Unicode(20))
     group_operation_id: Mapped[Optional[int]] = mapped_column(
         "GroupOperID",
         Integer,
@@ -71,7 +71,7 @@ class Operation(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column(
@@ -154,17 +154,19 @@ class OperationVersion(Base):
         Integer,
         ForeignKey("Release.ReleaseID"),
     )
-    expression: Mapped[Optional[str]] = mapped_column("Expression", Text)
+    expression: Mapped[Optional[str]] = mapped_column(
+        "Expression", UnicodeText
+    )
     description: Mapped[Optional[str]] = mapped_column(
-        "Description", String(1000)
+        "Description", Unicode(1000)
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     endorsement: Mapped[Optional[str]] = mapped_column(
-        "Endorsement", String(25)
+        "Endorsement", Unicode(25)
     )
     is_variant_approved: Mapped[Optional[bool]] = mapped_column(
         "IsVariantApproved", Boolean
@@ -265,11 +267,11 @@ class OperationVersionData(Base):
         ForeignKey("OperationVersion.OperationVID"),
         primary_key=True,
     )
-    error: Mapped[Optional[str]] = mapped_column("Error", String(2000))
-    error_code: Mapped[Optional[str]] = mapped_column("ErrorCode", String(50))
+    error: Mapped[Optional[str]] = mapped_column("Error", Unicode(2000))
+    error_code: Mapped[Optional[str]] = mapped_column("ErrorCode", Unicode(50))
     is_applying: Mapped[Optional[bool]] = mapped_column("IsApplying", Boolean)
     proposing_status: Mapped[Optional[str]] = mapped_column(
-        "ProposingStatus", String(50)
+        "ProposingStatus", Unicode(50)
     )
 
     operation_version: Mapped["OperationVersion"] = relationship(
@@ -324,22 +326,22 @@ class OperationNode(Base):
         ForeignKey("OperatorArgument.ArgumentID"),
     )
     absolute_tolerance: Mapped[Optional[str]] = mapped_column(
-        "AbsoluteTolerance", String
+        "AbsoluteTolerance", Unicode
     )
     relative_tolerance: Mapped[Optional[str]] = mapped_column(
-        "RelativeTolerance", String
+        "RelativeTolerance", Unicode
     )
     fallback_value: Mapped[Optional[str]] = mapped_column(
-        "FallbackValue", String(50)
+        "FallbackValue", Unicode(50)
     )
     use_interval_arithmetics: Mapped[Optional[bool]] = mapped_column(
         "UseIntervalArithmetics", Boolean
     )
     operand_type: Mapped[Optional[str]] = mapped_column(
-        "OperandType", String(20)
+        "OperandType", Unicode(20)
     )
     is_leaf: Mapped[Optional[bool]] = mapped_column("IsLeaf", Boolean)
-    scalar: Mapped[Optional[str]] = mapped_column("Scalar", Text)
+    scalar: Mapped[Optional[str]] = mapped_column("Scalar", UnicodeText)
 
     operation_version: Mapped[Optional["OperationVersion"]] = relationship(
         "OperationVersion", back_populates="operation_nodes"
@@ -398,11 +400,11 @@ class OperationScope(Base):
         ForeignKey("OperationVersion.OperationVID"),
     )
     is_active: Mapped[Optional[int]] = mapped_column("IsActive", SmallInteger)
-    severity: Mapped[Optional[str]] = mapped_column("Severity", String(20))
+    severity: Mapped[Optional[str]] = mapped_column("Severity", Unicode(20))
     from_submission_date: Mapped[Optional[date]] = mapped_column(
         "FromSubmissionDate", Date
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", Unicode(38))
     created_release_id: Mapped[Optional[int]] = mapped_column(
         "CreatedReleaseID",
         Integer,
@@ -448,7 +450,7 @@ class OperationScopeComposition(Base):
         ForeignKey("ModuleVersion.ModuleVID"),
         primary_key=True,
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", Unicode(38))
 
     operation_scope: Mapped["OperationScope"] = relationship(
         "OperationScope", back_populates="operation_scope_compositions"
@@ -503,7 +505,7 @@ class OperationOutput(Base):
         Integer,
         ForeignKey("Organisation.OrgID"),
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", Unicode(38))
 
     operation_version: Mapped["OperationVersion"] = relationship(
         "OperationVersion", back_populates="operation_outputs"
@@ -536,9 +538,9 @@ class Operator(Base):
     operator_id: Mapped[int] = mapped_column(
         "OperatorID", Integer, primary_key=True
     )
-    name: Mapped[Optional[str]] = mapped_column("Name", String(50))
-    symbol: Mapped[Optional[str]] = mapped_column("Symbol", String(20))
-    type: Mapped[Optional[str]] = mapped_column("Type", String(20))
+    name: Mapped[Optional[str]] = mapped_column("Name", Unicode(50))
+    symbol: Mapped[Optional[str]] = mapped_column("Symbol", Unicode(20))
+    type: Mapped[Optional[str]] = mapped_column("Type", Unicode(20))
 
     operator_arguments: Mapped[List["OperatorArgument"]] = relationship(
         "OperatorArgument",
@@ -595,7 +597,7 @@ class OperatorArgument(Base):
     is_mandatory: Mapped[Optional[bool]] = mapped_column(
         "IsMandatory", Boolean
     )
-    name: Mapped[Optional[str]] = mapped_column("Name", String(50))
+    name: Mapped[Optional[str]] = mapped_column("Name", Unicode(50))
 
     operator: Mapped[Optional["Operator"]] = relationship(
         "Operator", back_populates="operator_arguments"
@@ -643,7 +645,7 @@ class OperandReference(Base):
     y: Mapped[Optional[int]] = mapped_column("y", Integer)
     z: Mapped[Optional[int]] = mapped_column("z", Integer)
     operand_reference: Mapped[Optional[str]] = mapped_column(
-        "OperandReference", String(255)
+        "OperandReference", Unicode(255)
     )
     item_id: Mapped[Optional[int]] = mapped_column(
         "ItemID",
@@ -729,10 +731,10 @@ class OperandReferenceLocation(Base):
         Integer,
         ForeignKey("Cell.CellID"),
     )
-    table: Mapped[Optional[str]] = mapped_column("Table", String(255))
-    row: Mapped[Optional[str]] = mapped_column("Row", String(255))
-    column: Mapped[Optional[str]] = mapped_column("Column", String(255))
-    sheet: Mapped[Optional[str]] = mapped_column("Sheet", String(255))
+    table: Mapped[Optional[str]] = mapped_column("Table", Unicode(255))
+    row: Mapped[Optional[str]] = mapped_column("Row", Unicode(255))
+    column: Mapped[Optional[str]] = mapped_column("Column", Unicode(255))
+    sheet: Mapped[Optional[str]] = mapped_column("Sheet", Unicode(255))
 
     operand_reference: Mapped["OperandReference"] = relationship(
         "OperandReference", back_populates="operand_reference_locations"

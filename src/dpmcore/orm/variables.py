@@ -12,7 +12,7 @@ from sqlalchemy import (
     Boolean,
     ForeignKey,
     Integer,
-    String,
+    Unicode,
     UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
@@ -55,10 +55,10 @@ class Variable(Base):
     variable_id: Mapped[int] = mapped_column(
         "VariableID", Integer, primary_key=True
     )
-    type: Mapped[Optional[str]] = mapped_column("Type", String(20))
+    type: Mapped[Optional[str]] = mapped_column("Type", Unicode(20))
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column(
@@ -145,8 +145,8 @@ class VariableVersion(Base):
     is_multi_valued: Mapped[Optional[bool]] = mapped_column(
         "IsMultiValued", Boolean
     )
-    code: Mapped[Optional[str]] = mapped_column("Code", String(20))
-    name: Mapped[Optional[str]] = mapped_column("Name", String(50))
+    code: Mapped[Optional[str]] = mapped_column("Code", Unicode(20))
+    name: Mapped[Optional[str]] = mapped_column("Name", Unicode(50))
     start_release_id: Mapped[Optional[int]] = mapped_column(
         "StartReleaseID",
         Integer,
@@ -159,7 +159,7 @@ class VariableVersion(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
 
@@ -223,11 +223,11 @@ class CompoundKey(Base):
 
     key_id: Mapped[int] = mapped_column("KeyID", Integer, primary_key=True)
     signature: Mapped[Optional[str]] = mapped_column(
-        "Signature", String(255), unique=True
+        "Signature", Unicode(255), unique=True
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column(
@@ -284,7 +284,7 @@ class KeyComposition(Base):
         ForeignKey("VariableVersion.VariableVID"),
         primary_key=True,
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", Unicode(38))
 
     compound_key: Mapped["CompoundKey"] = relationship(
         "CompoundKey", back_populates="key_compositions"

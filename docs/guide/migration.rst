@@ -151,6 +151,13 @@ Type handling
   (``cursor.description``) are used to enforce types.  Text columns
   that contain numeric-looking values (e.g. postal codes ``"01234"``)
   are preserved as strings.
+- **Text columns** are declared as Unicode types, so on SQL Server they
+  are created as ``NVARCHAR`` and store any character regardless of the
+  database collation (SQLite and PostgreSQL are unaffected).  A SQL
+  Server database created by an earlier dpmcore version has ``VARCHAR``
+  columns, where characters outside the collation's code page were
+  stored as ``?``; migrate it again to recreate the schema and restore
+  the text.
 
 Error handling
 ~~~~~~~~~~~~~~

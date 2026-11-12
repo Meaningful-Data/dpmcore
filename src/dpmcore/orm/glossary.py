@@ -14,7 +14,7 @@ from sqlalchemy import (
     Boolean,
     ForeignKey,
     Integer,
-    String,
+    Unicode,
     UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
@@ -62,10 +62,10 @@ class Category(Base):
     category_id: Mapped[int] = mapped_column(
         "CategoryID", Integer, primary_key=True
     )
-    code: Mapped[Optional[str]] = mapped_column("Code", String(20))
-    name: Mapped[Optional[str]] = mapped_column("Name", String(50))
+    code: Mapped[Optional[str]] = mapped_column("Code", Unicode(20))
+    name: Mapped[Optional[str]] = mapped_column("Name", Unicode(50))
     description: Mapped[Optional[str]] = mapped_column(
-        "Description", String(1000)
+        "Description", Unicode(1000)
     )
     is_enumerated: Mapped[Optional[bool]] = mapped_column(
         "IsEnumerated", Boolean
@@ -75,11 +75,11 @@ class Category(Base):
         "IsExternalRefData", Boolean
     )
     ref_data_source: Mapped[Optional[str]] = mapped_column(
-        "RefDataSource", String(255)
+        "RefDataSource", Unicode(255)
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     created_release_id: Mapped[Optional[int]] = mapped_column(
@@ -153,14 +153,14 @@ class SubCategory(Base):
         Integer,
         ForeignKey("Category.CategoryID"),
     )
-    code: Mapped[Optional[str]] = mapped_column("Code", String(30))
-    name: Mapped[Optional[str]] = mapped_column("Name", String(500))
+    code: Mapped[Optional[str]] = mapped_column("Code", Unicode(30))
+    name: Mapped[Optional[str]] = mapped_column("Name", Unicode(500))
     description: Mapped[Optional[str]] = mapped_column(
-        "Description", String(500)
+        "Description", Unicode(500)
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column(
@@ -227,7 +227,7 @@ class SubCategoryVersion(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
 
@@ -291,7 +291,7 @@ class SubCategoryItem(Base):
         primary_key=True,
     )
     order: Mapped[Optional[int]] = mapped_column("Order", Integer)
-    label: Mapped[Optional[str]] = mapped_column("Label", String(200))
+    label: Mapped[Optional[str]] = mapped_column("Label", Unicode(200))
     parent_item_id: Mapped[Optional[int]] = mapped_column(
         "ParentItemID",
         Integer,
@@ -309,7 +309,7 @@ class SubCategoryItem(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
 
@@ -359,15 +359,15 @@ class Item(Base):
     __tablename__ = "Item"
 
     item_id: Mapped[int] = mapped_column("ItemID", Integer, primary_key=True)
-    name: Mapped[Optional[str]] = mapped_column("Name", String(500))
+    name: Mapped[Optional[str]] = mapped_column("Name", Unicode(500))
     description: Mapped[Optional[str]] = mapped_column(
-        "Description", String(2000)
+        "Description", Unicode(2000)
     )
     is_property: Mapped[Optional[bool]] = mapped_column("IsProperty", Boolean)
     is_active: Mapped[Optional[bool]] = mapped_column("IsActive", Boolean)
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column(
@@ -448,17 +448,17 @@ class ItemCategory(Base):
         Integer,
         ForeignKey("Category.CategoryID"),
     )
-    code: Mapped[Optional[str]] = mapped_column("Code", String(20))
+    code: Mapped[Optional[str]] = mapped_column("Code", Unicode(20))
     is_default_item: Mapped[Optional[bool]] = mapped_column(
         "IsDefaultItem", Boolean
     )
-    signature: Mapped[Optional[str]] = mapped_column("Signature", String(255))
+    signature: Mapped[Optional[str]] = mapped_column("Signature", Unicode(255))
     end_release_id: Mapped[Optional[int]] = mapped_column(
         "EndReleaseID",
         Integer,
         ForeignKey("Release.ReleaseID"),
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", Unicode(38))
 
     item: Mapped["Item"] = relationship(
         "Item", back_populates="item_categories"
@@ -509,11 +509,11 @@ class Property(Base):
     )
     value_length: Mapped[Optional[int]] = mapped_column("ValueLength", Integer)
     period_type: Mapped[Optional[str]] = mapped_column(
-        "PeriodType", String(20)
+        "PeriodType", Unicode(20)
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column(
@@ -594,7 +594,7 @@ class PropertyCategory(Base):
         Integer,
         ForeignKey("Release.ReleaseID"),
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", Unicode(38))
 
     property: Mapped["Property"] = relationship(
         "Property", back_populates="property_categories"
@@ -640,10 +640,12 @@ class Context(Base):
     context_id: Mapped[int] = mapped_column(
         "ContextID", Integer, primary_key=True
     )
-    signature: Mapped[Optional[str]] = mapped_column("Signature", String(2000))
+    signature: Mapped[Optional[str]] = mapped_column(
+        "Signature", Unicode(2000)
+    )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column(
@@ -716,7 +718,7 @@ class ContextComposition(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
 
@@ -774,7 +776,7 @@ class CompoundItemContext(Base):
         Integer,
         ForeignKey("Release.ReleaseID"),
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", Unicode(38))
 
     item: Mapped["Item"] = relationship(
         "Item", back_populates="compound_item_contexts"
@@ -830,7 +832,7 @@ class SupercategoryComposition(Base):
         Integer,
         ForeignKey("Release.ReleaseID"),
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", Unicode(38))
 
     supercategory: Mapped["Category"] = relationship(
         "Category",
