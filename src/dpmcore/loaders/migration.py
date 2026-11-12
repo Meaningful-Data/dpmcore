@@ -27,7 +27,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import inspect, select, text
+from sqlalchemy import String, UnicodeText, inspect, select, text
 from sqlalchemy.engine import Engine
 
 from dpmcore.orm.base import Base
@@ -796,6 +796,8 @@ class MigrationService:
             df = self._coerce_temporal_columns_for_schema(df, orm_table)
             df = self._coerce_boolean_columns_for_schema(df, orm_table)
 
+        text_dtypes = self._text_column_dtypes(df, orm_table)
+
         try:
             identity_column = identity_columns.get(table_name)
 
@@ -820,6 +822,7 @@ class MigrationService:
                             if_exists="append",
                             index=False,
                             chunksize=10_000,
+                            dtype=text_dtypes,
                         )
                     finally:
                         conn.execute(
@@ -834,12 +837,40 @@ class MigrationService:
                     if_exists="append",
                     index=False,
                     chunksize=10_000,
+                    dtype=text_dtypes,
                 )
 
         except Exception as exc:
             raise MigrationError(
                 f"Failed to load table '{table_name}': {exc}"
             ) from exc
+
+    @staticmethod
+    def _text_column_dtypes(df: Any, orm_table: Any) -> dict[str, Any]:
+        """Return the SQL types ``to_sql`` must bind text columns with.
+
+        Left alone, pandas binds every string column as a non-Unicode
+        ``Text``. On SQL Server that sends the values as ``VARCHAR``, so
+        characters outside the database collation's code page become
+        ``?`` before they reach the column, even an ``NVARCHAR`` one.
+        Binding with the ORM's own Unicode type (or ``UnicodeText`` for
+        tables that have no ORM model, which pandas creates itself)
+        keeps the text intact; other backends are unaffected.
+        """
+        if orm_table is not None:
+            return {
+                col.name: col.type
+                for col in orm_table.columns
+                if col.name in df.columns and isinstance(col.type, String)
+            }
+
+        import pandas as pd
+
+        return {
+            name: UnicodeText()
+            for name in df.columns
+            if pd.api.types.infer_dtype(df[name], skipna=True) == "string"
+        }
 
     def _mssql_identity_columns(self) -> dict[str, str]:
         """Return {table_name: identity_column} for tables in the schema."""

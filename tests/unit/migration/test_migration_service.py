@@ -1248,3 +1248,64 @@ class TestResyncPostgresqlSequences:
         service._resync_postgresql_sequences({"Organisation": None})
 
         assert conn.execute.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# _load_table – Unicode binding of text columns (issue #478)
+# ---------------------------------------------------------------------------
+
+
+class TestLoadTableUnicodeText:
+    """Text must be bound as Unicode, or SQL Server stores ``?``."""
+
+    def test_orm_table_binds_text_columns_with_orm_type(self):
+        from sqlalchemy import Unicode
+
+        from dpmcore.orm.base import Base
+
+        orm_table = Base.metadata.tables["Item"]
+        df = pd.DataFrame({"ItemID": [1], "Name": ["Фондът ≤ č"]})
+
+        dtypes = MigrationService._text_column_dtypes(df, orm_table)
+
+        assert list(dtypes) == ["Name"]
+        assert isinstance(dtypes["Name"], Unicode)
+        assert dtypes["Name"].length == orm_table.c.Name.type.length
+
+    def test_table_without_orm_model_binds_strings_as_unicode_text(self):
+        from sqlalchemy import UnicodeText
+
+        df = pd.DataFrame(
+            {"ID": [1, 2], "Label": ["Фондът", None], "Amount": [1.5, 2.5]}
+        )
+
+        dtypes = MigrationService._text_column_dtypes(df, None)
+
+        assert list(dtypes) == ["Label"]
+        assert isinstance(dtypes["Label"], UnicodeText)
+
+    def test_direct_to_sql_receives_text_dtypes(self):
+        from sqlalchemy import Unicode
+
+        engine = _mssql_engine_mock()
+        df = pd.DataFrame({"ItemID": [1], "Name": ["Фондът"]})
+
+        service = MigrationService(engine)
+        with patch.object(df, "to_sql") as mock_to_sql:
+            service._load_table("Item", df, [], {})
+
+        dtype = mock_to_sql.call_args.kwargs["dtype"]
+        assert isinstance(dtype["Name"], Unicode)
+
+    def test_identity_insert_to_sql_receives_text_dtypes(self):
+        from sqlalchemy import Unicode
+
+        engine = _mssql_engine_mock()
+        df = pd.DataFrame({"ItemID": [1], "Name": ["Фондът"]})
+
+        service = MigrationService(engine, schema="dbo")
+        with patch.object(df, "to_sql") as mock_to_sql:
+            service._load_table("Item", df, [], {"Item": "ItemID"})
+
+        dtype = mock_to_sql.call_args.kwargs["dtype"]
+        assert isinstance(dtype["Name"], Unicode)
