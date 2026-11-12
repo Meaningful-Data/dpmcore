@@ -197,17 +197,19 @@ sheetElem:
     | SHEET_RANGE
     | SHEET_ALL
 ;
+// A parenthesised list may mix single codes and ranges: `(c0010-0070)`,
+// `(c0010-0070, c0090)`. The wildcard is not allowed in a list.
 rowHandler:
     rowElem
-    | LPAREN ROW (COMMA ROW)* RPAREN;
+    | LPAREN (ROW|ROW_RANGE) (COMMA (ROW|ROW_RANGE))* RPAREN;
 
 colHandler:
     colElem
-    | LPAREN COL (COMMA COL)* RPAREN;
+    | LPAREN (COL|COL_RANGE) (COMMA (COL|COL_RANGE))* RPAREN;
 
 sheetHandler:
     sheetElem
-    | LPAREN SHEET (COMMA SHEET)* RPAREN
+    | LPAREN (SHEET|SHEET_RANGE) (COMMA (SHEET|SHEET_RANGE))* RPAREN
 ;
 
 interval:
