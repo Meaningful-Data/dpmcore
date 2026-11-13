@@ -342,8 +342,8 @@ Start the dpmcore REST API server.
 
 Generate an engine-ready DPM-XL validations script from a set of
 expressions. Expressions are validated and enriched against the DPM
-dictionary; the output is a JSON document keyed by the resolved module
-URI (the same shape produced by the Python ``ASTGeneratorService`` and
+dictionary; the output is a Script Format 2.0 document, a flat object
+(the same shape produced by the Python ``ASTGeneratorService`` and
 the ``/api/v1/scripts`` REST endpoint).
 
 .. code-block:: text
@@ -351,6 +351,7 @@ the ``/api/v1/scripts`` REST endpoint).
    dpmcore generate-script --expressions <file> --module-code <code>
                            --module-version <ver> --database <url>
                            --output <file> [--severity LEVEL] [--release CODE]
+                           [--owner ACRONYM]
 
 **Options:**
 
@@ -374,6 +375,9 @@ the ``/api/v1/scripts`` REST endpoint).
    * - ``--release TEXT``
      - Release code, e.g. ``4.2``. When omitted, resolves to the latest
        release whose window contains the requested module version.
+   * - ``--owner TEXT``
+     - Organisation that defined the expressions, the script's ``owner``.
+       Defaults to the module's owner.
    * - ``--database TEXT``
      - SQLAlchemy database URL. **(Required)**
    * - ``--output PATH``
@@ -425,7 +429,7 @@ are discovered from ``OperationScope`` / ``OperationScopeComposition`` /
 
    dpmcore export-script (--module-code <code> | --all-modules)
                           (--module-version <ver> | --all-versions | --release <code>)
-                          [--dpm-publication-date <YYYY-MM-DD>]
+                          [--dpm-publication-date <YYYY-MM-DD>] [--owner <acronym>]
                           --database <url> [--output <path>]
 
 **Options:**
@@ -457,15 +461,18 @@ are discovered from ``OperationScope`` / ``OperationScopeComposition`` /
    * - ``--dpm-publication-date DATE``
      - Publication date (``YYYY-MM-DD``) stamped into the ``dpm_release``
        block. Defaults to the date of the database's latest release.
+   * - ``--owner TEXT``
+     - Organisation whose validations are exported, the script's ``owner``.
+       Defaults to the module's owner.
    * - ``--database TEXT``
      - SQLAlchemy database URL. **(Required)**
    * - ``--output PATH``
      - Where to write the generated script(s). For a single
        module/version target, a JSON file path (defaults to
-       ``<module_code>-<module_version>.json`` in the current directory).
-       When sweeping (``--all-modules``/``--all-versions``), a directory
-       to write one ``<module_code>-<version>.json`` file per target into
-       (defaults to the current directory).
+       ``<owner>-<module_code>-<module_version>.json`` in the current
+       directory). When sweeping (``--all-modules``/``--all-versions``), a
+       directory to write one ``<owner>-<module_code>-<version>.json``
+       file per target into (defaults to the current directory).
 
 **Example — single target:**
 
@@ -504,9 +511,9 @@ aborting the whole sweep; the command exits non-zero if any target
 failed.
 
 Validations the semantic pass rejects are not part of the script, and
-neither are validations whose precondition falls outside what the engine
-can evaluate — a gate may only combine filing indicators, parameters and
-boolean literals with ``and`` / ``or`` / ``xor`` / ``not``. The console
+neither are validations whose precondition the semantic pass rejects —
+a gate may read facts, aggregates or parameters, but must yield a single
+boolean. The console
 reports how many were skipped next to how many were discovered, and
 lists the reason per validation; the output JSON file itself carries
 only the enriched script (matching mdpm's own export shape), so the

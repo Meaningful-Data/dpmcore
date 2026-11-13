@@ -41,6 +41,16 @@ def _module_vid(session, code, version):
     ).scalar()
 
 
+def _own_version(document):
+    """The script's own module version, as ``modules`` lists it."""
+    (version,) = [
+        version
+        for version in document["modules"][document["module_code"]]["versions"]
+        if version["URI"] == document["module_uri"]
+    ]
+    return version
+
+
 def test_fixture_still_has_two_ghosts_with_disjoint_table_variables(
     fixture_session,
 ):
@@ -114,8 +124,8 @@ def test_ghost_union_is_scoped_to_the_release_covering_ghost(
         release=_RELEASE_UNDER_FIRST_GHOST,
     )
     assert result["success"], result.get("error")
-    ns = next(iter(result["enriched_ast"].values()))
-    variables = ns["tables"][_TABLE]["variables"]
+    ns = result["enriched_ast"]
+    variables = _own_version(ns)["tables"][_TABLE]["variables"]
     assert _FIRST_GHOST_ONLY_VARIABLE_ID in variables
     assert _SECOND_GHOST_ONLY_VARIABLE_ID not in variables, (
         f"{_RELEASE_UNDER_FIRST_GHOST} is only covered by the first "
@@ -129,10 +139,22 @@ def test_ghost_union_is_scoped_to_the_release_covering_ghost(
             release=release,
         )
         assert result["success"], result.get("error")
-        ns = next(iter(result["enriched_ast"].values()))
-        variables = ns["tables"][_TABLE]["variables"]
+        ns = result["enriched_ast"]
+        variables = _own_version(ns)["tables"][_TABLE]["variables"]
         assert _SECOND_GHOST_ONLY_VARIABLE_ID in variables
         assert _FIRST_GHOST_ONLY_VARIABLE_ID not in variables, (
             f"{release} is only covered by the second ghost -- the "
             "first ghost's variable must not leak in"
         )
+
+
+def test_a_ghost_table_has_the_open_keys_of_its_own_release(fixture_session):
+    """``C_92.01`` is only in the ghosts, which start after 3.1.0 does."""
+    result = ASTGeneratorService(fixture_session).script_for_module(
+        module_code=_MODULE,
+        module_version=_FALLBACK,
+        release=_RELEASE_UNDER_FIRST_GHOST,
+    )
+    assert result["success"], result.get("error")
+    table = _own_version(result["enriched_ast"])["tables"]["C_92.01"]
+    assert set(table["open_keys"]) == {"CUB", "OGS", "SOP"}

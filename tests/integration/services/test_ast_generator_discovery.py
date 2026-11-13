@@ -182,7 +182,7 @@ def test_discovers_active_validations(fixture_session):
     # on item cells (#355) — but it must still be a real active code.
     assert set(result["failed_operations"]) <= set(oracle)
 
-    _, ns_block = next(iter(result["enriched_ast"].items()))
+    ns_block = result["enriched_ast"]
     operations = ns_block["operations"]
     assert operations, "script_for_module discovered no validations"
     assert set(operations).isdisjoint(result["failed_operations"])
@@ -224,7 +224,7 @@ def test_discovered_preconditions_reference_affected_operations(
     )
     assert result["success"] is True, result.get("error")
 
-    _, ns_block = next(iter(result["enriched_ast"].items()))
+    ns_block = result["enriched_ast"]
     operations = ns_block["operations"]
     preconditions = ns_block["preconditions"]
 
@@ -281,7 +281,7 @@ def test_dpm_release_names_the_database_latest_release(fixture_session):
         module_version=_MODULE_VERSION,
     )
     assert result["success"] is True, result.get("error")
-    _, ns_block = next(iter(result["enriched_ast"].items()))
+    ns_block = result["enriched_ast"]
     assert ns_block["dpm_release"] == {
         "release": latest.Code,
         "publication_date": str(latest.Date)[:10],
@@ -293,7 +293,7 @@ def test_dpm_release_names_the_database_latest_release(fixture_session):
         publication_date="2027-01-15",
     )
     assert overridden["success"] is True, overridden.get("error")
-    _, ns_block = next(iter(overridden["enriched_ast"].items()))
+    ns_block = overridden["enriched_ast"]
     assert ns_block["dpm_release"] == {
         "release": latest.Code,
         "publication_date": "2027-01-15",

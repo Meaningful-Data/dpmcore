@@ -58,7 +58,6 @@ def test_if_then_validation_generates(
     )
 
     assert result["success"], result["error"]
-    namespace = next(iter(result["enriched_ast"]))
-    operation = result["enriched_ast"][namespace]["operations"][code]
+    operation = result["enriched_ast"]["operations"][code]
     assert operation["root_operator_id"] == _IF_THEN_OPERATOR_ID
     assert operation["ast"]["class_name"] == "CondExpr"

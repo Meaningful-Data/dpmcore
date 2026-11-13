@@ -21,6 +21,7 @@ from dpmcore.dpm_xl.ast.nodes import (
     VarID,
     WithExpression,
 )
+from dpmcore.dpm_xl.utils.serialization import ASTToJSONVisitor
 from dpmcore.services.syntax import SyntaxService
 
 
@@ -108,6 +109,27 @@ def test_default_null_survives_with_clause_propagation():
     assert isinstance(f00_varid.default, Constant)
     assert f00_varid.default.type == "Null"
     assert f00_varid.default.value is None
+
+
+def test_item_default_is_serialised_as_its_code():
+    """An item default is written as the item's code, not as a node."""
+    own = SyntaxService().parse(
+        "{tF_01.01, r0010, c0010, default: [eba_AS:x1]}"
+    )
+    own_json = ASTToJSONVisitor(with_context=None).visit_VarID(own.children[0])
+    assert own_json["default"] == "eba_AS:x1"
+
+    shared = (
+        SyntaxService()
+        .parse(
+            "with {tF_01.01, c0010, default: [eba_AS:x1]}: {r0010} = {r0020}"
+        )
+        .children[0]
+    )
+    shared_json = ASTToJSONVisitor(
+        with_context=shared.partial_selection
+    ).visit_VarID(shared.expression.left)
+    assert shared_json["default"] == "eba_AS:x1"
 
 
 # ---------------------------------------------------------------------------

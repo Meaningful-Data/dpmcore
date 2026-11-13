@@ -15,58 +15,54 @@ def runner():
     return CliRunner()
 
 
-_NS_URI = "http://example.org/mod"
-
-
 def _success_result():
     return {
         "success": True,
         "enriched_ast": {
-            _NS_URI: {
-                "module_code": "FINREP_Con",
-                "module_version": "2.0.1",
-                "framework_code": "FINREP",
-                "dpm_release": {
-                    "release": "4.2",
-                    "publication_date": "2025-04-28",
+            "owner": "EBA",
+            "module_code": "FINREP_Con",
+            "module_version": "2.0.1",
+            "module_owner": "EBA",
+            "module_uri": "http://example.org/mod",
+            "framework_code": "FINREP",
+            "format_version": "2.0",
+            "dpm_release": {
+                "release": "4.2",
+                "publication_date": "2025-04-28",
+            },
+            "dates": {"from": "2026-03-31", "to": None},
+            "operations": {
+                "v0001": {
+                    "version_id": 1234,
+                    "code": "v0001",
+                    "expression": "expr",
+                    "root_operator_id": 24,
+                    "ast": {"class_name": "BinOp"},
+                    "from_submission_date": "2026-03-31",
+                    "severity": "error",
                 },
-                "dates": {"from": "2026-03-31", "to": None},
-                "operations": {
-                    "v0001": {
-                        "version_id": 1234,
-                        "code": "v0001",
-                        "expression": "expr",
-                        "root_operator_id": 24,
-                        "ast": {"class_name": "BinOp"},
-                        "from_submission_date": "2026-03-31",
-                        "severity": "error",
-                    },
-                    "v0002": {
-                        "version_id": 1235,
-                        "code": "v0002",
-                        "expression": "expr2",
-                        "root_operator_id": 24,
-                        "ast": {"class_name": "BinOp"},
-                        "from_submission_date": "2026-03-31",
-                        "severity": "warning",
-                    },
+                "v0002": {
+                    "version_id": 1235,
+                    "code": "v0002",
+                    "expression": "expr2",
+                    "root_operator_id": 24,
+                    "ast": {"class_name": "BinOp"},
+                    "from_submission_date": "2026-03-31",
+                    "severity": "warning",
                 },
-                "variables": {},
-                "tables": {},
-                "preconditions": {},
-                "precondition_variables": {},
-                "dependency_information": {
-                    "intra_instance_validations": ["v0001", "v0002"],
-                    "cross_instance_dependencies": [],
-                    "alternative_dependencies": [],
+            },
+            "preconditions": {},
+            "modules": {
+                "FINREP_Con": {"versions": []},
+                "M1": {"versions": []},
+            },
+            "parameters": {},
+            "dependency_groups": {
+                "G1": {
+                    "requires": {"is": {"code": "M1", "ref_date_lag": 0}},
+                    "validations": ["v0001", "v0002"],
                 },
-                "dependency_modules": {
-                    "http://example.org/m1": {
-                        "tables": {},
-                        "variables": {},
-                    },
-                },
-            }
+            },
         },
         "error": None,
         "failed_operations": {},
@@ -98,12 +94,10 @@ class TestExportScriptSuccess:
         assert result.exit_code == 0, result.output
         assert out.exists()
         payload = json.loads(out.read_text())
-        # The file holds only ``enriched_ast``'s content (the
-        # ``{namespace: ...}`` shape), not the ``success``/``error``/
+        # The file holds only ``enriched_ast``'s content (the Script
+        # Format 2.0 document), not the ``success``/``error``/
         # ``failed_operations`` wrapper ``script_for_module`` returns.
-        assert set(payload) == {_NS_URI}
-        ns = payload[_NS_URI]
-        assert "dependency_modules" in ns
+        assert payload == _success_result()["enriched_ast"]
         # Rich wraps long lines according to console width, and the tmp_path
         # in the printed line varies in length across runs/machines, so the
         # wrap point can land inside these phrases; normalize whitespace
@@ -142,6 +136,34 @@ class TestExportScriptSuccess:
         assert kwargs["module_version"] == "2.0.1"
         assert kwargs["release"] is None
         assert kwargs["publication_date"] is None
+        assert kwargs["owner"] is None
+
+    def test_owner_passed_to_service(self, runner, tmp_path):
+        out = tmp_path / "script.json"
+        with patch(
+            "dpmcore.services.ast_generator.ASTGeneratorService"
+        ) as Svc:
+            Svc.return_value.script_for_module.return_value = _success_result()
+            result = runner.invoke(
+                main,
+                [
+                    "export-script",
+                    "--module-code",
+                    "FINREP_Con",
+                    "--module-version",
+                    "2.0.1",
+                    "--owner",
+                    "ECB",
+                    "--database",
+                    "sqlite:///:memory:",
+                    "--output",
+                    str(out),
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        kwargs = Svc.return_value.script_for_module.call_args.kwargs
+        assert kwargs["owner"] == "ECB"
 
     def test_dpm_publication_date_passed_to_service(self, runner, tmp_path):
         out = tmp_path / "script.json"
@@ -217,6 +239,61 @@ class TestExportScriptSuccess:
         assert "no such option" in result.output.lower()
 
 
+class TestDependencyModulesCount:
+    def test_it_counts_the_other_modules_a_requires_names(
+        self, runner, tmp_path
+    ):
+        """A module listed only for a filing indicator is no dependency."""
+        result = _success_result()
+        document = result["enriched_ast"]
+        document["modules"]["M2"] = {"versions": []}
+        document["dependency_groups"] = {
+            "G1": {"requires": {}, "validations": ["v0001"]},
+            "G2": {
+                "requires": {
+                    "or": {
+                        "left": {"code": "M1", "ref_date_lag": 0},
+                        "right": {
+                            "and": {
+                                "left": {
+                                    "code": "FINREP_Con",
+                                    "ref_date_lag": -1,
+                                    "ref_date_lag_unit": "A",
+                                },
+                                "right": {"code": "M1", "ref_date_lag": -1},
+                                "decided_by": "scope",
+                            }
+                        },
+                        "decided_by": "scope",
+                    }
+                },
+                "validations": ["v0002"],
+            },
+        }
+
+        with patch(
+            "dpmcore.services.ast_generator.ASTGeneratorService"
+        ) as Svc:
+            Svc.return_value.script_for_module.return_value = result
+            output = runner.invoke(
+                main,
+                [
+                    "export-script",
+                    "--module-code",
+                    "FINREP_Con",
+                    "--module-version",
+                    "2.0.1",
+                    "--database",
+                    "sqlite:///:memory:",
+                    "--output",
+                    str(tmp_path / "script.json"),
+                ],
+            )
+
+        assert output.exit_code == 0, output.output
+        assert "1 dependency modules" in " ".join(output.output.split())
+
+
 class TestExportScriptSkippedReporting:
     """#355: validations dropped for semantic errors must be reported.
 
@@ -265,6 +342,7 @@ class TestExportScriptSkippedReporting:
         assert result.exit_code == 0, result.output
         assert "2 validations discovered" in output
         assert "2 skipped" in output
+        assert "2 validations skipped:" in output
         assert "v0937_m: 3-6: Invalid default type" in output
         assert "v5372_m" in output
 
@@ -279,7 +357,7 @@ class TestExportScriptSkippedReporting:
         )
         assert result.exit_code == 0, result.output
         payload = json.loads(out.read_text())
-        assert set(payload) == {_NS_URI}
+        assert payload == _success_result()["enriched_ast"]
 
     def test_zero_skipped_still_reported(self, runner, tmp_path):
         result, output = self._run(runner, tmp_path / "script.json", {})
@@ -504,8 +582,8 @@ class TestExportScriptSweep:
             )
 
         assert result.exit_code == 0, result.output
-        assert (out_dir / "MOD_A-1.0.json").exists()
-        assert (out_dir / "MOD_B-2.0.json").exists()
+        assert (out_dir / "EBA-MOD_A-1.0.json").exists()
+        assert (out_dir / "EBA-MOD_B-2.0.json").exists()
         assert "2 succeeded, 0 failed" in result.output
 
     def test_failed_target_does_not_abort_sweep(self, runner, tmp_path):
@@ -541,8 +619,8 @@ class TestExportScriptSweep:
             )
 
         assert result.exit_code == 1
-        assert not (out_dir / "MOD_A-1.0.json").exists()
-        assert (out_dir / "MOD_B-2.0.json").exists()
+        assert not (out_dir / "EBA-MOD_A-1.0.json").exists()
+        assert (out_dir / "EBA-MOD_B-2.0.json").exists()
         assert "1 succeeded, 1 failed" in result.output
         assert "boom" in result.output
 
@@ -588,7 +666,7 @@ class TestExportScriptSweep:
                     ],
                 )
             assert result.exit_code == 0, result.output
-            assert os.path.exists("MOD_A-1.0.json")
+            assert os.path.exists("EBA-MOD_A-1.0.json")
 
     def test_output_must_be_a_directory_when_sweeping(self, runner, tmp_path):
         existing_file = tmp_path / "not_a_dir.json"
@@ -631,7 +709,8 @@ class TestExportScriptOutputDefaults:
                     ],
                 )
             assert result.exit_code == 0, result.output
-            assert os.path.exists("FINREP_Con-2.0.1.json")
+            # <owner>-<module_code>-<module_version>.json
+            assert os.path.exists("EBA-FINREP_Con-2.0.1.json")
 
 
 class TestExportScriptSweepValidation:
@@ -810,7 +889,7 @@ class TestExportScriptReleaseOnlyMode:
             )
 
         assert result.exit_code == 0, result.output
-        assert (out_dir / "FINREP_Con-2.0.1.json").exists()
+        assert (out_dir / "EBA-FINREP_Con-2.0.1.json").exists()
         list_kwargs = Svc.return_value.list_module_versions.call_args.kwargs
         assert list_kwargs["module_code"] == "FINREP_Con"
         assert list_kwargs["release"] == "4.2"
@@ -842,8 +921,8 @@ class TestExportScriptReleaseOnlyMode:
             )
 
         assert result.exit_code == 0, result.output
-        assert (out_dir / "MOD_A-1.0.json").exists()
-        assert (out_dir / "MOD_B-2.0.json").exists()
+        assert (out_dir / "EBA-MOD_A-1.0.json").exists()
+        assert (out_dir / "EBA-MOD_B-2.0.json").exists()
         list_kwargs = Svc.return_value.list_module_versions.call_args.kwargs
         assert list_kwargs["module_code"] is None
         assert list_kwargs["release"] == "4.2"

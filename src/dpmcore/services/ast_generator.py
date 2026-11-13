@@ -6,16 +6,18 @@ import json
 import logging
 import re
 import zlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date as date_cls
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Iterable,
     List,
     Mapping,
     Optional,
+    Sequence,
     Set,
     Tuple,
     Union,
@@ -23,14 +25,21 @@ from typing import (
     overload,
 )
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from dpmcore.dpm_xl.utils.tokens import (
     SEVERITY_WARNING,
     VALID_SEVERITIES,
 )
-from dpmcore.errors import InternalError, SemanticError
+from dpmcore.errors import InternalError
 from dpmcore.services._parameters import merge_parameters
 from dpmcore.services._precondition_codes import (
     extract_precondition_codes as _extract_precondition_codes,
+)
+from dpmcore.services.script_document.script_format import (
+    FORMAT_VERSION,
+    UnsupportedNode,
+    script_ast,
 )
 from dpmcore.services.semantic import ParameterInfo, SemanticService
 from dpmcore.services.syntax import SyntaxService
@@ -43,6 +52,10 @@ if TYPE_CHECKING:
         ScopeCalculatorService,
         ScopeResult,
     )
+    from dpmcore.services.script_document.dependency_groups import (
+        DependencyResolver,
+    )
+    from dpmcore.services.script_document.modules import Read, Window
 
 
 logger = logging.getLogger(__name__)
@@ -51,21 +64,72 @@ logger = logging.getLogger(__name__)
 _TABLE_CODE_NORMALIZER = re.compile(r"^([A-Z]+)_(\d+)_(\d+)$")
 _DEFAULT_FROM_DATE = "2001-01-01"
 _ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
-_DEFAULT_NAMESPACE = "default_module"
 _DATA_FIELDS_TO_STRIP = ("data_type", "cell_code", "table_code", "table_vid")
+
+
+@dataclass(frozen=True)
+class _DiscoveredValidations:
+    """A module version's active validations, as discovery finds them.
+
+    Every member but ``preconditions`` is keyed by validation code
+    (``expressions`` holds ``(expression, code)`` pairs).
+    """
+
+    expressions: List[Tuple[str, str]]
+    operation_vids: Dict[str, int]
+    preconditions: List[Dict[str, Any]]
+    severities: Dict[str, str]
+    from_submission_dates: Dict[str, str]
+
+    def only(self, codes: Set[str]) -> "_DiscoveredValidations":
+        """Keep the validations in ``codes``.
+
+        A precondition keeps the operations of ``codes`` it gates, and
+        is dropped when it gates none of them.
+        """
+        preconditions = []
+        for precondition in self.preconditions:
+            gated = [
+                code
+                for code in precondition["affected_operations"]
+                if code in codes
+            ]
+            if gated:
+                preconditions.append(
+                    {**precondition, "affected_operations": gated}
+                )
+        return _DiscoveredValidations(
+            expressions=[e for e in self.expressions if e[1] in codes],
+            operation_vids={
+                c: v for c, v in self.operation_vids.items() if c in codes
+            },
+            preconditions=preconditions,
+            severities={
+                c: v for c, v in self.severities.items() if c in codes
+            },
+            from_submission_dates={
+                c: v
+                for c, v in self.from_submission_dates.items()
+                if c in codes
+            },
+        )
 
 
 @dataclass(frozen=True)
 class _OperandRefs:
     """What a single operation's operands reference.
 
-    ``tables`` are the table codes of its ``VarID`` nodes; ``variables``
-    maps every operand datapoint id to its scalar type code, across all
-    modules the operation spans (home module included).
+    ``reads`` holds one :class:`Read` per operand, at the lag it is read
+    at, numbered by the operation's position in the script. ``requires``
+    is what the operation needs besides the instance being validated.
     """
 
-    tables: set[str] = field(default_factory=set)
-    variables: Dict[str, str] = field(default_factory=dict)
+    reads: List[Read] = field(default_factory=list)
+    requires: Dict[str, Any] = field(default_factory=dict)
+
+
+class _UnreadableOperation(Exception):
+    """What an operation reads could not be collected from its AST."""
 
 
 @dataclass(frozen=True)
@@ -73,9 +137,9 @@ class _PreparedExpression:
     """One expression readied for the script, or the reason it is not.
 
     ``error`` is set when the expression cannot become a declarable
-    operation — it failed semantic validation, it carries a shift whose
-    reference period cannot be declared (#326), or its precondition is
-    one the engine cannot evaluate (#338). All are reported the same
+    operation — it failed semantic validation, what it reads cannot be
+    collected, or its precondition is one that cannot be written
+    (#338). All are reported the same
     way, through ``failed_operations``, and all must be caught before
     the caller accumulates anything for the operation: a skip afterwards
     would leave its tables, parameters and operation entry in the
@@ -84,8 +148,23 @@ class _PreparedExpression:
 
     result: Any = None
     ast: Any = None
-    ts: Dict[str, List[str]] = field(default_factory=dict)
+    reads: List[Read] = field(default_factory=list)
     error: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class _PreparedGates:
+    """The preconditions beyond filing indicators, readied for the script.
+
+    ``failures`` maps each operation gated by one that cannot be written
+    to the reason. ``asts`` holds the AST of each one that can, by its
+    position among the preconditions, and ``reads`` what each operation
+    it gates reads through it.
+    """
+
+    failures: Dict[str, str] = field(default_factory=dict)
+    asts: Dict[int, Dict[str, Any]] = field(default_factory=dict)
+    reads: Dict[str, List[Read]] = field(default_factory=dict)
 
 
 def _normalize_variable_code(code: str) -> str:
@@ -175,6 +254,7 @@ class ASTGeneratorService:
             Mapping[str, Union[str, date_cls]]
         ] = None,
         release: Optional[str] = None,
+        owner: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Generate an engine-ready validations script.
 
@@ -217,16 +297,17 @@ class ASTGeneratorService:
                 ``ModuleVersion``. The resolved release is surfaced in
                 the ``dpm_release`` block and used for every
                 downstream DB filter.
+            owner: Optional acronym of the organisation that defined
+                the validations, the document's ``owner``. Defaults to
+                the module's owner.
 
         Returns:
             A dict with keys ``success`` (bool), ``enriched_ast`` (the
-            namespaced dict, or ``None`` on failure), ``error`` (str or
-            ``None``), and ``failed_operations`` (a
+            Script Format 2.0 document, or ``None`` on failure),
+            ``error`` (str or ``None``), and ``failed_operations`` (a
             ``{validation_code: error_message}`` map of expressions
             skipped due to semantic errors, or because their
-            precondition cannot be evaluated by the engine). The
-            namespaced dict mirrors the shape pydpm's
-            ``generate_validations_script`` produces.
+            precondition cannot be written).
         """
         session = self.session
         if (
@@ -243,6 +324,9 @@ class ASTGeneratorService:
 
         try:
             from dpmcore.dpm_xl.utils.serialization import serialize_ast
+            from dpmcore.services.script_document.dependency_groups import (
+                NoDependencyGroup,
+            )
 
             mv, release_row = self._resolve_release(
                 module_code, module_version, release
@@ -273,31 +357,24 @@ class ASTGeneratorService:
                     mv.from_reference_date, fallback=_DEFAULT_FROM_DATE
                 ),
             )
-            # Operations whose gate the engine cannot evaluate leave the
-            # script here, before any accumulation, and are reported in
-            # ``failed_operations`` (see ``_unsupported_gate_operations``).
-            gate_failures = self._unsupported_gate_operations(
-                preconditions or []
-            )
+            # Operations whose gate cannot be written leave the script
+            # here, before any accumulation, and are reported in
+            # ``failed_operations`` (see ``_prepare_gates``).
+            gates = self._prepare_gates(preconditions or [], release_id)
 
             operations: Dict[str, Dict[str, Any]] = {}
             failed_operations: Dict[str, str] = {}
-            scope_pairs: List[
-                Tuple[
-                    Tuple[str, str],
-                    "ScopeResult",
-                    Dict[str, List[str]],
-                    _OperandRefs,
-                ]
-            ] = []
-            referenced_table_codes: set[str] = set()
+            scope_pairs: List[Tuple[Tuple[str, str], _OperandRefs]] = []
             referenced_parameters: Dict[str, ParameterInfo] = {}
+            resolver = self._dependency_resolver(
+                mv, release_id, preconditions or []
+            )
 
             for item in expressions:
                 expr, code = item[0], item[1]
-                # Semantic validation plus the reference periods the
-                # expression needs; either can reject it, as can a gate
-                # the engine cannot evaluate. The _accumulate_parameters
+                # Semantic validation plus what the expression
+                # reads; either can reject it, as can a gate
+                # that cannot be written. The _accumulate_parameters
                 # call below is complementary to the scope check inside —
                 # it catches conflicts between two expressions in this
                 # same script.
@@ -305,34 +382,43 @@ class ASTGeneratorService:
                     self._semantic,
                     expr,
                     release_id,
-                    gate_failure=gate_failures.get(code),
+                    gate_failure=gates.failures.get(code),
                 )
                 if prepared.error is not None:
                     failed_operations[code] = prepared.error
                     continue
-                result, ast, ts = prepared.result, prepared.ast, prepared.ts
+                result, ast = prepared.result, prepared.ast
                 # serialize_ast() is typed for any node (a leaf can
                 # serialise to a bare scalar), but `ast` is always a
                 # root expression here, which the wire format always
                 # renders as an object.
-                ast_dict = cast(Dict[str, Any], serialize_ast(ast))
+                try:
+                    ast_dict = script_ast(serialize_ast(ast))
+                except UnsupportedNode as exc:
+                    failed_operations[code] = str(exc)
+                    continue
                 root_operator_id = self._resolve_root_operator_id(ast, session)
 
-                scope_error = self._process_operation(
-                    item=item,
-                    ast_dict=ast_dict,
-                    parameters=result.parameters,
-                    root_operator_id=root_operator_id,
-                    ts=ts,
-                    release_id=release_id,
-                    resolved_severities=resolved_severities,
-                    from_submission_date=resolved_dates[code],
-                    code_to_precondition_items=code_to_precondition_items,
-                    operations=operations,
-                    scope_pairs=scope_pairs,
-                    referenced_table_codes=referenced_table_codes,
-                    referenced_parameters=referenced_parameters,
-                )
+                try:
+                    scope_error = self._process_operation(
+                        item=item,
+                        ast_dict=ast_dict,
+                        parameters=result.parameters,
+                        root_operator_id=root_operator_id,
+                        reads=prepared.reads,
+                        gate_reads=gates.reads.get(code, []),
+                        release_id=release_id,
+                        resolved_severities=resolved_severities,
+                        from_submission_date=resolved_dates[code],
+                        code_to_precondition_items=code_to_precondition_items,
+                        operations=operations,
+                        scope_pairs=scope_pairs,
+                        referenced_parameters=referenced_parameters,
+                        resolver=resolver,
+                    )
+                except NoDependencyGroup as exc:
+                    failed_operations[code] = str(exc)
+                    continue
                 if scope_error is not None:
                     # A script whose dependency block is silently missing
                     # is structurally valid but semantically wrong (#122),
@@ -350,11 +436,12 @@ class ASTGeneratorService:
                 primary_module_vid=primary_module_vid,
                 release_id=release_id,
                 preconditions=preconditions,
+                gate_asts=gates.asts,
                 operations=operations,
                 failed_operations=failed_operations,
                 scope_pairs=scope_pairs,
-                referenced_table_codes=referenced_table_codes,
                 referenced_parameters=referenced_parameters,
+                owner=owner,
             )
 
         except ValueError as exc:
@@ -379,30 +466,24 @@ class ASTGeneratorService:
         ast_dict: Dict[str, Any],
         parameters: List[ParameterInfo],
         root_operator_id: int,
-        ts: Dict[str, List[str]],
+        reads: Sequence[Read],
+        gate_reads: Sequence[Read],
         release_id: int,
         resolved_severities: Dict[str, str],
         from_submission_date: Optional[str],
         code_to_precondition_items: Dict[str, List[Any]],
         operations: Dict[str, Dict[str, Any]],
-        scope_pairs: List[
-            Tuple[
-                Tuple[str, str],
-                "ScopeResult",
-                Dict[str, List[str]],
-                _OperandRefs,
-            ]
-        ],
-        referenced_table_codes: set[str],
+        scope_pairs: List[Tuple[Tuple[str, str], _OperandRefs]],
         referenced_parameters: Dict[str, ParameterInfo],
+        resolver: "DependencyResolver",
         operation_vid: Optional[int] = None,
         scope_result: Optional["ScopeResult"] = None,
     ) -> Optional[str]:
         """Fold one operation's already-resolved AST into the script.
 
         Adds to the script's accumulators (``operations``,
-        ``scope_pairs``, ``referenced_table_codes``,
-        ``referenced_parameters`` — all mutated in place).
+        ``scope_pairs``, ``referenced_parameters`` — all mutated in
+        place).
 
         Independent of how ``ast_dict``/``parameters``/``root_operator_id``
         were obtained — re-parsed from text, or reshaped from the
@@ -429,11 +510,20 @@ class ASTGeneratorService:
         Returns the scope-calculation error message on failure (callers
         decide whether that aborts the whole script or just excludes
         this operation), or ``None`` on success. Nothing is added to
-        ``operations``/``referenced_table_codes``/``referenced_parameters``/
-        ``scope_pairs`` until the scope calculation has actually
-        succeeded — a failed operation must leave no trace in them,
-        since a script whose dependency block is silently missing is
-        structurally valid but semantically wrong (#122).
+        ``operations``/``referenced_parameters``/``scope_pairs`` until
+        the scope calculation has actually succeeded — a failed
+        operation must leave no trace in them, since a script whose
+        dependency block is silently missing is structurally valid but
+        semantically wrong (#122).
+
+        ``resolver`` writes what the operation needs besides the instance
+        being validated, the ``requires`` of its dependency group, from
+        ``reads`` and from ``gate_reads``, what its preconditions read.
+        ``modules`` describes both.
+
+        Raises:
+            NoDependencyGroup: When no ``requires`` can state what the
+                operation needs. Nothing is added for it either.
         """
         expr, code = item[0], item[1]
 
@@ -454,14 +544,26 @@ class ASTGeneratorService:
                 f"'{code}': {sr.error_message}"
             )
 
-        # Operand refs come off the *raw* serialisation: cleaning
-        # strips the ``data_type`` each datapoint is typed by.
+        requires = resolver.requires(
+            code,
+            [
+                frozenset(
+                    c.module_vid
+                    for c in getattr(scope, "operation_scope_compositions", [])
+                )
+                for scope in sr.scopes or []
+            ],
+            reads,
+            gate_reads,
+        )
         op_refs = _OperandRefs(
-            tables=self._extract_referenced_tables(ast_dict),
-            variables=self._extract_operand_datapoints(ast_dict),
+            reads=[
+                replace(r, statement=len(scope_pairs))
+                for r in [*reads, *gate_reads]
+            ],
+            requires=requires,
         )
         self._clean_ast_data_entries(ast_dict)
-        referenced_table_codes.update(op_refs.tables)
         self._accumulate_parameters(referenced_parameters, parameters)
 
         operations[code] = self._build_operation_entry(
@@ -473,7 +575,7 @@ class ASTGeneratorService:
             root_operator_id=root_operator_id,
             operation_vid=operation_vid,
         )
-        scope_pairs.append((item, sr, ts, op_refs))
+        scope_pairs.append((item, op_refs))
         return None
 
     def _assemble_script(
@@ -486,19 +588,13 @@ class ASTGeneratorService:
         preconditions: Optional[
             List[Union[Tuple[str, List[str]], Dict[str, Any]]]
         ],
+        gate_asts: Mapping[int, Dict[str, Any]],
         operations: Dict[str, Dict[str, Any]],
         failed_operations: Dict[str, str],
-        scope_pairs: List[
-            Tuple[
-                Tuple[str, str],
-                "ScopeResult",
-                Dict[str, List[str]],
-                _OperandRefs,
-            ]
-        ],
-        referenced_table_codes: set[str],
+        scope_pairs: List[Tuple[Tuple[str, str], _OperandRefs]],
         referenced_parameters: Dict[str, ParameterInfo],
         release_info: Optional[Dict[str, Any]] = None,
+        owner: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Assemble the final script dict from already-resolved operations.
 
@@ -516,58 +612,41 @@ class ASTGeneratorService:
         block verbatim; otherwise the block is built from
         ``release_row`` (see :meth:`script_for_module` for why the two
         can differ).
+
+        ``owner`` names the document's owner, the module's owner when
+        not given. The caller picks the operations of that owner.
+
+        Raises:
+            ValueError: If the module version has no URI or its module
+                no owner: the document names both.
         """
+        from dpmcore.services.script_document.dependency_groups import (
+            build_dependency_groups,
+        )
+
         if self._scope_calc is None or self.session is None:
             raise InternalError(
                 "ScopeCalculatorService not initialised",
                 "_assemble_script requires a live DB session.",
             )
-        primary_tables_full = self._scope_calc._get_module_tables(
-            primary_module_vid,
-            release_id=release_id,
-            ghost_vids=self._release_ghost_fallbacks(
-                self.session, release_id
-            ).get(primary_module_vid, []),
-        )
-        # Seed from every module-composition table that carries
-        # variables — i.e. the non-abstract tables; abstract templates
-        # have no cells, and the engine schema forbids an empty
-        # variables map — then union in anything the expressions
-        # reference. MDPM lists all such tables even when no validation
-        # touches them (#158). The union keeps this additive: a
-        # referenced table is never dropped.
-        seed_codes = {
-            code
-            for code, data in primary_tables_full.items()
-            if data.get("variables")
-        }
-        seed_codes |= {
-            code
-            for code in referenced_table_codes
-            if code in primary_tables_full
-        }
-        tables_block: Dict[str, Any] = {
-            code: primary_tables_full[code] for code in sorted(seed_codes)
-        }
-        variables_block: Dict[str, str] = {}
-        for tbl in tables_block.values():
-            variables_block.update(tbl.get("variables", {}))
+        ghost_vids = self._release_ghost_fallbacks(
+            self.session, release_id
+        ).get(primary_module_vid, [])
 
         # ``emitted_operations`` is the script's own ``operations``,
         # not the harvested list: anything that landed in
         # ``failed_operations`` must not be left gated (#355).
-        preconditions_block, precondition_variables_block = (
-            self._build_preconditions_block(
-                preconditions or [],
-                release_id=release_id,
-                referenced_parameters=referenced_parameters,
-                emitted_operations=set(operations),
-            )
+        preconditions_block = self._build_preconditions_block(
+            preconditions or [],
+            release_id=release_id,
+            referenced_parameters=referenced_parameters,
+            emitted_operations=set(operations),
+            gate_asts=gate_asts,
         )
 
         # Runtime-binding contract: the declared type of every parameter
         # this script needs, keyed by code. This is the scope-wide
-        # invariant. ``is_set`` is recoverable from the ``set-`` prefix
+        # invariant. A ``set-*`` type never gets here (``script_ast``)
         # and ``default`` is a per-reference fallback the engine binds
         # per scope, so neither belongs in this registry. Built after
         # the gates so a parameter that only appears in a gate is
@@ -577,55 +656,213 @@ class ASTGeneratorService:
             for prm_code, prm in sorted(referenced_parameters.items())
         }
 
-        dependency_info = self._build_dependency_info(
-            scope_pairs=scope_pairs,
+        module_uri = self._scope_calc._get_module_uri(
+            module_vid=primary_module_vid,
+            mv=mv,
+        )
+        if not module_uri:
+            raise ValueError(
+                f"Module version {mv.code} {mv.version_number} has no URI; "
+                "the script names it as module_uri."
+            )
+        module_info = self._build_module_info(mv)
+        module_owner = self._module_owner(mv.module_id)
+        if not module_owner:
+            raise ValueError(
+                f"Module {mv.code} has no owner organisation; the script "
+                "names it as module_owner."
+            )
+        owner = owner or module_owner
+        modules, window = self._build_modules(
             primary_module_vid=primary_module_vid,
             release_id=release_id,
-        )
-        dep_information: Dict[str, Any]
-        dep_modules: Dict[str, Any]
-        if dependency_info is not None:
-            dep_information = dependency_info["dependency_information"]
-            dep_modules = dependency_info["dependency_modules"]
-        else:
-            dep_information = {
-                "intra_instance_validations": [],
-                "cross_instance_dependencies": [],
-                "alternative_dependencies": [],
-            }
-            dep_modules = {}
-
-        namespace = (
-            self._scope_calc._get_module_uri(
-                module_vid=primary_module_vid,
-                mv=mv,
-            )
-            or _DEFAULT_NAMESPACE
+            module_uri=module_uri,
+            ghost_vids=ghost_vids,
+            scope_pairs=scope_pairs,
+            preconditions=preconditions_block,
         )
 
-        module_info = self._build_module_info(mv)
-        ns_block: Dict[str, Any] = {
-            **module_info,
+        # Script Format 2.0: one flat object, members in this order.
+        document: Dict[str, Any] = {
+            "owner": owner,
+            "module_code": module_info["module_code"],
+            "module_version": module_info["module_version"],
+            "module_owner": module_owner,
+            "module_uri": module_uri,
+            "framework_code": module_info["framework_code"],
+            "format_version": FORMAT_VERSION,
             "dpm_release": (
                 release_info or self._build_release_info(release_row)
             ),
-            "dates": self._build_dates(mv),
+            "dates": self._build_dates(window),
             "operations": operations,
-            "variables": variables_block,
-            "tables": tables_block,
-            "parameters": parameters_block,
             "preconditions": preconditions_block,
-            "precondition_variables": precondition_variables_block,
-            "dependency_information": dep_information,
-            "dependency_modules": dep_modules,
+            "modules": modules,
+            "parameters": parameters_block,
+            "dependency_groups": build_dependency_groups(
+                {item[1]: refs.requires for item, refs in scope_pairs}
+            ),
         }
 
         return {
             "success": True,
-            "enriched_ast": {namespace: ns_block},
+            "enriched_ast": document,
             "error": None,
             "failed_operations": failed_operations,
         }
+
+    def _dependency_resolver(
+        self,
+        mv: Any,
+        release_id: int,
+        preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
+    ) -> "DependencyResolver":
+        """Return the resolver of the script's dependency groups.
+
+        It is given the filing indicators each validation's preconditions
+        need to be true, as the scopes take them: one of an ``or``, or a
+        negated one, is not needed.
+        """
+        from dpmcore.services._precondition_codes import (
+            required_precondition_codes,
+        )
+        from dpmcore.services.script_document.dependency_groups import (
+            DependencyResolver,
+        )
+
+        if self.session is None:
+            raise InternalError(
+                "SQLAlchemy session not initialised",
+                "_dependency_resolver requires a live DB session.",
+            )
+        return DependencyResolver(
+            self.session,
+            mv.module_id,
+            mv.code,
+            release_id,
+            self._build_precondition_index(
+                preconditions, required_precondition_codes
+            ),
+        )
+
+    def _build_modules(
+        self,
+        *,
+        primary_module_vid: int,
+        release_id: int,
+        module_uri: str,
+        ghost_vids: Sequence[int],
+        scope_pairs: Sequence[Tuple[Tuple[str, str], _OperandRefs]],
+        preconditions: Mapping[str, Any],
+    ) -> Tuple[Dict[str, Any], "Window"]:
+        """Return the ``modules`` section and the own version's window.
+
+        ``scope_pairs`` holds one entry per operation, in the order of
+        ``operations``, and its reads are numbered by that position.
+        ``ghost_vids`` are the one-day versions whose validations the
+        script carries; the own version describes them too. The filing
+        indicators ``preconditions`` test are declared on the versions
+        of the modules holding them.
+        """
+        from dpmcore.services.script_document.modules import (
+            build_modules,
+            reference_window,
+        )
+        from dpmcore.services.script_document.queries import (
+            get_module_metadata,
+        )
+
+        if self.session is None:
+            raise InternalError(
+                "SQLAlchemy session not initialised",
+                "_build_modules requires a live DB session.",
+            )
+        own = get_module_metadata(self.session, primary_module_vid)
+        window = reference_window(self.session, own, release_id)
+        modules = build_modules(
+            self.session,
+            own=own,
+            window=window,
+            module_uri=module_uri,
+            reads=[read for _, refs in scope_pairs for read in refs.reads],
+            operation_codes=[item[1] for item, _ in scope_pairs],
+            release_id=release_id,
+            ghost_vids=ghost_vids,
+            filing_indicators=self._tested_filing_indicators(preconditions),
+        )
+        return modules, window
+
+    @staticmethod
+    def _tested_filing_indicators(
+        preconditions: Mapping[str, Any],
+    ) -> Set[int]:
+        """Return the ``variable_id`` of every ``FilingIndicatorVarID``."""
+        found: Set[int] = set()
+
+        def _walk(node: Any) -> None:
+            if isinstance(node, dict):
+                if (
+                    node.get("class_name") == "FilingIndicatorVarID"
+                    and node.get("variable_id") is not None
+                ):
+                    found.add(int(node["variable_id"]))
+                for value in node.values():
+                    _walk(value)
+            elif isinstance(node, list):
+                for item in node:
+                    _walk(item)
+
+        _walk([entry["ast"] for entry in preconditions.values()])
+        return found
+
+    def _module_owner(self, module_id: Optional[int]) -> Optional[str]:
+        """Return the acronym of the organisation owning a module.
+
+        Reads the acronym column alone: older dictionaries lack some
+        ``Organisation`` columns the ORM entity maps.
+        """
+        from dpmcore.orm.infrastructure import Organisation
+        from dpmcore.orm.packaging import Module
+
+        if self.session is None:
+            raise RuntimeError("session required")
+        row = (
+            self.session.query(Organisation.acronym)
+            .join(Module, Module.owner_id == Organisation.org_id)
+            .filter(Module.module_id == module_id)
+            .first()
+        )
+        return row[0] if row is not None else None
+
+    def _operation_owners(
+        self, operation_vids: Sequence[int]
+    ) -> Dict[int, Optional[str]]:
+        """Return the owner acronym of each operation version's operation.
+
+        Keyed by ``OperationVID``; ``None`` for an operation with no
+        owner. A version not found is left out.
+        """
+        from dpmcore.orm.infrastructure import Organisation
+        from dpmcore.orm.operations import Operation, OperationVersion
+        from dpmcore.orm.query_utils import chunked_in
+
+        if self.session is None:
+            raise RuntimeError("session required")
+        query = (
+            self.session.query(
+                OperationVersion.operation_vid, Organisation.acronym
+            )
+            .select_from(OperationVersion)
+            .join(
+                Operation,
+                Operation.operation_id == OperationVersion.operation_id,
+            )
+            .outerjoin(Organisation, Organisation.org_id == Operation.owner_id)
+        )
+        rows = chunked_in(
+            query, OperationVersion.operation_vid, operation_vids
+        )
+        return {row[0]: row[1] for row in rows}
 
     def _resolve_db_operation_ast(
         self,
@@ -638,18 +875,18 @@ class ASTGeneratorService:
     ) -> Tuple[
         Optional[Dict[str, Any]],
         List[ParameterInfo],
-        Dict[str, List[str]],
+        List[Read],
         Optional[int],
         Optional[str],
     ]:
-        """Resolve one operation's ast_dict/parameters/ts/root_operator_id.
+        """Resolve one operation's AST, parameters, reads and root id.
 
         Tries the persisted ``OperationNode`` tree first
         (:func:`db_ast.build_ast_from_db`), falling back to re-parsing
         *expr* when that isn't possible. Used by :meth:`script_from_db`,
         split out to keep its own branching within the complexity limit.
 
-        Returns ``(ast_dict, parameters, ts, root_operator_id, error)``
+        Returns ``(ast_dict, parameters, reads, root_operator_id, error)``
         — a non-``None`` ``error`` means the operation failed and the
         other fields should be ignored.
         """
@@ -688,14 +925,20 @@ class ASTGeneratorService:
                 self._semantic, expr, release_id, gate_failure=None
             )
             if prepared.error is not None:
-                return None, [], {}, None, prepared.error
-            result, ast, ts = prepared.result, prepared.ast, prepared.ts
+                return None, [], [], None, prepared.error
+            result, ast = prepared.result, prepared.ast
             # Same reasoning as script()'s own serialize_ast() call: a
             # root expression always renders as an object.
             ast_dict = cast(Dict[str, Any], serialize_ast(ast))
             parameters = result.parameters
             root_operator_id = self._resolve_root_operator_id(ast, session)
-            return ast_dict, parameters, ts, root_operator_id, None
+            return (
+                ast_dict,
+                parameters,
+                prepared.reads,
+                root_operator_id,
+                None,
+            )
 
         # Same source script() uses — the AST itself — not whether it
         # came from the DB or a re-parse: a parameter is self-contained
@@ -705,21 +948,21 @@ class ASTGeneratorService:
         found_parameters: Dict[str, ParameterInfo] = {}
         self._accumulate_ast_parameters(found_parameters, ast_dict)
         parameters = list(found_parameters.values())
-        # Same reasoning as _prepare_expression's own call: a shift
-        # whose period cannot be declared must reject this one
-        # operation, not the whole module.
+        # Same reasoning as _prepare_expression's own call: reads that
+        # cannot be collected must reject this one operation, not the
+        # whole module.
         try:
-            ts = self._extract_time_shifts(built_ast)
-        except SemanticError as exc:
-            return None, [], {}, None, str(exc)
-        return ast_dict, parameters, ts, root_operator_id, None
+            reads = self._extract_reads(built_ast)
+        except _UnreadableOperation as exc:
+            return None, [], [], None, str(exc)
+        return ast_dict, parameters, reads, root_operator_id, None
 
     def _process_db_expression_item(
         self,
         *,
         item: Tuple[str, str],
         session: Any,
-        gate_failures: Dict[str, str],
+        gates: _PreparedGates,
         operation_vids: Dict[str, int],
         primary_module_vid: int,
         release_id: int,
@@ -727,16 +970,9 @@ class ASTGeneratorService:
         from_submission_dates: Dict[str, str],
         code_to_precondition_items: Dict[str, List[Any]],
         operations: Dict[str, Dict[str, Any]],
-        scope_pairs: List[
-            Tuple[
-                Tuple[str, str],
-                "ScopeResult",
-                Dict[str, List[str]],
-                _OperandRefs,
-            ]
-        ],
-        referenced_table_codes: set[str],
+        scope_pairs: List[Tuple[Tuple[str, str], _OperandRefs]],
         referenced_parameters: Dict[str, ParameterInfo],
+        resolver: "DependencyResolver",
     ) -> Optional[str]:
         """Resolve and fold one :meth:`script_from_db` expression item.
 
@@ -746,14 +982,17 @@ class ASTGeneratorService:
         limit.
         """
         from dpmcore.services.scope_calculator import UnsupportedDbScope
+        from dpmcore.services.script_document.dependency_groups import (
+            NoDependencyGroup,
+        )
 
         expr, code = item[0], item[1]
 
         # Checked once, up front, for both resolution paths below — a
-        # precondition the engine cannot evaluate must reject the
+        # precondition that cannot be written must reject the
         # operation regardless of whether its own AST would otherwise
         # resolve from the DB or from re-parsed text.
-        gate_failure = gate_failures.get(code)
+        gate_failure = gates.failures.get(code)
         if gate_failure is not None:
             return gate_failure
 
@@ -761,7 +1000,7 @@ class ASTGeneratorService:
         (
             ast_dict,
             parameters,
-            ts,
+            reads,
             root_operator_id,
             resolve_error,
         ) = self._resolve_db_operation_ast(
@@ -781,6 +1020,10 @@ class ASTGeneratorService:
                 f"No error for {code!r} but ast_dict/root_operator_id "
                 "is still None.",
             )
+        try:
+            ast_dict = script_ast(ast_dict)
+        except UnsupportedNode as exc:
+            return str(exc)
 
         scope_result: Optional["ScopeResult"] = None
         if operation_vid is not None:
@@ -801,23 +1044,27 @@ class ASTGeneratorService:
             except UnsupportedDbScope:
                 scope_result = None
 
-        return self._process_operation(
-            item=item,
-            ast_dict=ast_dict,
-            parameters=parameters,
-            root_operator_id=root_operator_id,
-            ts=ts,
-            release_id=release_id,
-            resolved_severities=resolved_severities,
-            from_submission_date=from_submission_dates.get(code),
-            code_to_precondition_items=code_to_precondition_items,
-            operations=operations,
-            scope_pairs=scope_pairs,
-            referenced_table_codes=referenced_table_codes,
-            referenced_parameters=referenced_parameters,
-            operation_vid=operation_vid,
-            scope_result=scope_result,
-        )
+        try:
+            return self._process_operation(
+                item=item,
+                ast_dict=ast_dict,
+                parameters=parameters,
+                root_operator_id=root_operator_id,
+                reads=reads,
+                gate_reads=gates.reads.get(code, []),
+                release_id=release_id,
+                resolved_severities=resolved_severities,
+                from_submission_date=from_submission_dates.get(code),
+                code_to_precondition_items=code_to_precondition_items,
+                operations=operations,
+                scope_pairs=scope_pairs,
+                referenced_parameters=referenced_parameters,
+                resolver=resolver,
+                operation_vid=operation_vid,
+                scope_result=scope_result,
+            )
+        except NoDependencyGroup as exc:
+            return str(exc)
 
     def script_from_db(
         self,
@@ -832,6 +1079,7 @@ class ASTGeneratorService:
         severities: Optional[Dict[str, str]] = None,
         from_submission_dates: Optional[Dict[str, str]] = None,
         release_info: Optional[Dict[str, Any]] = None,
+        owner: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Generate a DB-discovered module version's validations script.
 
@@ -842,7 +1090,7 @@ class ASTGeneratorService:
         implemented yet — see dpmcore#364). Shares
         :meth:`_process_operation`/:meth:`_assemble_script` with
         :meth:`script`; the only thing that differs between the two is
-        how each operation's ``ast_dict``/``parameters``/``ts``/
+        how each operation's ``ast_dict``/``parameters``/``reads``/
         ``root_operator_id`` are obtained.
 
         Args:
@@ -867,6 +1115,8 @@ class ASTGeneratorService:
             release_info: Optional ``{"release", "publication_date"}``
                 block stamped as ``dpm_release``. When omitted, the
                 block is built from ``release_row``.
+            owner: Optional ``owner`` of the document, the module's
+                owner by default. ``expressions`` are that owner's.
 
         Returns:
             Same shape as :meth:`script`. Unlike :meth:`script`, a
@@ -912,23 +1162,16 @@ class ASTGeneratorService:
                     "error": str(exc),
                     "failed_operations": {},
                 }
-            gate_failures = self._unsupported_gate_operations(
-                preconditions or []
-            )
+            gates = self._prepare_gates(preconditions or [], release_id)
             from_submission_dates = from_submission_dates or {}
 
             operations: Dict[str, Dict[str, Any]] = {}
             failed_operations: Dict[str, str] = {}
-            scope_pairs: List[
-                Tuple[
-                    Tuple[str, str],
-                    "ScopeResult",
-                    Dict[str, List[str]],
-                    _OperandRefs,
-                ]
-            ] = []
-            referenced_table_codes: set[str] = set()
+            scope_pairs: List[Tuple[Tuple[str, str], _OperandRefs]] = []
             referenced_parameters: Dict[str, ParameterInfo] = {}
+            resolver = self._dependency_resolver(
+                mv, release_id, preconditions or []
+            )
 
             for item in expressions:
                 code = item[1]
@@ -941,7 +1184,7 @@ class ASTGeneratorService:
                 error = self._process_db_expression_item(
                     item=item,
                     session=session,
-                    gate_failures=gate_failures,
+                    gates=gates,
                     operation_vids=operation_vids,
                     primary_module_vid=primary_module_vid,
                     release_id=release_id,
@@ -950,8 +1193,8 @@ class ASTGeneratorService:
                     code_to_precondition_items=code_to_precondition_items,
                     operations=operations,
                     scope_pairs=scope_pairs,
-                    referenced_table_codes=referenced_table_codes,
                     referenced_parameters=referenced_parameters,
+                    resolver=resolver,
                 )
                 if error is not None:
                     failed_operations[code] = error
@@ -962,12 +1205,13 @@ class ASTGeneratorService:
                 primary_module_vid=primary_module_vid,
                 release_id=release_id,
                 preconditions=preconditions,
+                gate_asts=gates.asts,
                 operations=operations,
                 failed_operations=failed_operations,
                 scope_pairs=scope_pairs,
-                referenced_table_codes=referenced_table_codes,
                 referenced_parameters=referenced_parameters,
                 release_info=release_info,
+                owner=owner,
             )
 
         except ValueError as exc:
@@ -991,13 +1235,18 @@ class ASTGeneratorService:
         module_version: str,
         release: Optional[str] = None,
         publication_date: Optional[str] = None,
+        owner: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Auto-discover a module version's active validations and script them.
+        """Auto-discover one owner's active validations and script them.
 
         No ``expressions``, ``preconditions`` or ``severities`` need to be
         supplied — they are looked up from ``OperationScope`` /
         ``OperationScopeComposition`` / ``OperationVersion`` for this module
         version, then handed to :meth:`script_from_db`.
+
+        A script holds the validations of one owner: those whose
+        ``Operation.OwnerID`` is ``owner``, and those with no owner when
+        ``owner`` is the module's.
 
         The ``dpm_release`` block names the database the script was
         exported from — its latest release (:meth:`_database_release_info`)
@@ -1013,6 +1262,8 @@ class ASTGeneratorService:
             publication_date: Optional ``YYYY-MM-DD`` stamped as the
                 ``dpm_release`` publication date. Defaults to the date
                 of the database's latest release.
+            owner: Acronym of the organisation whose validations are
+                scripted; the module's owner by default.
 
         Returns:
             Same shape as :meth:`script`.
@@ -1030,13 +1281,16 @@ class ASTGeneratorService:
                 module_code, module_version, release
             )
             release_info = self._database_release_info(publication_date)
-            (
-                expressions,
-                operation_vids,
-                preconditions,
-                severities,
-                from_submission_dates,
-            ) = self._discover_module_validations(mv, release_row)
+            discovered = self._discover_module_validations(mv, release_row)
+            module_owner = self._module_owner(mv.module_id)
+            owner = owner or module_owner
+            vid_owners = (
+                self._operation_owners(
+                    list(discovered.operation_vids.values())
+                )
+                if discovered.operation_vids
+                else {}
+            )
         except ValueError as exc:
             return {
                 "success": False,
@@ -1045,15 +1299,22 @@ class ASTGeneratorService:
                 "failed_operations": {},
             }
 
+        owner_codes = {
+            code
+            for code, vid in discovered.operation_vids.items()
+            if (vid_owners.get(vid) or module_owner) == owner
+        }
+        owned = discovered.only(owner_codes)
         return self.script_from_db(
-            expressions=expressions,
-            operation_vids=operation_vids,
+            expressions=owned.expressions,
+            operation_vids=owned.operation_vids,
             mv=mv,
             release_row=release_row,
-            preconditions=preconditions or None,
-            severities=severities or None,
-            from_submission_dates=from_submission_dates or None,
+            preconditions=list(owned.preconditions) or None,
+            severities=owned.severities or None,
+            from_submission_dates=owned.from_submission_dates or None,
             release_info=release_info,
+            owner=owner,
         )
 
     def calculations_for_module(
@@ -1342,13 +1603,7 @@ class ASTGeneratorService:
         self,
         mv: Any,
         release_row: Any,
-    ) -> Tuple[
-        List[Tuple[str, str]],
-        Dict[str, int],
-        List[Union[Tuple[str, List[str]], Dict[str, Any]]],
-        Dict[str, str],
-        Dict[str, str],
-    ]:
+    ) -> _DiscoveredValidations:
         """Look up the active ``(expression, code)`` pairs for a module.
 
         Resolves the module version's active operations by joining
@@ -1420,8 +1675,8 @@ class ASTGeneratorService:
         the winner does not depend on join order.
 
         Returns:
-            ``(expressions, operation_vids, preconditions, severities,
-            from_submission_dates)`` ready to pass to :meth:`script`.
+            A :class:`_DiscoveredValidations` whose members are ready
+            to pass to :meth:`script`.
             ``operation_vids`` maps each code to the ``OperationVID``
             already resolved by this same query, so callers that want
             the persisted AST for an operation don't need a second
@@ -1599,15 +1854,12 @@ class ASTGeneratorService:
             if prec_vid is not None:
                 prec_vid_to_codes.setdefault(prec_vid, []).append(code)
 
-        preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]] = (
-            list(self._resolve_preconditions(prec_vid_to_codes))
-        )
-        return (
-            expressions,
-            operation_vids,
-            preconditions,
-            severities,
-            from_submission_dates,
+        return _DiscoveredValidations(
+            expressions=expressions,
+            operation_vids=operation_vids,
+            preconditions=self._resolve_preconditions(prec_vid_to_codes),
+            severities=severities,
+            from_submission_dates=from_submission_dates,
         )
 
     @staticmethod
@@ -2444,14 +2696,13 @@ class ASTGeneratorService:
         return {"release": latest.code or "", "publication_date": pub_date}
 
     @staticmethod
-    def _build_dates(mv: Any) -> Dict[str, Any]:
-        """Build the ``{"from", "to"}`` block from a ``ModuleVersion``."""
-        return {
-            "from": _format_date(
-                mv.from_reference_date, fallback=_DEFAULT_FROM_DATE
-            ),
-            "to": _format_date(mv.to_reference_date),
-        }
+    def _build_dates(window: "Window") -> Dict[str, Any]:
+        """Build the ``{"from", "to"}`` block from the own version's window.
+
+        The window is the one the own version has in ``modules``, so the
+        two always agree.
+        """
+        return {"from": _format_date(window[0]), "to": _format_date(window[1])}
 
     @staticmethod
     def _build_operation_entry(
@@ -2500,14 +2751,13 @@ class ASTGeneratorService:
             "severity": severity,
         }
 
-    # The gate contract shared with the engine's precondition evaluator:
-    # filing indicators, run-time parameters and boolean literals combined
-    # with these operators (grouping parentheses are preserved as
-    # ParExpr, not unwrapped). A gate
+    # The gates written from their parsed AST: filing indicators,
+    # run-time parameters and boolean literals combined with these
+    # operators (grouping parentheses are preserved as ParExpr, not
+    # unwrapped). A gate
     # carrying anything else — a comparison, arithmetic, a cell reference,
-    # a non-boolean literal — has no runtime meaning on the engine side, so
-    # it stays out of the script and its operations are reported through
-    # ``failed_operations`` (see ``_unsupported_gate_operations``).
+    # an aggregate — is validated and translated as an operation is, and
+    # what it reads goes to the operations it gates (see ``_prepare_gates``).
     _GATE_BINARY_OPS = frozenset({"and", "or", "xor"})
     _GATE_UNARY_OPS = frozenset({"not"})
 
@@ -2517,11 +2767,12 @@ class ASTGeneratorService:
         release_id: Optional[int],
         referenced_parameters: Optional[Dict[str, ParameterInfo]] = None,
         emitted_operations: Optional[Set[str]] = None,
-    ) -> Tuple[Dict[str, Any], Dict[str, str]]:
-        """Build the ``preconditions`` and ``precondition_variables`` blocks.
+        gate_asts: Optional[Mapping[int, Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Build the ``preconditions`` block.
 
         Each gate is parsed once and the resulting AST is walked to build
-        the entry: a ``{v_*}`` selection becomes a ``PreconditionItem``
+        the entry: a ``{v_*}`` selection becomes a ``FilingIndicatorVarID``
         node with the resolved ``variable_id``, a ``{p_*}`` reference is
         emitted as the same ``ParameterRef`` node an expression produces
         (``code``, canonical ``param_type``, ``default``), and every
@@ -2541,17 +2792,17 @@ class ASTGeneratorService:
         :func:`~dpmcore.services._parameters.merge_parameters` runs
         against a single registry (``3-8`` on a conflicting type).
 
-        Gates outside that contract (a comparison, a cell reference, a
-        non-boolean literal) are excluded here, and :meth:`script`
-        reports their operations in ``failed_operations`` instead of
-        shipping a gate the engine cannot evaluate. Codes that don't
-        resolve are still skipped silently (matches pydpm).
+        Any other gate (a comparison, a cell reference, an aggregate) is
+        written from its AST in ``gate_asts``, by its position among the
+        preconditions, as :meth:`_prepare_gates` built it; one missing
+        there gated only operations in ``failed_operations``. Codes that
+        don't resolve are still skipped silently (matches pydpm).
 
         When *emitted_operations* is given, each entry's
         ``affected_operations`` is intersected with it, and an entry
         left gating nothing at all is dropped before it is walked, so
-        the ``precondition_variables`` it alone would have contributed
-        go with it (#355). Preconditions are harvested from the database
+        the filing indicators it alone would have tested go with it
+        (#355). Preconditions are harvested from the database
         before the expressions they gate are semantically validated, so
         an operation rejected into ``failed_operations`` — including one
         rejected for the gate contract above — would otherwise stay
@@ -2565,9 +2816,8 @@ class ASTGeneratorService:
         from dpmcore.dpm_xl.utils.serialization import serialize_ast
 
         preconditions_dict: Dict[str, Any] = {}
-        precondition_variables: Dict[str, str] = {}
         if not preconditions or self.session is None:
-            return preconditions_dict, precondition_variables
+            return preconditions_dict
 
         # Parse every gate once — later passes read the AST, not the
         # source text — and collect every ``{v_*}`` code the trees carry
@@ -2582,38 +2832,40 @@ class ASTGeneratorService:
             else {}
         )
 
+        gates = [
+            (
+                self._transform_precondition_ast(ast, resolved, serialize_ast),
+                validation_codes,
+                provided_code,
+                provided_version_id,
+            )
+            for ast, validation_codes, provided_code, provided_version_id in (
+                parsed_gates
+            )
+        ] + [
+            (gate_ast, *self._gate_spec_fields(preconditions[index])[1:])
+            for index, gate_ast in (gate_asts or {}).items()
+        ]
         for (
-            ast,
+            gate_ast,
             validation_codes,
             provided_code,
             provided_version_id,
-        ) in parsed_gates:
+        ) in gates:
             if emitted_operations is not None:
                 validation_codes = [
                     code
                     for code in validation_codes
                     if code in emitted_operations
                 ]
-                # Filtered before the walk, not after: dropping the gate
-                # here is what keeps the variables it alone would have
-                # declared out of ``precondition_variables`` (#355).
                 if not validation_codes:
                     continue
-            # Variables are registered per gate and merged only once the
-            # gate survives the walk: a gate discarded below must not
-            # leave the variables of its resolved leaves declared behind
-            # it (#355).
-            gate_variables: Dict[str, str] = {}
-            gate_ast = self._transform_precondition_ast(
-                ast, resolved, gate_variables, serialize_ast
-            )
             if gate_ast is None:
                 # Nothing left standing: either every ``{v_*}`` position
                 # was dropped for lack of resolution, or an unresolved
                 # one sat where dropping it would have tightened the
                 # gate (see ``_transform_precondition_ast``).
                 continue
-            precondition_variables.update(gate_variables)
             if referenced_parameters is not None:
                 self._accumulate_ast_parameters(
                     referenced_parameters, gate_ast
@@ -2623,7 +2875,7 @@ class ASTGeneratorService:
             )
             self._merge_precondition_entry(preconditions_dict, key, entry)
 
-        return preconditions_dict, precondition_variables
+        return preconditions_dict
 
     @staticmethod
     def _merge_precondition_entry(
@@ -2667,56 +2919,127 @@ class ASTGeneratorService:
         precond_expr, validation_codes = precond_spec
         return precond_expr, validation_codes, None, None
 
-    def _unsupported_gate_operations(
+    def _prepare_gates(
         self,
         preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
-    ) -> Dict[str, str]:
-        """Map each operation gated by an engine-unsupported gate to a reason.
+        release_id: int,
+    ) -> _PreparedGates:
+        """Ready the preconditions that go beyond filing indicators.
 
-        The gate contract is filing indicators, run-time parameters and
-        boolean literals combined with ``and`` / ``or`` / ``xor`` /
-        ``not``. The engine's precondition evaluator has no evaluation
-        for anything else — a comparison, arithmetic, a cell reference —
-        and such a node in a gate fails the run. A gate outside the
-        contract must therefore not be emitted, and silently dropping it
-        would ungate the operations it guards. This is the third option:
-        the operations are reported in :meth:`script`'s
-        ``failed_operations`` with the reason, and left out of the
-        script. Gates that fail to parse are ignored here —
-        ``_build_precondition_index`` already turns them into a
-        script-level error.
+        A gate of filing indicators, parameters and boolean literals
+        joined by ``and`` / ``or`` / ``xor`` / ``not`` is written by
+        :meth:`_build_preconditions_block` from its parsed AST. Any other
+        gate is readied by :meth:`_prepare_gate`, and what it reads is
+        read by every operation it gates. One that cannot be written
+        sends the operations it gates to ``failed_operations`` with the
+        reason, rather than leaving them ungated. Gates that fail to
+        parse are left to ``_build_precondition_index``.
         """
-        failures: Dict[str, str] = {}
-        for precond_spec in preconditions:
+        gates = _PreparedGates()
+        for index, precond_spec in enumerate(preconditions):
             precond_expr, validation_codes, _, _ = self._gate_spec_fields(
                 precond_spec
             )
             if not precond_expr:
                 continue
             try:
-                ast = self._syntax.parse(precond_expr)
+                parsed = self._syntax.parse(precond_expr)
             except Exception:  # noqa: S112 — see docstring above
                 continue
-            reason = self._gate_unsupported_reason(ast)
-            if reason is None:
+            if self._gate_unsupported_reason(parsed) is None:
                 continue
-            message = (
-                f"Precondition {precond_expr!r} cannot be evaluated by the "
-                f"engine: {reason}. A precondition may only combine "
-                "filing indicators, parameters and boolean literals with "
-                "and/or/xor/not."
-            )
+            prepared = self._prepare_gate(precond_expr, release_id)
             for validation_code in validation_codes:
-                failures.setdefault(validation_code, message)
-        return failures
+                if prepared.error is not None:
+                    gates.failures.setdefault(
+                        validation_code,
+                        f"Precondition {precond_expr!r} cannot be written: "
+                        f"{prepared.error}",
+                    )
+                else:
+                    gates.reads.setdefault(validation_code, []).extend(
+                        prepared.reads
+                    )
+            if prepared.error is None:
+                gates.asts[index] = prepared.ast
+        return gates
+
+    def _prepare_gate(
+        self, precond_expr: str, release_id: int
+    ) -> _PreparedExpression:
+        """Validate a gate and translate it as an operation, as a gate.
+
+        Its result must be a single boolean. Its AST is translated as an
+        operation's is, each filing indicator becoming a
+        ``FilingIndicatorVarID``, and ``ast`` holds the translated AST.
+        """
+        from dpmcore.dpm_xl.model_queries import VariableVersionQuery
+        from dpmcore.dpm_xl.utils.serialization import serialize_ast
+
+        if self._semantic is None or self.session is None:
+            raise InternalError(
+                "SemanticService not initialised",
+                "_prepare_gate requires a live DB session.",
+            )
+        result = self._semantic.validate(
+            precond_expr, release_id=release_id, as_precondition=True
+        )
+        if not result.is_valid:
+            return _PreparedExpression(error=result.error_message or "")
+        ast = self._semantic.ast
+        codes = self._extract_precondition_codes(ast)
+        resolved = (
+            VariableVersionQuery.get_variable_vids_by_codes(
+                self.session, codes, release_id=release_id
+            )
+            if codes
+            else {}
+        )
+        try:
+            gate_ast = script_ast(
+                self._filing_indicator_items(serialize_ast(ast), resolved)
+            )
+            reads = self._extract_reads(ast)
+        except (UnsupportedNode, _UnreadableOperation) as exc:
+            return _PreparedExpression(error=str(exc))
+        self._clean_ast_data_entries(gate_ast)
+        return _PreparedExpression(result=result, ast=gate_ast, reads=reads)
+
+    @classmethod
+    def _filing_indicator_items(
+        cls, node: Any, resolved: Mapping[str, Dict[str, int]]
+    ) -> Any:
+        """Turn each ``VarRef`` of a serialised AST into a filing indicator.
+
+        A ``{v_*}`` selection the release resolves becomes the
+        ``PreconditionItem`` the database path writes. One it does not
+        resolve stays a ``VarRef``, which no script can carry.
+        """
+        if isinstance(node, list):
+            return [
+                cls._filing_indicator_items(item, resolved) for item in node
+            ]
+        if not isinstance(node, dict):
+            return node
+        code = _normalize_variable_code(str(node.get("variable")))
+        if node.get("class_name") == "VarRef" and code in resolved:
+            return {
+                "class_name": "PreconditionItem",
+                "variable_id": resolved[code]["variable_id"],
+                "variable_code": code,
+            }
+        return {
+            key: cls._filing_indicator_items(value, resolved)
+            for key, value in node.items()
+        }
 
     @classmethod
     def _gate_unsupported_reason(cls, node: Any) -> Optional[str]:
-        """Why the engine could not evaluate this gate, or ``None`` if it can.
+        """Why this gate is not one of filing indicators, or ``None``.
 
         Walks the parsed gate and returns a short reason for the first
         node outside the contract: filing-indicator selections
-        (``VarRef`` / ``PreconditionItem``), ``ParameterRef`` and boolean
+        (``VarRef`` / ``PreconditionItem``), scalar ``ParameterRef``, boolean
         ``Constant`` leaves joined by ``_GATE_BINARY_OPS`` /
         ``_GATE_UNARY_OPS``, optionally grouped.
         """
@@ -2729,6 +3052,8 @@ class ASTGeneratorService:
             return cls._gate_unsupported_reason(node.expression)
         if isinstance(node, (ast_nodes.BinOp, ast_nodes.UnaryOp)):
             return cls._gate_operator_unsupported_reason(node, ast_nodes)
+        if isinstance(node, ast_nodes.ParameterRef) and node.is_set:
+            return f"it reads the {node.param_type} parameter {node.code!r}"
         if isinstance(
             node,
             (
@@ -2776,9 +3101,9 @@ class ASTGeneratorService:
         ``all_codes`` is the deduplicated list of variable codes to feed
         the batched DB resolution. Two kinds of gate are left out: one
         that fails to parse — ``_build_precondition_index`` already
-        surfaces that as a script-level error — and one the engine
-        cannot evaluate, whose operations
-        ``_unsupported_gate_operations`` has already reported.
+        surfaces that as a script-level error — and one beyond filing
+        indicators, which ``_prepare_gates`` has already
+        readied or reported.
         """
         parsed_gates: List[
             Tuple[Any, List[str], Optional[str], Optional[int]]
@@ -2812,16 +3137,14 @@ class ASTGeneratorService:
         cls,
         node: Any,
         resolved: Dict[str, Dict[str, int]],
-        precondition_variables: Dict[str, str],
         serialize_ast: Any,
         negated: bool = False,
     ) -> Optional[Dict[str, Any]]:
         """Walk the parsed gate AST and emit the engine's dict shape.
 
         ``VarRef`` (the parser's node for ``{v_*}``) and ``PreconditionItem``
-        collapse to a ``PreconditionItem`` dict with the resolved
-        ``variable_id``, registering the ``variable_vid`` in
-        ``precondition_variables`` on the way. A selection that does not
+        collapse to a ``FilingIndicatorVarID`` dict with the resolved
+        ``variable_id``. A selection that does not
         resolve becomes ``None`` — *unknown* — and unknown is only ever
         allowed to relax the gate, never to tighten it: the surrounding
         operator is rewired around it where dropping it widens the gate
@@ -2857,11 +3180,7 @@ class ASTGeneratorService:
 
         if isinstance(node, ast_nodes.ParExpr):
             inner = cls._transform_precondition_ast(
-                node.expression,
-                resolved,
-                precondition_variables,
-                serialize_ast,
-                negated,
+                node.expression, resolved, serialize_ast, negated
             )
             if inner is None:
                 return None
@@ -2870,21 +3189,18 @@ class ASTGeneratorService:
             variable = getattr(node, "variable", None) or getattr(
                 node, "variable_code", None
             )
-            return cls._precondition_item(
-                variable, resolved, precondition_variables
-            )
+            return cls._precondition_item(variable, resolved)
         if isinstance(node, (ast_nodes.ParameterRef, ast_nodes.Constant)):
             serialized: Dict[str, Any] = serialize_ast(node)
             return serialized
         if isinstance(node, ast_nodes.BinOp):
             return cls._transform_gate_binop(
-                node, resolved, precondition_variables, serialize_ast, negated
+                node, resolved, serialize_ast, negated
             )
         if isinstance(node, ast_nodes.UnaryOp):
             operand = cls._transform_precondition_ast(
                 node.operand,
                 resolved,
-                precondition_variables,
                 serialize_ast,
                 # ``not`` is the only unary operator the gate contract
                 # allows (``_GATE_UNARY_OPS``), so descending here always
@@ -2909,7 +3225,6 @@ class ASTGeneratorService:
         cls,
         node: Any,
         resolved: Dict[str, Dict[str, int]],
-        precondition_variables: Dict[str, str],
         serialize_ast: Any,
         negated: bool,
     ) -> Optional[Dict[str, Any]]:
@@ -2921,14 +3236,10 @@ class ASTGeneratorService:
         sits at — see :meth:`_gate_drop_relaxes`.
         """
         left = cls._transform_precondition_ast(
-            node.left, resolved, precondition_variables, serialize_ast, negated
+            node.left, resolved, serialize_ast, negated
         )
         right = cls._transform_precondition_ast(
-            node.right,
-            resolved,
-            precondition_variables,
-            serialize_ast,
-            negated,
+            node.right, resolved, serialize_ast, negated
         )
         if left is None or right is None:
             survivor = right if left is None else left
@@ -2975,9 +3286,8 @@ class ASTGeneratorService:
     def _precondition_item(
         variable: Any,
         resolved: Dict[str, Dict[str, int]],
-        precondition_variables: Dict[str, str],
     ) -> Optional[Dict[str, Any]]:
-        """Emit the ``PreconditionItem`` dict for a filing-indicator code.
+        """Emit the ``FilingIndicatorVarID`` dict for a filing indicator.
 
         Codes that don't resolve return ``None`` so the caller can drop
         the position — the same non-fatal outcome the previous regex
@@ -2989,11 +3299,10 @@ class ASTGeneratorService:
         info = resolved.get(var_code)
         if info is None:
             return None
-        precondition_variables[str(info["variable_vid"])] = "b"
         return {
-            "class_name": "PreconditionItem",
+            "class_name": "FilingIndicatorVarID",
+            "code": var_code,
             "variable_id": info["variable_id"],
-            "variable_code": var_code,
             # Kept for key derivation in
             # ``_build_precondition_entry_from_ast`` — the pre-existing
             # ``p_<vid>`` scheme groups precondition entries by
@@ -3054,8 +3363,8 @@ class ASTGeneratorService:
     def _is_conjunction_of_items(cls, node: Any) -> bool:
         """``True`` for the shape the regex path used to emit.
 
-        That is a ``PreconditionItem`` or an ``and`` tree whose leaves
-        are all ``PreconditionItem`` — the only shape for which the
+        That is a ``FilingIndicatorVarID`` or an ``and`` tree whose
+        leaves are all of that class — the only shape for which the
         ``p_<sorted vids>`` key alone identifies the gate. Called on
         an already ``ParExpr``-stripped tree (see
         :meth:`_strip_par_expr`), so grouping parentheses never affect
@@ -3064,7 +3373,7 @@ class ASTGeneratorService:
         if not isinstance(node, dict):
             return False
         class_name = node.get("class_name")
-        if class_name == "PreconditionItem":
+        if class_name == "FilingIndicatorVarID":
             return True
         return (
             class_name == "BinOp"
@@ -3099,12 +3408,12 @@ class ASTGeneratorService:
 
         ``variable_vid`` is added by :meth:`_precondition_item` so key
         derivation groups entries the same way ``p_<vid>`` used to. The
-        engine's ``PreconditionItem`` only carries ``variable_id`` and
-        ``variable_code``, so the field is stripped once the key has
+        ``FilingIndicatorVarID`` only carries ``code`` and
+        ``variable_id``, so the field is stripped once the key has
         been built.
         """
         if isinstance(node, dict):
-            if node.get("class_name") == "PreconditionItem":
+            if node.get("class_name") == "FilingIndicatorVarID":
                 node.pop("variable_vid", None)
             for value in node.values():
                 if isinstance(value, (dict, list)):
@@ -3147,7 +3456,7 @@ class ASTGeneratorService:
         """
         item_vids = sorted(cls._collect_precondition_item_vids(gate_ast))
         # Strip the internal ``variable_vid`` field before hashing and
-        # emitting; the engine's ``PreconditionItem`` does not carry it.
+        # emitting; ``FilingIndicatorVarID`` does not carry it.
         cls._strip_precondition_item_vids(gate_ast)
         vids_part = "_".join(str(v) for v in item_vids)
         identity_ast = cls._strip_par_expr(gate_ast)
@@ -3179,7 +3488,7 @@ class ASTGeneratorService:
 
     @classmethod
     def _collect_precondition_item_vids(cls, node: Any) -> List[int]:
-        """Return the ``variable_vid`` of every ``PreconditionItem`` node.
+        """Return the ``variable_vid`` of every ``FilingIndicatorVarID``.
 
         The pre-existing ``p_<vid>`` naming keys entries by
         ``variable_vid``, so gates that name the same filing indicator
@@ -3187,7 +3496,7 @@ class ASTGeneratorService:
         """
         vids: List[int] = []
         if isinstance(node, dict):
-            if node.get("class_name") == "PreconditionItem":
+            if node.get("class_name") == "FilingIndicatorVarID":
                 vid = node.get("variable_vid")
                 if isinstance(vid, int):
                     vids.append(vid)
@@ -3206,11 +3515,11 @@ class ASTGeneratorService:
 
     @staticmethod
     def _clean_ast_data_entries(ast_dict: Any) -> Any:
-        """Strip engine-internal debug fields from ``VarID`` data entries.
+        """Strip engine-internal debug fields from ``FactVarID`` entries.
 
         Mirrors pydpm's ``_clean_ast_data_entries``: drops
         ``data_type``, ``cell_code``, ``table_code``, ``table_vid``
-        from each entry of every ``VarID`` node's ``data`` array.
+        from each entry of every ``FactVarID`` node's ``data`` array.
         Operates in-place.
         """
         if isinstance(ast_dict, dict):
@@ -3226,8 +3535,8 @@ class ASTGeneratorService:
 
     @staticmethod
     def _strip_varid_data(node: Dict[str, Any]) -> None:
-        """Drop debug fields from a single ``VarID`` node's ``data`` list."""
-        if node.get("class_name") != "VarID":
+        """Drop debug fields from one ``FactVarID`` node's ``data`` list."""
+        if node.get("class_name") != "FactVarID":
             return
         data = node.get("data")
         if not isinstance(data, list):
@@ -3237,77 +3546,6 @@ class ASTGeneratorService:
                 continue
             for name in _DATA_FIELDS_TO_STRIP:
                 entry.pop(name, None)
-
-    @staticmethod
-    def _extract_referenced_tables(ast_dict: Any) -> set[str]:
-        """Walk a serialised AST and return referenced table codes."""
-        codes: set[str] = set()
-
-        def _walk(node: Any) -> None:
-            if isinstance(node, dict):
-                if node.get("class_name") == "VarID":
-                    table = node.get("table")
-                    if isinstance(table, str) and table:
-                        codes.add(table)
-                for value in node.values():
-                    if isinstance(value, (dict, list)):
-                        _walk(value)
-            elif isinstance(node, list):
-                for item in node:
-                    if isinstance(item, (dict, list)):
-                        _walk(item)
-
-        _walk(ast_dict)
-        return codes
-
-    @staticmethod
-    def _extract_operand_datapoints(ast_dict: Any) -> Dict[str, str]:
-        """Walk a serialised AST and return ``{datapoint: data_type}``.
-
-        Every ``VarID`` node carries one ``data`` entry per data point its
-        cell reference resolves to, each holding the datapoint id (the
-        variable id) and its scalar type code. Must run *before*
-        :meth:`_clean_ast_data_entries`, which strips ``data_type``.
-
-        A datapoint with no type resolves to ``""`` — the same fallback
-        :meth:`ScopeCalculatorService._get_module_tables` uses when a
-        property carries no data type.
-        """
-        datapoints: Dict[str, str] = {}
-
-        def _walk(node: Any) -> None:
-            if isinstance(node, dict):
-                ASTGeneratorService._collect_varid_datapoints(node, datapoints)
-                children: Iterable[Any] = node.values()
-            elif isinstance(node, list):
-                children = node
-            else:
-                return
-            for child in children:
-                if isinstance(child, (dict, list)):
-                    _walk(child)
-
-        _walk(ast_dict)
-        return datapoints
-
-    @staticmethod
-    def _collect_varid_datapoints(
-        node: Dict[str, Any],
-        into: Dict[str, str],
-    ) -> None:
-        """Record one ``VarID`` node's datapoints and types into *into*."""
-        if node.get("class_name") != "VarID":
-            return
-        data = node.get("data")
-        if not isinstance(data, list):
-            return
-        for entry in data:
-            if not isinstance(entry, dict):
-                continue
-            dp = entry.get("datapoint")
-            if dp is None:
-                continue
-            into[str(dp)] = entry.get("data_type") or ""
 
     def _accumulate_parameters(
         self,
@@ -3333,13 +3571,14 @@ class ASTGeneratorService:
     def _build_precondition_index(
         self,
         preconditions: List[Union[Tuple[str, List[str]], Dict[str, Any]]],
+        extract: Optional[Callable[[Any], List[str]]] = None,
     ) -> Dict[str, List[str]]:
         """Map each validation code → unioned precondition variable codes.
 
         Parses each precondition expression once and extracts variable
-        codes that act as precondition items. Raises ``ValueError`` if
-        a precondition expression cannot be parsed.
-        Supports both tuple and dict formats.
+        codes that act as precondition items, with ``extract`` when
+        given. Raises ``ValueError`` if a precondition expression cannot
+        be parsed. Supports both tuple and dict formats.
         """
         index: Dict[str, List[str]] = {}
         for precond_spec in preconditions:
@@ -3352,7 +3591,7 @@ class ASTGeneratorService:
                 raise ValueError(
                     f"Invalid precondition expression {precond_expr!r}: {exc}"
                 ) from exc
-            codes = self._extract_precondition_codes(ast)
+            codes = (extract or self._extract_precondition_codes)(ast)
             for vc in validation_codes:
                 merged = index.setdefault(vc, [])
                 for c in codes:
@@ -3371,224 +3610,6 @@ extract_precondition_codes`, shared with
         """
         return _extract_precondition_codes(ast)
 
-    def _build_dependency_info(
-        self,
-        scope_pairs: List[
-            Tuple[
-                Tuple[str, str],
-                "ScopeResult",
-                Dict[str, List[str]],
-                _OperandRefs,
-            ]
-        ],
-        primary_module_vid: Optional[int],
-        release_id: Optional[int],
-    ) -> Optional[Dict[str, Any]]:
-        """Build dependency_info from collected scope results.
-
-        Aggregates across all expressions: merges
-        ``intra_instance_validations`` and deduplicates
-        ``cross_instance_dependencies`` by module URI set,
-        appending new ``affected_operations`` to existing entries.
-        """
-        if (
-            not self._scope_calc
-            or primary_module_vid is None
-            or not scope_pairs
-        ):
-            return None
-
-        all_intra: List[str] = []
-        all_cross: List[Dict[str, Any]] = []
-        all_dep_modules: Dict[str, Any] = {}
-        all_scope_results: List["ScopeResult"] = []
-
-        # The home-module table set is a per-script constant (the
-        # primary module never changes across this loop), and computing
-        # it inside ``detect_cross_module_dependencies`` would repeat a
-        # per-table variable/open-key fetch on every iteration. Compute
-        # it once here and thread it through.
-        home_module_tables: Set[str] = set(
-            self._scope_calc._get_module_tables(
-                primary_module_vid, release_id=release_id
-            ).keys()
-        )
-
-        for item, sr, ts, refs in scope_pairs:
-            all_scope_results.append(sr)
-            op_code = item[1]
-            current = self._scope_calc.detect_cross_module_dependencies(
-                scope_result=sr,
-                primary_module_vid=primary_module_vid,
-                operation_code=op_code,
-                release_id=release_id,
-                time_shifts=ts,
-                compute_alternative_deps=False,
-                referenced_variables=refs.variables,
-                referenced_tables=refs.tables,
-                home_module_tables=home_module_tables,
-            )
-            all_intra.extend(current.get("intra_instance_validations", []))
-            self._merge_cross_deps(
-                all_cross,
-                current.get("cross_instance_dependencies", []),
-            )
-            self._merge_dep_modules(
-                all_dep_modules,
-                current.get("dependency_modules", {}),
-            )
-
-        # Restrict alternatives to the script's genuine dependency modules
-        # so the groups can never name a module absent from
-        # ``dependency_modules`` (#202 dangling references).
-        alt_deps = self._scope_calc.detect_alternative_dependencies(
-            scope_results=all_scope_results,
-            primary_module_vid=primary_module_vid,
-            release_id=release_id,
-            valid_module_uris=set(all_dep_modules),
-        )
-
-        deduped_intra: List[str] = list(dict.fromkeys(all_intra))
-
-        return {
-            "dependency_information": {
-                "intra_instance_validations": deduped_intra,
-                "cross_instance_dependencies": all_cross,
-                "alternative_dependencies": alt_deps,
-            },
-            "dependency_modules": all_dep_modules,
-        }
-
-    @staticmethod
-    def _merge_cross_deps(
-        existing: List[Dict[str, Any]],
-        new: List[Dict[str, Any]],
-    ) -> None:
-        """Merge *new* cross-instance deps into *existing*.
-
-        Deduplicates by the set of ``(module URI, reference period)``
-        pairs. When a duplicate is found, its ``affected_operations``
-        are merged instead.
-
-        The reference period is part of the key because two operations
-        can need the *same* module at *different* instances — one at
-        ``T``, another at ``T-1Q`` (#325 makes a non-default period
-        reachable for the home module). Keying on the URI alone merged
-        them into a single entry whose period was whichever operation
-        came first, silently sending the other to the wrong instance.
-        """
-
-        def _uri_key(dep: Dict[str, Any]) -> Tuple[Tuple[str, str], ...]:
-            modules = dep.get("modules", [])
-            return tuple(
-                sorted(
-                    (m.get("URI", ""), m.get("ref_period", ""))
-                    if isinstance(m, dict)
-                    else (str(m), "")
-                    for m in modules
-                )
-            )
-
-        seen = {_uri_key(d) for d in existing}
-
-        for dep in new:
-            key = _uri_key(dep)
-            if key not in seen:
-                existing.append(dep)
-                seen.add(key)
-            else:
-                for ex in existing:
-                    if _uri_key(ex) == key:
-                        ops = ex.setdefault("affected_operations", [])
-                        for op in dep.get("affected_operations", []):
-                            if op not in ops:
-                                ops.append(op)
-                        break
-
-    @staticmethod
-    def _merge_dep_modules(
-        existing: Dict[str, Any],
-        new: Dict[str, Any],
-    ) -> None:
-        """Merge *new* dependency_modules into *existing*.
-
-        Avoids table duplicates within each module URI. Two operations
-        can reference different cells of the same dependency table, and
-        each declares only the datapoints it uses (#250), so a repeated
-        table unions its ``variables`` rather than keeping the first.
-        """
-        for uri, data in new.items():
-            if uri not in existing:
-                existing[uri] = data
-                continue
-            tables = existing[uri].setdefault("tables", {})
-            for tbl, tbl_data in data.get("tables", {}).items():
-                if tbl not in tables:
-                    tables[tbl] = tbl_data
-                    continue
-                merged_vars = dict(tables[tbl].get("variables", {}))
-                merged_vars.update(tbl_data.get("variables", {}))
-                tables[tbl] = {**tables[tbl], "variables": merged_vars}
-            existing[uri].setdefault("variables", {}).update(
-                data.get("variables", {})
-            )
-
-    @staticmethod
-    def _to_ref_period(internal: str) -> str:
-        """Render a ``t(+|-)<indicator><n>`` marker as a reference period.
-
-        The declared period is the *opposite* of the shift the expression
-        asks for. ``time_shift`` moves the operand's reference period by
-        ``shift_number``, so the instance whose shifted operand lines up
-        with the one being reported is the one at ``T - shift_number``:
-        ``time_shift(x, A, 1, refPeriod)`` needs ``T-1A`` and
-        ``time_shift(x, Q, -1, refPeriod)`` needs ``T+1Q``. The marker is
-        built with that inversion already applied (see
-        :meth:`_extract_time_shifts`), so this only reorders it.
-        """
-        if internal.startswith(("t+", "t-")):
-            sign = internal[1]
-            ind = internal[2]
-            num = internal[3:]
-            return f"T{sign}{num}{ind}"
-        return "T"
-
-    @staticmethod
-    def _literal_shift(node: Any) -> Tuple[int, Optional[int]]:
-        """Resolve a ``shift_number`` expression to ``(sign, magnitude)``.
-
-        ``sign`` is the direction the expression asks for (``1`` or
-        ``-1``) and ``magnitude`` its size, or ``None`` when the shift
-        number is not an integer literal — a reference or a computed
-        expression, whose size no reference period can name.
-
-        The same written literal reaches this in several shapes, and
-        reading only the two obvious ones mis-declared the rest: ``+1``
-        is a ``UnaryOp``, so it lost its size and rendered ``T-nQ``;
-        ``( -1 )`` is a ``ParExpr`` around one, so it lost its direction
-        too; and ``(-1)`` without the spaces is lexed as a *negative*
-        ``Constant``, which rendered the sign twice (``T--1Q``).
-        """
-        from dpmcore.dpm_xl.ast.nodes import Constant, ParExpr, UnaryOp
-
-        sign = 1
-        while True:
-            if isinstance(node, ParExpr):
-                node = node.expression
-            elif isinstance(node, UnaryOp) and node.op in ("+", "-"):
-                if node.op == "-":
-                    sign = -sign
-                node = node.operand
-            else:
-                break
-        if not isinstance(node, Constant):
-            return sign, None
-        try:
-            shift = sign * int(node.value)
-        except (TypeError, ValueError):
-            return sign, None
-        return (-1 if shift < 0 else 1), abs(shift)
-
     def _prepare_expression(
         self,
         semantic: SemanticService,
@@ -3596,7 +3617,7 @@ extract_precondition_codes`, shared with
         release_id: int,
         gate_failure: Optional[str] = None,
     ) -> _PreparedExpression:
-        """Validate *expr* and read the reference periods it needs.
+        """Validate *expr* and read what it reads, and at which periods.
 
         ``validate()`` runs the per-expression scope check: a parameter
         referenced here must not clash with the declared type of a
@@ -3605,8 +3626,8 @@ extract_precondition_codes`, shared with
         catches conflicts between two expressions in the same script.
 
         ``gate_failure`` is the reason the operation's precondition
-        cannot be evaluated by the engine, when there is one (see
-        ``_unsupported_gate_operations``); such an operation is skipped
+        cannot be written, when there is one (see
+        ``_prepare_gates``); such an operation is skipped
         before validation, with that reason as its error.
         """
         if gate_failure is not None:
@@ -3621,106 +3642,63 @@ extract_precondition_codes`, shared with
             return _PreparedExpression(
                 result=result,
                 ast=ast,
-                ts=self._extract_time_shifts(ast),
+                reads=self._extract_reads(ast),
             )
-        except SemanticError as exc:
+        except _UnreadableOperation as exc:
             return _PreparedExpression(error=str(exc))
 
-    @staticmethod
-    def _shift_marker(node: Any) -> str:
-        """Return the ``t(+|-)<indicator><n>`` marker for a time shift.
+    def _extract_reads(self, ast: Any) -> List[Read]:
+        """Return what one operation's AST reads, as statement ``0``.
 
-        The marker encodes the *declared* period, which inverts the
-        shift the expression asks for: ``time_shift(x, A, 1, refPeriod)``
-        reads the instance at ``T-1A`` and
-        ``time_shift(x, Q, -1, refPeriod)`` the one at ``T+1Q``. A shift
-        of ``0`` is no shift at all, so it keeps the plain marker.
-
-        Raises:
-            SemanticError: 4-7-5, when the shift number is not an
-                integer literal. Such a shift used
-                to render as ``T-nQ``, which names no resolvable
-                instance and so silently sent the operation to an
-                instance the engine cannot load (#326).
-        """
-        sign, magnitude = ASTGeneratorService._literal_shift(node.shift_number)
-        if magnitude is None:
-            raise SemanticError("4-7-5")
-        if magnitude == 0:
-            return "t"
-        # ``magnitude`` is unsigned, so the sign is carried by the marker
-        # alone — a ``Constant`` holding a negative value would otherwise
-        # render two signs (``t-Q-1``).
-        marker = "-" if sign > 0 else "+"
-        return f"t{marker}{node.period_indicator}{magnitude}"
-
-    @staticmethod
-    def _extract_time_shifts(ast: Any) -> Dict[str, List[str]]:
-        """Extract the reference periods each table is referenced at.
-
-        Returns a mapping of table codes to the sorted, de-duplicated
-        reference periods that table is read at, e.g.
-        ``{"C_01.00": ["T", "T-1Q"]}``.
-
-        One period per table is not enough (#326): a table read both
-        plain and shifted, or shifted twice by different amounts, needs
-        one instance per period, and keeping a single period collapsed
-        the rest into whichever the visitor reached last. Unshifted
-        references are recorded as ``"T"`` too, so a module read at both
-        the current and a shifted instance is visible to the caller
-        instead of being declared at the shifted one alone.
+        Each operand already holds its Variables, resolved at the
+        script's release or read from the database, and they become the
+        ``datapoint`` entries of its ``FactVarID``. They are taken from
+        the operand rather than looked up again, so ``modules`` lists
+        exactly those. The caller numbers the reads by the operation's
+        position in the script.
 
         Raises:
-            SemanticError: 4-7-5, propagated from
-                :meth:`_shift_marker` for a non-literal shift number.
+            _UnreadableOperation: If the AST cannot be walked. The
+                operation is left out of the script rather than listed
+                without what it reads.
+            SQLAlchemyError: If the database fails; the script fails too.
         """
-        from dpmcore.dpm_xl.ast.template import ASTTemplate
+        from dpmcore.services.script_document.visitors import (
+            DependencyTableExtractor,
+        )
 
-        time_shifts: Dict[str, Set[str]] = {}
-        current_period = ["t"]
+        if self.session is None:
+            raise InternalError(
+                "SQLAlchemy session not initialised",
+                "_extract_reads requires a live DB session.",
+            )
 
-        class _Extractor(ASTTemplate):
-            def visit_AnnualiseOp(self, node: Any) -> None:
-                self.visit(node.operand)
-
-            def visit_TimeShiftOp(self, node: Any) -> None:
-                prev = current_period[0]
-                current_period[0] = ASTGeneratorService._shift_marker(node)
-                self.visit(node.operand)
-                current_period[0] = prev
-
-            def visit_VarID(self, node: Any) -> None:
-                if node.table:
-                    time_shifts.setdefault(node.table, set()).add(
-                        current_period[0]
-                    )
+        class _Reads(DependencyTableExtractor):
+            def _variable_ids(self, table: str, node: Any) -> List[int]:
+                built = getattr(node, "_db_ast_dict", None)
+                if built is not None:
+                    return [int(entry["datapoint"]) for entry in built["data"]]
+                data = getattr(node, "data", None)
+                if data is None or data.empty:
+                    return []
+                return [int(v) for v in data["variable_id"].dropna().unique()]
 
             def visit__DbSubClauseOp(self, node: Any) -> None:
-                # db_ast.py's stand-in for a ``sub`` clause (dpmcore#364)
-                # — not one of ASTTemplate's known node types, so its
-                # generic_visit would raise NotImplementedError instead
-                # of walking past it.
-                self.visit(node.operand)
-                self.visit(node.condition)
+                # db_ast.py's stand-in for a ``sub`` clause: an
+                # ``operand`` and a ``condition``, read like a ``where``.
+                self.visit_WhereClauseOp(node)
 
+        extractor = _Reads(self.session)
         try:
-            _Extractor().visit(ast)
-        except SemanticError:
-            # A shift whose period cannot be declared is the caller's
-            # decision to act on, not something to swallow into an
-            # empty mapping.
+            extractor.visit(ast)
+        except SQLAlchemyError:
             raise
-        except Exception:
-            logger.exception(
-                "Failed to extract time shifts; returning an empty mapping.",
-            )
-            return {}
-        return {
-            table: sorted(
-                {ASTGeneratorService._to_ref_period(p) for p in periods}
-            )
-            for table, periods in time_shifts.items()
-        }
+        except Exception as exc:
+            logger.exception("Failed to collect what an operation reads.")
+            raise _UnreadableOperation(
+                f"Could not collect what the operation reads: {exc}"
+            ) from exc
+        return extractor.reads
 
 
 __all__ = ["ASTGeneratorService"]
