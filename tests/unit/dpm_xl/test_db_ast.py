@@ -216,7 +216,7 @@ def _add_variable(
     code: Optional[str] = None,
 ) -> None:
     """Seed a ``DataType``/``Property``/``VariableVersion`` trio for
-    *variable_id*, so ``_data_type_for_variable``/``_variable_code``
+    *variable_id*, so ``_variable_code``
     can resolve it. Each variable gets its own ``DataType``/``Property``
     row (``code``/``name`` must be unique per row) rather than sharing
     one — simpler than threading a shared id through every test.
@@ -663,19 +663,21 @@ class TestLeaves:
 
 
 class TestVarId:
-    def test_no_data_type_resolvable_raises(self, session):
+    def test_no_data_type_resolvable_builds(self, session):
         """A cell whose variable has no resolvable ``DataType`` (no
         ``VariableVersion``/``Property``/``DataType`` chain — e.g. the
-        release window doesn't cover it) must fail loudly rather than
-        emit a ``VarID`` entry with a missing ``data_type``.
+        release window doesn't cover it) still builds: a ``VarID``
+        entry carries no ``data_type``.
         """
         _add_node(session, 2, is_leaf=True, use_interval_arithmetics=False)
         _add_ref(session, 1, node_id=2, x=0, kind="variable", variable_id=700)
         _add_location(session, 1, table="F_01.01", row="r0010")
         _wrap_unary(session, 2)
 
-        with pytest.raises(UnsupportedDbAst):
-            _build(session)
+        ast_dict, _ = _build(session)
+        entry = ast_dict["operand"]["data"][0]
+        assert entry["datapoint"] == 700
+        assert "data_type" not in entry
 
     def test_single_cell(self, session):
         _add_variable(session, 700)

@@ -31,7 +31,6 @@ from typing import (
     Sequence,
     Set,
     Tuple,
-    cast,
 )
 
 import pandas as pd
@@ -916,31 +915,35 @@ class _ModulesBuilder:
         in two cells of the table lists both.
         """
         cells = cells[cells["variable_id"].notna()]
+        columns = ["variable_id", "data_type", *(c for _, c in _AXES)]
         variables: Dict[str, Dict[str, Any]] = {}
-        for raw_id, rows in cells.groupby("variable_id", sort=True):
-            variable_id = int(cast(float, raw_id))
+        # One pass over the rows: a pandas group per Variable is slow.
+        for raw_id, data_type, *codes in cells[columns].itertuples(
+            index=False, name=None
+        ):
+            variable_id = int(raw_id)
             if wanted is not None and variable_id not in wanted:
                 continue
-            data_types = rows["data_type"].dropna()
-            if data_types.empty:
-                self._default_types.add(variable_id)
-            positions: List[Dict[str, str]] = []
-            for record in rows.to_dict(orient="records"):
-                cell = {
-                    axis: str(record[column])
-                    for axis, column in _AXES
-                    if not pd.isna(record[column])
-                }
-                if cell not in positions:
-                    positions.append(cell)
-            positions.sort(key=lambda c: tuple(c.get(a, "") for a, _ in _AXES))
-            variables[str(variable_id)] = {
-                "data_type": (
-                    str(data_types.iloc[0]) if not data_types.empty else "m"
-                ),
-                "cells": positions,
+            variable = variables.setdefault(
+                str(variable_id), {"data_type": None, "cells": []}
+            )
+            if variable["data_type"] is None and not pd.isna(data_type):
+                variable["data_type"] = str(data_type)
+            cell = {
+                axis: str(code)
+                for (axis, _), code in zip(_AXES, codes, strict=True)
+                if not pd.isna(code)
             }
-        return variables
+            if cell not in variable["cells"]:
+                variable["cells"].append(cell)
+        for key, variable in variables.items():
+            if variable["data_type"] is None:
+                self._default_types.add(int(key))
+                variable["data_type"] = "m"
+            variable["cells"].sort(
+                key=lambda c: tuple(c.get(a, "") for a, _ in _AXES)
+            )
+        return dict(sorted(variables.items(), key=lambda kv: int(kv[0])))
 
 
 def _date_text(value: Optional[date]) -> Optional[str]:
