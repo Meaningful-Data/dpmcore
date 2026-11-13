@@ -41,8 +41,7 @@ from dpmcore.dpm_xl.ast import nodes as ast_nodes
 from dpmcore.dpm_xl.ast.operands import IMPLICIT_OPEN_KEYS
 from dpmcore.dpm_xl.utils.filters import filter_by_release
 from dpmcore.dpm_xl.utils.serialization import ASTToJSONVisitor
-from dpmcore.orm.glossary import ItemCategory, Property
-from dpmcore.orm.infrastructure import DataType
+from dpmcore.orm.glossary import ItemCategory
 from dpmcore.orm.operations import (
     OperandReference,
     OperandReferenceLocation,
@@ -346,7 +345,6 @@ class _Builder:
         self._session = session
         self._tree = tree
         self._release_id = release_id
-        self._data_type_cache: Dict[int, str] = {}
         self._signature_cache: Dict[int, str] = {}
         self._code_cache: Dict[int, str] = {}
         self._shapes = _classify_operators(session)
@@ -706,11 +704,6 @@ class _Builder:
                 entry["sheet"] = loc.sheet
             entry["datapoint"] = int(ref.variable_id)
             entry["operand_reference_id"] = int(loc.cell_id)
-            # Not part of mdpm's own dict — a transient field
-            # ast_generator.py's shared pipeline needs to build
-            # ``variables``, stripped before the final script the same
-            # way it strips it for the text-reparse path.
-            entry["data_type"] = self._data_type_for_variable(ref.variable_id)
             entries.append(entry)
 
         if len(tables) > 1:
@@ -837,33 +830,6 @@ class _Builder:
         )
         row = query.first()
         return row[0] if row is not None else None
-
-    def _data_type_for_variable(self, variable_id: int) -> str:
-        cached = self._data_type_cache.get(variable_id)
-        if cached is not None:
-            return cached
-        query = (
-            self._session.query(DataType.code)
-            .join(Property, Property.data_type_id == DataType.data_type_id)
-            .join(
-                VariableVersion,
-                VariableVersion.property_id == Property.property_id,
-            )
-            .filter(VariableVersion.variable_id == variable_id)
-        )
-        query = filter_by_release(
-            query,
-            start_col=VariableVersion.start_release_id,
-            end_col=VariableVersion.end_release_id,
-            release_id=self._release_id,
-        )
-        row = query.first()
-        if row is None or not row[0]:
-            raise UnsupportedDbAst(
-                f"No DataType resolvable for variable {variable_id}"
-            )
-        self._data_type_cache[variable_id] = row[0]
-        return row[0]
 
 
 def build_ast_from_db(
