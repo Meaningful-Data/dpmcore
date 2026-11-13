@@ -153,6 +153,9 @@ class ASTGeneratorService:
         self._scope_calc: Optional["ScopeCalculatorService"] = None
         self._syntax = SyntaxService()
         self._ghost_fallback_cache: Dict[int, Dict[int, List[int]]] = {}
+        self._module_table_vids_cache: Dict[
+            Tuple[int, int], Dict[str, List[int]]
+        ] = {}
         if session is not None:
             from dpmcore.services.scope_calculator import (
                 ScopeCalculatorService,
@@ -634,6 +637,7 @@ class ASTGeneratorService:
         code: str,
         expr: str,
         operation_vid: Optional[int],
+        primary_module_vid: int,
         release_id: int,
     ) -> Tuple[
         Optional[Dict[str, Any]],
@@ -651,7 +655,10 @@ class ASTGeneratorService:
 
         Returns ``(ast_dict, parameters, ts, root_operator_id, error)``
         — a non-``None`` ``error`` means the operation failed and the
-        other fields should be ignored.
+        other fields should be ignored. A stored cell reference the
+        exported module's tables no longer hold is such a failure, not
+        a reason to re-parse (dpmcore#445, see
+        :class:`~dpmcore.dpm_xl.utils.db_ast.StaleDbReference`).
         """
         if self._semantic is None:
             raise InternalError(
@@ -660,6 +667,7 @@ class ASTGeneratorService:
             )
 
         from dpmcore.dpm_xl.utils.db_ast import (
+            StaleDbReference,
             UnsupportedDbAst,
             build_ast_from_db,
             serialize_built_ast,
@@ -673,9 +681,16 @@ class ASTGeneratorService:
         if operation_vid is not None:
             try:
                 built_ast, root_operator_id = build_ast_from_db(
-                    session, operation_vid, release_id
+                    session,
+                    operation_vid,
+                    release_id,
+                    self._module_table_vids(
+                        session, primary_module_vid, release_id
+                    ),
                 )
                 ast_dict = serialize_built_ast(built_ast)
+            except StaleDbReference as exc:
+                return None, [], {}, None, str(exc)
             except UnsupportedDbAst:
                 ast_dict = None
                 built_ast = None
@@ -769,6 +784,7 @@ class ASTGeneratorService:
             code=code,
             expr=expr,
             operation_vid=operation_vid,
+            primary_module_vid=primary_module_vid,
             release_id=release_id,
         )
         if resolve_error is not None:
@@ -1267,6 +1283,37 @@ class ASTGeneratorService:
                 seen.add(pair)
                 pairs.append(pair)
         return pairs
+
+    def _module_table_vids(
+        self, session: "Session", module_vid: int, release_id: int
+    ) -> Dict[str, List[int]]:
+        """``{table_code: [TableVID, ...]}`` for *module_vid*, memoised.
+
+        The table versions the script declares ``variables`` from at
+        *release_id* — the same ones :meth:`_assemble_script` reads through
+        ``_get_module_tables``: the module's own plus those of the
+        ghosts it stands in for at this release.
+        """
+        key = (module_vid, release_id)
+        cached = self._module_table_vids_cache.get(key)
+        if cached is None:
+            if self._scope_calc is None:
+                raise InternalError(
+                    "ScopeCalculatorService not initialised",
+                    "_module_table_vids requires a live DB session.",
+                )
+            rows = self._scope_calc._get_module_table_versions(
+                module_vid,
+                self._release_ghost_fallbacks(session, release_id).get(
+                    module_vid, []
+                ),
+            )
+            cached = {}
+            for row in rows:
+                if row.code and row.table_vid:
+                    cached.setdefault(row.code, []).append(row.table_vid)
+            self._module_table_vids_cache[key] = cached
+        return cached
 
     def _release_ghost_fallbacks(
         self, session: "Session", release_id: int
