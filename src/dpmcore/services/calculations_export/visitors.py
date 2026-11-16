@@ -7,7 +7,8 @@ Four walks, in the order the exporter runs them:
 2. :class:`OutputExtractor` collects what each statement writes.
 3. :class:`VarIDDataEnricher` precomputes each ``VarID``'s ``data``
    array, so operand reference IDs follow visit order.
-4. :class:`CalculationsJSONVisitor` serialises the result.
+4. :func:`calculations_ast` serialises the result in the Script Format
+   2.0 shape.
 
 :class:`DAGAnalyzer` is not a serialisation pass: it reorders the
 script's statements so a calculation always follows the ones it
@@ -34,14 +35,18 @@ from dpmcore.dpm_xl.ast.nodes import (
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
 from dpmcore.dpm_xl.ast.template import ASTTemplate
 from dpmcore.dpm_xl.model_queries import ViewDatapointsQuery
+from dpmcore.dpm_xl.utils import tokens
 from dpmcore.dpm_xl.utils.data_handlers import filter_all_data, generate_xyz
 from dpmcore.dpm_xl.utils.serialization import (
     ASTToJSONVisitor,
     NodeDict,
     NodeValue,
 )
-from dpmcore.errors import InternalError, SemanticError
-from dpmcore.services.script_document.visitors import shift_number_text
+from dpmcore.errors import InternalError, Invalid, SemanticError
+from dpmcore.services.script_document.script_format import (
+    UnsupportedNode,
+    script_ast,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -454,15 +459,10 @@ class VarIDDataEnricher(ASTTemplate):
             ].copy()
         )
 
-        unique_rows = filtered["row_code"].dropna().unique()
-        unique_cols = filtered["column_code"].dropna().unique()
-        # One code is reported once on the operand; several stay
-        # per-entry as x/row and y/column. An axis the operand does not
-        # select, and one with no code at all, is reported neither way.
-        multi_rows = len(unique_rows) > 1
-        multi_cols = len(unique_cols) > 1
-        single_row = _sole_code(unique_rows) if node.rows else None
-        single_col = _sole_code(unique_cols) if node.cols else None
+        # Only the axes that vary index the entries.
+        multi_rows = len(filtered["row_code"].dropna().unique()) > 1
+        multi_cols = len(filtered["column_code"].dropna().unique()) > 1
+        multi_sheets = len(filtered["sheet_code"].dropna().unique()) > 1
 
         data_list: List[NodeValue] = []
         for item in xyz_data:
@@ -473,39 +473,44 @@ class VarIDDataEnricher(ASTTemplate):
             variable_id = item.get("variable_id")
             if variable_id is None or pd.isna(variable_id):
                 continue
-            entry: NodeDict = {}
-            if multi_rows and item.get("x") is not None:
-                entry["x"] = int(item["x"])
-                entry["row"] = item["row_code"]
-            if multi_cols and item.get("y") is not None:
-                entry["y"] = int(item["y"])
-                entry["column"] = item["column_code"]
-            entry["datapoint"] = int(variable_id)
-            entry["operand_reference_id"] = self._next_ref_id()
+            entry: NodeDict = {
+                "datapoint": int(variable_id),
+                "operand_reference_id": self._next_ref_id(),
+            }
+            for multi, index in (
+                (multi_rows, "x"),
+                (multi_cols, "y"),
+                (multi_sheets, "z"),
+            ):
+                if multi and item.get(index) is not None:
+                    entry[index] = int(item[index])
             data_list.append(entry)
 
         result: NodeDict = {
             "class_name": "VarID",
-            "data": data_list,
             "table": node.table,
+            "interval": bool(node.interval),
+            "data": data_list,
         }
-        if single_row is not None:
-            result["row"] = single_row
-        if single_col is not None:
-            result["column"] = single_col
-        sheets: NodeValue = (
-            [str(sheet) for sheet in node.sheets]
-            if node.sheets is not None
-            else None
-        )
-        result["sheet"] = sheets
-        result["interval"] = bool(node.interval) if node.interval else False
-        result["default"] = _constant_value(node.default)
+        default = _constant_value(node.default)
+        if default is not None:
+            result["default"] = default
         self.payloads[id(node)] = result
 
 
+CALCULATION_NODE_CLASSES = (
+    "Start",
+    "PersistentAssignment",
+    "TemporaryAssignment",
+    "TemporaryIdentifier",
+    "VarRef",
+    "OperationRef",
+)
+"""The classes of a calculations script Script Format 2.0 has no node for."""
+
+
 class CalculationsJSONVisitor(ASTToJSONVisitor):
-    """dpmcore's AST serializer, in the shape the export contract wants.
+    """dpmcore's AST serializer, with each operand's precomputed data.
 
     Args:
         payloads: :attr:`VarIDDataEnricher.payloads`, the precomputed
@@ -527,30 +532,41 @@ class CalculationsJSONVisitor(ASTToJSONVisitor):
         return super().visit_VarID(node)
 
     def visit_TimeShiftOp(self, node: Any) -> NodeDict:
-        """Emit a flat shift: no ``Constant`` wrapper, ``component`` key."""
-        return {
-            "class_name": "TimeShiftOp",
-            "operand": self.visit(node.operand),
-            "period_indicator": node.period_indicator,
-            "component": node.component,
-            "shift_number": shift_number_text(node.shift_number),
-        }
-
-    def visit_AggregationOp(self, node: Any) -> NodeDict:
-        """Drop ``analytic_clause`` when absent rather than emitting null."""
-        result = super().visit_AggregationOp(node)
-        if result.get("analytic_clause") is None:
-            result.pop("analytic_clause", None)
+        """A shift written without component is on ``refPeriod``."""
+        result = super().visit_TimeShiftOp(node)
+        if result.get("reference_period") is None:
+            result["reference_period"] = tokens.REF_PERIOD
         return result
 
-    def visit_CondExpr(self, node: Any) -> NodeDict:
-        """Always emit ``else_expr`` -- null for an if-then with no else."""
-        return {
-            "class_name": "CondExpr",
-            "condition": self.visit(node.condition),
-            "then_expr": self.visit(node.then_expr),
-            "else_expr": self.visit(node.else_expr),
-        }
+
+def calculations_ast(
+    ast: Any, payloads: Optional[Dict[int, NodeDict]] = None
+) -> Any:
+    """Serialize a calculations script in the Script Format 2.0 shape.
+
+    The format's nodes take its shape; the statements and their targets,
+    which it has no node for, keep the serializer's.
+
+    Args:
+        ast: The script's ``Start`` node.
+        payloads: :attr:`VarIDDataEnricher.payloads`.
+
+    Returns:
+        The serialized script.
+
+    Raises:
+        Invalid: If a node cannot be written in Script Format 2.0.
+    """
+    try:
+        return script_ast(
+            CalculationsJSONVisitor(payloads).visit(ast),
+            passthrough=CALCULATION_NODE_CLASSES,
+        )
+    except UnsupportedNode as exc:
+        raise Invalid(
+            title="Calculation not expressible in Script Format 2.0",
+            description=str(exc),
+        ) from exc
 
 
 def unwrap_with_expressions(node: Any) -> None:
@@ -606,13 +622,6 @@ def _strip_with(node: Any) -> Any:
 def _is_ast_node(node: Any) -> bool:
     """Whether ``node`` is an AST node the unwrap walk may descend into."""
     return isinstance(node, AST)
-
-
-def _sole_code(codes: Any) -> Optional[str]:
-    """Return the single code in ``codes``, or ``None`` if not exactly one."""
-    if len(codes) != 1:
-        return None
-    return str(codes[0])
 
 
 def _constant_value(value: Any) -> Any:

@@ -495,9 +495,8 @@ class TestCalculationsForModule:
         first = dict(zip(codes, children, strict=True))["c_0001"]
         operand = first["right"]["left"]
 
-        assert operand["class_name"] == "VarID"
-        assert operand["row"] == "0010"
-        assert operand["column"] == COLUMN
+        assert operand["class_name"] == "FactVarID"
+        assert not {"row", "column", "sheet"} & set(operand)
         assert [entry["datapoint"] for entry in operand["data"]] == [22001]
         assert operand["data"][0]["operand_reference_id"] > 100000
 
@@ -802,7 +801,7 @@ class TestDependencyOrderBeforeOperandChecking:
         assert assign_x["class_name"] == "TemporaryAssignment"
         assert assign_x["left"]["value"] == "X"
         assert read_x["class_name"] == "PersistentAssignment"
-        assert read_x["left"]["row"] == "0020"
+        assert read_x["left"]["data"][0]["datapoint"] == 11002
 
     def test_a_cell_read_through_a_with_context_is_ordered(self, calc_session):
         """c_0002 reads c_0001's output only through its ``with``."""
