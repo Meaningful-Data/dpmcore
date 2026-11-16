@@ -2861,7 +2861,7 @@ class TestScriptFromDb:
         extraction reads the AST itself, not which path produced it.
 
         ``real_parameter_info`` swaps in a real dataclass for
-        ``ParameterInfo`` — ``_accumulate_ast_parameters`` constructs it
+        ``ParameterInfo`` — ``accumulate_ast_parameters`` constructs it
         itself (unlike the text-reparse path, which only merges
         instances ``SemanticResult.parameters`` already built), so the
         stubbed-module ``MagicMock`` class from ``_patch_orm`` would
