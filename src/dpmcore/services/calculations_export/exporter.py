@@ -26,6 +26,7 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import SQLAlchemyError
 
 from dpmcore.errors import ConfigurationError, Invalid, NotFound
+from dpmcore.services._parameters import accumulate_ast_parameters
 from dpmcore.services.calculations_export.queries import (
     get_calculations,
     get_data_types,
@@ -59,6 +60,8 @@ from dpmcore.services.syntax import SyntaxService
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+
+    from dpmcore.services.semantic import ParameterInfo
 
 logger = logging.getLogger(__name__)
 
@@ -124,8 +127,9 @@ class CalculationsExporter:
             Invalid: If the parsed script does not have one statement
                 per calculation, or holds a node Script Format 2.0
                 cannot express.
-            SemanticError: ``6-4`` if the calculations form a cycle, or
-                ``6-1`` if two of them assign the same output.
+            SemanticError: ``6-4`` if the calculations form a cycle,
+                ``6-1`` if two of them assign the same output, or ``3-8``
+                if a Parameter is read with two types.
         """
         session = self.session
         module_vid = get_module_version_id(
@@ -182,6 +186,11 @@ class CalculationsExporter:
             module_vid, outputs, release_id
         )
 
+        script_ast = calculations_ast(ast, enricher.payloads)
+        # The same {code: declared type} block as the validation script
+        parameters: Dict[str, ParameterInfo] = {}
+        accumulate_ast_parameters(parameters, script_ast)
+
         # Not keyed by URI: several owners can export over one version.
         export = {
             "owner": _owner(calculations, module_owner),
@@ -196,8 +205,12 @@ class CalculationsExporter:
                 "to": _as_date_string(window[1]),
             },
             "calculations": {
-                "ast": calculations_ast(ast, enricher.payloads),
+                "ast": script_ast,
                 "operation_codes": operation_codes,
+            },
+            "parameters": {
+                code: prm.declared_type
+                for code, prm in sorted(parameters.items())
             },
             "output_variables": output_variables,
             "output_tables": output_tables,

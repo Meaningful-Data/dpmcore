@@ -32,7 +32,10 @@ from dpmcore.dpm_xl.utils.tokens import (
     VALID_SEVERITIES,
 )
 from dpmcore.errors import InternalError
-from dpmcore.services._parameters import merge_parameters
+from dpmcore.services._parameters import (
+    accumulate_ast_parameters,
+    merge_parameters,
+)
 from dpmcore.services._precondition_codes import (
     extract_precondition_codes as _extract_precondition_codes,
 )
@@ -946,7 +949,7 @@ class ASTGeneratorService:
         # resolved from the DB), so it is read straight off the tree
         # db_ast.py already built.
         found_parameters: Dict[str, ParameterInfo] = {}
-        self._accumulate_ast_parameters(found_parameters, ast_dict)
+        accumulate_ast_parameters(found_parameters, ast_dict)
         parameters = list(found_parameters.values())
         # Same reasoning as _prepare_expression's own call: reads that
         # cannot be collected must reject this one operation, not the
@@ -2867,9 +2870,7 @@ class ASTGeneratorService:
                 # gate (see ``_transform_precondition_ast``).
                 continue
             if referenced_parameters is not None:
-                self._accumulate_ast_parameters(
-                    referenced_parameters, gate_ast
-                )
+                accumulate_ast_parameters(referenced_parameters, gate_ast)
             key, entry = self._build_precondition_entry_from_ast(
                 gate_ast, validation_codes, provided_code, provided_version_id
             )
@@ -3310,54 +3311,6 @@ class ASTGeneratorService:
             # entry is emitted; the engine's node has no such field.
             "variable_vid": info["variable_vid"],
         }
-
-    @classmethod
-    def _accumulate_ast_parameters(
-        cls,
-        referenced_parameters: Dict[str, ParameterInfo],
-        node: Any,
-    ) -> None:
-        """Add every ``ParameterRef`` in a serialised AST to the registry.
-
-        Reads the type off the serialised node so the shared registry
-        holds the same canonical name the engine binds against. Used
-        both for a precondition gate's emitted AST and for an
-        operation's ``ast_dict`` reconstructed straight from the DB
-        (:meth:`script_from_db`) — a parameter can never survive
-        ``build_ast_from_db`` (it raises ``UnsupportedDbAst``
-        instead), so this walk costs nothing there today, but ties
-        ``parameters`` extraction to the AST itself rather than to
-        which path produced it. A parameter redeclared with another
-        type — in a gate, an expression, or both — raises
-        ``SemanticError`` ``3-8`` through
-        :func:`~dpmcore.services._parameters.merge_parameters`.
-        ``default`` is a per-reference fallback and stays on the node
-        only: the script-level registry is type-only.
-        """
-        if isinstance(node, dict):
-            if node.get("class_name") == "ParameterRef":
-                code = node.get("code")
-                declared_type = node.get("param_type")
-                if isinstance(code, str) and isinstance(declared_type, str):
-                    merge_parameters(
-                        referenced_parameters,
-                        (
-                            ParameterInfo(
-                                code=code,
-                                declared_type=declared_type,
-                                default=None,
-                            ),
-                        ),
-                    )
-            for value in node.values():
-                if isinstance(value, (dict, list)):
-                    cls._accumulate_ast_parameters(
-                        referenced_parameters, value
-                    )
-        elif isinstance(node, list):
-            for item in node:
-                if isinstance(item, (dict, list)):
-                    cls._accumulate_ast_parameters(referenced_parameters, item)
 
     @classmethod
     def _is_conjunction_of_items(cls, node: Any) -> bool:
