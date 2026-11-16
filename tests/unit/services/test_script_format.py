@@ -214,6 +214,25 @@ class TestScriptAstOtherNodes:
         with pytest.raises(UnsupportedNode, match=class_name):
             script_ast(node)
 
+    def test_a_passthrough_class_is_kept_as_it_is(self):
+        node = {
+            "class_name": "PersistentAssignment",
+            "op": "<-",
+            "left": {"class_name": "VarRef", "variable": "V"},
+            "right": {"class_name": "VarID", "table": "A", "row": "0010"},
+        }
+
+        result = script_ast(
+            node, passthrough=("PersistentAssignment", "VarRef")
+        )
+
+        assert result == {
+            "class_name": "PersistentAssignment",
+            "op": "<-",
+            "left": {"class_name": "VarRef", "variable": "V"},
+            "right": {"class_name": "FactVarID", "table": "A", "data": []},
+        }
+
 
 class TestScriptAstParameterRef:
     @pytest.mark.parametrize("param_type", PARAMETER_TYPES)

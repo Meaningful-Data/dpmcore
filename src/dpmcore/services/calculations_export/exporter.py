@@ -36,11 +36,11 @@ from dpmcore.services.calculations_export.queries import (
     get_release_info,
 )
 from dpmcore.services.calculations_export.visitors import (
-    CalculationsJSONVisitor,
     CalculationsOperandsChecking,
     DAGAnalyzer,
     OutputExtractor,
     VarIDDataEnricher,
+    calculations_ast,
     unwrap_with_expressions,
 )
 from dpmcore.services.script_document.modules import (
@@ -122,7 +122,8 @@ class CalculationsExporter:
             NotFound: If the module version, its owner or its
                 calculations cannot be resolved.
             Invalid: If the parsed script does not have one statement
-                per calculation.
+                per calculation, or holds a node Script Format 2.0
+                cannot express.
             SemanticError: ``6-4`` if the calculations form a cycle, or
                 ``6-1`` if two of them assign the same output.
         """
@@ -195,7 +196,7 @@ class CalculationsExporter:
                 "to": _as_date_string(window[1]),
             },
             "calculations": {
-                "ast": CalculationsJSONVisitor(enricher.payloads).visit(ast),
+                "ast": calculations_ast(ast, enricher.payloads),
                 "operation_codes": operation_codes,
             },
             "output_variables": output_variables,

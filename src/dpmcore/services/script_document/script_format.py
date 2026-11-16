@@ -5,7 +5,7 @@ The format version, how the file is named and the shape of the AST.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Collection
 
 NODE_CLASSES = [
     "FactVarID",
@@ -64,7 +64,7 @@ class UnsupportedNode(ValueError):
     """An AST that Script Format 2.0 cannot express."""
 
 
-def script_ast(node: Any) -> Any:
+def script_ast(node: Any, *, passthrough: Collection[str] = ()) -> Any:
     """Turn a serialized AST into the one a Script Format 2.0 document holds.
 
     The serialized AST names the parser's nodes, and some of their
@@ -75,6 +75,9 @@ def script_ast(node: Any) -> Any:
     Args:
         node: The serialized AST of an operation, as parsed from its
             expression or read from the database.
+        passthrough: Classes outside the format to keep as they are,
+            for the nodes a document needs and the format has no
+            encoding for.
 
     Returns:
         A new tree in the format's shape; *node* is not modified.
@@ -84,13 +87,21 @@ def script_ast(node: Any) -> Any:
             filing indicator has no code, or a parameter is a Set type.
     """
     if isinstance(node, list):
-        return [script_ast(item) for item in node]
+        return [script_ast(item, passthrough=passthrough) for item in node]
     if not isinstance(node, dict):
         return node
-    return script_node({key: script_ast(value) for key, value in node.items()})
+    return script_node(
+        {
+            key: script_ast(value, passthrough=passthrough)
+            for key, value in node.items()
+        },
+        passthrough=passthrough,
+    )
 
 
-def script_node(node: dict[str, Any]) -> dict[str, Any]:
+def script_node(
+    node: dict[str, Any], *, passthrough: Collection[str] = ()
+) -> dict[str, Any]:
     """Translate one node into its Script Format 2.0 shape.
 
     Its children must already be translated, which is why
@@ -109,8 +120,8 @@ def script_node(node: dict[str, Any]) -> dict[str, Any]:
       ``period_indicator``.
     - ``ParameterRef`` must be of one of the :data:`PARAMETER_TYPES`.
 
-    Every other class of the format is returned as it is. *node* may
-    be modified in place.
+    Every other class of the format, and of *passthrough*, is returned
+    as it is. *node* may be modified in place.
 
     Raises:
         UnsupportedNode: If *node* is of a class outside the format, a
@@ -157,7 +168,11 @@ def script_node(node: dict[str, Any]) -> dict[str, Any]:
             f"{node.get('param_type')!r}; Script Format 2.0 only declares "
             f"{', '.join(PARAMETER_TYPES)}."
         )
-    elif class_name is not None and class_name not in NODE_CLASSES:
+    elif (
+        class_name is not None
+        and class_name not in NODE_CLASSES
+        and class_name not in passthrough
+    ):
         raise UnsupportedNode(
             f"{class_name} is not a node of Script Format 2.0."
         )

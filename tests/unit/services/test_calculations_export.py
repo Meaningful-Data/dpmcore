@@ -15,7 +15,7 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from dpmcore.dpm_xl.ast.nodes import Constant, VarID
+from dpmcore.dpm_xl.ast.nodes import Constant, PreconditionItem, VarID
 from dpmcore.errors import Invalid, NotFound, SemanticError
 from dpmcore.orm.release_sort_order import compute_sort_order
 from dpmcore.services.calculations_export.exporter import (
@@ -26,11 +26,10 @@ from dpmcore.services.calculations_export.exporter import (
     _owner,
 )
 from dpmcore.services.calculations_export.visitors import (
-    CalculationsJSONVisitor,
     DAGAnalyzer,
     VarIDDataEnricher,
     _constant_value,
-    _sole_code,
+    calculations_ast,
     unwrap_with_expressions,
 )
 from dpmcore.services.script_document.modules import (
@@ -377,66 +376,153 @@ class TestUnwrapWithExpressions:
 
 
 class TestSerializer:
-    def test_an_if_without_else_still_emits_else_expr(self):
-        ast = _parse("x := if {tA, r0010, c0010} > 0 then 1 endif;")
+    def _right(self, script, payloads=None):
+        return calculations_ast(_parse(script), payloads)["children"][0][
+            "right"
+        ]
 
-        result = CalculationsJSONVisitor().visit(ast)
+    def test_an_if_without_else_has_no_else_expr(self):
+        cond = self._right("x := if {tA, r0010, c0010} > 0 then 1 endif;")
 
-        cond = result["children"][0]["right"]
         assert cond["class_name"] == "CondExpr"
-        assert cond["else_expr"] is None
+        assert "else_expr" not in cond
 
-    def test_an_aggregation_without_analytic_clause_omits_the_key(self):
-        ast = _parse("x := sum({tA, r0010, c0010});")
+    def test_an_aggregation_carries_both_clauses(self):
+        agg = self._right("x := sum({tA, r0010, c0010});")
 
-        result = CalculationsJSONVisitor().visit(ast)
-
-        agg = result["children"][0]["right"]
         assert agg["class_name"] == "AggregationOp"
-        assert "analytic_clause" not in agg
+        assert agg["grouping_clause"] is None
+        assert agg["analytic_clause"] is None
+
+    def test_a_window_bound_names_its_period_indicator(self):
+        agg = self._right(
+            "x := avg({tA, r0010, c0010} over (order by refPeriod "
+            "range between 4 Q preceding and current data point));"
+        )
+
+        window = agg["analytic_clause"]["window"]
+        assert window["start"] == {
+            "bound_type": "n_preceding",
+            "n": 4,
+            "period_indicator": "Q",
+        }
+        assert window["end"] == {"bound_type": "current_data_point"}
+
+    def test_a_date_constructor_names_its_nodes(self):
+        node = self._right("x := date(2024, 1, 31);")
+
+        assert set(node) == {
+            "class_name",
+            "op",
+            "year_node",
+            "month_node",
+            "day_node",
+        }
 
     @pytest.mark.parametrize(
         ("written", "expected"),
-        [("-1", "-1"), ("1", "1"), ("( -1 )", "-1"), ("(-1)", "-1")],
+        [
+            ("1", {"class_name": "Constant", "type_": "Integer", "value": 1}),
+            (
+                "-1",
+                {
+                    "class_name": "UnaryOp",
+                    "op": "-",
+                    "operand": {
+                        "class_name": "Constant",
+                        "type_": "Integer",
+                        "value": 1,
+                    },
+                },
+            ),
+        ],
     )
-    def test_a_time_shift_is_flat(self, written, expected):
-        """Every literal shape of the same shift renders the same string."""
-        ast = _parse(
+    def test_a_time_shift_takes_the_format_s_shape(self, written, expected):
+        shift = self._right(
             f"x := time_shift({{tA, r0010, c0010}}, Q, {written}, refPeriod);"
         )
 
-        result = CalculationsJSONVisitor().visit(ast)
-
-        shift = result["children"][0]["right"]
         assert shift["class_name"] == "TimeShiftOp"
-        assert shift["period_indicator"] == "Q"
+        assert shift["period_indicator"] == {
+            "class_name": "Constant",
+            "type_": "String",
+            "value": "Q",
+        }
         assert shift["shift_number"] == expected
-        assert shift["component"] == "refPeriod"
+        assert shift["reference_period"] == "refPeriod"
+        assert "component" not in shift
 
-    def test_a_computed_shift_is_rejected(self):
-        """The exported shape has nowhere to put an expression."""
-        ast = _parse(
+    def test_a_time_shift_without_component_is_on_ref_period(self):
+        shift = self._right("x := time_shift({tA, r0010, c0010}, Q, 1);")
+
+        assert shift["reference_period"] == "refPeriod"
+
+    def test_a_computed_shift_is_a_node(self):
+        shift = self._right(
             "x := time_shift({tA, r0010, c0010}, Q, 1 + 1, refPeriod);"
         )
 
-        with pytest.raises(Invalid, match="not a literal"):
-            CalculationsJSONVisitor().visit(ast)
+        assert shift["shift_number"]["class_name"] == "BinOp"
 
-    def test_a_precomputed_operand_is_emitted_verbatim(self):
+    def test_a_precomputed_operand_becomes_a_fact_var_id(self):
         ast = _parse("x := {tA, r0010, c0010};")
         operand = ast.children[0].right
-        payload = {"class_name": "VarID", "table": "A", "data": []}
+        payload = {
+            "class_name": "VarID",
+            "table": "A",
+            "interval": False,
+            "data": [{"datapoint": 1, "operand_reference_id": 100001}],
+        }
 
-        result = CalculationsJSONVisitor({id(operand): payload}).visit(ast)
+        result = calculations_ast(ast, {id(operand): payload})
 
-        assert result["children"][0]["right"] == payload
+        assert result["children"][0]["right"] == {
+            **payload,
+            "class_name": "FactVarID",
+        }
 
-    def test_an_operand_with_no_payload_falls_back(self):
-        ast = _parse("x := {tA, r0010, c0010};")
+    def test_an_operand_with_no_payload_has_no_cell_position(self):
+        operand = self._right("x := {tA, r0010, c0010};")
 
-        result = CalculationsJSONVisitor().visit(ast)
+        assert operand == {
+            "class_name": "FactVarID",
+            "table": "A",
+            "interval": False,
+            "data": [],
+        }
 
-        assert result["children"][0]["right"]["table"] == "A"
+    def test_the_statements_keep_their_shape(self):
+        result = calculations_ast(
+            _parse("x := 1;\n{vV} <- {ocalc1};\n{tA, r0010, c0010} <- 2;")
+        )
+
+        assert result["class_name"] == "Start"
+        temporary, variable, cell = result["children"]
+        assert temporary == {
+            "class_name": "TemporaryAssignment",
+            "op": ":=",
+            "left": {"class_name": "TemporaryIdentifier", "value": "x"},
+            "right": {
+                "class_name": "Constant",
+                "type_": "Integer",
+                "value": 1,
+            },
+        }
+        assert variable["class_name"] == "PersistentAssignment"
+        assert variable["op"] == "<-"
+        assert variable["left"] == {"class_name": "VarRef", "variable": "V"}
+        assert variable["right"] == {
+            "class_name": "OperationRef",
+            "operation_code": "calc1",
+        }
+        assert cell["left"]["class_name"] == "FactVarID"
+
+    def test_a_node_the_format_cannot_express_is_rejected(self):
+        ast = _parse("x := 1;")
+        ast.children[0].right = PreconditionItem(1)
+
+        with pytest.raises(Invalid, match="has no code"):
+            calculations_ast(ast)
 
 
 class TestVarIDDataEnricher:
@@ -473,8 +559,7 @@ class TestVarIDDataEnricher:
         enricher.visit(ast)
 
         payload = next(iter(enricher.payloads.values()))
-        assert "row" not in payload
-        assert payload["column"] == "0010"
+        assert [entry["datapoint"] for entry in payload["data"]] == [1]
 
     def test_a_grey_cell_is_left_out_of_the_data(self):
         """A grey cell has no variable, so it has no datapoint to report.
@@ -556,19 +641,61 @@ class TestVarIDDataEnricher:
         enricher.visit(ast)
 
         payload = next(iter(enricher.payloads.values()))
-        assert [(entry["x"], entry["row"]) for entry in payload["data"]] == [
-            (1, "0010"),
-            (2, "0020"),
-            (3, "0100"),
+        assert [(e["x"], e["datapoint"]) for e in payload["data"]] == [
+            (1, 1),
+            (2, 3),
+            (3, 2),
         ]
+
+    def test_only_the_varying_axes_index_the_entries(self):
+        frame = self._frame(
+            [
+                {
+                    "table_code": "A",
+                    "row_code": "0010",
+                    "column_code": "0010",
+                    "sheet_code": sheet,
+                    "variable_id": variable_id,
+                    "cell_id": variable_id,
+                }
+                for sheet, variable_id in (("0001", 1), ("0002", 2))
+            ]
+        )
+        ast = _parse("x := {tA, r0010, c0010, s*};")
+
+        enricher = VarIDDataEnricher(frame)
+        enricher.visit(ast)
+
+        payload = next(iter(enricher.payloads.values()))
+        assert payload["data"] == [
+            {"datapoint": 1, "operand_reference_id": 100001, "z": 1},
+            {"datapoint": 2, "operand_reference_id": 100002, "z": 2},
+        ]
+        assert not {"row", "column", "sheet", "default"} & set(payload)
+
+    def test_a_default_is_given_only_when_written(self):
+        frame = self._frame(
+            [
+                {
+                    "table_code": "A",
+                    "row_code": "0010",
+                    "column_code": "0010",
+                    "sheet_code": None,
+                    "variable_id": 1,
+                    "cell_id": 1,
+                }
+            ]
+        )
+        ast = _parse("x := {tA, r0010, c0010, default: 0};")
+
+        enricher = VarIDDataEnricher(frame)
+        enricher.visit(ast)
+
+        payload = next(iter(enricher.payloads.values()))
+        assert payload["default"] == 0
 
 
 class TestHelpers:
-    def test_sole_code_needs_exactly_one(self):
-        assert _sole_code(["0010"]) == "0010"
-        assert _sole_code([]) is None
-        assert _sole_code(["0010", "0020"]) is None
-
     def test_constant_value_unwraps_by_type(self):
         assert _constant_value(Constant("Integer", "3")) == 3
         assert _constant_value(Constant("Integer", "3.0")) == 3

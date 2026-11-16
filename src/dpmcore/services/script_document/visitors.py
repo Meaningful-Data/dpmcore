@@ -266,13 +266,12 @@ def _time_shift_lag(node: Any) -> Optional[RefDateLag]:
 
 
 def shift_number_text(node: Any) -> str:
-    """Render a ``time_shift`` shift number as the contract's string.
+    """Render a ``time_shift`` shift number as a signed integer string.
 
     The same written literal arrives in several shapes -- ``-1`` is a
     ``UnaryOp`` over a ``Constant``, ``( -1 )`` a ``ParExpr`` around one,
     ``(-1)`` a negative ``Constant`` -- and all of them mean the same
-    integer. Serializing the node instead would put a Python repr into
-    the exported contract.
+    integer.
 
     Args:
         node: The ``shift_number`` sub-expression.
@@ -281,9 +280,8 @@ def shift_number_text(node: Any) -> str:
         The signed integer as a string, e.g. ``"-1"``.
 
     Raises:
-        Invalid: If the shift is not an integer literal. The exported
-            shape has nowhere to put an expression, so this fails
-            loudly rather than emitting something unreadable.
+        Invalid: If the shift is not an integer literal, so its lag is
+            only known at run time.
     """
     sign = 1
     current = node

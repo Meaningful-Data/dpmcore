@@ -741,6 +741,13 @@ class ASTToJSONVisitor(NodeVisitor):
         """Visit VarRef nodes, keeping the code of the variable."""
         return {"class_name": "VarRef", "variable": node.variable}
 
+    def visit_OperationRef(self, node: Any) -> NodeDict:
+        """Visit OperationRef nodes, keeping the code of the operation."""
+        return {
+            "class_name": "OperationRef",
+            "operation_code": node.operation_code,
+        }
+
     def visit_PreconditionItem(self, node: Any) -> NodeDict:
         """Visit PreconditionItem nodes."""
         result: NodeDict = {
