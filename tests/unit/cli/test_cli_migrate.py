@@ -820,3 +820,144 @@ class TestUpdateDbCli:
             )
 
         assert "Dry run completed" not in result.output
+
+
+class TestMigrateFromDatabase:
+    @staticmethod
+    def _result():
+        mock_result = MagicMock()
+        mock_result.tables_migrated = 1
+        mock_result.total_rows = 3
+        mock_result.table_details = {"Release": 3}
+        mock_result.warnings = ["Table 'X': not found"]
+        mock_result.backend_used = "mssql"
+        mock_result.database_path = None
+        return mock_result
+
+    def test_source_db_forwards_to_service(self, runner):
+        with (
+            patch("dpmcore.loaders.migration.MigrationService") as MockService,
+            patch("sqlalchemy.create_engine") as create_engine,
+        ):
+            service = MockService.return_value
+            service.migrate_from_database.return_value = self._result()
+            result = runner.invoke(
+                main,
+                [
+                    "migrate",
+                    "--source-db",
+                    "sqlite:///source.db",
+                    "--source-schema",
+                    "dbo",
+                    "--database",
+                    "sqlite:///target.db",
+                    "--output",
+                    "out.db",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert [c.args[0] for c in create_engine.call_args_list] == [
+            "sqlite:///target.db",
+            "sqlite:///source.db",
+        ]
+        service.migrate_from_access.assert_not_called()
+        call = service.migrate_from_database.call_args
+        assert call.args == (create_engine.return_value,)
+        assert call.kwargs["source_schema"] == "dbo"
+        assert str(call.kwargs["output_path"]) == "out.db"
+        create_engine.return_value.dispose.assert_called_once_with()
+        assert "backend: mssql" in result.output
+        assert "Warning:" in result.output
+
+    def test_source_and_source_db_are_exclusive(self, runner, tmp_path):
+        fake_accdb = tmp_path / "test.accdb"
+        fake_accdb.touch()
+
+        result = runner.invoke(
+            main,
+            [
+                "migrate",
+                "--source",
+                str(fake_accdb),
+                "--source-db",
+                "sqlite:///source.db",
+                "--database",
+                "sqlite:///target.db",
+            ],
+        )
+
+        assert result.exit_code == 2
+        assert "exactly one of --source or --source-db" in result.output
+
+    def test_one_source_is_required(self, runner):
+        result = runner.invoke(
+            main, ["migrate", "--database", "sqlite:///target.db"]
+        )
+
+        assert result.exit_code == 2
+        assert "exactly one of --source or --source-db" in result.output
+
+    def test_source_schema_requires_source_db(self, runner, tmp_path):
+        fake_accdb = tmp_path / "test.accdb"
+        fake_accdb.touch()
+
+        result = runner.invoke(
+            main,
+            [
+                "migrate",
+                "--source",
+                str(fake_accdb),
+                "--source-schema",
+                "dbo",
+                "--database",
+                "sqlite:///target.db",
+            ],
+        )
+
+        assert result.exit_code == 2
+        assert "--source-schema requires --source-db" in result.output
+
+    def test_same_database_exits_1(self, runner, tmp_path):
+        url = f"sqlite:///{tmp_path / 'dpm.db'}"
+
+        result = runner.invoke(
+            main, ["migrate", "--source-db", url, "--database", url]
+        )
+
+        assert result.exit_code == 1
+        assert "same database" in result.output
+
+    def test_end_to_end_sqlite_copy(self, runner, tmp_path):
+        from sqlalchemy import create_engine, insert, select
+
+        from dpmcore.orm.base import Base
+
+        release = Base.metadata.tables["Release"]
+        source = create_engine(f"sqlite:///{tmp_path / 'source.db'}")
+        Base.metadata.create_all(source)
+        with source.begin() as conn:
+            conn.execute(
+                insert(release),
+                [{"ReleaseID": 1, "Code": "4.2", "IsCurrent": True}],
+            )
+        source.dispose()
+        out = tmp_path / "out.db"
+
+        result = runner.invoke(
+            main,
+            [
+                "migrate",
+                "--source-db",
+                f"sqlite:///{tmp_path / 'source.db'}",
+                "--database",
+                f"sqlite:///{tmp_path / 'target.db'}",
+                "--output",
+                str(out),
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "backend: sqlite" in result.output
+        with create_engine(f"sqlite:///{out}").connect() as conn:
+            assert conn.execute(select(release.c.Code)).scalar() == "4.2"
