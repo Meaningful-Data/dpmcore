@@ -12,6 +12,7 @@ from _helpers import (  # noqa: E402  (sys.path injected via conftest)
     add_subcategory_item,
     add_table,
     add_variable_version,
+    build_abstract_table_family,
     build_basic_module_with_table,
     make_member,
     make_module,
@@ -176,6 +177,42 @@ def test_load_table_version_with_release(memory_session):
 def test_load_table_version_returns_none_when_missing(memory_session):
     build_basic_module_with_table(memory_session)
     assert queries.load_table_version(memory_session, "NOPE") is None
+
+
+# ---------------------------------------------------------------- #
+# load_child_table_versions
+# ---------------------------------------------------------------- #
+
+
+def _child_vids(session, release_code=None):
+    return [
+        (tv.code, tv.table_vid)
+        for tv in queries.load_child_table_versions(session, 500, release_code)
+    ]
+
+
+def test_load_child_table_versions_active_only_by_default(memory_session):
+    build_abstract_table_family(memory_session)
+    assert _child_vids(memory_session) == [("ABS.a", 5030), ("ABS.b", 5020)]
+
+
+def test_load_child_table_versions_at_release(memory_session):
+    """Children valid in the release, the code's version of that time."""
+    build_abstract_table_family(memory_session)
+    assert _child_vids(memory_session, "1.0") == [
+        ("ABS.a", 5050),
+        ("ABS.b", 5020),
+        ("ABS.c", 5040),
+    ]
+    assert _child_vids(memory_session, "2.0") == [
+        ("ABS.a", 5030),
+        ("ABS.b", 5020),
+    ]
+
+
+def test_load_child_table_versions_none_for_concrete_table(memory_session):
+    build_abstract_table_family(memory_session)
+    assert queries.load_child_table_versions(memory_session, 502) == []
 
 
 # ---------------------------------------------------------------- #

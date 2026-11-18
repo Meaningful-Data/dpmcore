@@ -174,6 +174,49 @@ def load_table_version(
     return q.first()
 
 
+def load_child_table_versions(
+    session: Session,
+    abstract_table_id: int,
+    release_code: Optional[str] = None,
+) -> list[Any]:
+    """Load the TableVersions an abstract table groups.
+
+    An abstract table has no headers or cells of its own: its layout
+    is that of its children, the tables whose ``abstract_table_id``
+    points at it. The same code can belong to more than one table over
+    time, so the children are filtered by release exactly like
+    :func:`load_table_version`.
+
+    Args:
+        session: SQLAlchemy session.
+        abstract_table_id: ``Table.table_id`` of the abstract table.
+        release_code: Optional release code; when omitted, only
+            currently-active table versions are considered.
+
+    Returns:
+        TableVersion ORM objects ordered by code.
+    """
+    from dpmcore.dpm_xl.utils.filters import (
+        filter_by_release,
+        resolve_release_id,
+    )
+    from dpmcore.orm.rendering import TableVersion
+
+    release_id = resolve_release_id(session, release_code=release_code)
+
+    q = session.query(TableVersion).filter(
+        TableVersion.abstract_table_id == abstract_table_id,
+    )
+    q = filter_by_release(
+        q,
+        start_col=TableVersion.start_release_id,
+        end_col=TableVersion.end_release_id,
+        release_id=release_id,
+        active_only_fallback=True,
+    )
+    return q.order_by(TableVersion.code, TableVersion.table_vid).all()
+
+
 def load_headers(
     session: Session,
     table_vid: int,

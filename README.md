@@ -664,6 +664,8 @@ with connect("sqlite:///dpm.db") as db:
                       output_path="finrep_subset.xlsx", config=config)
 ```
 
+An abstract table code (e.g. ``F_16.07.1``) exports its child tables valid in the release, one sheet per child (``F_16.07.1.a``, ``F_16.07.1.b``), as in the annotated templates.
+
 Or from the command line:
 
 ```bash
