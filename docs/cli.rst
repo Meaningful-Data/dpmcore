@@ -18,11 +18,12 @@ Global options
 ``dpmcore migrate``
 -------------------
 
-Migrate an Access database into a SQL database.
+Build a SQL database from an Access file or from another DPM database.
 
 .. code-block:: text
 
    dpmcore migrate --source <path> --database <url>
+   dpmcore migrate --source-db <url> [--source-schema <name>] --database <url>
 
 **Options:**
 
@@ -33,10 +34,22 @@ Migrate an Access database into a SQL database.
    * - Option
      - Description
    * - ``--source PATH``
-     - Path to the Access ``.accdb`` or ``.mdb`` file. **(Required)**
+     - Path to the Access ``.accdb`` or ``.mdb`` file.
+   * - ``--source-db TEXT``
+     - SQLAlchemy URL of an existing DPM database (SQLite, PostgreSQL
+       or SQL Server) to copy from. Exactly one of ``--source`` and
+       ``--source-db`` is required.
+   * - ``--source-schema TEXT``
+     - Schema holding the DPM tables in ``--source-db``. Defaults to
+       the source connection's default schema.
    * - ``--database TEXT``
-     - SQLAlchemy database URL, e.g. ``sqlite:///dpm.db`` or
-       ``postgresql://user:pass@host/db``. **(Required)**
+     - SQLAlchemy URL of the target database, e.g.
+       ``sqlite:///dpm.db`` or ``postgresql://user:pass@host/db``.
+       **(Required)**
+   * - ``--output FILE``
+     - Final path for the resulting SQLite file. Defaults to
+       ``<stem>_<release>_<YYYYMMDD>.db`` next to the ``--database``
+       path. Ignored for non-SQLite targets.
 
 **Examples:**
 
@@ -54,6 +67,18 @@ Migrate an Access database into a SQL database.
    dpmcore migrate \
        --source dpm.accdb \
        --database mssql+pyodbc://user:pass@server/db?driver=ODBC+Driver+17
+
+   # SQL Server -> SQLite (copy an existing DPM database)
+   dpmcore migrate \
+       --source-db "mssql+pyodbc://user:pass@server/DPM?driver=ODBC+Driver+18+for+SQL+Server" \
+       --source-schema dbo \
+       --database sqlite:///dpm.db --output dpm_draft.db
+
+With ``--source-db`` only the tables defined in the dpmcore ORM are
+copied. The target's tables are dropped and recreated first, so the
+command refuses to run when the source and the target are the same
+database. See :doc:`guide/migration` for isolation and schema-drift
+details.
 
 .. warning::
 
