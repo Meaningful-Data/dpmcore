@@ -630,19 +630,20 @@ test = ["pytest (>=6)"]
 
 [[package]]
 name = "fastapi"
-version = "0.143.1"
+version = "0.162.5"
 description = "FastAPI framework, high performance, easy to learn, fast to code, ready for production"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
 markers = "extra == \"all\" or extra == \"server\""
 files = [
-    {file = "fastapi-0.143.1-py3-none-any.whl", hash = "sha256:687beb445804e4c4dbe2a76fd83c25e9b973ac48c267defb86f791e099baecc4"},
-    {file = "fastapi-0.143.1.tar.gz", hash = "sha256:4cafaab64df8534758bf0fce61947f5e27e6cd512798ccbbaad5425086c3b664"},
+    {file = "fastapi-0.162.5-py3-none-any.whl", hash = "sha256:5303c67415fde762889ca337db79d27b755b8bd09cef314fa7a4340bb30bfd2b"},
+    {file = "fastapi-0.162.5.tar.gz", hash = "sha256:1ca37f64f61c99cebd38636e67525fb721c5e8c1169f07f2a35d73b0a63265d4"},
 ]
 
 [package.dependencies]
 annotated-doc = ">=0.0.2"
+anyio = ">=4.1.0"
 opentelemetry-api = ">=1.44.0"
 pydantic = ">=2.9.0"
 starlette = ">=0.46.0"
@@ -650,10 +651,10 @@ typing-extensions = ">=4.8.0"
 typing-inspection = ">=0.4.2"
 
 [package.extras]
-all = ["email-validator (>=2.0.0)", "fastapi-cli[standard] (>=0.0.32)", "httpx (>=0.23.0,<1.0.0)", "itsdangerous (>=1.1.0)", "jinja2 (>=3.1.5)", "opentelemetry-exporter-otlp-proto-http (>=1.44.0)", "opentelemetry-sdk (>=1.44.0)", "pydantic-extra-types (>=2.0.0)", "pydantic-settings (>=2.0.0)", "python-multipart (>=0.0.18)", "pyyaml (>=5.3.1)", "uvicorn[standard] (>=0.12.0)"]
+all = ["email-validator (>=2.0.0)", "fastapi-cli[standard] (>=0.0.32)", "httpx (>=0.23.0,<1.0.0)", "httpx2 (>=2.0.0)", "itsdangerous (>=1.1.0)", "jinja2 (>=3.1.5)", "opentelemetry-exporter-otlp-proto-http (>=1.44.0)", "opentelemetry-sdk (>=1.44.0)", "pydantic-extra-types (>=2.0.0)", "pydantic-settings (>=2.0.0)", "python-multipart (>=0.0.18)", "pyyaml (>=5.3.1)", "uvicorn[standard] (>=0.12.0)"]
 opentelemetry = ["opentelemetry-exporter-otlp-proto-http (>=1.44.0)", "opentelemetry-sdk (>=1.44.0)"]
-standard = ["email-validator (>=2.0.0)", "fastapi-cli[standard] (>=0.0.32)", "fastar (>=0.9.0)", "httpx (>=0.23.0,<1.0.0)", "jinja2 (>=3.1.5)", "opentelemetry-exporter-otlp-proto-http (>=1.44.0)", "opentelemetry-sdk (>=1.44.0)", "pydantic-extra-types (>=2.0.0)", "pydantic-settings (>=2.0.0)", "python-multipart (>=0.0.18)", "uvicorn[standard] (>=0.12.0)"]
-standard-no-fastapi-cloud-cli = ["email-validator (>=2.0.0)", "fastapi-cli[standard-no-fastapi-cloud-cli] (>=0.0.32)", "httpx (>=0.23.0,<1.0.0)", "jinja2 (>=3.1.5)", "opentelemetry-exporter-otlp-proto-http (>=1.44.0)", "opentelemetry-sdk (>=1.44.0)", "pydantic-extra-types (>=2.0.0)", "pydantic-settings (>=2.0.0)", "python-multipart (>=0.0.18)", "uvicorn[standard] (>=0.12.0)"]
+standard = ["email-validator (>=2.0.0)", "fastapi-cli[standard] (>=0.0.32)", "fastar (>=0.9.0)", "httpx (>=0.23.0,<1.0.0)", "httpx2 (>=2.0.0)", "jinja2 (>=3.1.5)", "opentelemetry-exporter-otlp-proto-http (>=1.44.0)", "opentelemetry-sdk (>=1.44.0)", "pydantic-extra-types (>=2.0.0)", "pydantic-settings (>=2.0.0)", "python-multipart (>=0.0.18)", "uvicorn[standard] (>=0.12.0)"]
+standard-no-fastapi-cloud-cli = ["email-validator (>=2.0.0)", "fastapi-cli[standard-no-fastapi-cloud-cli] (>=0.0.32)", "httpx (>=0.23.0,<1.0.0)", "httpx2 (>=2.0.0)", "jinja2 (>=3.1.5)", "opentelemetry-exporter-otlp-proto-http (>=1.44.0)", "opentelemetry-sdk (>=1.44.0)", "pydantic-extra-types (>=2.0.0)", "pydantic-settings (>=2.0.0)", "python-multipart (>=0.0.18)", "uvicorn[standard] (>=0.12.0)"]
 
 [[package]]
 name = "greenlet"
