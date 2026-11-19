@@ -646,6 +646,7 @@ class TableLayout:
     max_col_depth: int
     max_row_depth: int
     dimension_ids: list[tuple[int, str]]
+    table_categorisations: list[DimensionMember]
 ```
 
 ### 8.1 Architecture
@@ -690,6 +691,21 @@ Only the sign stored on the cell is rendered: a cell with no sign in DPM
 Studio shows no sign in the export. Cells whose data point is reported by
 more than one cell of the workbook — identities — are highlighted in yellow,
 and their comment lists the other locations.
+
+### 8.6 Table-level modelling
+
+A table version may carry a context of its own (`TableVersion.ContextID`):
+dimensions that apply to every one of its cells rather than to a row, a column
+or a sheet. They are returned in `TableLayout.table_categorisations` and
+written in a **Whole table** block between the title and the sheet (Z-axis)
+block, an empty row on either side, one `Dimension = Member` line per
+dimension in the colour the dimension has around the grid. The block's box is
+blue rather than the grey of the headers, so it is not taken for a sheet.
+
+A cell's variable carries those dimensions as well, so they are left out of
+the row annotations, where they would repeat on every row. A header that sets
+one of them to another member keeps its own annotation. The block is an
+annotation: `annotate=False` drops it.
 
 ## 9. Migration Service
 

@@ -10,8 +10,11 @@ from __future__ import annotations
 from typing import Any, NamedTuple, Optional
 
 from openpyxl import Workbook
+from openpyxl.cell.rich_text import CellRichText, TextBlock
+from openpyxl.cell.text import InlineFont
 from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.styles.colors import Color
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.hyperlink import Hyperlink
 
@@ -56,6 +59,14 @@ _PENDING_FILL = PatternFill(
     start_color="FDE9D9", end_color="FDE9D9", fill_type="solid"
 )
 _PENDING_NOTE = "No variable generated for this cell yet."
+# Modelling set on the table itself rather than on one of its headers.
+_TABLE_LEVEL_LABEL = "Whole table"
+# Its box is blue so it is not taken for a sheet (Z-axis) header, which
+# sits right below it in the grey of the other headers.
+_TABLE_LEVEL_FILL = PatternFill(
+    start_color="BDD7EE", end_color="BDD7EE", fill_type="solid"
+)
+_TABLE_LEVEL_NOTE = "Set on the table itself: applies to every cell."
 _DERIVED_NOTE = "Property and dimensions derived from the table structure."
 # Excel worksheet titles are limited to 31 characters.
 _MAX_SHEET_TITLE = 31
@@ -281,16 +292,23 @@ class ExcelLayoutWriter:
 
         # Layout geometry
         # Row 1: title
-        # Row 2: Z-axis annotation label (if sheets) or empty
-        # Row 3+: one row per annotated Z header, then a gap row
+        # Next: a gap row, one row per table-level dimension, then
+        #       another gap row (only for tables with modelling of
+        #       their own)
+        # Next: Z-axis annotation label, one row per annotated Z
+        #       header, then a gap row (only for tables with sheets)
         # Next: "Columns" label + row annotation dimension headers
         # Next: column header depth levels (start + 1 + depth)
         # Then: column code row (if enabled)
         # Then: data rows
 
-        # "Columns" row: row 4 without sheets, one row lower per
-        # annotated Z header.
-        col_header_start_row = 4 + len(active_sheets)
+        # The table's own modelling is an annotation like those around
+        # the grid, so it goes with them.
+        table_dims = _table_level_dimensions(layout) if cfg.annotate else []
+        table_block_row, sheet_label_row, col_header_start_row = _top_rows(
+            len(table_dims),
+            len(active_sheets),
+        )
         col_label_rows = layout.max_col_depth + 1
         col_code_row = (
             col_header_start_row + 1 + col_label_rows
@@ -349,27 +367,29 @@ class ExcelLayoutWriter:
 
         # --- Sheet header (Z-axis) ---
         # For tables with sheets:
-        #   Row 2: annotation label (dimension name in data columns)
-        #   Row 3+: "Sheet: {label}" (one worksheet per sheet) or
+        #   First row: annotation label (dimension name in data columns)
+        #   Next rows: "Sheet: {label}" (one worksheet per sheet) or
         #           "Sheet per {label}" (Z header as fixed context),
         #           plus the annotation value in the data columns
         #   Following row: empty gap
         if active_sheets:
-            # Row 2: annotation label in data_start_col
+            # Annotation label in data_start_col
             # Use "(member_code:domain_code) label" format for ATY dim
             for dm in active_sheets[0].categorisations:
                 label_text = (
                     f"({dm.member_code}:{dm.domain_code}) {dm.member_label}"
                 )
                 ann_label_cell = ws.cell(
-                    row=2, column=data_start_col, value=label_text
+                    row=sheet_label_row,
+                    column=data_start_col,
+                    value=label_text,
                 )
                 ann_label_cell.font = Font(bold=True, size=9)
                 ann_label_cell.alignment = Alignment(horizontal="left")
                 break  # only write for first (ATY) categorisation
 
             for sheet_idx, sh in enumerate(active_sheets):
-                sheet_row = 3 + sheet_idx
+                sheet_row = sheet_label_row + 1 + sheet_idx
 
                 # Sheet header label + annotation value
                 prefix = "Sheet: " if per_sheet else "Sheet per "
@@ -663,6 +683,8 @@ class ExcelLayoutWriter:
                 row_label_col,
                 col_header_start_row,
                 sheet_id,
+                table_dims,
+                table_block_row,
             )
 
         # --- Outline groups ---
@@ -824,15 +846,25 @@ class ExcelLayoutWriter:
         row_label_col: int,
         col_header_start_row: int,
         sheet_id: Optional[int] = None,
+        table_dims: Optional[list[DimensionMember]] = None,
+        table_block_row: int = 3,
     ) -> None:
-        """Write dimensional annotations around the data grid."""
+        """Write dimensional annotations around the data grid.
+
+        ``table_dims`` is the table's own modelling, written as a block
+        of its own from ``table_block_row`` down.
+        """
+        table_dims = table_dims or []
+        table_members = {dm.property_id: dm for dm in table_dims}
         col_dims = _collect_axis_dimensions(layout.columns)
 
         # Some dimensions only appear in cell dp_categorisations but
         # not in any row header context. Add those as supplemental row
         # annotation dimensions, but only if they are NOT already shown
         # as column annotation dimensions (dimensions that vary by
-        # column are column-level, not row-level).
+        # column are column-level, not row-level). What a cell merely
+        # inherits from the table is not row-level either: it has its
+        # own block, and would only repeat itself on every row here.
         col_dim_set = set(col_dims)
         row_dp_cats: dict[int, list[DimensionMember]] = {}
         for cell_key, cell_data in layout.cells.items():
@@ -844,6 +876,7 @@ class ExcelLayoutWriter:
                     dm
                     for dm in cell_data.dp_categorisations
                     if _dim_display_label(dm) not in col_dim_set
+                    and not _is_table_level(dm, table_members)
                 ]
                 if extra:
                     row_dp_cats.setdefault(row_id, []).extend(extra)
@@ -852,12 +885,27 @@ class ExcelLayoutWriter:
             layout.rows, supplemental_cats=row_dp_cats
         )
 
-        # Assign colors consistently across both axes (keyed by display label)
-        all_dim_labels = list(dict.fromkeys(col_dims + row_dims))
+        # Assign colors consistently across the axes and the table's
+        # own block (keyed by display label)
+        table_dim_labels = [_dim_display_label(dm) for dm in table_dims]
+        all_dim_labels = list(
+            dict.fromkeys(col_dims + row_dims + table_dim_labels),
+        )
         dim_color_map: dict[str, str] = {
             label: _DIM_COLORS[i % len(_DIM_COLORS)]
             for i, label in enumerate(all_dim_labels)
         }
+
+        # --- Table-level annotations (under the title) ---
+        if table_dims:
+            self._write_table_level_block(
+                ws,
+                table_dims,
+                table_block_row,
+                row_label_col,
+                data_start_col,
+                dim_color_map,
+            )
 
         # --- Column annotations (below the data grid, no gap row) ---
         if col_dims:
@@ -972,6 +1020,123 @@ class ExcelLayoutWriter:
 
                 # Set annotation column width
                 ws.column_dimensions[get_column_letter(ann_col)].width = 25
+
+    def _write_table_level_block(
+        self,
+        ws: Any,
+        table_dims: list[DimensionMember],
+        start_row: int,
+        row_label_col: int,
+        data_start_col: int,
+        dim_color_map: dict[str, str],
+    ) -> None:
+        """Write the modelling that applies to the whole table.
+
+        It is laid out like the sheet block right below it — a box in
+        the row label column naming the scope, and the annotation
+        itself in the data columns, one row per dimension in the
+        colour the dimension has around the grid — but its box is
+        blue, so the two are not taken for one another.
+        """
+        end_row = start_row + len(table_dims) - 1
+        box = ws.cell(
+            row=start_row,
+            column=row_label_col,
+            value=_TABLE_LEVEL_LABEL,
+        )
+        if end_row > start_row:
+            ws.merge_cells(
+                start_row=start_row,
+                start_column=row_label_col,
+                end_row=end_row,
+                end_column=row_label_col,
+            )
+        # Styled after the merge, which resets the covered cells: the
+        # box is painted from its top-left cell, but each row draws
+        # its own side borders.
+        for row in range(start_row, end_row + 1):
+            covered = ws.cell(row=row, column=row_label_col)
+            covered.fill = _TABLE_LEVEL_FILL
+            covered.border = _BORDER_ALL
+        box.font = _HEADER_FONT
+        box.alignment = Alignment(horizontal="center", vertical="center")
+        if self.config.add_header_comments:
+            box.comment = _comment(
+                f"{_TABLE_LEVEL_NOTE}\n\n{_format_categorisations(table_dims)}"
+            )
+
+        for offset, dm in enumerate(table_dims):
+            color = dim_color_map[_dim_display_label(dm)]
+            cell = ws.cell(row=start_row + offset, column=data_start_col)
+            cell.value = _table_level_text(dm, color)
+            cell.alignment = Alignment(horizontal="left")
+
+
+def _top_rows(table_dim_count: int, sheet_count: int) -> tuple[int, int, int]:
+    """Rows of the blocks between the title and the column headers.
+
+    Returns ``(table-level block row, Z-axis label row, "Columns"
+    row)``. Each block is followed by a gap row, and the table-level
+    one is kept a row away from the title as well; a table with
+    neither keeps the two empty rows it always had under its title.
+    """
+    table_block_row = 3
+    next_row = 2
+    if table_dim_count:
+        next_row = table_block_row + table_dim_count + 1
+    sheet_label_row = next_row
+    if sheet_count:
+        # Annotation label, one row per Z header, gap.
+        next_row += sheet_count + 2
+    if not table_dim_count and not sheet_count:
+        next_row += 2
+    return table_block_row, sheet_label_row, next_row
+
+
+def _table_level_dimensions(layout: TableLayout) -> list[DimensionMember]:
+    """The table's own modelling, in the order dimensions are listed."""
+    return sorted(
+        layout.table_categorisations,
+        key=lambda dm: dm.property_id,
+    )
+
+
+def _is_table_level(
+    dm: DimensionMember,
+    table_members: dict[int, DimensionMember],
+) -> bool:
+    """Whether a cell's member is the one it inherits from the table.
+
+    A header may set the dimension again with another member; that one
+    is the header's own and stays where the header is annotated.
+    """
+    table_dm = table_members.get(dm.property_id)
+    return (
+        table_dm is not None
+        and table_dm.member_code == dm.member_code
+        and table_dm.member_label == dm.member_label
+    )
+
+
+def _table_level_text(dm: DimensionMember, color: str) -> CellRichText:
+    """``Dimension  =  Member`` with the dimension in bold.
+
+    Both go in one cell so the text can run over the empty cells to
+    its right, whatever the width of the grid below.
+    """
+    ink = Color(rgb=color)
+    blocks = [
+        TextBlock(
+            InlineFont(b=True, sz=9, color=ink),
+            _dim_display_label(dm),
+        ),
+    ]
+    member = _member_display_label(dm)
+    if member:
+        blocks.append(
+            TextBlock(InlineFont(sz=9, color=ink), f"  =  {member}"),
+        )
+    return CellRichText(*blocks)
 
 
 def _sheet_renderings(

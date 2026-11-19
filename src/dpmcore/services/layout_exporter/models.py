@@ -155,3 +155,8 @@ class TableLayout:
     max_row_depth: int = 0
     dimension_ids: list[tuple[int, str]] = field(default_factory=list)
     is_open_row: bool = False
+    # Modelling set on the table itself rather than on a header: every
+    # cell of the table inherits it.
+    table_categorisations: list[DimensionMember] = field(
+        default_factory=list,
+    )

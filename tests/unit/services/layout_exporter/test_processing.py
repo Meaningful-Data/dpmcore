@@ -649,3 +649,21 @@ def test_derive_missing_cell_data_without_a_property_still_marks_the_cell():
     cd = cells[(1, 2, None)]
     assert cd.is_derived is True
     assert cd.data_type_code == ""
+
+
+def test_build_table_layout_carries_the_table_level_modelling():
+    table_dm = DimensionMember(
+        property_id=7,
+        dimension_label="Type of instrument",
+        dimension_code="qBHJ",
+        domain_code="qFI",
+        member_label="Debt",
+        member_code="qx1",
+    )
+    tv = SimpleNamespace(table_vid=1, code="T", name="Table")
+
+    layout = build_table_layout(tv, [], [], [], {}, [table_dm])
+
+    assert layout.table_categorisations == [table_dm]
+    assert layout.dimension_ids == [(7, "Type of instrument")]
+    assert build_table_layout(tv, [], [], [], {}).table_categorisations == []

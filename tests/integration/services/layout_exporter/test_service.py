@@ -981,6 +981,78 @@ def test_build_layout_derives_cells_that_have_no_variable(memory_session):
     ]
 
 
+def _set_table_context(memory_session):
+    """Model the enumerated table as a whole: Portfolio = Trading book."""
+    make_property(
+        memory_session,
+        property_id=210,
+        name="Portfolio",
+        dim_code="qPO",
+        domain_category_id=30,
+    )
+    make_member(
+        memory_session,
+        item_id=203,
+        name="Trading book",
+        domain_category_id=30,
+        code="m3",
+        signature="eba_DOM:m3",
+    )
+    add_context_composition(
+        memory_session,
+        context_id=60,
+        property_id=210,
+        item_id=203,
+    )
+    memory_session.query(TableVersion).filter(
+        TableVersion.table_vid == 1000,
+    ).update({"context_id": 60})
+    memory_session.commit()
+
+
+def test_build_layout_reads_the_modelling_set_on_the_table(memory_session):
+    """What is modelled on the table itself is kept apart from the axes."""
+    _build_enumerated_table(memory_session)
+    _set_table_context(memory_session)
+
+    layout = LayoutExporterService(memory_session).build_layout("T_ENUM")
+
+    (table_dm,) = layout.table_categorisations
+    assert table_dm.dimension_code == "qPO"
+    assert table_dm.domain_code == "DOM"
+    assert table_dm.member_code == "m3"
+    assert table_dm.member_label == "Trading book"
+    assert (210, "Portfolio") in layout.dimension_ids
+
+
+def test_build_layout_without_table_modelling_has_none(memory_session):
+    _build_enumerated_table(memory_session)
+
+    layout = LayoutExporterService(memory_session).build_layout("T_ENUM")
+
+    assert layout.table_categorisations == []
+
+
+def test_export_writes_the_table_level_block(memory_session, tmp_path):
+    """The table's own modelling opens the worksheet, for open tables too."""
+    _build_enumerated_table(memory_session)
+    _set_table_context(memory_session)
+    # An open table: nothing on its rows to hang the annotation on.
+    memory_session.query(Header).filter(Header.header_id == 2).update(
+        {"direction": "z"},
+    )
+    memory_session.commit()
+
+    out = LayoutExporterService(memory_session).export_tables(
+        ["T_ENUM"],
+        output_path=str(tmp_path / "table_level.xlsx"),
+    )
+
+    ws = load_workbook(out)["T_ENUM"]
+    assert ws["B3"].value == "Whole table"
+    assert ws["D3"].value == "(qPO:DOM) Portfolio  =  (DOM:m3) Trading book"
+
+
 def test_build_layout_leaves_cells_alone_when_derivation_is_off(
     memory_session,
 ):

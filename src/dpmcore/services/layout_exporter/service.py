@@ -322,15 +322,18 @@ class LayoutExporterService:
             variable_info,
         )
 
+        # Modelling set on the table itself, inherited by all its cells
+        table_cats = (
+            context_cats.get(table_context_id, []) if table_context_id else []
+        )
+
         # Cells whose variable has not been generated yet
         if cfg.derive_missing_variables:
             processing.derive_missing_cell_data(
                 cells,
                 all_headers,
                 property_info,
-                context_cats.get(table_context_id, [])
-                if table_context_id
-                else [],
+                table_cats,
             )
 
         # Possible values of enumerated cells and key headers
@@ -346,7 +349,14 @@ class LayoutExporterService:
             )
             processing.attach_enumerations(cells, all_headers, enumerations)
 
-        return processing.build_table_layout(tv, columns, rows, sheets, cells)
+        return processing.build_table_layout(
+            tv,
+            columns,
+            rows,
+            sheets,
+            cells,
+            table_cats,
+        )
 
     def _write_workbook(
         self,

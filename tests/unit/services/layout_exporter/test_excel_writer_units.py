@@ -1623,3 +1623,210 @@ def test_index_omits_the_count_for_a_complete_dictionary():
     wb = ExcelLayoutWriter([layout], ExportConfig()).write()
 
     assert wb["Index"].cell(row=3, column=4).value is None
+
+
+# --------------------------------------------------------------------------- #
+# Table-level modelling
+# --------------------------------------------------------------------------- #
+
+
+def _table_level_layout(table_cats, **kw):
+    kw.setdefault("rows", [_h(2, direction="y", code="R")])
+    kw.setdefault("columns", [_h(1, direction="x", code="C")])
+    return _empty_layout(table_categorisations=table_cats, **kw)
+
+
+def _cells_with(ws, text):
+    return [
+        c.coordinate
+        for row in ws.iter_rows()
+        for c in row
+        if c.value is not None and str(c.value) == text
+    ]
+
+
+def test_top_rows_keeps_the_legacy_geometry_without_table_modelling():
+    assert ew._top_rows(0, 0)[1:] == (2, 4)
+    assert ew._top_rows(0, 2)[1:] == (2, 6)
+
+
+def test_top_rows_makes_room_for_the_table_level_block():
+    # A gap row on either side of the block.
+    assert ew._top_rows(1, 0) == (3, 5, 5)
+    assert ew._top_rows(3, 0) == (3, 7, 7)
+    # With sheets, their block follows the table's after its gap row.
+    assert ew._top_rows(3, 1) == (3, 7, 10)
+
+
+def test_table_level_modelling_is_written_under_the_title():
+    layout = _table_level_layout(
+        [
+            # Given out of order: the block lists them by property.
+            _dm(prop_id=8, label="B", code="DB", member="Member B", mc="b"),
+            _dm(prop_id=7, label="A", code="DA", member="Member A", mc="a"),
+        ],
+    )
+    ws = ExcelLayoutWriter([layout], ExportConfig()).write()["T"]
+
+    # A row is left empty between the title and the block.
+    assert all(c.value is None for c in ws[2])
+    box = ws["B3"]
+    assert box.value == "Whole table"
+    assert "B3:B4" in {str(rng) for rng in ws.merged_cells.ranges}
+    assert ws["B4"].fill.start_color.rgb == box.fill.start_color.rgb
+    assert box.comment.text == (
+        "Set on the table itself: applies to every cell.\n\n"
+        "A  =  Member A\nB  =  Member B"
+    )
+
+    first, second = ws["D3"].value, ws["D4"].value
+    assert str(first) == "(DA:DOM) A  =  (DOM:a) Member A"
+    assert str(second) == "(DB:DOM) B  =  (DOM:b) Member B"
+    # The dimension stands out in bold; the member does not.
+    assert [block.font.b for block in first] == [True, False]
+    # Each dimension has a colour of its own, as around the grid.
+    assert first[0].font.color.rgb != second[0].font.color.rgb
+    assert first[0].font.color.rgb == first[1].font.color.rgb
+
+    # A gap row, then the grid.
+    assert ws["D5"].value is None
+    assert ws["D6"].value == "Columns"
+
+
+def test_single_table_level_dimension_needs_no_merge():
+    layout = _table_level_layout([_dm(prop_id=7, label="A", code="DA")])
+    ws = ExcelLayoutWriter([layout], ExportConfig()).write()["T"]
+
+    assert ws["B3"].value == "Whole table"
+    assert not [rng for rng in ws.merged_cells.ranges if "B3" in str(rng)]
+    assert ws["D5"].value == "Columns"
+
+
+def test_table_level_box_is_not_coloured_like_a_sheet_header():
+    layout = _table_level_layout(
+        [_dm(prop_id=7, label="A", code="DA")],
+        sheets=[_h(99, direction="z", code="S", label="Sheet")],
+    )
+    ws = ExcelLayoutWriter([layout], ExportConfig()).write()["T"]
+
+    (table_box,) = _cells_with(ws, "Whole table")
+    (sheet_box,) = _cells_with(ws, "Sheet per Sheet")
+    assert ws[table_box].fill.start_color.rgb == "00BDD7EE"
+    assert (
+        ws[sheet_box].fill.start_color.rgb
+        != ws[table_box].fill.start_color.rgb
+    )
+
+
+def test_table_level_block_comes_before_the_sheet_block():
+    layout = _table_level_layout(
+        [_dm(prop_id=7, label="A", code="DA")],
+        sheets=[
+            _h(
+                99,
+                direction="z",
+                code="S",
+                label="Sheet",
+                cats=[_dm(prop_id=9, label="Z dim", code="DZ", mc="z")],
+            ),
+        ],
+    )
+    ws = ExcelLayoutWriter([layout], ExportConfig()).write()["T"]
+
+    assert ws["B3"].value == "Whole table"
+    assert ws["D5"].value == "(z:DOM) M"
+    assert ws["B6"].value == "Sheet per Sheet"
+    assert ws["D8"].value == "Columns"
+
+
+def test_table_level_dimension_without_a_member_shows_the_dimension():
+    layout = _table_level_layout(
+        [_dm(prop_id=7, label="A", code="DA", member="", mc="")],
+    )
+    ws = ExcelLayoutWriter([layout], ExportConfig()).write()["T"]
+
+    assert str(ws["D3"].value) == "(DA:DOM) A"
+    assert len(ws["D3"].value) == 1
+
+
+def test_table_level_modelling_is_not_repeated_on_every_row():
+    inherited = _dm(prop_id=7, label="A", code="DA", member="Table", mc="t")
+    own = _dm(prop_id=8, label="B", code="DB", member="Row", mc="r")
+    layout = _table_level_layout(
+        [inherited],
+        cells={
+            (2, 1, None): CellData(
+                row_header_id=2,
+                col_header_id=1,
+                sheet_header_id=None,
+                variable_vid=10,
+                dp_categorisations=[inherited, own],
+            ),
+        },
+    )
+    ws = ExcelLayoutWriter([layout], ExportConfig()).write()["T"]
+
+    # What the row adds stays to the right of the grid...
+    assert _cells_with(ws, "(DB:DOM) B")
+    assert _cells_with(ws, "(DOM:r) Row")
+    # ...what it only inherits is in the table's block alone.
+    assert not _cells_with(ws, "(DA:DOM) A")
+    assert not _cells_with(ws, "(DOM:t) Table")
+    assert str(ws["D3"].value) == "(DA:DOM) A  =  (DOM:t) Table"
+
+
+def test_member_overriding_the_table_stays_on_its_row():
+    table_dm = _dm(prop_id=7, label="A", code="DA", member="Table", mc="t")
+    for override in (
+        _dm(prop_id=7, label="A", code="DA", member="Other", mc="o"),
+        _dm(prop_id=7, label="A", code="DA", member="Other", mc="t"),
+    ):
+        layout = _table_level_layout(
+            [table_dm],
+            cells={
+                (2, 1, None): CellData(
+                    row_header_id=2,
+                    col_header_id=1,
+                    sheet_header_id=None,
+                    variable_vid=10,
+                    dp_categorisations=[override],
+                ),
+            },
+        )
+        ws = ExcelLayoutWriter([layout], ExportConfig()).write()["T"]
+
+        assert _cells_with(ws, _member_display_label(override))
+
+
+def test_table_level_dimension_shares_its_colour_with_the_axes():
+    column_dm = _dm(prop_id=7, label="A", code="DA", member="Column", mc="c")
+    layout = _table_level_layout(
+        [_dm(prop_id=7, label="A", code="DA", member="Table", mc="t")],
+        columns=[_h(1, direction="x", code="C", cats=[column_dm])],
+    )
+    ws = ExcelLayoutWriter([layout], ExportConfig()).write()["T"]
+
+    (axis_label,) = _cells_with(ws, "(DA:DOM) A")
+    assert ws["D3"].value[0].font.color.rgb == ws[axis_label].font.color.rgb
+
+
+def test_table_level_block_is_an_annotation():
+    layout = _table_level_layout([_dm(prop_id=7, label="A", code="DA")])
+    ws = ExcelLayoutWriter(
+        [layout],
+        ExportConfig(annotate=False),
+    ).write()["T"]
+
+    assert not _cells_with(ws, "Whole table")
+    assert ws["D4"].value == "Columns"
+
+
+def test_table_level_block_comment_disabled():
+    layout = _table_level_layout([_dm(prop_id=7, label="A", code="DA")])
+    ws = ExcelLayoutWriter(
+        [layout],
+        ExportConfig(add_header_comments=False),
+    ).write()["T"]
+
+    assert ws["B3"].value == "Whole table"
+    assert ws["B3"].comment is None

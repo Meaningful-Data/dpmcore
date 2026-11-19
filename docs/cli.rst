@@ -792,6 +792,11 @@ Each generated workbook contains:
     locations listed in the cell comment
   - Dimensional annotations below the grid (for column dimensions)
     and to the right (for row dimensions), colour-coded per dimension
+  - The modelling set on the table itself — the dimensions every one
+    of its cells inherits — in a **Whole table** block under the
+    title, one ``Dimension = Member`` line per dimension. Its box is
+    blue, to tell it from the grey sheet (Z-axis) header below it. It
+    is listed there only: the rows do not repeat it
   - Excel comments on headers and cells showing the variable IDs,
     identities and dimensional categorisations (``Dimension = Member``)
   - Outline groups for expanding/collapsing hierarchical rows and columns

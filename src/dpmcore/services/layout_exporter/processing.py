@@ -350,15 +350,23 @@ def build_table_layout(
     rows: list[LayoutHeader],
     sheets: list[LayoutHeader],
     cells: dict[tuple[Optional[int], int, Optional[int]], CellData],
+    table_categorisations: Optional[list[DimensionMember]] = None,
 ) -> TableLayout:
-    """Assemble the final TableLayout."""
+    """Assemble the final TableLayout.
+
+    ``table_categorisations`` is the modelling set on the table itself,
+    which every one of its cells inherits.
+    """
     max_col_depth = max((h.depth for h in columns), default=0)
     max_row_depth = max((h.depth for h in rows), default=0)
+    table_cats = list(table_categorisations or [])
 
     # Collect all distinct dimension property_ids used in annotations
     seen: dict[int, str] = {}
-    for h in columns + rows + sheets:
-        for dm in h.categorisations:
+    for cats in [h.categorisations for h in columns + rows + sheets] + [
+        table_cats,
+    ]:
+        for dm in cats:
             if dm.property_id not in seen:
                 seen[dm.property_id] = dm.dimension_label
     dimension_ids = sorted(seen.items())
@@ -375,4 +383,5 @@ def build_table_layout(
         max_row_depth=max_row_depth,
         dimension_ids=dimension_ids,
         is_open_row=not rows,
+        table_categorisations=table_cats,
     )
