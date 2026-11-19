@@ -161,14 +161,17 @@ def add_table(
     start_release_id: int | None = 1,
     end_release_id: int | None = None,
     order: int = 1,
+    is_abstract: bool | None = None,
+    abstract_table_id: int | None = None,
 ) -> None:
-    session.add(Table(table_id=table_id))
+    session.add(Table(table_id=table_id, is_abstract=is_abstract))
     session.add(
         TableVersion(
             table_vid=table_vid,
             table_id=table_id,
             code=code,
             name=name,
+            abstract_table_id=abstract_table_id,
             start_release_id=start_release_id,
             end_release_id=end_release_id,
         ),
@@ -461,4 +464,65 @@ def build_basic_module_with_table(session: Session) -> None:
         sign="positive",
     )
 
+    session.commit()
+
+
+def build_abstract_table_family(session: Session) -> None:
+    """An abstract table ``ABS`` grouping child tables across releases.
+
+    ``ABS`` has no headers of its own, like every abstract table in the
+    DPM. Its children carry one row and one column each:
+
+    * ``ABS.b`` — valid from 1.0 on.
+    * ``ABS.a`` — two tables share the code, as in the DPM: one valid
+      in 1.0 only (vid 5050), its successor from 2.0 on (vid 5030).
+    * ``ABS.c`` — valid in 1.0 only.
+
+    Module ``MODA`` composes ``ABS`` next to its current children, the
+    way the DPM's module compositions list abstract tables.
+    """
+    seed_releases(session)
+    make_module(session, module_id=5, module_vid=50, code="MODA")
+    add_table(
+        session,
+        table_id=500,
+        table_vid=5000,
+        code="ABS",
+        name="Abstract",
+        is_abstract=True,
+        module_vid=50,
+        order=1,
+    )
+    # (table_id, table_vid, code, start, end, module order)
+    children = [
+        (502, 5020, "ABS.b", 1, None, 3),
+        (501, 5030, "ABS.a", 2, None, 2),
+        (504, 5050, "ABS.a", 1, 2, None),
+        (503, 5040, "ABS.c", 1, 2, None),
+    ]
+    for table_id, table_vid, code, start, end, order in children:
+        add_table(
+            session,
+            table_id=table_id,
+            table_vid=table_vid,
+            code=code,
+            name=f"Child {code} v{table_vid}",
+            start_release_id=start,
+            end_release_id=end,
+            abstract_table_id=500,
+            module_vid=50 if order is not None else None,
+            order=order or 1,
+        )
+        for offset, direction in enumerate(("x", "y")):
+            header_id = table_id * 10 + offset
+            add_header(
+                session,
+                table_vid=table_vid,
+                table_id=table_id,
+                header_id=header_id,
+                header_vid=header_id,
+                direction=direction,
+                code="010",
+                label=f"{code} {direction}",
+            )
     session.commit()

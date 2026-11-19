@@ -15,6 +15,7 @@ from _helpers import (  # noqa: E402  (sys.path injected via conftest)
     add_subcategory_item,
     add_table,
     add_variable_version,
+    build_abstract_table_family,
     build_basic_module_with_table,
     make_member,
     make_module,
@@ -213,6 +214,119 @@ def test_export_tables_skips_layout_without_rows_or_cols(
     wb = load_workbook(out)
     assert "EMPTY" not in wb.sheetnames
     assert "T1" in wb.sheetnames
+
+
+def _index_names(wb):
+    """``{table code: table name}`` as the Index sheet lists them."""
+    ws = wb["Index"]
+    return {
+        ws.cell(row=r, column=2).value: ws.cell(row=r, column=3).value
+        for r in range(4, ws.max_row + 1)
+    }
+
+
+def _sheet_values(wb, title):
+    return [list(row) for row in wb[title].iter_rows(values_only=True)]
+
+
+def test_export_tables_abstract_exports_its_children(memory_session, tmp_path):
+    """An abstract table exports its current children, not itself."""
+    build_abstract_table_family(memory_session)
+    svc = LayoutExporterService(memory_session)
+    out = svc.export_tables(["ABS"], output_path=str(tmp_path / "x.xlsx"))
+    wb = load_workbook(out)
+    assert wb.sheetnames == ["Index", "ABS.a", "ABS.b"]
+    assert _index_names(wb)["ABS.a"] == "Child ABS.a v5030"
+
+
+def test_export_tables_abstract_children_at_release(memory_session, tmp_path):
+    """The children valid in the release, each in that release's version."""
+    build_abstract_table_family(memory_session)
+    svc = LayoutExporterService(memory_session)
+    out = svc.export_tables(
+        ["ABS"],
+        release_code="1.0",
+        output_path=str(tmp_path / "x.xlsx"),
+    )
+    wb = load_workbook(out)
+    assert wb.sheetnames == ["Index", "ABS.a", "ABS.b", "ABS.c"]
+    assert _index_names(wb)["ABS.a"] == "Child ABS.a v5050"
+
+
+def test_export_tables_abstract_matches_children_export(
+    memory_session, tmp_path
+):
+    """Exporting the abstract table is exporting its children."""
+    build_abstract_table_family(memory_session)
+    svc = LayoutExporterService(memory_session)
+    via_abstract = load_workbook(
+        svc.export_tables(["ABS"], output_path=str(tmp_path / "a.xlsx"))
+    )
+    direct = load_workbook(
+        svc.export_tables(
+            ["ABS.a", "ABS.b"],
+            output_path=str(tmp_path / "c.xlsx"),
+        )
+    )
+    assert via_abstract.sheetnames == direct.sheetnames
+    for title in direct.sheetnames:
+        assert _sheet_values(via_abstract, title) == _sheet_values(
+            direct, title
+        )
+
+
+def test_export_tables_exports_each_table_once(memory_session, tmp_path):
+    """A child requested directly and through its abstract table, or a
+    code requested twice, gets a single sheet.
+    """
+    build_abstract_table_family(memory_session)
+    svc = LayoutExporterService(memory_session)
+    out = svc.export_tables(
+        ["ABS.b", "ABS", "ABS.b"],
+        output_path=str(tmp_path / "x.xlsx"),
+    )
+    assert load_workbook(out).sheetnames == ["Index", "ABS.a", "ABS.b"]
+
+
+def test_export_tables_abstract_without_children_raises(memory_session):
+    """An abstract table with no child valid in the release has nothing
+    to export.
+    """
+    build_abstract_table_family(memory_session)
+    add_table(
+        memory_session,
+        table_id=600,
+        table_vid=6000,
+        code="ABS2",
+        name="Childless",
+        is_abstract=True,
+    )
+    memory_session.commit()
+    svc = LayoutExporterService(memory_session)
+    with pytest.raises(ValueError, match="No valid tables"):
+        svc.export_tables(["ABS2"])
+    with pytest.raises(ValueError, match="No valid tables"):
+        svc.export_tables(["ABS2"], release_code="1.0")
+
+
+def test_export_module_does_not_expand_abstract_tables(
+    memory_session, tmp_path
+):
+    """A module composes the abstract table next to its children: each
+    child is rendered once and the abstract table not at all.
+    """
+    build_abstract_table_family(memory_session)
+    svc = LayoutExporterService(memory_session)
+    out = svc.export_module("MODA", output_path=str(tmp_path / "x.xlsx"))
+    assert load_workbook(out).sheetnames == ["Index", "ABS.a", "ABS.b"]
+
+
+def test_build_layout_abstract_table_is_empty(memory_session):
+    """An abstract table has no layout of its own."""
+    build_abstract_table_family(memory_session)
+    layout = LayoutExporterService(memory_session).build_layout("ABS")
+    assert not layout.rows
+    assert not layout.columns
 
 
 def test_build_layout_skips_cell_without_variable_vid(memory_session):

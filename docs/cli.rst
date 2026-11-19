@@ -705,7 +705,9 @@ annotations, and categorisation tooltips.
      - Module version code to export (e.g. ``FINREP9``, ``AE``, ``DORA``).
        Exports all tables in the module.
    * - ``--tables TEXT``
-     - Comma-separated table codes (e.g. ``F_01.01,F_05.01``).
+     - Comma-separated table codes (e.g. ``F_01.01,F_05.01``). An
+       abstract table (e.g. ``F_16.07.1``) exports its child tables
+       valid in the release, one sheet per child.
    * - ``--release TEXT``
      - Release code filter (e.g. ``4.2``). Defaults to the current
        (active) release.
