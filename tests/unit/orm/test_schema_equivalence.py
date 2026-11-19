@@ -20,7 +20,7 @@ file ``tests/unit/orm/_schema_snapshot.txt``.
 
 from pathlib import Path
 
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import String, Unicode, UnicodeText, UniqueConstraint
 from sqlalchemy.dialects import mssql, postgresql
 
 # Importing Base also executes dpmcore.orm.__init__, which registers
@@ -79,6 +79,24 @@ def test_schema_matches_snapshot() -> None:
         "module docstring) and review the diff carefully — it may mean a "
         "1.4/2.0 incompatibility or an unintended NOT NULL/type change."
     )
+
+
+def test_text_columns_are_unicode() -> None:
+    """Every text column must be a Unicode type (issue #478).
+
+    ``String`` / ``Text`` render as ``VARCHAR`` on SQL Server, which
+    only stores the database collation's code page and silently turns
+    any other character into ``?``. ``Unicode`` / ``UnicodeText`` render
+    as ``NVARCHAR`` there and are unchanged on SQLite and PostgreSQL.
+    """
+    offenders = sorted(
+        f"{table.name}.{col.name}"
+        for table in Base.metadata.tables.values()
+        for col in table.columns
+        if isinstance(col.type, String)
+        and not isinstance(col.type, (Unicode, UnicodeText))
+    )
+    assert offenders == []
 
 
 if __name__ == "__main__":  # pragma: no cover
