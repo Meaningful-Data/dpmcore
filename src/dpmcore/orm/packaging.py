@@ -16,7 +16,7 @@ from sqlalchemy import (
     Date,
     ForeignKey,
     Integer,
-    String,
+    Unicode,
     UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
@@ -58,14 +58,14 @@ class Framework(Base):
     framework_id: Mapped[int] = mapped_column(
         "FrameworkID", Integer, primary_key=True
     )
-    code: Mapped[Optional[str]] = mapped_column("Code", String(255))
-    name: Mapped[Optional[str]] = mapped_column("Name", String(255))
+    code: Mapped[Optional[str]] = mapped_column("Code", Unicode(255))
+    name: Mapped[Optional[str]] = mapped_column("Name", Unicode(255))
     description: Mapped[Optional[str]] = mapped_column(
-        "Description", String(255)
+        "Description", Unicode(255)
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column(
@@ -118,7 +118,7 @@ class Module(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     is_document_module: Mapped[Optional[bool]] = mapped_column(
@@ -194,13 +194,13 @@ class ModuleVersion(Base):
         Integer,
         ForeignKey("Release.ReleaseID"),
     )
-    code: Mapped[Optional[str]] = mapped_column("Code", String(30))
-    name: Mapped[Optional[str]] = mapped_column("Name", String(100))
+    code: Mapped[Optional[str]] = mapped_column("Code", Unicode(30))
+    name: Mapped[Optional[str]] = mapped_column("Name", Unicode(100))
     description: Mapped[Optional[str]] = mapped_column(
-        "Description", String(255)
+        "Description", Unicode(255)
     )
     version_number: Mapped[Optional[str]] = mapped_column(
-        "VersionNumber", String(20)
+        "VersionNumber", Unicode(20)
     )
     from_reference_date: Mapped[Optional[date]] = mapped_column(
         "FromReferenceDate", Date
@@ -210,7 +210,7 @@ class ModuleVersion(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     is_reported: Mapped[Optional[bool]] = mapped_column("IsReported", Boolean)
@@ -291,7 +291,7 @@ class ModuleVersionComposition(Base):
         ForeignKey("TableVersion.TableVID"),
     )
     order: Mapped[Optional[int]] = mapped_column("Order", Integer)
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", Unicode(38))
 
     module_version: Mapped["ModuleVersion"] = relationship(
         "ModuleVersion", back_populates="module_version_compositions"
@@ -330,7 +330,7 @@ class ModuleParameters(Base):
         ForeignKey("VariableVersion.VariableVID"),
         primary_key=True,
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", Unicode(38))
 
     module_version: Mapped["ModuleVersion"] = relationship(
         "ModuleVersion", back_populates="module_parameters"
@@ -361,9 +361,9 @@ class OperationCodePrefix(Base):
         "OperationCodePrefixID", Integer, primary_key=True
     )
     code: Mapped[Optional[str]] = mapped_column(
-        "Code", String(20), unique=True
+        "Code", Unicode(20), unique=True
     )
-    list_name: Mapped[Optional[str]] = mapped_column("ListName", String(20))
+    list_name: Mapped[Optional[str]] = mapped_column("ListName", Unicode(20))
     framework_id: Mapped[Optional[int]] = mapped_column(
         "FrameworkID",
         Integer,

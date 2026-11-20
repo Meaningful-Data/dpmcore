@@ -14,7 +14,7 @@ from sqlalchemy import (
     Boolean,
     ForeignKey,
     Integer,
-    String,
+    Unicode,
     UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
@@ -72,7 +72,7 @@ class Table(Base):
     is_flat: Mapped[Optional[bool]] = mapped_column("IsFlat", Boolean)
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column(
@@ -148,10 +148,10 @@ class TableVersion(Base):
     table_vid: Mapped[int] = mapped_column(
         "TableVID", Integer, primary_key=True
     )
-    code: Mapped[Optional[str]] = mapped_column("Code", String(30))
-    name: Mapped[Optional[str]] = mapped_column("Name", String(255))
+    code: Mapped[Optional[str]] = mapped_column("Code", Unicode(30))
+    name: Mapped[Optional[str]] = mapped_column("Name", Unicode(255))
     description: Mapped[Optional[str]] = mapped_column(
-        "Description", String(500)
+        "Description", Unicode(500)
     )
     table_id: Mapped[Optional[int]] = mapped_column(
         "TableID", Integer, ForeignKey("Table.TableID")
@@ -188,7 +188,7 @@ class TableVersion(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
 
@@ -274,14 +274,14 @@ class Header(Base):
     table_id: Mapped[Optional[int]] = mapped_column(
         "TableID", Integer, ForeignKey("Table.TableID")
     )
-    direction: Mapped[Optional[str]] = mapped_column("Direction", String(1))
+    direction: Mapped[Optional[str]] = mapped_column("Direction", Unicode(1))
     is_key: Mapped[Optional[bool]] = mapped_column("IsKey", Boolean)
     is_attribute: Mapped[Optional[bool]] = mapped_column(
         "IsAttribute", Boolean
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column(
@@ -353,8 +353,8 @@ class HeaderVersion(Base):
         Integer,
         ForeignKey("Header.HeaderID"),
     )
-    code: Mapped[Optional[str]] = mapped_column("Code", String(10))
-    label: Mapped[Optional[str]] = mapped_column("Label", String(500))
+    code: Mapped[Optional[str]] = mapped_column("Code", Unicode(10))
+    label: Mapped[Optional[str]] = mapped_column("Label", Unicode(500))
     property_id: Mapped[Optional[int]] = mapped_column(
         "PropertyID",
         Integer,
@@ -387,7 +387,7 @@ class HeaderVersion(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
 
@@ -458,7 +458,7 @@ class Cell(Base):
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column(
@@ -537,17 +537,17 @@ class TableVersionCell(Base):
         ForeignKey("Cell.CellID"),
         primary_key=True,
     )
-    cell_code: Mapped[Optional[str]] = mapped_column("CellCode", String(100))
+    cell_code: Mapped[Optional[str]] = mapped_column("CellCode", Unicode(100))
     is_nullable: Mapped[Optional[bool]] = mapped_column("IsNullable", Boolean)
     is_excluded: Mapped[Optional[bool]] = mapped_column("IsExcluded", Boolean)
     is_void: Mapped[Optional[bool]] = mapped_column("IsVoid", Boolean)
-    sign: Mapped[Optional[str]] = mapped_column("Sign", String(8))
+    sign: Mapped[Optional[str]] = mapped_column("Sign", Unicode(8))
     variable_vid: Mapped[Optional[int]] = mapped_column(
         "VariableVID",
         Integer,
         ForeignKey("VariableVersion.VariableVID"),
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", Unicode(38))
 
     table_version: Mapped["TableVersion"] = relationship(
         "TableVersion", back_populates="table_version_cells"
@@ -610,7 +610,7 @@ class TableVersionHeader(Base):
     order: Mapped[Optional[int]] = mapped_column("Order", Integer)
     is_abstract: Mapped[Optional[bool]] = mapped_column("IsAbstract", Boolean)
     is_unique: Mapped[Optional[bool]] = mapped_column("IsUnique", Boolean)
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", Unicode(38))
 
     table_version: Mapped["TableVersion"] = relationship(
         "TableVersion", back_populates="table_version_headers"
@@ -649,15 +649,15 @@ class TableGroup(Base):
     table_group_id: Mapped[int] = mapped_column(
         "TableGroupID", Integer, primary_key=True
     )
-    code: Mapped[Optional[str]] = mapped_column("Code", String(255))
-    name: Mapped[Optional[str]] = mapped_column("Name", String(255))
+    code: Mapped[Optional[str]] = mapped_column("Code", Unicode(255))
+    name: Mapped[Optional[str]] = mapped_column("Name", Unicode(255))
     description: Mapped[Optional[str]] = mapped_column(
-        "Description", String(2000)
+        "Description", Unicode(2000)
     )
-    type: Mapped[Optional[str]] = mapped_column("Type", String(20))
+    type: Mapped[Optional[str]] = mapped_column("Type", Unicode(20))
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     start_release_id: Mapped[Optional[int]] = mapped_column(
@@ -752,7 +752,7 @@ class TableGroupComposition(Base):
         Integer,
         ForeignKey("Release.ReleaseID"),
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", Unicode(38))
 
     table_group: Mapped["TableGroup"] = relationship(
         "TableGroup", back_populates="table_group_compositions"
@@ -808,9 +808,9 @@ class TableAssociation(Base):
         Integer,
         ForeignKey("TableVersion.TableVID"),
     )
-    name: Mapped[Optional[str]] = mapped_column("Name", String(50))
+    name: Mapped[Optional[str]] = mapped_column("Name", Unicode(50))
     description: Mapped[Optional[str]] = mapped_column(
-        "Description", String(255)
+        "Description", Unicode(255)
     )
     is_identifying: Mapped[Optional[bool]] = mapped_column(
         "IsIdentifying", Boolean
@@ -822,14 +822,14 @@ class TableAssociation(Base):
         ForeignKey("Header.HeaderID"),
     )
     parent_cardinality: Mapped[Optional[str]] = mapped_column(
-        "ParentCardinalityAndOptionality", String(3)
+        "ParentCardinalityAndOptionality", Unicode(3)
     )
     child_cardinality: Mapped[Optional[str]] = mapped_column(
-        "ChildCardinalityAndOptionality", String(3)
+        "ChildCardinalityAndOptionality", Unicode(3)
     )
     row_guid: Mapped[Optional[str]] = mapped_column(
         "RowGUID",
-        String(38),
+        Unicode(38),
         ForeignKey("Concept.ConceptGUID"),
     )
     owner_id: Mapped[Optional[int]] = mapped_column(
@@ -913,7 +913,7 @@ class KeyHeaderMapping(Base):
         Integer,
         ForeignKey("Header.HeaderID"),
     )
-    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", String(38))
+    row_guid: Mapped[Optional[str]] = mapped_column("RowGUID", Unicode(38))
 
     table_association: Mapped["TableAssociation"] = relationship(
         "TableAssociation", back_populates="key_header_mappings"

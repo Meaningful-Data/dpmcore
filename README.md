@@ -484,6 +484,33 @@ pip install dpmcore[cli,migration]
 dpmcore migrate --source /path/to/dpm.accdb --database sqlite:///dpm.db
 ```
 
+**Migration — copy from another DPM database:**
+
+An existing DPM database (SQLite, PostgreSQL or SQL Server) can be the source instead of an Access file, for example to hand out a dictionary kept in SQL Server as a SQLite file:
+
+```python
+from sqlalchemy import create_engine
+from dpmcore.loaders.migration import MigrationService
+
+source = create_engine(
+    "mssql+pyodbc://user:pass@host/DPM?driver=ODBC+Driver+18+for+SQL+Server"
+)
+target = create_engine("sqlite:///dpm.db")
+
+result = MigrationService(target).migrate_from_database(
+    source,
+    source_schema=None,  # the source's default schema when omitted
+)
+print(result.table_details, result.warnings)
+```
+
+```bash
+dpmcore migrate --source-db "mssql+pyodbc://..." [--source-schema dbo] \
+    --database sqlite:///dpm.db [--output dpm_draft.db]
+```
+
+Only the tables defined in the dpmcore ORM are copied, with the whole release history; other tables in the source are ignored. All tables are read in one transaction (`SNAPSHOT` isolation on SQL Server when the database has `ALLOW_SNAPSHOT_ISOLATION ON`; otherwise the copy still runs and a warning is reported). The target's tables are dropped and recreated, so the command refuses to run when source and target are the same database. See the [migration guide](docs/guide/migration.rst) for details.
+
 > **Breaking change.** Databases migrated with dpmcore 0.2.1rc3 or earlier
 > are not readable by later versions. The ORM now maps
 > `TableAssociation.StartReleaseID`/`EndReleaseID`,
@@ -635,6 +662,8 @@ with connect("sqlite:///dpm.db") as db:
     svc.export_tables(["F_01.01", "F_01.02"], release_code="4.2",
                       output_path="finrep_subset.xlsx", config=config)
 ```
+
+An abstract table code (e.g. ``F_16.07.1``) exports its child tables valid in the release, one sheet per child (``F_16.07.1.a``, ``F_16.07.1.b``), as in the annotated templates.
 
 Or from the command line:
 

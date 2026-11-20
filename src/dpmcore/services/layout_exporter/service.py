@@ -8,7 +8,7 @@ from __future__ import annotations
 import zipfile
 from io import BytesIO
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
@@ -102,6 +102,11 @@ class LayoutExporterService:
     ) -> Path:
         """Export specific tables to a workbook.
 
+        An abstract table code exports its child tables valid in the
+        release, one sheet per child, as the annotated templates show
+        them. A table requested more than once, directly or through
+        its abstract table, gets a single sheet.
+
         Args:
             table_codes: List of table codes (e.g., ['F_01.01', 'F_01.02']).
             release_code: Optional release code filter.
@@ -112,14 +117,7 @@ class LayoutExporterService:
             Path to the written file.
         """
         layouts = []
-        for code in table_codes:
-            tv = queries.load_table_version(
-                self.session,
-                code,
-                release_code,
-            )
-            if tv is None:
-                continue
+        for tv in self._resolve_export_targets(table_codes, release_code):
             layout = self._build_layout(tv, _table_window(tv), config)
             if layout.rows or layout.columns:
                 layouts.append(layout)
@@ -131,6 +129,45 @@ class LayoutExporterService:
         self._write_workbook(layouts, out, config)
         return out
 
+    def _resolve_export_targets(
+        self,
+        table_codes: list[str],
+        release_code: Optional[str],
+    ) -> list[Any]:
+        """Resolve requested codes to the table versions to export.
+
+        Unknown codes are skipped. An abstract table is replaced by its
+        children valid in the release; it has no layout of its own.
+        Each table version is kept once, at its first occurrence.
+
+        Only ``export_tables`` expands abstract tables: a module's
+        composition lists the abstract table next to its children, so
+        expanding it there would render every child twice.
+        """
+        targets: list[Any] = []
+        seen: set[int] = set()
+        for code in table_codes:
+            tv = queries.load_table_version(
+                self.session,
+                code,
+                release_code,
+            )
+            if tv is None:
+                continue
+            if tv.table is not None and tv.table.is_abstract:
+                versions = queries.load_child_table_versions(
+                    self.session,
+                    tv.table_id,
+                    release_code,
+                )
+            else:
+                versions = [tv]
+            for version in versions:
+                if version.table_vid not in seen:
+                    seen.add(version.table_vid)
+                    targets.append(version)
+        return targets
+
     def build_layout(
         self,
         table_code: str,
@@ -139,7 +176,9 @@ class LayoutExporterService:
     ) -> TableLayout:
         """Build the intermediate layout for a single table.
 
-        Useful for programmatic access without Excel generation.
+        Useful for programmatic access without Excel generation. An
+        abstract table has no headers or cells of its own, so its
+        layout is empty; build its child tables instead.
         """
         tv = queries.load_table_version(
             self.session,

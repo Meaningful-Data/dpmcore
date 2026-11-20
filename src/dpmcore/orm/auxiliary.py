@@ -10,7 +10,7 @@ from typing import Optional
 from sqlalchemy import (
     Boolean,
     Integer,
-    String,
+    Unicode,
     UniqueConstraint,
 )
 
@@ -69,7 +69,7 @@ class AuxCellStatus(Base):
         "TableVID", Integer, primary_key=True
     )
     cell_id: Mapped[int] = mapped_column("CellID", Integer, primary_key=True)
-    status: Mapped[Optional[str]] = mapped_column("Status", String(100))
+    status: Mapped[Optional[str]] = mapped_column("Status", Unicode(100))
     is_new_cell: Mapped[Optional[bool]] = mapped_column("IsNewCell", Boolean)
 
 
@@ -118,18 +118,18 @@ class ModelViolations(Base):
         Integer, primary_key=True, autoincrement=True
     )
     violation_code: Mapped[Optional[str]] = mapped_column(
-        "ViolationCode", String(10)
+        "ViolationCode", Unicode(10)
     )
-    violation: Mapped[Optional[str]] = mapped_column("Violation", String(255))
+    violation: Mapped[Optional[str]] = mapped_column("Violation", Unicode(255))
     is_blocking: Mapped[Optional[bool]] = mapped_column("isBlocking", Boolean)
     table_vid: Mapped[Optional[int]] = mapped_column("TableVID", Integer)
     old_table_vid: Mapped[Optional[int]] = mapped_column(
         "OldTableVID", Integer
     )
-    table_code: Mapped[Optional[str]] = mapped_column("TableCode", String(40))
+    table_code: Mapped[Optional[str]] = mapped_column("TableCode", Unicode(40))
     header_id: Mapped[Optional[int]] = mapped_column("HeaderID", Integer)
     header_code: Mapped[Optional[str]] = mapped_column(
-        "HeaderCode", String(20)
+        "HeaderCode", Unicode(20)
     )
     header_vid: Mapped[Optional[int]] = mapped_column("HeaderVID", Integer)
     old_header_vid: Mapped[Optional[int]] = mapped_column(
@@ -137,34 +137,34 @@ class ModelViolations(Base):
     )
     key_header: Mapped[Optional[bool]] = mapped_column("KeyHeader", Boolean)
     header_direction: Mapped[Optional[str]] = mapped_column(
-        "HeaderDirection", String(1)
+        "HeaderDirection", Unicode(1)
     )
     header_property_id: Mapped[Optional[int]] = mapped_column(
         "HeaderPropertyID", Integer
     )
     header_property_code: Mapped[Optional[str]] = mapped_column(
-        "HeaderPropertyCode", String(20)
+        "HeaderPropertyCode", Unicode(20)
     )
     header_subcategory_id: Mapped[Optional[int]] = mapped_column(
         "HeaderSubcategoryID", Integer
     )
     header_subcategory_name: Mapped[Optional[str]] = mapped_column(
-        "HeaderSubcategoryName", String(60)
+        "HeaderSubcategoryName", Unicode(60)
     )
     header_context_id: Mapped[Optional[int]] = mapped_column(
         "HeaderContextID", Integer
     )
     category_id: Mapped[Optional[int]] = mapped_column("CategoryID", Integer)
     category_code: Mapped[Optional[str]] = mapped_column(
-        "CategoryCode", String(30)
+        "CategoryCode", Unicode(30)
     )
     item_id: Mapped[Optional[int]] = mapped_column("ItemID", Integer)
-    item_code: Mapped[Optional[str]] = mapped_column("ItemCode", String(30))
+    item_code: Mapped[Optional[str]] = mapped_column("ItemCode", Unicode(30))
     cell_id: Mapped[Optional[int]] = mapped_column("CellID", Integer)
-    cell_code: Mapped[Optional[str]] = mapped_column("CellCode", String(50))
+    cell_code: Mapped[Optional[str]] = mapped_column("CellCode", Unicode(50))
     cell2_id: Mapped[Optional[int]] = mapped_column("Cell2ID", Integer)
-    cell2_code: Mapped[Optional[str]] = mapped_column("Cell2Code", String(50))
+    cell2_code: Mapped[Optional[str]] = mapped_column("Cell2Code", Unicode(50))
     vv_end_release_id: Mapped[Optional[int]] = mapped_column(
         "VVEndReleaseID", Integer
     )
-    new_aspect: Mapped[Optional[str]] = mapped_column("NewAspect", String(80))
+    new_aspect: Mapped[Optional[str]] = mapped_column("NewAspect", Unicode(80))
