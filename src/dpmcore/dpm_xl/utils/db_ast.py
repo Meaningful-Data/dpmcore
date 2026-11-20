@@ -33,8 +33,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import (
+    Any,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    cast,
+)
 
+import pandas as pd
 from sqlalchemy.orm import Session
 
 from dpmcore.dpm_xl.ast import nodes as ast_nodes
@@ -52,6 +62,7 @@ from dpmcore.orm.variables import VariableVersion
 from dpmcore.services.structure import StructureService
 
 __all__ = [
+    "StaleDbReference",
     "UnsupportedDbAst",
     "build_ast_dict_from_db",
     "build_ast_from_db",
@@ -66,6 +77,16 @@ class UnsupportedDbAst(Exception):
 
     Always a request to fall back to the text-reparse path for this one
     operation — never a signal that the DB data itself is broken.
+    """
+
+
+class StaleDbReference(Exception):
+    """Raised when an operation's stored cell reference no longer holds.
+
+    Unlike :class:`UnsupportedDbAst`, not a request to fall back: the
+    expression text was written against the same, since re-laid-out
+    table, so re-parsing it would yield a different rule. The
+    operation must fail, with this message as the reason (dpmcore#445).
     """
 
 
@@ -336,6 +357,51 @@ class _DbAstToJSONVisitor(ASTToJSONVisitor):
         }
 
 
+_CellKey = Tuple[Optional[str], Optional[str], Optional[str]]
+_CellVariables = Dict[_CellKey, set[int]]
+
+
+def _table_cell_variables(
+    session: Session,
+    table: str,
+    release_id: int,
+    table_vids: Optional[Sequence[int]] = None,
+) -> _CellVariables:
+    """``{(row, column, sheet): {VariableID, ...}}`` for *table*'s cells.
+
+    Read from *table_vids* when given, otherwise from the version(s)
+    effective at *release_id* — module scoping and the ghost fallback
+    included, as the text-reparse path resolves them. Grey cells (no
+    variable) are left out.
+    """
+    from dpmcore.dpm_xl.model_queries import ViewDatapointsQuery
+
+    if table_vids:
+        data = ViewDatapointsQuery.get_table_version_cells(
+            session, table, table_vids
+        )
+    else:
+        data = ViewDatapointsQuery.get_table_data(
+            session, table, release_id=release_id
+        )
+    cells: _CellVariables = {}
+    for row, column, sheet, variable_id in zip(
+        data["row_code"].tolist(),
+        data["column_code"].tolist(),
+        data["sheet_code"].tolist(),
+        data["variable_id"].tolist(),
+        strict=True,
+    ):
+        if pd.isna(variable_id):
+            continue
+        key = tuple(
+            None if pd.isna(code) else str(code)
+            for code in (row, column, sheet)
+        )
+        cells.setdefault(cast(_CellKey, key), set()).add(int(variable_id))
+    return cells
+
+
 class _Builder:
     """Walks one operation's :class:`_Tree`, building real
     ``dpm_xl.ast.nodes`` objects — the same classes a freshly-parsed
@@ -343,13 +409,21 @@ class _Builder:
     result to :class:`_DbAstToJSONVisitor` to get the JSON dict.
     """
 
-    def __init__(self, session: Session, tree: _Tree, release_id: int) -> None:
+    def __init__(
+        self,
+        session: Session,
+        tree: _Tree,
+        release_id: int,
+        table_vids: Optional[Mapping[str, Sequence[int]]] = None,
+    ) -> None:
         self._session = session
         self._tree = tree
         self._release_id = release_id
+        self._table_vids = table_vids or {}
         self._data_type_cache: Dict[int, str] = {}
         self._signature_cache: Dict[int, str] = {}
         self._code_cache: Dict[int, str] = {}
+        self._cell_variables_cache: Dict[str, _CellVariables] = {}
         self._shapes = _classify_operators(session)
 
     # ------------------------------------------------------------- #
@@ -683,6 +757,7 @@ class _Builder:
                 )
             if loc.table:
                 tables.add(loc.table)
+                self._check_reference_variable(ref, loc)
             raw_rows.append(loc.row)
             raw_columns.append(loc.column)
             raw_sheets.append(loc.sheet)
@@ -771,6 +846,57 @@ class _Builder:
         )
         var_id._db_ast_dict = result  # type: ignore[attr-defined]
         return var_id
+
+    def _check_reference_variable(
+        self, ref: OperandReference, loc: OperandReferenceLocation
+    ) -> None:
+        """Raise :class:`StaleDbReference` unless *ref*'s stored variable
+        is still the one at *loc*'s coordinates (dpmcore#445).
+
+        An ``OperationVersion`` spanning several releases keeps the
+        references it was materialised with, but a table re-versioned
+        inside that window can move its cells: ``K_60.00.a`` was re-laid
+        out at 4.1, so ``v23367_h``'s ``{r0210, c0020}`` is variable
+        472895 ("of which standardised approach") at 4.0 but 3530254
+        (securitisation exposures) at 4.1. Neither the stored variable
+        (not declared by the script) nor a re-parse of the expression
+        (a different rule) is right there, so the operation fails.
+
+        The cells come from the table versions in ``table_vids`` when
+        the table is listed there — the exported module's own, which
+        its ``variables`` are declared from — and otherwise from the
+        version effective at the release.
+        """
+        table = cast(str, loc.table)
+        cells = self._cell_variables_cache.get(table)
+        if cells is None:
+            cells = _table_cell_variables(
+                self._session,
+                table,
+                self._release_id,
+                self._table_vids.get(table),
+            )
+            self._cell_variables_cache[table] = cells
+        key = (loc.row, loc.column, loc.sheet)
+        current = cells.get(key, set())
+        if ref.variable_id not in current:
+            cell = ", ".join(
+                [table]
+                + [
+                    f"{prefix}{code}"
+                    for prefix, code in zip("rcs", key, strict=True)
+                    if code is not None
+                ]
+            )
+            now = (
+                "is now variable " + ", ".join(str(v) for v in sorted(current))
+                if current
+                else "no longer has a variable"
+            )
+            raise StaleDbReference(
+                f"Stored reference to variable {ref.variable_id} at "
+                f"{{{cell}}} is stale: that cell {now}."
+            )
 
     # ------------------------------------------------------------- #
     # Small DB lookups (release-scoped, cached per build() call).
@@ -863,7 +989,10 @@ class _Builder:
 
 
 def build_ast_from_db(
-    session: Session, operation_vid: int, release_id: int
+    session: Session,
+    operation_vid: int,
+    release_id: int,
+    table_vids: Optional[Mapping[str, Sequence[int]]] = None,
 ) -> Tuple[Any, int]:
     """Rebuild ``(built, root_operator_id)`` for *operation_vid* from the
     DB: the real ``dpm_xl.ast.nodes`` tree, not yet serialised.
@@ -878,12 +1007,18 @@ ASTGeneratorService._extract_time_shifts` expects a raw tree for).
     Raises :class:`UnsupportedDbAst` when the tree contains anything this
     module does not (yet) faithfully reconstruct — callers must catch
     this and fall back to parsing ``OperationVersion.expression`` instead.
+
+    Raises :class:`StaleDbReference` when a stored cell reference no
+    longer matches its table — callers must fail the operation, not fall
+    back. *table_vids* (``{table_code: [TableVID, ...]}``) pins the
+    tables it lists to those versions for that check; see
+    :meth:`_Builder._check_reference_variable`.
     """
     tree = _load_tree(session, operation_vid)
     root = _root(tree)
     if root.operator_id is None:
         raise UnsupportedDbAst(f"Root node {root.node_id} has no OperatorID")
-    builder = _Builder(session, tree, release_id)
+    builder = _Builder(session, tree, release_id, table_vids)
     built = builder.build(root)
     return built, root.operator_id
 
@@ -899,16 +1034,20 @@ def serialize_built_ast(built: Any) -> Dict[str, Any]:
 
 
 def build_ast_dict_from_db(
-    session: Session, operation_vid: int, release_id: int
+    session: Session,
+    operation_vid: int,
+    release_id: int,
+    table_vids: Optional[Mapping[str, Sequence[int]]] = None,
 ) -> Tuple[Dict[str, Any], int]:
     """Rebuild ``(ast_dict, root_operator_id)`` for *operation_vid* from
     the DB, instead of re-parsing its expression text.
 
     Raises :class:`UnsupportedDbAst` when the tree contains anything this
     module does not (yet) faithfully reconstruct — callers must catch
-    this and fall back to parsing ``OperationVersion.expression`` instead.
+    this and fall back to parsing ``OperationVersion.expression`` instead,
+    and :class:`StaleDbReference` as :func:`build_ast_from_db` does.
     """
     built, root_operator_id = build_ast_from_db(
-        session, operation_vid, release_id
+        session, operation_vid, release_id, table_vids
     )
     return serialize_built_ast(built), root_operator_id
