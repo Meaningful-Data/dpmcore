@@ -33,6 +33,7 @@ class GenerateScriptRequest(BaseModel):
     severities: Optional[Dict[str, str]] = None
     from_submission_dates: Optional[Dict[str, str]] = None
     release: Optional[str] = None
+    owner: Optional[str] = None
 
     @field_validator("expressions")
     @classmethod
@@ -51,11 +52,10 @@ class GenerateScriptRequest(BaseModel):
 class GenerateScriptResponse(BaseModel):
     """Response body for ``POST /scripts``.
 
-    ``enriched_ast`` carries the namespaced engine-ready dict
-    (``{module_uri: {module_code, dpm_release, operations,
-    variables, tables, preconditions, dependency_information,
-    dependency_modules, ...}}``). Dependency blocks live inside that
-    namespace, not at the top level.
+    ``enriched_ast`` carries the Script Format 2.0 document, a flat
+    object (``{owner, module_code, ..., module_uri, format_version,
+    dpm_release, dates, operations, preconditions, parameters, ...}``)
+    rather than one keyed by the module URI.
     """
 
     success: bool
@@ -116,6 +116,7 @@ def create_scripts_router(
             severities=body.severities,
             from_submission_dates=body.from_submission_dates,
             release=body.release,
+            owner=body.owner,
         )
         return GenerateScriptResponse(
             success=bool(result.get("success")),

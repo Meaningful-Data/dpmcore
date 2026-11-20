@@ -41,8 +41,7 @@ from dpmcore.dpm_xl.ast import nodes as ast_nodes
 from dpmcore.dpm_xl.ast.operands import IMPLICIT_OPEN_KEYS
 from dpmcore.dpm_xl.utils.filters import filter_by_release
 from dpmcore.dpm_xl.utils.serialization import ASTToJSONVisitor
-from dpmcore.orm.glossary import ItemCategory, Property
-from dpmcore.orm.infrastructure import DataType
+from dpmcore.orm.glossary import ItemCategory
 from dpmcore.orm.operations import (
     OperandReference,
     OperandReferenceLocation,
@@ -314,9 +313,8 @@ class _DbAstToJSONVisitor(ASTToJSONVisitor):
 
     def visit_VarID(self, node: Any) -> Dict[str, Any]:
         """Base ``visit_VarID`` recomputes ``node.data`` from a pandas
-        DataFrame and reads the wrong field for ``operand_reference_id``
-        (dpmcore#364). :meth:`_Builder._build_varid` already built the
-        correct dict; this just returns it.
+        DataFrame (dpmcore#364). :meth:`_Builder._build_varid` already
+        built the correct dict; this just returns it.
         """
         return node._db_ast_dict
 
@@ -347,7 +345,6 @@ class _Builder:
         self._session = session
         self._tree = tree
         self._release_id = release_id
-        self._data_type_cache: Dict[int, str] = {}
         self._signature_cache: Dict[int, str] = {}
         self._code_cache: Dict[int, str] = {}
         self._shapes = _classify_operators(session)
@@ -676,10 +673,10 @@ class _Builder:
         entries: List[Dict[str, Any]] = []
         for ref in refs:
             loc = self._tree.locations_by_ref.get(ref.operand_reference_id)
-            if loc is None or ref.variable_id is None:
+            if loc is None or loc.cell_id is None or ref.variable_id is None:
                 raise UnsupportedDbAst(
                     f"VarID reference {ref.operand_reference_id} has no "
-                    "location or variable"
+                    "location, cell or variable"
                 )
             if loc.table:
                 tables.add(loc.table)
@@ -706,12 +703,7 @@ class _Builder:
             if loc.sheet is not None:
                 entry["sheet"] = loc.sheet
             entry["datapoint"] = int(ref.variable_id)
-            entry["operand_reference_id"] = int(ref.operand_reference_id)
-            # Not part of mdpm's own dict — a transient field
-            # ast_generator.py's shared pipeline needs to build
-            # ``variables``, stripped before the final script the same
-            # way it strips it for the text-reparse path.
-            entry["data_type"] = self._data_type_for_variable(ref.variable_id)
+            entry["operand_reference_id"] = int(loc.cell_id)
             entries.append(entry)
 
         if len(tables) > 1:
@@ -757,6 +749,11 @@ class _Builder:
                     int(default) if default.is_integer() else default
                 )
             except ValueError:
+                if node.fallback_value.strip('"'):
+                    raise UnsupportedDbAst(
+                        f"VarID node {node.node_id} has a default that is "
+                        "not a number"
+                    ) from None
                 result["default"] = ""
 
         result["interval"] = bool(node.use_interval_arithmetics)
@@ -834,33 +831,6 @@ class _Builder:
         row = query.first()
         return row[0] if row is not None else None
 
-    def _data_type_for_variable(self, variable_id: int) -> str:
-        cached = self._data_type_cache.get(variable_id)
-        if cached is not None:
-            return cached
-        query = (
-            self._session.query(DataType.code)
-            .join(Property, Property.data_type_id == DataType.data_type_id)
-            .join(
-                VariableVersion,
-                VariableVersion.property_id == Property.property_id,
-            )
-            .filter(VariableVersion.variable_id == variable_id)
-        )
-        query = filter_by_release(
-            query,
-            start_col=VariableVersion.start_release_id,
-            end_col=VariableVersion.end_release_id,
-            release_id=self._release_id,
-        )
-        row = query.first()
-        if row is None or not row[0]:
-            raise UnsupportedDbAst(
-                f"No DataType resolvable for variable {variable_id}"
-            )
-        self._data_type_cache[variable_id] = row[0]
-        return row[0]
-
 
 def build_ast_from_db(
     session: Session, operation_vid: int, release_id: int
@@ -870,10 +840,10 @@ def build_ast_from_db(
 
     Callers that need the JSON wire shape should use
     :func:`build_ast_dict_from_db` instead — this is for a caller that
-    also needs to walk the tree itself (e.g. re-deriving time-shifted
-    reference periods with the *same* visitor a re-parsed expression
-    uses, which :func:`~dpmcore.services.ast_generator.\
-ASTGeneratorService._extract_time_shifts` expects a raw tree for).
+    also needs to walk the tree itself (e.g. collecting what it reads,
+    at which reference dates, with the *same* visitor a re-parsed
+    expression uses, which :func:`~dpmcore.services.ast_generator.\
+ASTGeneratorService._extract_reads` expects a raw tree for).
 
     Raises :class:`UnsupportedDbAst` when the tree contains anything this
     module does not (yet) faithfully reconstruct — callers must catch

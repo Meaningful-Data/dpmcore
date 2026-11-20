@@ -15,7 +15,7 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from dpmcore.dpm_xl.ast.nodes import Constant, VarID
+from dpmcore.dpm_xl.ast.nodes import Constant, PreconditionItem, VarID
 from dpmcore.errors import Invalid, NotFound, SemanticError
 from dpmcore.orm.release_sort_order import compute_sort_order
 from dpmcore.services.calculations_export.exporter import (
@@ -25,26 +25,28 @@ from dpmcore.services.calculations_export.exporter import (
     _module_owner,
     _owner,
 )
-from dpmcore.services.calculations_export.modules import (
+from dpmcore.services.calculations_export.visitors import (
+    DAGAnalyzer,
+    VarIDDataEnricher,
+    _constant_value,
+    calculations_ast,
+    unwrap_with_expressions,
+)
+from dpmcore.services.script_document.modules import (
     AT_T,
     ModuleVersionInfo,
     RefDateLag,
+    _merge_variables,
     combine_lags,
     overlaps,
     target_window,
     version_chain,
 )
-from dpmcore.services.calculations_export.queries import (
+from dpmcore.services.script_document.queries import (
     _published_module_uri,
 )
-from dpmcore.services.calculations_export.visitors import (
-    CalculationsJSONVisitor,
-    DAGAnalyzer,
+from dpmcore.services.script_document.visitors import (
     DependencyTableExtractor,
-    VarIDDataEnricher,
-    _constant_value,
-    _sole_code,
-    unwrap_with_expressions,
 )
 from dpmcore.services.syntax import SyntaxService
 
@@ -374,66 +376,153 @@ class TestUnwrapWithExpressions:
 
 
 class TestSerializer:
-    def test_an_if_without_else_still_emits_else_expr(self):
-        ast = _parse("x := if {tA, r0010, c0010} > 0 then 1 endif;")
+    def _right(self, script, payloads=None):
+        return calculations_ast(_parse(script), payloads)["children"][0][
+            "right"
+        ]
 
-        result = CalculationsJSONVisitor().visit(ast)
+    def test_an_if_without_else_has_no_else_expr(self):
+        cond = self._right("x := if {tA, r0010, c0010} > 0 then 1 endif;")
 
-        cond = result["children"][0]["right"]
         assert cond["class_name"] == "CondExpr"
-        assert cond["else_expr"] is None
+        assert "else_expr" not in cond
 
-    def test_an_aggregation_without_analytic_clause_omits_the_key(self):
-        ast = _parse("x := sum({tA, r0010, c0010});")
+    def test_an_aggregation_carries_both_clauses(self):
+        agg = self._right("x := sum({tA, r0010, c0010});")
 
-        result = CalculationsJSONVisitor().visit(ast)
-
-        agg = result["children"][0]["right"]
         assert agg["class_name"] == "AggregationOp"
-        assert "analytic_clause" not in agg
+        assert agg["grouping_clause"] is None
+        assert agg["analytic_clause"] is None
+
+    def test_a_window_bound_names_its_period_indicator(self):
+        agg = self._right(
+            "x := avg({tA, r0010, c0010} over (order by refPeriod "
+            "range between 4 Q preceding and current data point));"
+        )
+
+        window = agg["analytic_clause"]["window"]
+        assert window["start"] == {
+            "bound_type": "n_preceding",
+            "n": 4,
+            "period_indicator": "Q",
+        }
+        assert window["end"] == {"bound_type": "current_data_point"}
+
+    def test_a_date_constructor_names_its_nodes(self):
+        node = self._right("x := date(2024, 1, 31);")
+
+        assert set(node) == {
+            "class_name",
+            "op",
+            "year_node",
+            "month_node",
+            "day_node",
+        }
 
     @pytest.mark.parametrize(
         ("written", "expected"),
-        [("-1", "-1"), ("1", "1"), ("( -1 )", "-1"), ("(-1)", "-1")],
+        [
+            ("1", {"class_name": "Constant", "type_": "Integer", "value": 1}),
+            (
+                "-1",
+                {
+                    "class_name": "UnaryOp",
+                    "op": "-",
+                    "operand": {
+                        "class_name": "Constant",
+                        "type_": "Integer",
+                        "value": 1,
+                    },
+                },
+            ),
+        ],
     )
-    def test_a_time_shift_is_flat(self, written, expected):
-        """Every literal shape of the same shift renders the same string."""
-        ast = _parse(
+    def test_a_time_shift_takes_the_format_s_shape(self, written, expected):
+        shift = self._right(
             f"x := time_shift({{tA, r0010, c0010}}, Q, {written}, refPeriod);"
         )
 
-        result = CalculationsJSONVisitor().visit(ast)
-
-        shift = result["children"][0]["right"]
         assert shift["class_name"] == "TimeShiftOp"
-        assert shift["period_indicator"] == "Q"
+        assert shift["period_indicator"] == {
+            "class_name": "Constant",
+            "type_": "String",
+            "value": "Q",
+        }
         assert shift["shift_number"] == expected
-        assert shift["component"] == "refPeriod"
+        assert shift["reference_period"] == "refPeriod"
+        assert "component" not in shift
 
-    def test_a_computed_shift_is_rejected(self):
-        """The exported shape has nowhere to put an expression."""
-        ast = _parse(
+    def test_a_time_shift_without_component_is_on_ref_period(self):
+        shift = self._right("x := time_shift({tA, r0010, c0010}, Q, 1);")
+
+        assert shift["reference_period"] == "refPeriod"
+
+    def test_a_computed_shift_is_a_node(self):
+        shift = self._right(
             "x := time_shift({tA, r0010, c0010}, Q, 1 + 1, refPeriod);"
         )
 
-        with pytest.raises(Invalid, match="not a literal"):
-            CalculationsJSONVisitor().visit(ast)
+        assert shift["shift_number"]["class_name"] == "BinOp"
 
-    def test_a_precomputed_operand_is_emitted_verbatim(self):
+    def test_a_precomputed_operand_becomes_a_fact_var_id(self):
         ast = _parse("x := {tA, r0010, c0010};")
         operand = ast.children[0].right
-        payload = {"class_name": "VarID", "table": "A", "data": []}
+        payload = {
+            "class_name": "VarID",
+            "table": "A",
+            "interval": False,
+            "data": [{"datapoint": 1, "operand_reference_id": 100001}],
+        }
 
-        result = CalculationsJSONVisitor({id(operand): payload}).visit(ast)
+        result = calculations_ast(ast, {id(operand): payload})
 
-        assert result["children"][0]["right"] == payload
+        assert result["children"][0]["right"] == {
+            **payload,
+            "class_name": "FactVarID",
+        }
 
-    def test_an_operand_with_no_payload_falls_back(self):
-        ast = _parse("x := {tA, r0010, c0010};")
+    def test_an_operand_with_no_payload_has_no_cell_position(self):
+        operand = self._right("x := {tA, r0010, c0010};")
 
-        result = CalculationsJSONVisitor().visit(ast)
+        assert operand == {
+            "class_name": "FactVarID",
+            "table": "A",
+            "interval": False,
+            "data": [],
+        }
 
-        assert result["children"][0]["right"]["table"] == "A"
+    def test_the_statements_keep_their_shape(self):
+        result = calculations_ast(
+            _parse("x := 1;\n{vV} <- {ocalc1};\n{tA, r0010, c0010} <- 2;")
+        )
+
+        assert result["class_name"] == "Start"
+        temporary, variable, cell = result["children"]
+        assert temporary == {
+            "class_name": "TemporaryAssignment",
+            "op": ":=",
+            "left": {"class_name": "TemporaryIdentifier", "value": "x"},
+            "right": {
+                "class_name": "Constant",
+                "type_": "Integer",
+                "value": 1,
+            },
+        }
+        assert variable["class_name"] == "PersistentAssignment"
+        assert variable["op"] == "<-"
+        assert variable["left"] == {"class_name": "VarRef", "variable": "V"}
+        assert variable["right"] == {
+            "class_name": "OperationRef",
+            "operation_code": "calc1",
+        }
+        assert cell["left"]["class_name"] == "FactVarID"
+
+    def test_a_node_the_format_cannot_express_is_rejected(self):
+        ast = _parse("x := 1;")
+        ast.children[0].right = PreconditionItem(1)
+
+        with pytest.raises(Invalid, match="has no code"):
+            calculations_ast(ast)
 
 
 class TestVarIDDataEnricher:
@@ -470,8 +559,7 @@ class TestVarIDDataEnricher:
         enricher.visit(ast)
 
         payload = next(iter(enricher.payloads.values()))
-        assert "row" not in payload
-        assert payload["column"] == "0010"
+        assert [entry["datapoint"] for entry in payload["data"]] == [1]
 
     def test_a_grey_cell_is_left_out_of_the_data(self):
         """A grey cell has no variable, so it has no datapoint to report.
@@ -553,19 +641,61 @@ class TestVarIDDataEnricher:
         enricher.visit(ast)
 
         payload = next(iter(enricher.payloads.values()))
-        assert [(entry["x"], entry["row"]) for entry in payload["data"]] == [
-            (1, "0010"),
-            (2, "0020"),
-            (3, "0100"),
+        assert [(e["x"], e["datapoint"]) for e in payload["data"]] == [
+            (1, 1),
+            (2, 3),
+            (3, 2),
         ]
+
+    def test_only_the_varying_axes_index_the_entries(self):
+        frame = self._frame(
+            [
+                {
+                    "table_code": "A",
+                    "row_code": "0010",
+                    "column_code": "0010",
+                    "sheet_code": sheet,
+                    "variable_id": variable_id,
+                    "cell_id": variable_id,
+                }
+                for sheet, variable_id in (("0001", 1), ("0002", 2))
+            ]
+        )
+        ast = _parse("x := {tA, r0010, c0010, s*};")
+
+        enricher = VarIDDataEnricher(frame)
+        enricher.visit(ast)
+
+        payload = next(iter(enricher.payloads.values()))
+        assert payload["data"] == [
+            {"datapoint": 1, "operand_reference_id": 100001, "z": 1},
+            {"datapoint": 2, "operand_reference_id": 100002, "z": 2},
+        ]
+        assert not {"row", "column", "sheet", "default"} & set(payload)
+
+    def test_a_default_is_given_only_when_written(self):
+        frame = self._frame(
+            [
+                {
+                    "table_code": "A",
+                    "row_code": "0010",
+                    "column_code": "0010",
+                    "sheet_code": None,
+                    "variable_id": 1,
+                    "cell_id": 1,
+                }
+            ]
+        )
+        ast = _parse("x := {tA, r0010, c0010, default: 0};")
+
+        enricher = VarIDDataEnricher(frame)
+        enricher.visit(ast)
+
+        payload = next(iter(enricher.payloads.values()))
+        assert payload["default"] == 0
 
 
 class TestHelpers:
-    def test_sole_code_needs_exactly_one(self):
-        assert _sole_code(["0010"]) == "0010"
-        assert _sole_code([]) is None
-        assert _sole_code(["0010", "0020"]) is None
-
     def test_constant_value_unwraps_by_type(self):
         assert _constant_value(Constant("Integer", "3")) == 3
         assert _constant_value(Constant("Integer", "3.0")) == 3
@@ -654,13 +784,13 @@ class TestReadLags:
         [
             (
                 "time_shift({tA, r0010, c0010}, A, 1, refPeriod)",
-                RefDateLag(-12),
+                RefDateLag(-1, "A"),
             ),
-            ("time_shift({tA, r0010, c0010}, Q, 1)", RefDateLag(-3)),
+            ("time_shift({tA, r0010, c0010}, Q, 1)", RefDateLag(-1, "Q")),
             # A negative shift reads a later period.
             (
                 "time_shift({tA, r0010, c0010}, A, (-1), refPeriod)",
-                RefDateLag(12),
+                RefDateLag(1, "A"),
             ),
             ("time_shift({tA, r0010, c0010}, M, -12)", RefDateLag(12)),
         ],
@@ -679,6 +809,70 @@ class TestReadLags:
             ("A", RefDateLag(-4))
         }
 
+    def test_nested_shifts_in_one_unit_keep_it(self):
+        reads = _reads(
+            "x := time_shift(time_shift({tA, r0010, c0010}, Q, 1), Q, 1);"
+        ).reads
+
+        assert {(read.table, read.lag) for read in reads} == {
+            ("A", RefDateLag(-2, "Q"))
+        }
+
+    @pytest.mark.parametrize(
+        ("operand", "lag"),
+        [
+            (
+                "time_shift({tA, r0010, c0010}, A, {p_FREQ, integer}, "
+                "refPeriod)",
+                RefDateLag(None, "A"),
+            ),
+            (
+                "time_shift({tA, r0010, c0010}, Q, 2 * 2)",
+                RefDateLag(None, "Q"),
+            ),
+            (
+                "time_shift(time_shift({tA, r0010, c0010}, A, "
+                "{p_FREQ, integer}), Q, 1)",
+                RefDateLag(None),
+            ),
+        ],
+    )
+    def test_a_shift_that_is_not_a_literal_is_known_at_run_time(
+        self, operand, lag
+    ):
+        reads = _reads(f"x := {operand};").reads
+
+        assert {(read.table, read.lag) for read in reads} == {("A", lag)}
+
+    @pytest.mark.parametrize(
+        ("window", "lags"),
+        [
+            (
+                "4 Q preceding and 1 Q preceding",
+                {RefDateLag(-n, "Q") for n in (1, 2, 3, 4)},
+            ),
+            (
+                "2 M preceding and current data point",
+                {AT_T, RefDateLag(-1), RefDateLag(-2)},
+            ),
+            (
+                "current data point and 1 A following",
+                {AT_T, RefDateLag(1, "A")},
+            ),
+            (
+                "23 M preceding and 1 A preceding",
+                {RefDateLag(-n) for n in range(12, 24)},
+            ),
+        ],
+    )
+    def test_a_range_window_reads_every_period_it_covers(self, window, lags):
+        reads = _reads(
+            "x := avg({tA, r0010, c0010} over (order by refPeriod "
+            f"range between {window}));"
+        ).reads
+
+        assert {read.lag for read in reads} == lags
+
     @pytest.mark.parametrize(
         "operand",
         [
@@ -688,6 +882,8 @@ class TestReadLags:
             "data points between 11 preceding and current data point))",
             "sum({tA, r0010, c0010} over (partition by qEGS "
             "order by refPeriod desc))",
+            "sum({tA, r0010, c0010} over (order by refPeriod "
+            "range between unbounded preceding and current data point))",
             "time_shift({tA, r0010, c0010}[where refPeriod = #2025-12-31#]"
             ", A, 1)",
         ],
@@ -721,7 +917,7 @@ class TestReadLags:
 
         assert {(read.table, read.lag) for read in reads} == {
             ("A", AT_T),
-            ("B", RefDateLag(-12)),
+            ("B", RefDateLag(-1, "A")),
         }
 
     def test_a_with_level_where_on_ref_period_reaches_every_operand(self):
@@ -736,6 +932,20 @@ class TestReadLags:
         assert {(read.table, read.lag) for read in reads} == {
             ("A", None),
             ("B", None),
+        }
+
+    def test_each_read_names_the_branches_it_sits_in(self):
+        reads = _reads(
+            "x := if {tA, r0010, c0010} > 0 then {tB, r0020, c0010} "
+            "else if {tC, r0030, c0010} > 0 then {tD, r0040, c0010} "
+            "endif endif;"
+        ).reads
+
+        assert {(read.table, read.branch) for read in reads} == {
+            ("A", ()),
+            ("B", ((1, "then"),)),
+            ("C", ((1, "else"),)),
+            ("D", ((1, "else"), (2, "then"))),
         }
 
     def test_each_read_names_its_statement(self):
@@ -753,12 +963,14 @@ class TestRefDateLag:
     @pytest.mark.parametrize(
         ("period", "shift", "lag"),
         [
-            ("A", 1, RefDateLag(-12)),
-            ("S", 1, RefDateLag(-6)),
-            ("Q", -2, RefDateLag(6)),
+            ("A", 1, RefDateLag(-1, "A")),
+            ("S", 1, RefDateLag(-1, "S")),
+            ("Q", -2, RefDateLag(2, "Q")),
             ("M", 1, RefDateLag(-1)),
-            ("W", 1, RefDateLag(-7, "D")),
+            ("W", 1, RefDateLag(-1, "W")),
             ("D", 3, RefDateLag(-3, "D")),
+            ("Q", 0, AT_T),
+            ("A", None, RefDateLag(None, "A")),
             ("X", 1, None),
         ],
     )
@@ -774,11 +986,18 @@ class TestRefDateLag:
             (RefDateLag(12), date(2026, 12, 31), date(2027, 12, 31)),
             (RefDateLag(-13), date(2026, 1, 15), date(2024, 12, 31)),
             (RefDateLag(-14, "D"), date(2026, 1, 10), date(2025, 12, 27)),
+            (RefDateLag(-1, "Q"), date(2026, 6, 30), date(2026, 3, 31)),
+            (RefDateLag(-1, "A"), date(2026, 6, 30), date(2025, 6, 30)),
+            (RefDateLag(-2, "W"), date(2026, 1, 10), date(2025, 12, 27)),
             (AT_T, date(2026, 1, 1), date(2026, 1, 1)),
         ],
     )
     def test_target(self, lag, anchor, target):
         assert lag.target(anchor) == target
+
+    def test_a_lag_known_at_run_time_has_no_target(self):
+        with pytest.raises(ValueError, match="only at run time"):
+            RefDateLag(None, "A").target(date(2026, 6, 30))
 
     @pytest.mark.parametrize(
         ("outer", "inner", "combined"),
@@ -787,8 +1006,21 @@ class TestRefDateLag:
             (AT_T, RefDateLag(-7, "D"), RefDateLag(-7, "D")),
             (RefDateLag(-7, "D"), AT_T, RefDateLag(-7, "D")),
             (RefDateLag(-1), RefDateLag(-1, "D"), None),
+            (RefDateLag(-1, "Q"), RefDateLag(-1, "Q"), RefDateLag(-2, "Q")),
+            (RefDateLag(-1, "A"), RefDateLag(-3), RefDateLag(-15)),
+            (RefDateLag(-1, "W"), RefDateLag(-2, "D"), RefDateLag(-9, "D")),
+            (RefDateLag(1, "Q"), RefDateLag(-1, "Q"), AT_T),
+            (RefDateLag(-1, "W"), RefDateLag(-1), None),
             (None, RefDateLag(-1), None),
             (RefDateLag(-1), None, None),
+            (
+                RefDateLag(None, "A"),
+                RefDateLag(-1, "A"),
+                RefDateLag(None, "A"),
+            ),
+            (RefDateLag(-1, "Q"), RefDateLag(None, "A"), RefDateLag(None)),
+            (AT_T, RefDateLag(None, "Q"), RefDateLag(None, "Q")),
+            (RefDateLag(None, "W"), RefDateLag(-1), None),
         ],
     )
     def test_combine_lags(self, outer, inner, combined):
@@ -1003,6 +1235,37 @@ class TestReachableVersions:
 
     def test_a_read_no_lag_describes_reaches_them_all(self):
         assert self._reached(None) == [1, 2, 3, 4]
+
+    def test_a_lag_known_at_run_time_reaches_them_all(self):
+        assert self._reached(RefDateLag(None, "A")) == [1, 2, 3, 4]
+
+
+class TestMergeVariables:
+    def test_a_variable_in_two_tables_keeps_the_cells_of_both(self):
+        variables = {
+            "1": {"data_type": "m", "cells": [{"row": "0020"}]},
+            "2": {"data_type": "b", "cells": [{"row": "0010"}]},
+        }
+
+        _merge_variables(
+            variables,
+            {
+                "1": {
+                    "data_type": "m",
+                    "cells": [{"row": "0010"}, {"row": "0020"}],
+                },
+                "3": {"data_type": "m", "cells": [{"row": "0030"}]},
+            },
+        )
+
+        assert variables == {
+            "1": {
+                "data_type": "m",
+                "cells": [{"row": "0010"}, {"row": "0020"}],
+            },
+            "2": {"data_type": "b", "cells": [{"row": "0010"}]},
+            "3": {"data_type": "m", "cells": [{"row": "0030"}]},
+        }
 
 
 class TestOwner:

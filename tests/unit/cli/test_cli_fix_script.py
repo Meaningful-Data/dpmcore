@@ -14,11 +14,12 @@ def runner():
 
 
 def _script(operations):
+    # A Script Format 2.0 document: flat, not keyed by the module URI.
     return {
-        "http://example.org/mod": {
-            "module_code": "MOD",
-            "operations": operations,
-        }
+        "owner": "EBA",
+        "module_code": "MOD",
+        "module_uri": "http://example.org/mod",
+        "operations": operations,
     }
 
 
@@ -29,7 +30,7 @@ class TestFixScriptSingleFile:
             {
                 "v8713_m": {
                     "ast": {
-                        "class_name": "VarID",
+                        "class_name": "FactVarID",
                         "data": [{"datapoint": 55299}],
                         "default": "",
                     }
@@ -45,12 +46,14 @@ class TestFixScriptSingleFile:
         # the summary, so only check the whitespace-normalized text.
         assert "1 validations" in " ".join(result.output.split())
         written = json.loads(path.read_text())
-        ast = written["http://example.org/mod"]["operations"]["v8713_m"]["ast"]
+        ast = written["operations"]["v8713_m"]["ast"]
         assert "default" not in ast
 
     def test_no_known_issues_leaves_file_untouched(self, runner, tmp_path):
         path = tmp_path / "script.json"
-        data = _script({"v0001": {"ast": {"class_name": "VarID", "data": []}}})
+        data = _script(
+            {"v0001": {"ast": {"class_name": "FactVarID", "data": []}}}
+        )
         original_text = json.dumps(data)
         path.write_text(original_text)
 
@@ -110,7 +113,7 @@ class TestFixScriptBulk:
             )
         )
         untouched_data = _script(
-            {"v0001": {"ast": {"class_name": "VarID", "data": []}}}
+            {"v0001": {"ast": {"class_name": "FactVarID", "data": []}}}
         )
         untouched = tmp_path / "b.json"
         untouched.write_text(json.dumps(untouched_data))
@@ -120,9 +123,9 @@ class TestFixScriptBulk:
         )
 
         assert result.exit_code == 0, result.output
-        fixed_ast = json.loads(fixed.read_text())["http://example.org/mod"][
-            "operations"
-        ]["v7364_m"]["ast"]
+        fixed_ast = json.loads(fixed.read_text())["operations"]["v7364_m"][
+            "ast"
+        ]
         assert fixed_ast["value"] is True
         assert json.loads(untouched.read_text()) == untouched_data
 

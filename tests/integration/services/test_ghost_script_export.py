@@ -88,9 +88,8 @@ def _script_codes(service, version, release):
         module_code=_MODULE, module_version=version, release=release
     )
     assert result["success"], result.get("error")
-    modules = list(result["enriched_ast"].values())
-    assert len(modules) == 1, modules
-    return set(modules[0]["operations"]), modules[0]["dates"]
+    document = result["enriched_ast"]
+    return set(document["operations"]), document["dates"]
 
 
 def test_sweep_substitutes_the_ghost_fallback(fixture_session):

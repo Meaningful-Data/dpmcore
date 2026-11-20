@@ -16,6 +16,7 @@ read from.
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from datetime import date
 
 import pytest
@@ -496,9 +497,8 @@ class TestCalculationsForModule:
         first = dict(zip(codes, children, strict=True))["c_0001"]
         operand = first["right"]["left"]
 
-        assert operand["class_name"] == "VarID"
-        assert operand["row"] == "0010"
-        assert operand["column"] == COLUMN
+        assert operand["class_name"] == "FactVarID"
+        assert not {"row", "column", "sheet"} & set(operand)
         assert [entry["datapoint"] for entry in operand["data"]] == [22001]
         assert operand["data"][0]["operand_reference_id"] > 100000
 
@@ -803,7 +803,7 @@ class TestDependencyOrderBeforeOperandChecking:
         assert assign_x["class_name"] == "TemporaryAssignment"
         assert assign_x["left"]["value"] == "X"
         assert read_x["class_name"] == "PersistentAssignment"
-        assert read_x["left"]["row"] == "0020"
+        assert read_x["left"]["data"][0]["datapoint"] == 11002
 
     def test_a_cell_read_through_a_with_context_is_ordered(self, calc_session):
         """c_0002 reads c_0001's output only through its ``with``."""
@@ -941,7 +941,7 @@ class TestDependencyScope:
         without an override the home table is collected as a dependency
         of the calculation that writes into it.
         """
-        from dpmcore.services.calculations_export.visitors import (
+        from dpmcore.services.script_document.visitors import (
             DependencyTableExtractor,
         )
 
@@ -1245,7 +1245,7 @@ class TestWorkingReleaseUri:
     def test_a_working_release_keys_the_uri_and_warns(
         self, memory_session, caplog
     ):
-        from dpmcore.services.calculations_export.queries import (
+        from dpmcore.services.script_document.queries import (
             get_module_uri,
         )
 
@@ -1263,7 +1263,7 @@ class TestWorkingReleaseUri:
         assert "Playground" in caplog.text
 
     def test_a_published_release_is_left_alone(self, memory_session, caplog):
-        from dpmcore.services.calculations_export.queries import (
+        from dpmcore.services.script_document.queries import (
             get_module_uri,
         )
 
@@ -1366,6 +1366,119 @@ class TestModuleVersions:
         older, current = self._versions(shifted_session)
 
         assert older["not_evaluable"] == ["c_0003"]
+        assert "not_evaluable" not in current
+
+    def test_a_version_is_not_evaluable_only_where_its_dates_reach(
+        self, shifted_session
+    ):
+        """Two versions of ``v1`` read r0020 a quarter back: the first,
+        until 2026-03-31, lands in 0.9.0, which has no cell for r0020;
+        the second, from 2026-04-01, lands only in 1.0.0.
+        """
+        from dpmcore.services.script_document.modules import (
+            Read,
+            RefDateLag,
+            build_modules,
+            reference_window,
+        )
+        from dpmcore.services.script_document.queries import (
+            get_module_metadata,
+            get_module_uri,
+        )
+
+        own = get_module_metadata(shifted_session, 1)
+        read = Read(0, DEP_TABLE, frozenset({22002}), RefDateLag(-3))
+
+        def not_evaluable(statement_windows):
+            modules = build_modules(
+                shifted_session,
+                own=own,
+                window=reference_window(shifted_session, own, RELEASE),
+                module_uri=get_module_uri(shifted_session, 1)[0],
+                reads=[read, replace(read, statement=1)],
+                operation_codes=["v1@1", "v1@2"],
+                release_id=RELEASE,
+                statement_windows=statement_windows,
+            )
+            return [
+                version.get("not_evaluable")
+                for version in modules[DEP_MODULE]["versions"]
+            ]
+
+        assert not_evaluable(
+            [(None, date(2026, 3, 31)), (date(2026, 4, 1), None)]
+        ) == [["v1@1"], None]
+        # Over the whole window, both versions would reach 0.9.0.
+        assert not_evaluable([]) == [["v1@1", "v1@2"], None]
+
+    def test_an_earlier_version_expects_the_open_keys_it_was_written_for(
+        self, shifted_session
+    ):
+        """In 0.9.0, r0010 holds 22900 and the table has no open key; in
+        1.0.0 it has ``qSIC``. The first version of ``v1`` reads 22900
+        there, so ``qSIC`` is not expected of it.
+        """
+        from dpmcore.services.script_document.modules import (
+            Read,
+            RefDateLag,
+            build_modules,
+            reference_window,
+        )
+        from dpmcore.services.script_document.queries import (
+            get_module_metadata,
+            get_module_uri,
+        )
+
+        _seed_key_property(shifted_session, 50, "qSIC")
+        _seed_open_key(
+            shifted_session,
+            header_id=290,
+            table_id=2,
+            property_id=50,
+            table_vids=[22],
+        )
+        shifted_session.add_all(
+            [
+                Variable(variable_id=22900),
+                VariableVersion(
+                    variable_vid=22900,
+                    variable_id=22900,
+                    property_id=1,
+                    code="V22900",
+                    start_release_id=EARLIER,
+                    end_release_id=RELEASE,
+                ),
+            ]
+        )
+        shifted_session.query(TableVersionCell).filter(
+            TableVersionCell.table_vid == 21
+        ).update(
+            {TableVersionCell.variable_vid: 22900},
+            synchronize_session="fetch",
+        )
+        shifted_session.commit()
+        own = get_module_metadata(shifted_session, 1)
+
+        modules = build_modules(
+            shifted_session,
+            own=own,
+            window=reference_window(shifted_session, own, RELEASE),
+            module_uri=get_module_uri(shifted_session, 1)[0],
+            reads=[
+                Read(0, DEP_TABLE, frozenset({22900}), RefDateLag(-3)),
+                Read(1, DEP_TABLE, frozenset({22001}), RefDateLag(-3)),
+            ],
+            operation_codes=["v1@1", "v1@2"],
+            release_id=RELEASE,
+            statement_windows=[
+                (None, date(2026, 3, 31)),
+                (date(2026, 4, 1), None),
+            ],
+        )
+
+        older, current = modules[DEP_MODULE]["versions"]
+        assert list(older["tables"][DEP_TABLE]["variables"]) == ["22900"]
+        assert "not_evaluable" not in older
         assert "not_evaluable" not in current
 
     def test_a_version_out_of_reach_is_not_listed(self, shifted_session):
@@ -1678,6 +1791,94 @@ class TestModuleVersions:
         assert "not_evaluable" not in older
         # The own version still describes every Variable of the module.
         assert len(own["tables"][HOME_TABLE]["variables"]) == len(ROWS)
+
+
+class TestTestedFilingIndicators:
+    """Filing indicators tested on another module's versions."""
+
+    def _seed(self, session):
+        session.add(DataType(data_type_id=BOOLEAN, code="b"))
+        session.add(Property(property_id=BOOLEAN, data_type_id=BOOLEAN))
+        _seed_filing_indicator(
+            session, variable_id=90001, module_vid=1, code=HOME_TABLE
+        )
+        _seed_filing_indicator(
+            session, variable_id=90003, module_vid=2, code=DEP_TABLE
+        )
+        _seed_filing_indicator(
+            session, variable_id=90004, module_vid=2, code="C_97.00"
+        )
+        session.commit()
+
+    def _modules(self, session, filing_indicators):
+        from dpmcore.services.script_document.modules import (
+            build_modules,
+            reference_window,
+        )
+        from dpmcore.services.script_document.queries import (
+            get_module_metadata,
+            get_module_uri,
+        )
+
+        own = get_module_metadata(session, 1)
+        return build_modules(
+            session,
+            own=own,
+            window=reference_window(session, own, RELEASE),
+            module_uri=get_module_uri(session, 1)[0],
+            reads=[],
+            operation_codes=[],
+            release_id=RELEASE,
+            filing_indicators=filing_indicators,
+        )
+
+    def test_another_module_declares_only_those_tested(self, calc_session):
+        self._seed(calc_session)
+
+        modules = self._modules(calc_session, {90003})
+
+        (dependency,) = modules[DEP_MODULE]["versions"]
+        assert dependency["tables"] == {}
+        assert dependency["filing_indicators"] == {
+            DEP_TABLE: {"variable_id": 90003, "data_type": "b"}
+        }
+        (home,) = modules[HOME_MODULE]["versions"]
+        assert list(home["filing_indicators"]) == [HOME_TABLE]
+
+    def test_one_of_the_own_version_is_tested_there_only(self, calc_session):
+        self._seed(calc_session)
+
+        modules = self._modules(calc_session, {90001})
+
+        assert list(modules) == [HOME_MODULE]
+
+    def test_one_of_another_own_version_is_declared_on_the_own(
+        self, calc_session
+    ):
+        self._seed(calc_session)
+        _seed_module_version(
+            calc_session,
+            module_vid=3,
+            module_id=1,
+            code=HOME_MODULE,
+            number="0.9.0",
+            start=date(2025, 1, 1),
+            end=date(2025, 12, 31),
+            release=EARLIER,
+        )
+        _seed_filing_indicator(
+            calc_session, variable_id=90005, module_vid=3, code="C_96.00"
+        )
+        calc_session.commit()
+
+        modules = self._modules(calc_session, {90005})
+
+        assert list(modules) == [HOME_MODULE]
+        (home,) = modules[HOME_MODULE]["versions"]
+        assert home["filing_indicators"] == {
+            "C_96.00": {"variable_id": 90005, "data_type": "b"},
+            HOME_TABLE: {"variable_id": 90001, "data_type": "b"},
+        }
 
 
 class TestHomeTables:
