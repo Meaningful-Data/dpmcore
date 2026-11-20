@@ -1150,7 +1150,10 @@ def _script_result_counts(result: dict[str, Any]) -> tuple[int, int, int]:
     validations that made it hides them (#355).
     """
     document = result.get("enriched_ast") or {}
-    n_ops = len(document.get("operations") or {})
+    # The versions of one validation are entries with the same ``code``.
+    n_ops = len(
+        {op["code"] for op in (document.get("operations") or {}).values()}
+    )
     codes: set[str] = set()
     for group in (document.get("dependency_groups") or {}).values():
         _required_codes(group["requires"], codes)

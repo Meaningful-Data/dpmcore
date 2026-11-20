@@ -106,6 +106,16 @@ class TestExportScriptSuccess:
         assert "2 validations discovered" in normalized_output
         assert "1 dependency modules" in normalized_output
 
+    def test_versions_of_a_validation_count_once(self):
+        from dpmcore.cli.main import _script_result_counts
+
+        result = _success_result()
+        operations = result["enriched_ast"]["operations"]
+        operations["v0001@1235"] = {**operations.pop("v0002"), "code": "v0001"}
+        operations["v0001@1234"] = operations.pop("v0001")
+
+        assert _script_result_counts(result)[0] == 1
+
     def test_passes_all_args_to_service(self, runner, tmp_path):
         # --release is intentionally omitted: it is mutually exclusive
         # with --module-version (see TestExportScriptSweepValidation).

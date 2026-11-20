@@ -2464,6 +2464,87 @@ class TestScriptFromDb:
         build.assert_called_once_with(svc.session, 555, release_row.release_id)
         svc._semantic.validate.assert_not_called()
 
+    def test_versions_of_a_validation_get_their_dates(
+        self, monkeypatch, validator
+    ):
+        """Each version is keyed ``<code>@<version_id>``, carries the
+        dates it applies on, and reads only from what those dates reach.
+        """
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
+        self._stub_db_ast(
+            monkeypatch, MagicMock(return_value=(db_ast_dict, 24))
+        )
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1@555"), ("e2", "v1@556")],
+            operation_vids={"v1@555": 555, "v1@556": 556},
+            mv=mv,
+            release_row=release_row,
+            operation_versions={
+                "v1@555": ("v1", date(2026, 3, 31)),
+                "v1@556": ("v1", date(2027, 3, 31)),
+            },
+        )
+
+        assert out["success"] is True, out["error"]
+        doc = out["enriched_ast"]
+        assert {
+            key: (op["code"], op["version_id"], op["dates"])
+            for key, op in doc["operations"].items()
+        } == {
+            "v1@555": ("v1", 555, {"from": "2026-03-31", "to": "2027-03-30"}),
+            "v1@556": ("v1", 556, {"from": "2027-03-31", "to": None}),
+        }
+        assert doc["dependency_groups"] == {
+            "G1": {"requires": {}, "validations": ["v1@555", "v1@556"]}
+        }
+        assert svc._build_modules.call_args.kwargs["statement_windows"] == [
+            (None, date(2027, 3, 30)),
+            (date(2027, 3, 31), None),
+        ]
+        report = validator.Report()
+        validator.check_versions(doc, report)
+        assert report.valid, dict(report.violations)
+
+    def test_a_version_left_alone_has_no_dates(self, monkeypatch):
+        """The other version failed, so the code has one version."""
+        from dpmcore.services.script_document.dependency_groups import (
+            NoDependencyGroup,
+        )
+
+        svc, mv, release_row, _ = self._build_svc()
+        db_ast_dict = {"class_name": "VarID", "table": "C_01.00", "data": []}
+        self._stub_db_ast(
+            monkeypatch, MagicMock(return_value=(db_ast_dict, 24))
+        )
+        svc._dependency_resolver = MagicMock(
+            return_value=SimpleNamespace(
+                requires=MagicMock(
+                    side_effect=[NoDependencyGroup("It reads X"), {}]
+                )
+            )
+        )
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1@555"), ("e2", "v1@556")],
+            operation_vids={"v1@555": 555, "v1@556": 556},
+            mv=mv,
+            release_row=release_row,
+            operation_versions={
+                "v1@555": ("v1", date(2026, 3, 31)),
+                "v1@556": ("v1", date(2027, 3, 31)),
+            },
+        )
+
+        assert out["success"] is True, out["error"]
+        assert out["failed_operations"] == {"v1@555": "It reads X"}
+        doc = out["enriched_ast"]
+        assert list(doc["operations"]) == ["v1"]
+        assert doc["operations"]["v1"]["version_id"] == 556
+        assert "dates" not in doc["operations"]["v1"]
+        assert doc["dependency_groups"]["G1"]["validations"] == ["v1"]
+
     def test_owner_defaults_to_the_module_owner(self, monkeypatch):
         """The caller picks the validations; without ``owner`` the
         document is the module owner's.
@@ -3378,7 +3459,12 @@ class TestDiscoverModuleValidationsGhostWidening:
         # mv's own window is [1, 30) — release_id chosen per test decides
         # whether the target release falls inside it or not.
         mv = SimpleNamespace(
-            module_vid=10, start_release_id=1, end_release_id=30
+            module_id=7,
+            module_vid=10,
+            start_release_id=1,
+            end_release_id=30,
+            from_reference_date=date(2024, 1, 1),
+            to_reference_date=None,
         )
         release_row = SimpleNamespace(release_id=release_id)
         return svc, mv, release_row
@@ -3423,56 +3509,142 @@ class TestDiscoverModuleValidationsGhostWidening:
 
 
 # ------------------------------------------------------------------ #
-# _latest_operation_by_code
+# _operation_version_rows / _select_operation_versions
 # ------------------------------------------------------------------ #
 
 
-class TestLatestOperationByCode:
+class TestOperationVersionRows:
     def test_single_row_kept(self):
         _, Cls, _ = _bare_svc()
         row = _version_row(op_vid=5, code="v1", scope_id=1)
-        out = Cls._latest_operation_by_code([row], set(), home_module_vid=1)
-        assert set(out) == {"v1"}
-        assert out["v1"][0] == (5, 1)  # rank: (op_vid, is_home)
+        out = Cls._operation_version_rows([row], set(), home_module_vid=1)
+        assert list(out) == ["v1"]
+        assert list(out["v1"]) == [5]
+        assert out["v1"][5][0] == 1  # is_home
+        assert out["v1"][5][5] == {1}  # scope_ids
 
     def test_phantom_scope_dropped(self):
         _, Cls, _ = _bare_svc()
         row = _version_row(op_vid=5, code="v1", scope_id=99)
-        out = Cls._latest_operation_by_code([row], {99}, home_module_vid=1)
+        out = Cls._operation_version_rows([row], {99}, home_module_vid=1)
         assert out == {}
 
-    def test_higher_operation_vid_wins(self):
-        """A code matching two rows (e.g. the ghost-substitution widen)
-        keeps the one with the highest OperationVID, not insertion
-        order.
-        """
+    def test_each_version_of_a_code_is_kept(self):
+        """Choosing among them is left to _select_operation_versions."""
         _, Cls, _ = _bare_svc()
-        older = _version_row(op_vid=5, code="v1", scope_id=1, module_vid=1)
-        newer = _version_row(op_vid=9, code="v1", scope_id=2, module_vid=1)
-        out = Cls._latest_operation_by_code(
+        older = _version_row(op_vid=5, code="v1", scope_id=1)
+        newer = _version_row(op_vid=9, code="v1", scope_id=2)
+        out = Cls._operation_version_rows(
             [older, newer], set(), home_module_vid=1
         )
-        assert out["v1"][0][0] == 9
+        assert sorted(out["v1"]) == [5, 9]
 
-    def test_home_module_scope_outranks_ghost_at_equal_op_vid(self):
-        """Same OperationVID reached through two scopes — the home
+    def test_home_module_scope_outranks_ghost_of_the_same_version(self):
+        """One OperationVID reached through two scopes — the home
         module's own scope must win over a ghost's, independent of
-        which one was iterated first.
+        which one was iterated first, and both scopes are gathered.
         """
         _, Cls, _ = _bare_svc()
-        ghost_first = _version_row(
-            op_vid=5, code="v1", scope_id=1, module_vid=99
-        )
-        home_second = _version_row(
-            op_vid=5, code="v1", scope_id=2, module_vid=1
-        )
-        out = Cls._latest_operation_by_code(
-            [ghost_first, home_second], set(), home_module_vid=1
-        )
-        assert out["v1"][0] == (5, 1)
+        ghost = _version_row(op_vid=5, code="v1", scope_id=1, module_vid=99)
+        home = _version_row(op_vid=5, code="v1", scope_id=2, module_vid=1)
+        for rows in ([ghost, home], [home, ghost]):
+            out = Cls._operation_version_rows(rows, set(), home_module_vid=1)
+            assert out["v1"][5][0] == 1
+            assert out["v1"][5][5] == {1, 2}
 
-        # Order reversed: the outcome must not depend on it.
-        out_reversed = Cls._latest_operation_by_code(
-            [home_second, ghost_first], set(), home_module_vid=1
+
+class TestSelectOperationVersions:
+    """A version starts when the other modules of its scope have a
+    version; a validation whose versions start on different dates of
+    the module version gets one key per version.
+    """
+
+    MV = SimpleNamespace(
+        module_id=7,
+        from_reference_date=date(2026, 3, 31),
+        to_reference_date=date(2028, 3, 30),
+    )
+
+    @staticmethod
+    def _row(*scope_ids):
+        return (1, "expr", None, None, None, set(scope_ids))
+
+    def _select(self, by_code, scope_starts):
+        svc, _, _ = _bare_svc()
+        svc._scope_starts = MagicMock(return_value=scope_starts)
+        return svc._select_operation_versions(by_code, self.MV)
+
+    def test_a_single_version_is_keyed_by_its_code(self):
+        out = self._select({"v1": {5: self._row(1)}}, {})
+        assert {k: v[:3] for k, v in out.items()} == {"v1": ("v1", 5, None)}
+
+    def test_versions_with_the_same_scope_keep_the_latest(self):
+        """Two versions of an intra-module validation cannot both
+        apply: the newest one is scripted, alone, as before.
+        """
+        out = self._select(
+            {"v1": {5: self._row(1), 9: self._row(2)}}, {1: None, 2: None}
         )
-        assert out_reversed["v1"][0] == (5, 1)
+        assert {k: v[:3] for k, v in out.items()} == {"v1": ("v1", 9, None)}
+
+    def test_versions_for_two_versions_of_another_module(self):
+        out = self._select(
+            {"v1": {5: self._row(1), 9: self._row(2)}},
+            {1: date(2025, 3, 31), 2: date(2027, 3, 31)},
+        )
+        assert {k: v[:3] for k, v in out.items()} == {
+            "v1@5": ("v1", 5, date(2026, 3, 31)),
+            "v1@9": ("v1", 9, date(2027, 3, 31)),
+        }
+
+    def test_a_version_starting_after_the_module_version_is_dropped(self):
+        out = self._select(
+            {"v1": {5: self._row(1), 9: self._row(2)}},
+            {1: None, 2: date(2028, 3, 31)},
+        )
+        assert {k: v[:3] for k, v in out.items()} == {"v1": ("v1", 5, None)}
+
+
+class TestSplitOperationVersions:
+    def test_the_versions_divide_the_dates(self):
+        _, Cls, _ = _bare_svc()
+        operations = {"v1@5": {"code": "v1@5"}, "v1@9": {"code": "v1@9"}}
+        versions = {
+            "v1@9": ("v1", date(2027, 3, 31)),
+            "v1@5": ("v1", date(2026, 3, 31)),
+        }
+
+        *_, versioned = Cls._split_operation_versions(
+            operations, [], None, versions
+        )
+
+        assert versioned == {
+            "v1@5": ("v1", None, date(2027, 3, 30)),
+            "v1@9": ("v1", date(2027, 3, 31), None),
+        }
+
+    def test_a_version_left_alone_is_keyed_by_its_code(self):
+        _, Cls, _ = _bare_svc()
+        refs = object()
+        operations, scope_pairs, preconditions, versioned = (
+            Cls._split_operation_versions(
+                {"v1@9": {"code": "v1@9"}, "v2": {"code": "v2"}},
+                [(("e1", "v1@9"), refs), (("e2", "v2"), refs)],
+                [
+                    ("p1", ["v1@9", "v2"]),
+                    {"expression": "p2", "affected_operations": ["v1@9"]},
+                ],
+                {
+                    "v1@5": ("v1", date(2026, 3, 31)),
+                    "v1@9": ("v1", date(2027, 3, 31)),
+                },
+            )
+        )
+
+        assert operations == {"v1": {"code": "v1"}, "v2": {"code": "v2"}}
+        assert scope_pairs == [(("e1", "v1"), refs), (("e2", "v2"), refs)]
+        assert preconditions == [
+            ("p1", ["v1", "v2"]),
+            {"expression": "p2", "affected_operations": ["v1"]},
+        ]
+        assert versioned == {}

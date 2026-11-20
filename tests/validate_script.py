@@ -20,6 +20,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import re
 import sys
@@ -48,7 +49,7 @@ MODULE_MEMBERS = (
     "dependency_groups",
 )
 
-#: §3.1 — the members of an Operation Object.
+#: §3.1 — the members of an Operation Object; `dates` is optional (§3.1.3).
 OPERATION_MEMBERS = frozenset(
     {
         "code",
@@ -60,6 +61,7 @@ OPERATION_MEMBERS = frozenset(
         "from_submission_date",
     }
 )
+OPERATION_OPTIONAL = frozenset({"dates"})
 
 #: §3.2 — the members of a precondition entry.
 PRECONDITION_MEMBERS = frozenset(
@@ -581,8 +583,9 @@ def check_document(module, path: Path, report: Report) -> None:  # noqa: C901
             )
 
     operations = module["operations"]
-    for code, operation in sorted(operations.items()):
-        check_operation(code, operation, ctx, report)
+    check_versions(module, report)
+    for key, operation in sorted(operations.items()):
+        check_operation(key, operation, ctx, report)
     check_preconditions(module, operations, ctx, report)
     check_groups(module, operations, ctx, report)
 
@@ -694,7 +697,7 @@ def check_modules(module, ctx: Context, report: Report) -> None:  # noqa: C901
                         report.fail(
                             "V-35",
                             f"{label}: not_evaluable names "
-                            f"{unknown}, not in `operations`",
+                            f"{unknown}, not keys of `operations`",
                         )
         if windows_ok:
             for before, after in zip(versions, versions[1:]):  # noqa: B905
@@ -827,17 +830,104 @@ def check_indicators(
         ctx.indicators[(code, entry["variable_id"])].add(module_code)
 
 
-def check_operation(code, operation, ctx: Context, report: Report) -> None:
-    """Check one Operation Object and its AST (§3.1)."""
-    # V-3
-    if operation.get("code") != code:
+def day_after(day: str) -> str | None:
+    """The calendar day after `day`; None when `day` is not a real date."""
+    try:
+        following = datetime.date.fromisoformat(day) + datetime.timedelta(1)
+    except ValueError:
+        return None
+    return following.isoformat()
+
+
+def check_versions(module, report: Report) -> None:
+    """Check the keys and `dates` of the Operation Objects (§3.1.1, §3.1.3)."""
+    operations = module["operations"]
+    keys_of: dict[str, list[str]] = defaultdict(list)
+    for key, operation in sorted(operations.items()):
+        code = operation.get("code")
+        if not isinstance(code, str):
+            report.fail("V-3", f"operations/{key}: code member is {code!r}")
+            continue
+        keys_of[code].append(key)
+
+    for code, keys in sorted(keys_of.items()):
+        several = len(keys) > 1
+        windows: list[tuple] = []
+        complete = True
+        for key in keys:
+            operation = operations[key]
+            # V-3 — the key of an Operation Object (§3.1.1).
+            expected = (
+                f"{code}@{operation.get('version_id')}" if several else code
+            )
+            if key != expected:
+                report.fail(
+                    "V-3",
+                    f"operations/{key}: code {code!r}, expected key "
+                    f"{expected!r}",
+                )
+            # V-48 — `dates` exactly where the code has several versions.
+            if not several:
+                if "dates" in operation:
+                    report.fail(
+                        "V-48",
+                        f"operations/{key}: has `dates`, but {code!r} has "
+                        f"no other version",
+                    )
+                continue
+            dates = operation.get("dates")
+            if not isinstance(dates, dict) or set(dates) != {"from", "to"}:
+                report.fail(
+                    "V-48",
+                    f"operations/{key}: one of {len(keys)} versions of "
+                    f"{code!r}, needs `dates` with exactly `from` and `to`",
+                )
+                complete = False
+            elif check_period(
+                f"operations/{key}/dates", dates["from"], dates["to"], report
+            ):
+                windows.append((dates["from"], dates["to"], key))
+            else:
+                complete = False
+        if several and complete:
+            check_division(code, windows, module["dates"], report)
+
+
+def check_division(code, windows, document, report: Report) -> None:
+    """V-48 — the versions of `code` divide the `dates` of the document."""
+    if not isinstance(document, dict) or not is_date(document.get("from")):
+        return  # V-18 is already reported on `dates`.
+    windows.sort(key=lambda window: window[0])
+    start, _, first = windows[0]
+    if start != document["from"]:
         report.fail(
-            "V-3",
-            f"operations/{code}: code member is {operation.get('code')!r}",
+            "V-48",
+            f"{code}: {first} starts on {start}, the document on "
+            f"{document['from']}",
         )
-    if set(operation) != OPERATION_MEMBERS:
-        missing = OPERATION_MEMBERS - set(operation)
-        extra = set(operation) - OPERATION_MEMBERS
+    for before, after in zip(windows, windows[1:]):  # noqa: B905
+        if before[1] is None or day_after(before[1]) != after[0]:
+            report.fail(
+                "V-48",
+                f"{code}: {after[2]} starts on {after[0]}, not the day "
+                f"after {before[2]} ends ({before[1]})",
+            )
+    _, end, last = windows[-1]
+    if end != document.get("to"):
+        report.fail(
+            "V-48",
+            f"{code}: {last} ends on {end}, the document on "
+            f"{document.get('to')}",
+        )
+
+
+def check_operation(code, operation, ctx: Context, report: Report) -> None:
+    """Check one Operation Object, named by its key, and its AST (§3.1)."""
+    # V-3 — the members; `check_versions` checks the key.
+    members = set(operation) - OPERATION_OPTIONAL
+    if members != OPERATION_MEMBERS:
+        missing = OPERATION_MEMBERS - members
+        extra = members - OPERATION_MEMBERS
         if missing:
             report.fail("V-3", f"operations/{code}: missing {sorted(missing)}")
         if extra:
@@ -1721,7 +1811,7 @@ def check_groups(module, operations, ctx: Context, report: Report) -> None:  # n
     if unknown:
         report.fail(
             "V-33",
-            f"{len(unknown)} grouped code(s) not in `operations`, "
+            f"{len(unknown)} grouped key(s) not in `operations`, "
             f"e.g. {unknown[0]}",
         )
 
