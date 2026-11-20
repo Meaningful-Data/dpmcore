@@ -262,7 +262,7 @@ def fix_module_operations(operations: Dict[str, Dict[str, Any]]) -> List[str]:
     """
     changed_codes: List[str] = []
     for code, entry in operations.items():
-        if fix_operation_ast(code, entry.get("ast")):
+        if fix_operation_ast(entry.get("code", code), entry.get("ast")):
             changed_codes.append(code)
     return changed_codes
 

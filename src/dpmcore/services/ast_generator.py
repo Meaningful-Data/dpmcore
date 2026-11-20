@@ -8,6 +8,7 @@ import re
 import zlib
 from dataclasses import dataclass, field, replace
 from datetime import date as date_cls
+from datetime import timedelta
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -74,8 +75,11 @@ _DATA_FIELDS_TO_STRIP = ("data_type", "cell_code", "table_code", "table_vid")
 class _DiscoveredValidations:
     """A module version's active validations, as discovery finds them.
 
-    Every member but ``preconditions`` is keyed by validation code
-    (``expressions`` holds ``(expression, code)`` pairs).
+    Every member but ``preconditions`` is keyed by the key of the
+    validation's Operation Object (``expressions`` holds ``(expression,
+    key)`` pairs): its code, or ``<code>@<OperationVID>`` for each
+    version of a validation with several. ``versions`` maps each such
+    key to the code and the first reference date of its version.
     """
 
     expressions: List[Tuple[str, str]]
@@ -83,6 +87,7 @@ class _DiscoveredValidations:
     preconditions: List[Dict[str, Any]]
     severities: Dict[str, str]
     from_submission_dates: Dict[str, str]
+    versions: Dict[str, Tuple[str, date_cls]] = field(default_factory=dict)
 
     def only(self, codes: Set[str]) -> "_DiscoveredValidations":
         """Keep the validations in ``codes``.
@@ -115,6 +120,7 @@ class _DiscoveredValidations:
                 for c, v in self.from_submission_dates.items()
                 if c in codes
             },
+            versions={c: v for c, v in self.versions.items() if c in codes},
         )
 
 
@@ -598,6 +604,9 @@ class ASTGeneratorService:
         referenced_parameters: Dict[str, ParameterInfo],
         release_info: Optional[Dict[str, Any]] = None,
         owner: Optional[str] = None,
+        operation_versions: Optional[
+            Mapping[str, Tuple[str, date_cls]]
+        ] = None,
     ) -> Dict[str, Any]:
         """Assemble the final script dict from already-resolved operations.
 
@@ -619,6 +628,10 @@ class ASTGeneratorService:
         ``owner`` names the document's owner, the module's owner when
         not given. The caller picks the operations of that owner.
 
+        ``operation_versions`` holds the versions of the validations
+        with several (:meth:`_split_operation_versions`); each gets the
+        ``dates`` on which it applies.
+
         Raises:
             ValueError: If the module version has no URI or its module
                 no owner: the document names both.
@@ -635,6 +648,11 @@ class ASTGeneratorService:
         ghost_vids = self._release_ghost_fallbacks(
             self.session, release_id
         ).get(primary_module_vid, [])
+        operations, scope_pairs, preconditions, versioned = (
+            self._split_operation_versions(
+                operations, scope_pairs, preconditions, operation_versions
+            )
+        )
 
         # ``emitted_operations`` is the script's own ``operations``,
         # not the harvested list: anything that landed in
@@ -683,7 +701,28 @@ class ASTGeneratorService:
             ghost_vids=ghost_vids,
             scope_pairs=scope_pairs,
             preconditions=preconditions_block,
+            statement_windows=[
+                (bounds[1], bounds[2])
+                if (bounds := versioned.get(item[1]))
+                else None
+                for item, _ in scope_pairs
+            ],
         )
+        for key, (code, start, end) in versioned.items():
+            entry = operations[key]
+            operations[key] = {
+                "version_id": entry["version_id"],
+                "code": code,
+                "dates": {
+                    "from": _format_date(start or window[0]),
+                    "to": _format_date(end or window[1]),
+                },
+                **{
+                    member: value
+                    for member, value in entry.items()
+                    if member not in ("version_id", "code")
+                },
+            }
 
         # Script Format 2.0: one flat object, members in this order.
         document: Dict[str, Any] = {
@@ -713,6 +752,87 @@ class ASTGeneratorService:
             "error": None,
             "failed_operations": failed_operations,
         }
+
+    @staticmethod
+    def _split_operation_versions(
+        operations: Dict[str, Dict[str, Any]],
+        scope_pairs: List[Tuple[Tuple[str, str], _OperandRefs]],
+        preconditions: Optional[
+            List[Union[Tuple[str, List[str]], Dict[str, Any]]]
+        ],
+        versions: Optional[Mapping[str, Tuple[str, date_cls]]],
+    ) -> Tuple[
+        Dict[str, Dict[str, Any]],
+        List[Tuple[Tuple[str, str], _OperandRefs]],
+        Optional[List[Union[Tuple[str, List[str]], Dict[str, Any]]]],
+        Dict[str, Tuple[str, Optional[date_cls], Optional[date_cls]]],
+    ]:
+        """Settle the keys and dates of the versions of a validation.
+
+        ``versions`` maps the key of each version of a validation with
+        several to its code and first reference date. Of those versions,
+        the ones still in ``operations`` divide the document's dates:
+        each runs from its start to the day before the next one starts,
+        the first from the start of the document and the last to its
+        end. A code left with one version, the others having failed, is
+        keyed by itself again in ``operations``, ``scope_pairs`` and the
+        ``affected_operations`` of ``preconditions``.
+
+        Returns:
+            The three, renamed, and ``{key: (code, start, end)}`` for
+            each version that stays, ``None`` standing for the start or
+            end of the document.
+        """
+        by_code: Dict[str, List[Tuple[date_cls, str]]] = {}
+        for key in operations:
+            if versions and key in versions:
+                code, start = versions[key]
+                by_code.setdefault(code, []).append((start, key))
+        rename: Dict[str, str] = {}
+        versioned: Dict[
+            str, Tuple[str, Optional[date_cls], Optional[date_cls]]
+        ] = {}
+        for code, keys in by_code.items():
+            keys.sort()
+            if len(keys) == 1:
+                rename[keys[0][1]] = code
+                continue
+            following = [start for start, _ in keys[1:]]
+            for position, (start, key) in enumerate(keys):
+                versioned[key] = (
+                    code,
+                    start if position else None,
+                    following[position] - timedelta(days=1)
+                    if position < len(following)
+                    else None,
+                )
+        if not rename:
+            return operations, scope_pairs, preconditions, versioned
+        return (
+            {
+                rename.get(key, key): (
+                    {**entry, "code": rename[key]} if key in rename else entry
+                )
+                for key, entry in operations.items()
+            },
+            [
+                ((item[0], rename.get(item[1], item[1])), refs)
+                for item, refs in scope_pairs
+            ],
+            [
+                {
+                    **spec,
+                    "affected_operations": [
+                        rename.get(key, key)
+                        for key in spec.get("affected_operations") or []
+                    ],
+                }
+                if isinstance(spec, dict)
+                else (spec[0], [rename.get(key, key) for key in spec[1]])
+                for spec in preconditions or []
+            ],
+            versioned,
+        )
 
     def _dependency_resolver(
         self,
@@ -757,11 +877,14 @@ class ASTGeneratorService:
         ghost_vids: Sequence[int],
         scope_pairs: Sequence[Tuple[Tuple[str, str], _OperandRefs]],
         preconditions: Mapping[str, Any],
+        statement_windows: Sequence[Optional["Window"]] = (),
     ) -> Tuple[Dict[str, Any], "Window"]:
         """Return the ``modules`` section and the own version's window.
 
         ``scope_pairs`` holds one entry per operation, in the order of
         ``operations``, and its reads are numbered by that position.
+        ``statement_windows`` holds, at the same positions, the dates of
+        each version of a validation with several, ``None`` elsewhere.
         ``ghost_vids`` are the one-day versions whose validations the
         script carries; the own version describes them too. The filing
         indicators ``preconditions`` test are declared on the versions
@@ -792,6 +915,7 @@ class ASTGeneratorService:
             release_id=release_id,
             ghost_vids=ghost_vids,
             filing_indicators=self._tested_filing_indicators(preconditions),
+            statement_windows=statement_windows,
         )
         return modules, window
 
@@ -1083,6 +1207,7 @@ class ASTGeneratorService:
         from_submission_dates: Optional[Dict[str, str]] = None,
         release_info: Optional[Dict[str, Any]] = None,
         owner: Optional[str] = None,
+        operation_versions: Optional[Dict[str, Tuple[str, date_cls]]] = None,
     ) -> Dict[str, Any]:
         """Generate a DB-discovered module version's validations script.
 
@@ -1120,6 +1245,10 @@ class ASTGeneratorService:
                 block is built from ``release_row``.
             owner: Optional ``owner`` of the document, the module's
                 owner by default. ``expressions`` are that owner's.
+            operation_versions: ``{key: (code, start)}``, from
+                :meth:`_discover_module_validations` — the versions of
+                a validation with several, each keyed
+                ``<code>@<OperationVID>`` in ``expressions``.
 
         Returns:
             Same shape as :meth:`script`. Unlike :meth:`script`, a
@@ -1215,6 +1344,7 @@ class ASTGeneratorService:
                 referenced_parameters=referenced_parameters,
                 release_info=release_info,
                 owner=owner,
+                operation_versions=operation_versions,
             )
 
         except ValueError as exc:
@@ -1318,6 +1448,7 @@ class ASTGeneratorService:
             from_submission_dates=owned.from_submission_dates or None,
             release_info=release_info,
             owner=owner,
+            operation_versions=owned.versions or None,
         )
 
     def calculations_for_module(
@@ -1831,8 +1962,11 @@ class ASTGeneratorService:
         else:
             phantom_scope_ids = set()
 
-        latest_by_code = self._latest_operation_by_code(
-            overlapping, phantom_scope_ids, mv.module_vid
+        selected = self._select_operation_versions(
+            self._operation_version_rows(
+                overlapping, phantom_scope_ids, mv.module_vid
+            ),
+            mv,
         )
 
         expressions: List[Tuple[str, str]] = []
@@ -1840,22 +1974,20 @@ class ASTGeneratorService:
         severities: Dict[str, str] = {}
         from_submission_dates: Dict[str, str] = {}
         prec_vid_to_codes: Dict[int, List[str]] = {}
-        for code, (
-            rank,
-            expression,
-            severity,
-            prec_vid,
-            from_submission_date,
-        ) in sorted(latest_by_code.items()):
-            expressions.append((expression, code))
-            operation_vids[code] = rank[0]
+        versions: Dict[str, Tuple[str, date_cls]] = {}
+        for key, (code, op_vid, start, row) in sorted(selected.items()):
+            _, expression, severity, prec_vid, from_submission_date, _ = row
+            expressions.append((expression, key))
+            operation_vids[key] = op_vid
+            if start is not None:
+                versions[key] = (code, start)
             if severity:
-                severities[code] = severity
+                severities[key] = severity
             formatted_date = _format_date(from_submission_date)
             if formatted_date:
-                from_submission_dates[code] = formatted_date
+                from_submission_dates[key] = formatted_date
             if prec_vid is not None:
-                prec_vid_to_codes.setdefault(prec_vid, []).append(code)
+                prec_vid_to_codes.setdefault(prec_vid, []).append(key)
 
         return _DiscoveredValidations(
             expressions=expressions,
@@ -1863,6 +1995,7 @@ class ASTGeneratorService:
             preconditions=self._resolve_preconditions(prec_vid_to_codes),
             severities=severities,
             from_submission_dates=from_submission_dates,
+            versions=versions,
         )
 
     @staticmethod
@@ -1919,27 +2052,24 @@ class ASTGeneratorService:
         ]
 
     @staticmethod
-    def _latest_operation_by_code(
+    def _operation_version_rows(
         overlapping: List[Tuple[Any, ...]],
         phantom_scope_ids: Set[int],
         home_module_vid: int,
-    ) -> Dict[
-        str, Tuple[Tuple[int, int], str, Optional[str], Optional[int], Any]
-    ]:
-        """Keep the latest (highest ``OperationVID``) row per code.
+    ) -> Dict[str, Dict[int, Tuple[Any, ...]]]:
+        """Keep one row per ``OperationVersion``, grouped by code.
 
-        A code can match more than one ``OperationVersion`` row: the
-        ghost substitution in :meth:`_discover_module_validations` can
-        return one operation twice, once per scope, and the two scope
-        rows may carry different severities — ``mv``'s own scope is
-        ranked above the ghost's so the winner does not depend on join
-        order. Split out to keep the caller's own branching within the
-        complexity limit.
+        Returns ``{code: {OperationVID: row}}``, each row being
+        ``(is_home, expression, severity, precondition_vid,
+        from_submission_date, scope_ids)``. A version can match more
+        than one row: the ghost substitution in
+        :meth:`_discover_module_validations` can return it twice, once
+        per scope, and the two scope rows may carry different severities
+        — ``mv``'s own scope is ranked above the ghost's so the winner
+        does not depend on join order. ``scope_ids`` gathers every
+        scope of the version, for :meth:`_select_operation_versions`.
         """
-        latest_by_code: Dict[
-            str,
-            Tuple[Tuple[int, int], str, Optional[str], Optional[int], Any],
-        ] = {}
+        by_code: Dict[str, Dict[int, Tuple[Any, ...]]] = {}
         for (
             op_vid,
             code,
@@ -1954,17 +2084,118 @@ class ASTGeneratorService:
         ) in overlapping:
             if scope_id in phantom_scope_ids:
                 continue
-            rank = (op_vid, 1 if module_vid == home_module_vid else 0)
-            existing = latest_by_code.get(code)
-            if existing is None or rank > existing[0]:
-                latest_by_code[code] = (
-                    rank,
+            is_home = 1 if module_vid == home_module_vid else 0
+            versions = by_code.setdefault(code, {})
+            existing = versions.get(op_vid)
+            scope_ids = {scope_id, *(existing[5] if existing else ())}
+            if existing is None or is_home > existing[0]:
+                versions[op_vid] = (
+                    is_home,
                     expression,
                     severity,
                     prec_vid,
                     from_submission_date,
+                    scope_ids,
                 )
-        return latest_by_code
+            else:
+                versions[op_vid] = (*existing[:5], scope_ids)
+        return by_code
+
+    def _select_operation_versions(
+        self,
+        by_code: Mapping[str, Mapping[int, Tuple[Any, ...]]],
+        mv: Any,
+    ) -> Dict[str, Tuple[str, int, Optional[date_cls], Tuple[Any, ...]]]:
+        """Pick the versions of each code the script holds, by key.
+
+        Returns ``{key: (code, OperationVID, start, row)}``. A version
+        starts on the first reference date of *mv* on which every other
+        module of one of its scopes has a version in it: a validation
+        that reads another module gets a new version when that module
+        changes version, while *mv* stays. Of the versions that start
+        on the same date, the latest (highest ``OperationVID``) is kept,
+        as it was for every code before: two versions with the same
+        scope cannot both apply. A code left with one version is keyed
+        by itself and has no ``start``; one with several is keyed
+        ``<code>@<OperationVID>`` per version.
+        """
+        from dpmcore.services.script_document.queries import to_date
+
+        own_start = to_date(mv.from_reference_date) or date_cls.min
+        own_end = to_date(mv.to_reference_date)
+        scope_starts = self._scope_starts(
+            {
+                scope_id
+                for versions in by_code.values()
+                if len(versions) > 1
+                for row in versions.values()
+                for scope_id in row[5]
+            },
+            mv.module_id,
+        )
+
+        selected: Dict[
+            str, Tuple[str, int, Optional[date_cls], Tuple[Any, ...]]
+        ] = {}
+        for code, versions in by_code.items():
+            by_start: Dict[date_cls, int] = {}
+            for op_vid, row in versions.items():
+                # It applies from its earliest scope; one with no other
+                # module applies from mv's start.
+                starts = [scope_starts.get(scope_id) for scope_id in row[5]]
+                start = (
+                    own_start
+                    if None in starts
+                    else max(own_start, min(cast(List[date_cls], starts)))
+                )
+                if own_end is not None and start > own_end:
+                    continue
+                by_start[start] = max(op_vid, by_start.get(start, op_vid))
+            if len(by_start) <= 1:
+                op_vid = max(by_start.values(), default=max(versions))
+                selected[code] = (code, op_vid, None, versions[op_vid])
+                continue
+            for start, op_vid in by_start.items():
+                key = f"{code}@{op_vid}"
+                selected[key] = (code, op_vid, start, versions[op_vid])
+        return selected
+
+    def _scope_starts(
+        self, scope_ids: Set[int], own_module_id: int
+    ) -> Dict[int, Optional[date_cls]]:
+        """The first reference date of each scope's other modules.
+
+        For each ``OperationScopeID``, the latest ``FromReferenceDate``
+        among the module versions it composes of modules other than
+        ``own_module_id``; ``None`` when it composes none. Split out of
+        :meth:`_select_operation_versions` to keep its branching within
+        the complexity limit.
+        """
+        from dpmcore.orm.operations import OperationScopeComposition
+        from dpmcore.orm.packaging import ModuleVersion
+        from dpmcore.orm.query_utils import chunked_in
+        from dpmcore.services.script_document.queries import to_date
+
+        if not scope_ids or self.session is None:
+            return {}
+        query = self.session.query(
+            OperationScopeComposition.operation_scope_id,
+            ModuleVersion.module_id,
+            ModuleVersion.from_reference_date,
+        ).join(
+            ModuleVersion,
+            ModuleVersion.module_vid == OperationScopeComposition.module_vid,
+        )
+        starts: Dict[int, Optional[date_cls]] = {}
+        for scope_id, module_id, from_date in chunked_in(
+            query, OperationScopeComposition.operation_scope_id, scope_ids
+        ):
+            start = to_date(from_date) if module_id != own_module_id else None
+            current = starts.get(scope_id)
+            starts[scope_id] = (
+                max(current, start) if current and start else current or start
+            )
+        return starts
 
     def _ghosts_represented_by(self, mv: Any) -> List[int]:
         """Every #182 ghost sibling in ``mv``'s own contiguous chain.

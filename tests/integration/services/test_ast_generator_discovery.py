@@ -298,3 +298,54 @@ def test_dpm_release_names_the_database_latest_release(fixture_session):
         "release": latest.Code,
         "publication_date": "2027-01-15",
     }
+
+
+def test_scope_starts_are_the_latest_start_of_the_other_modules(
+    memory_session,
+):
+    """A version of a validation applies from the first date on which
+    every other module of its scope has a version; the own module's
+    versions, read through a time shift, do not move it.
+    """
+    from datetime import date
+
+    from dpmcore.orm.operations import OperationScopeComposition
+    from dpmcore.orm.packaging import ModuleVersion
+
+    def version(module_vid, module_id, start):
+        return ModuleVersion(
+            module_vid=module_vid,
+            module_id=module_id,
+            code=f"M{module_id}",
+            version_number=str(module_vid),
+            from_reference_date=start,
+        )
+
+    memory_session.add_all(
+        [
+            version(1, 1, date(2026, 3, 31)),  # the own version
+            version(2, 1, date(2025, 3, 31)),  # an earlier own version
+            version(3, 2, date(2027, 3, 31)),
+            version(4, 3, date(2026, 6, 30)),
+            *(
+                OperationScopeComposition(
+                    operation_scope_id=scope_id, module_vid=module_vid
+                )
+                for scope_id, module_vid in [
+                    (10, 1),
+                    (11, 1),
+                    (11, 2),
+                    (12, 1),
+                    (12, 3),
+                    (12, 4),
+                ]
+            ),
+        ]
+    )
+    memory_session.flush()
+
+    starts = ASTGeneratorService(memory_session)._scope_starts(
+        {10, 11, 12}, own_module_id=1
+    )
+
+    assert starts == {10: None, 11: None, 12: date(2027, 3, 31)}

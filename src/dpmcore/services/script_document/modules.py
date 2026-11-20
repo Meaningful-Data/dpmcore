@@ -428,6 +428,7 @@ def build_modules(
     release_id: Optional[int],
     ghost_vids: Sequence[int] = (),
     filing_indicators: Iterable[int] = (),
+    statement_windows: Sequence[Optional[Window]] = (),
 ) -> Dict[str, Any]:
     """Build the ``modules`` section of an export.
 
@@ -439,13 +440,16 @@ def build_modules(
         window: The own version's window (:func:`reference_window`).
         module_uri: The URI of the export's own version.
         reads: What each statement reads.
-        operation_codes: The operation code of each statement.
+        operation_codes: The operation key of each statement.
         release_id: Release the read tables were resolved at.
         ghost_vids: One-day versions of the own module whose
             statements the export carries. The own version describes
             their tables, Variables and filing indicators too.
         filing_indicators: The ``VariableID`` of each filing indicator
             the export tests, at the own version's dates.
+        statement_windows: The dates each statement applies on, ``None``
+            for every date of ``window``; a ``None`` bound stands for
+            that bound of ``window``.
 
     Returns:
         ``{module_code: {"versions": [...]}}``, ordered by code.
@@ -458,6 +462,7 @@ def build_modules(
         operation_codes,
         release_id,
         ghost_vids,
+        statement_windows,
     ).build(reads, filing_indicators)
 
 
@@ -483,6 +488,7 @@ class _ModulesBuilder:
         operation_codes: Sequence[Optional[str]],
         release_id: Optional[int],
         ghost_vids: Sequence[int] = (),
+        statement_windows: Sequence[Optional[Window]] = (),
     ) -> None:
         """Bind the export's own version and its release."""
         self.session = session
@@ -491,6 +497,7 @@ class _ModulesBuilder:
         self.own_code = own["code"]
         self.own_module_id = own["module_id"]
         self.window = window
+        self.statement_windows = statement_windows
         self.module_uri = module_uri
         self.operation_codes = operation_codes
         self.release_id = release_id
@@ -499,6 +506,7 @@ class _ModulesBuilder:
         # itself resolved at a working release.
         self.drafts = is_working_release(self.sort_orders, release_id)
         self._base_vid: Dict[str, int] = {}
+        self._reference_vid: Dict[Read, int] = {}
         self._key_properties: Dict[int, FrozenSet[int]] = {}
         self._default_types: Set[int] = set()
         self._own_indicators: Optional[Dict[str, Dict[str, Any]]] = None
@@ -558,6 +566,43 @@ class _ModulesBuilder:
                 "and are left out of modules: %s",
                 len(dropped),
                 ", ".join(sorted(dropped)),
+            )
+        # A read expects the open keys of the table version at the
+        # release. An earlier version of a validation with several was
+        # written against an earlier one: it expects that one's.
+        self._reference_vid = {
+            read: self._base_vid[read.table]
+            for read in reads
+            if read.table in self._base_vid
+        }
+        dated = [
+            read
+            for read in self._reference_vid
+            if read.statement < len(self.statement_windows)
+            and self.statement_windows[read.statement] is not None
+        ]
+        tables_of = _variable_holders(
+            self.session,
+            None,
+            {
+                variable_id
+                for read in dated
+                for variable_id in read.variable_ids
+            },
+        )
+        for read in dated:
+            base = self._reference_vid[read]
+            holding = [
+                {
+                    vid
+                    for vid, code in tables_of.get(variable_id, {}).items()
+                    if code == read.table
+                }
+                for variable_id in read.variable_ids
+            ]
+            common = set.intersection(*holding) if holding else set()
+            self._reference_vid[read] = (
+                base if base in common or not common else max(common)
             )
         holders = modules_of_table_vids(
             self.session, set(self._base_vid.values()), self.release_id
@@ -645,11 +690,13 @@ class _ModulesBuilder:
             keep=self.own_vid if is_own else None,
             drafts=self.drafts,
         )
-        lags = {read.lag for read in group.reads}
+        targets = {
+            target_window(self._anchor(read.statement), read.lag)
+            for read in group.reads
+        }
         if is_own or group.indicators:
             # Filing indicators are tested at the own version's dates.
-            lags.add(AT_T)
-        targets = [target_window(self.window, lag) for lag in lags]
+            targets.add(target_window(self.window, AT_T))
         listed = [
             version
             for version in chain
@@ -677,7 +724,10 @@ class _ModulesBuilder:
                 else [
                     read
                     for read in group.reads
-                    if overlaps(version, target_window(self.window, read.lag))
+                    if overlaps(
+                        version,
+                        target_window(self._anchor(read.statement), read.lag),
+                    )
                 ]
             )
             tested = (
@@ -689,6 +739,21 @@ class _ModulesBuilder:
             if entry is not None:
                 entries.append(entry)
         return entries
+
+    def _anchor(self, statement: int) -> Window:
+        """Return the anchor dates of ``statement``, within the window.
+
+        A version of a validation with several applies only on its own
+        dates, so it reads only from the versions those dates reach.
+        """
+        own = (
+            self.statement_windows[statement]
+            if statement < len(self.statement_windows)
+            else None
+        )
+        if own is None:
+            return self.window
+        return (own[0] or self.window[0], own[1] or self.window[1])
 
     def _version_entry(
         self,
@@ -714,13 +779,13 @@ class _ModulesBuilder:
         )
         self._load_key_properties(
             [vid for tables in holders.values() for vid in tables]
-            + [self._base_vid[read.table] for read in reads]
+            + [self._reference_vid[read] for read in reads]
         )
         read_tables: Dict[int, Set[int]] = {}
         table_codes: Dict[int, str] = {}
         failing: Set[int] = set()
         for read in reads:
-            reference = self._key_properties[self._base_vid[read.table]]
+            reference = self._key_properties[self._reference_vid[read]]
             for variable_id in read.variable_ids:
                 tables = holders.get(variable_id, {})
                 table_codes.update(tables)
@@ -1017,12 +1082,14 @@ def _merge_variables(
 
 
 def _variable_holders(
-    session: "Session", module_vids: Sequence[int], variable_ids: Set[int]
+    session: "Session",
+    module_vids: Optional[Sequence[int]],
+    variable_ids: Set[int],
 ) -> Dict[int, Dict[int, str]]:
     """Return where each Variable sits in the Module Versions given.
 
-    Only the Variables asked for are looked up: the module's other
-    tables are never loaded.
+    Only the Variables asked for are looked up, in any Module Version
+    when ``module_vids`` is ``None``.
 
     Returns:
         ``{VariableID: {TableVID: table code}}`` over non-void cells.
@@ -1048,14 +1115,15 @@ def _variable_holders(
             VariableVersion,
             VariableVersion.variable_vid == TableVersionCell.variable_vid,
         )
-        .filter(
-            ModuleVersionComposition.module_vid.in_(
-                [int(vid) for vid in module_vids]
-            ),
-            TableVersionCell.is_void == False,  # noqa: E712
-        )
+        .filter(TableVersionCell.is_void == False)  # noqa: E712
         .distinct()
     )
+    if module_vids is not None:
+        query = query.filter(
+            ModuleVersionComposition.module_vid.in_(
+                [int(vid) for vid in module_vids]
+            )
+        )
     holders: Dict[int, Dict[int, str]] = {}
     for row in chunked_in(
         query, VariableVersion.variable_id, sorted(variable_ids)
