@@ -137,6 +137,16 @@ class DependencyResolver:
             NoDependencyGroup: When it reads dates no lag gives, or no
                 scope with the own module holds what it reads.
         """
+        # The ``previous`` of a time_shift is read from the instances its
+        # operand is read from, in their previous module version.
+        reads, gate_reads = (
+            [
+                read
+                for read in side
+                if read.shift is None or read.shift[1] != "previous"
+            ]
+            for side in (reads, gate_reads)
+        )
         unfixed = sorted(
             {read.table for read in [*reads, *gate_reads] if read.lag is None}
         )

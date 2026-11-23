@@ -190,6 +190,10 @@ class OperandsChecking(ASTTemplate, ABC):
         release_id: int | None,
         is_scripting: bool = False,
         live_table_versions: bool = False,
+        *,
+        in_previous: bool = False,
+        partial_selection: VarID | None = None,
+        operations: list[str] | None = None,
     ) -> None:
         self.expression = expression
         self.release_id = release_id
@@ -197,7 +201,15 @@ class OperandsChecking(ASTTemplate, ABC):
         self.tables: dict[str, dict[str, list[str] | None]] = {}
         self.operands: dict[str, list[VarID]] = {}
         self.key_components: dict[str, pd.DataFrame] = {}
-        self.partial_selection: VarID | None = None
+        self.partial_selection: VarID | None = partial_selection
+        self.in_previous = in_previous
+        # Each time_shift with ``previous`` and what it shifts, resolved
+        # in check_previous; _shifted collects them while it is visited.
+        self._previous: list[
+            tuple[TimeShiftOp, AST, VarID | None, list[VarID]]
+        ] = []
+        self._shifted: list[list[VarID]] = []
+        self.previous_operands: list[OperandsChecking] = []
         self.data: pd.DataFrame | None = None
         self.items: list[str] = []
         self.preconditions = False
@@ -210,7 +222,7 @@ class OperandsChecking(ASTTemplate, ABC):
         # Store references to GetOp nodes for property_id enrichment
         self.getop_nodes: list[GetOp] = []
 
-        self.operations: list[str] = []
+        self.operations: list[str] = list(operations or [])
         self.operations_data: pd.DataFrame | None = None
         # Parameters referenced by the expression. Parameters are not DPM
         # entities, so they carry no DB existence check — the declared type
@@ -233,6 +245,56 @@ class OperandsChecking(ASTTemplate, ABC):
         self.check_getop_components()
 
         self.check_operations()
+        self.check_previous()
+
+    def check_previous(self) -> None:
+        """Resolve each time_shift's ``previous`` in the previous module version.
+
+        ``previous`` is read where a module version does not define a
+        Variable of the operand, from the version just before the first
+        one that does, so it is resolved against that version's tables:
+        at the release ``expression`` is resolved at, its table codes can
+        name other tables. A checker of its own resolves it, and the
+        time_shift keeps it in ``previous_operands``.
+        """
+        from dpmcore.services.script_document.modules import (
+            previous_version_release,
+        )
+
+        for node, previous, partial_selection, operands in self._previous:
+            data = [
+                operand.data
+                for operand in operands
+                if operand.data is not None
+            ]
+            release_id = previous_version_release(
+                self.session,
+                {
+                    int(v)
+                    for frame in data
+                    for v in frame["variable_id"].dropna()
+                },
+                {
+                    int(v)
+                    for frame in data
+                    for v in frame["table_vid"].dropna()
+                },
+                self.release_id,
+            )
+            if release_id is None:
+                raise errors.SemanticError("4-7-9")
+            checker = OperandsChecking(
+                self.session,
+                self.expression,
+                previous,
+                release_id,
+                is_scripting=self.is_scripting,
+                in_previous=True,
+                partial_selection=partial_selection,
+                operations=self.operations,
+            )
+            node.previous_operands = checker
+            self.previous_operands.append(checker)
 
     def _check_header_present(self, table: str, header: str) -> None:
         if (
@@ -598,6 +660,18 @@ class OperandsChecking(ASTTemplate, ABC):
 
         if node.is_table_group:
             raise errors.SemanticError("1-10", table=node.table)
+        if self.in_previous and not node.table:
+            axes = (("r", node.rows), ("c", node.cols), ("s", node.sheets))
+            raise errors.SemanticError(
+                "4-7-5",
+                selection="{"
+                + ", ".join(
+                    ", ".join(prefix + value for value in values)
+                    for prefix, values in axes
+                    if values
+                )
+                + "}",
+            )
 
         if self.partial_selection:
             for attribute in operand_elements:
@@ -633,6 +707,8 @@ class OperandsChecking(ASTTemplate, ABC):
         else:
             self.operands[node.table].append(node)
             _modify_table(node, self.tables[node.table])
+        for shifted in self._shifted:
+            shifted.append(node)
 
     def visit_Dimension(self, node: Dimension) -> None:
         if node.dimension_code not in self.dimension_codes:
@@ -702,7 +778,19 @@ class OperandsChecking(ASTTemplate, ABC):
                 raise errors.SemanticError("4-7-4")
         else:
             self.visit(node.shift_number)
+        if node.previous is None:
+            self.visit(node.operand)
+            return
+        if self.in_previous:
+            raise errors.SemanticError("4-7-6")
+        # ``previous`` is resolved once the operand is (check_previous)
+        shifted: list[VarID] = []
+        self._shifted.append(shifted)
         self.visit(node.operand)
+        self._shifted.pop()
+        self._previous.append(
+            (node, node.previous, self.partial_selection, shifted)
+        )
 
     def visit_AnnualiseOp(self, node: AnnualiseOp) -> None:
         if isinstance(node.fy_end, Constant):

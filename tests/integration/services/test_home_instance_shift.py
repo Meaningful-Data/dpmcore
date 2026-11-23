@@ -70,3 +70,48 @@ def test_home_shift_requires_the_own_module_a_year_before(
     assert result["enriched_ast"]["dependency_groups"] == {
         "G1": {"requires": requires, "validations": [code]}
     }
+
+
+@pytest.mark.parametrize(
+    ("divisor", "previous", "tables", "not_evaluable"),
+    [
+        (
+            "",
+            ", previous: {tC_02.00, r0010, c0010}",
+            {"C_02.00": ["38483"]},
+            None,
+        ),
+        ("", "", {}, ["v_prev"]),
+        # C_47.00 is read from COREP_LR, never from COREP_OF 3.1.0
+        (
+            " / {tC_47.00, r0290, c0010}",
+            ", previous: {tC_02.00, r0010, c0010} / {tC_47.00, r0290, c0010}",
+            {"C_02.00": ["38483"]},
+            None,
+        ),
+    ],
+)
+def test_previous_serves_the_version_without_the_operand(
+    fixture_session, divisor, previous, tables, not_evaluable
+):
+    """COREP_OF 4.0.0 replaced C_02.00 of 3.1.0 with C_02.00.a, with a new
+    Variable, so a year back 3.1.0 can only serve ``previous``.
+    """
+    expression = (
+        f"time_shift({{tC_02.00.a, r0010, c0010}}{divisor}, A, 1, refPeriod"
+        f"{previous}) >= 0"
+    )
+    result = ASTGeneratorService(fixture_session).script(
+        expressions=[(expression, "v_prev")],
+        module_code="COREP_OF",
+        module_version="4.0.0",
+    )
+    assert result["success"], result["error"]
+    assert not result["failed_operations"], result["failed_operations"]
+    older = result["enriched_ast"]["modules"]["COREP_OF"]["versions"][0]
+    assert older["version"] == "3.1.0"
+    assert {
+        code: list(table["variables"])
+        for code, table in older["tables"].items()
+    } == tables
+    assert older.get("not_evaluable") == not_evaluable

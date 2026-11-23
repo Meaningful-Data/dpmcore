@@ -216,9 +216,20 @@ class CalculationsExporter:
             "output_tables": output_tables,
             "modules": modules,
         }
+        # The datapoints each previous: of a time_shift reads too
+        frames = [
+            frame
+            for frame in (
+                operands.data,
+                *(checker.data for checker in operands.previous_operands),
+            )
+            if frame is not None
+        ]
         return CalculationsExport(
             calculations=export,
-            datapoints=_build_datapoint_mapping(operands.data),
+            datapoints=_build_datapoint_mapping(
+                pd.concat(frames) if frames else None
+            ),
         )
 
     def _collect_calculations(

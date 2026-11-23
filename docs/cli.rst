@@ -617,7 +617,9 @@ reference-date window, its URI, the tables and Variables read from it
 ``not_evaluable``, the calculations it cannot serve because a Variable
 they read is missing from it or a table they read has other open keys.
 A read shifted in time (``time_shift`` on the reference period) reaches
-the versions in force at the shifted dates, earlier or later.
+the versions in force at the shifted dates, earlier or later. Its
+``previous:`` is read instead on the version just before the first one
+that defines the Variables of its operand.
 
 .. code-block:: text
 

@@ -138,7 +138,13 @@ NODE_MEMBERS = {
     "CondExpr": frozenset({"condition", "then_expr", "else_expr"}),
     "ParameterRef": frozenset({"code", "param_type", "default"}),
     "TimeShiftOp": frozenset(
-        {"operand", "period_indicator", "shift_number", "reference_period"}
+        {
+            "operand",
+            "period_indicator",
+            "shift_number",
+            "reference_period",
+            "previous",
+        }
     ),
 }
 
@@ -148,6 +154,7 @@ OPTIONAL_MEMBERS = {
     "CondExpr": frozenset({"else_expr"}),
     "SubstrOp": frozenset({"start", "length"}),
     "ParameterRef": frozenset({"default"}),
+    "TimeShiftOp": frozenset({"previous"}),
 }
 
 #: §4.3.1 — the members of a Datapoint Reference.
@@ -1073,6 +1080,8 @@ def check_tree(  # noqa: C901
             check_setop(code, node, report)
         elif cls == "SubstrOp":
             check_substr(code, node, report)
+        elif cls == "TimeShiftOp" and "previous" in node:
+            check_previous(code, node, report)
         elif cls == "RenameClauseOp":
             check_rename(code, node, report)
         elif cls == "GetClauseOp":
@@ -1420,6 +1429,21 @@ def check_substr(code, node, report: Report) -> None:
                     f"{code}: SubstrOp {member} is {value!r}, "
                     f"expected a JSON integer or null",
                 )
+
+
+def check_previous(code, node, report: Report) -> None:
+    """V-49 — `previous` holds no `TimeShiftOp` with `previous` (§4.27)."""
+    previous = node["previous"]
+    if not isinstance(previous, dict) or "class_name" not in previous:
+        return
+    for inner, _, _ in walk(previous):
+        if inner["class_name"] == "TimeShiftOp" and "previous" in inner:
+            report.fail(
+                "V-49",
+                f"{code}: TimeShiftOp previous holds a TimeShiftOp "
+                f"with previous",
+            )
+            return
 
 
 def check_rename(code, node, report: Report) -> None:

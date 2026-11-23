@@ -324,6 +324,27 @@ centralised_messages: Dict[str, str] = {
         "For time_shift operator,"
         " shift_number must evaluate to an integer scalar"
     ),
+    "4-7-5": (
+        "For time_shift operator, every selection of previous"
+        " must name its table: {selection}"
+    ),
+    "4-7-6": (
+        "For time_shift operator, previous must not contain"
+        " a time_shift with previous"
+    ),
+    "4-7-7": (
+        "For time_shift operator, previous must have the same key"
+        " components as the operand: {operand} against {previous}"
+    ),
+    "4-7-8": (
+        "For time_shift operator, previous of type {previous}"
+        " cannot be cast to the operand's type {operand}"
+    ),
+    "4-7-9": (
+        "For time_shift operator, no module version precedes the first"
+        " one defining the Variables of the operand, so previous is"
+        " never read"
+    ),
     # - String Operators
     "4-8-1": (
         "Invalid {op} parameter: {parameter_name} must be {constraint}."

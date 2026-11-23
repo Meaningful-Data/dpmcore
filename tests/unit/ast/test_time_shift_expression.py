@@ -165,3 +165,31 @@ def test_tojson_scalar_form_reference_period_is_null():
     }
     assert out["reference_period"] is None
     assert "component" not in out
+
+
+@pytest.mark.parametrize(
+    ("source", "component"),
+    [
+        (
+            "time_shift({tT1}, A, 1, refPeriod, previous: {tT0} * 2)",
+            "refPeriod",
+        ),
+        ("time_shift({tT1}, A, 1, previous: {tT0} * 2)", None),
+    ],
+)
+def test_previous_is_parsed_and_serialized_after_the_component(
+    source, component
+):
+    from dpmcore.dpm_xl.ast.nodes import BinOp
+    from dpmcore.dpm_xl.utils.serialization import serialize_ast
+
+    node = SyntaxService().parse(source).children[0]
+    out = serialize_ast(node)
+
+    assert node.component == component
+    assert isinstance(node.previous, BinOp)
+    assert out["previous"]["class_name"] == "BinOp"
+    assert out["previous"]["left"]["table"] == "T0"
+    assert "previous" not in serialize_ast(
+        SyntaxService().parse("time_shift({tT1}, A, 1)").children[0]
+    )

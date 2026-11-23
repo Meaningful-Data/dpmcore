@@ -413,6 +413,88 @@ def test_time_shift_integer_expression_shift_number_valid(fixture_session):
     assert result.is_valid, f"Expected valid but got: {result.error_message}"
 
 
+@pytest.mark.parametrize(
+    ("operand", "previous", "error_code"),
+    [
+        (
+            "if {tC_02.00.a, r0010, c0010} != 0 then {tC_04.00, r0750, c0010}"
+            " / {tC_02.00.a, r0010, c0010} else 0 endif",
+            "if {tC_02.00, r0010, c0010} != 0 then {tC_04.00, r0750, c0010}"
+            " / {tC_02.00, r0010, c0010} else 0 endif",
+            None,
+        ),
+        (
+            "{tC_02.00.a, r0010, c0010}",
+            "{tC_02.00, r0010-0020, c0010}",
+            "4-7-7",
+        ),
+        ("{tC_02.00.a, r0010, c0010}", '"x"', "4-7-7"),
+        (
+            "{tC_02.00.a, r0010, c0010}",
+            "{tC_02.00, r0010, c0010} > 0",
+            "4-7-8",
+        ),
+        (
+            "{tC_02.00.a, r0010, c0010}",
+            "time_shift({tC_02.00, r0010, c0010}, A, 1, refPeriod,"
+            " previous: {tC_02.00, r0010, c0010})",
+            "4-7-6",
+        ),
+        ("{tC_04.00, r0750, c0010}", "{tC_04.00, r0750, c0010}", "4-7-9"),
+    ],
+)
+def test_time_shift_previous_reads_the_previous_module_version(
+    fixture_session, operand, previous, error_code
+):
+    """``previous`` resolves against COREP_OF 3.1.0, where C_02.00 is the
+    table that C_02.00.a replaced in 4.0.0, and must match the operand.
+    """
+    result = SemanticService(fixture_session).validate(
+        f"time_shift({operand}, A, 1, refPeriod, previous: {previous})",
+        release_code="4.1",
+    )
+    assert result.error_code == error_code, result.error_message
+
+
+def test_time_shift_previous_names_its_tables(fixture_session):
+    """A selection of ``previous`` cannot take its table from ``with``."""
+    result = SemanticService(fixture_session).validate(
+        "with {tC_02.00.a, c0010}: "
+        "time_shift({r0010}, A, 1, refPeriod, previous: {r0010})",
+        release_code="4.1",
+    )
+    assert result.error_code == "4-7-5"
+
+
+def test_time_shift_previous_reads_the_module_of_the_shifted_tables(
+    fixture_session,
+):
+    """KM1 r0200: CODIS 2.0.0 holds Variable 454688 of C_03.00 too, in
+    K_66.01.a, but the operand reads COREP_OF, so ``previous`` is read in
+    COREP_OF 3.1.0, published in release 3.2.
+    """
+    from dpmcore.orm.infrastructure import Release
+
+    ratio = (
+        "if {{tC_02.00{0}, r0010, c0010}} != 0 then {{tC_03.00, r0220, "
+        "c0010}} / {{tC_02.00{0}, r0010, c0010}} else 0 endif"
+    )
+    svc = SemanticService(fixture_session)
+    result = svc.validate(
+        f"time_shift({ratio.format('.a')}, A, 1, refPeriod, "
+        f"previous: {ratio.format('')})",
+        release_code="4.1",
+    )
+    assert result.is_valid, result.error_message
+    release_id = svc.ast.children[0].previous_operands.release_id
+    assert (
+        fixture_session.query(Release.code)
+        .filter(Release.release_id == release_id)
+        .scalar()
+        == "3.2"
+    )
+
+
 def test_sub_duplicate_property_code_rejected(fixture_session):
     """Duplicate property codes in a single sub clause are rejected end-to-end.
 

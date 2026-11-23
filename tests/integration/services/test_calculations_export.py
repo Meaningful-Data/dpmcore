@@ -1368,6 +1368,68 @@ class TestModuleVersions:
         assert older["not_evaluable"] == ["c_0003"]
         assert "not_evaluable" not in current
 
+    def test_previous_is_read_where_the_version_misses_a_variable(
+        self, shifted_session
+    ):
+        """0.9.0 has no cell for r0020, so ``previous`` reads r0010 there,
+        resolved against the table version 0.9.0 holds.
+        """
+        _set_expression(
+            shifted_session,
+            102,
+            f"{{t{HOME_TABLE}, r0010, c{COLUMN}}} <- "
+            f"time_shift({{t{DEP_TABLE}, r0020, c{COLUMN}}}, A, 1, "
+            f"previous: {{t{DEP_TABLE}, r0010, c{COLUMN}}})",
+        )
+        export = ASTGeneratorService(shifted_session).calculations_for_module(
+            HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+        )
+        older, current = export["modules"][DEP_MODULE]["versions"]
+        shift = next(
+            statement["right"]
+            for statement in export["calculations"]["ast"]["children"]
+            if statement["right"]["class_name"] == "TimeShiftOp"
+        )
+
+        assert [entry["datapoint"] for entry in shift["previous"]["data"]] == [
+            22001
+        ]
+        assert list(older["tables"][DEP_TABLE]["variables"]) == ["22001"]
+        assert "not_evaluable" not in older
+        assert "not_evaluable" not in current
+
+    def test_previous_is_read_before_a_working_release_version(
+        self, shifted_session
+    ):
+        """A draft export counts 1.0.0 of the working release, the first
+        version with r0020, so ``previous`` is still read in 0.9.0.
+        """
+        shifted_session.add(
+            Release(
+                release_id=WORKING,
+                code="Playground",
+                date=date(1970, 1, 1),
+                type="playground",
+            )
+        )
+        shifted_session.query(ModuleVersion).filter(
+            ModuleVersion.module_vid == 2
+        ).update({ModuleVersion.start_release_id: WORKING})
+        _set_expression(
+            shifted_session,
+            102,
+            f"{{t{HOME_TABLE}, r0010, c{COLUMN}}} <- "
+            f"time_shift({{t{DEP_TABLE}, r0020, c{COLUMN}}}, A, 1, "
+            f"previous: {{t{DEP_TABLE}, r0010, c{COLUMN}}})",
+        )
+        export = ASTGeneratorService(shifted_session).calculations_for_module(
+            HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE, "Playground"
+        )
+        older, _ = export["modules"][DEP_MODULE]["versions"]
+
+        assert list(older["tables"][DEP_TABLE]["variables"]) == ["22001"]
+        assert "not_evaluable" not in older
+
     def test_a_version_is_not_evaluable_only_where_its_dates_reach(
         self, shifted_session
     ):

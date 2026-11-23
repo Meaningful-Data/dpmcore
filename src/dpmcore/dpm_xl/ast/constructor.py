@@ -516,13 +516,19 @@ class ASTVisitor(dpm_xlParserVisitor):
         component: str | None = None
         period_indicator = self._symbol_text(ctx_list[4])
         shift_number = self._visit(ctx_list[6])
-        if len(ctx_list) > 8:
-            component = self._visit(ctx_list[8])
+        previous: AST | None = None
+        for child in ctx_list[8:]:
+            if isinstance(child, dpm_xlParser.PreviousContext):
+                # PREVIOUS COLON expression
+                previous = self._visit(child.getChild(2))
+            elif isinstance(child, dpm_xlParser.PropertyCodeContext):
+                component = self._visit(child)
         return TimeShiftOp(
             operand=operand,
             component=component,
             period_indicator=period_indicator,
             shift_number=shift_number,
+            previous=previous,
         )
 
     def visitAnnualiseFunction(
