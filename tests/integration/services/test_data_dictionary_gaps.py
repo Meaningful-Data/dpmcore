@@ -147,3 +147,19 @@ def test_get_open_keys_for_tables_batch(service, fixture_session):
     assert set(batch.keys()) == {"F_01.01", "F_02.00"}
     for value in batch.values():
         assert isinstance(value, dict)
+
+
+def test_open_keys_before_the_first_item_category_row(fixture_session):
+    """A release before a property's first ItemCategory row keeps its keys.
+
+    The DPM holds no glossary before release 3.4, yet tables reach back
+    to 2.0: C_111.00 exists at 3.3.1, while its key property only has
+    an ``INC`` row from 3.4 on. That earliest row must name the key.
+    """
+    from dpmcore.services._open_keys import get_open_keys_for_tables
+
+    release_id = _release_id(fixture_session, "3.3.1")
+    keys = get_open_keys_for_tables(
+        fixture_session, ["C_111.00"], release_id=release_id
+    )
+    assert keys == {"C_111.00": {"INC": "s"}}
