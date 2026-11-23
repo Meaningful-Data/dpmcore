@@ -119,10 +119,15 @@ filterOperators:
     ;
 
 timeOperators:
-    TIME_SHIFT LPAREN expression COMMA TIME_PERIOD COMMA expression (COMMA propertyCode)? RPAREN #timeShiftFunction
+    TIME_SHIFT LPAREN expression COMMA TIME_PERIOD COMMA expression (COMMA propertyCode)? (COMMA previous)? RPAREN #timeShiftFunction
     | ANNUALISE LPAREN expression COMMA expression COMMA propertyCode RPAREN                     #annualiseFunction
     | op=(YEAR|SEMESTER|QUARTER|MONTH|WEEK|DAY) LPAREN expression RPAREN                        #dateExtractFunction
     | DATE LPAREN year=expression COMMA month=expression COMMA day=expression RPAREN            #dateConstructorFunction
+    ;
+
+// What `time_shift` reads instead of its operand in the previous module version.
+previous:
+    PREVIOUS COLON expression
     ;
 
 conditionalOperators:

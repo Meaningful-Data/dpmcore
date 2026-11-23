@@ -105,6 +105,7 @@ SUB:                    'sub';
 
 // Reference date
 TIME_SHIFT:             'time_shift';
+PREVIOUS:               'previous';
 ANNUALISE:              'annualise';
 
 // Date-component extraction
@@ -416,6 +417,7 @@ CLAUSE_SUB:                    'sub' -> type(SUB);
 
 // Reference date
 CLAUSE_TIME_SHIFT:             'time_shift' -> type(TIME_SHIFT);
+CLAUSE_PREVIOUS:               'previous' -> type(PREVIOUS);
 CLAUSE_ANNUALISE:              'annualise' -> type(ANNUALISE);
 
 // Date-component extraction
