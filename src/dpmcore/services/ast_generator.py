@@ -131,10 +131,13 @@ class _OperandRefs:
     ``reads`` holds one :class:`Read` per operand, at the lag it is read
     at, numbered by the operation's position in the script. ``requires``
     is what the operation needs besides the instance being validated.
+    ``ast`` is its AST when a ``time_shift`` in it has ``previous``: it
+    is written again once ``modules`` says whether a date reads it.
     """
 
     reads: List[Read] = field(default_factory=list)
     requires: Dict[str, Any] = field(default_factory=dict)
+    ast: Any = None
 
 
 class _UnreadableOperation(Exception):
@@ -424,6 +427,7 @@ class ASTGeneratorService:
                         scope_pairs=scope_pairs,
                         referenced_parameters=referenced_parameters,
                         resolver=resolver,
+                        ast=ast,
                     )
                 except NoDependencyGroup as exc:
                     failed_operations[code] = str(exc)
@@ -487,6 +491,7 @@ class ASTGeneratorService:
         resolver: "DependencyResolver",
         operation_vid: Optional[int] = None,
         scope_result: Optional["ScopeResult"] = None,
+        ast: Any = None,
     ) -> Optional[str]:
         """Fold one operation's already-resolved AST into the script.
 
@@ -571,6 +576,7 @@ class ASTGeneratorService:
                 for r in [*reads, *gate_reads]
             ],
             requires=requires,
+            ast=ast if any(r.shift is not None for r in reads) else None,
         )
         self._clean_ast_data_entries(ast_dict)
         self._accumulate_parameters(referenced_parameters, parameters)
@@ -636,6 +642,7 @@ class ASTGeneratorService:
             ValueError: If the module version has no URI or its module
                 no owner: the document names both.
         """
+        from dpmcore.dpm_xl.utils.serialization import serialize_ast
         from dpmcore.services.script_document.dependency_groups import (
             build_dependency_groups,
         )
@@ -694,6 +701,7 @@ class ASTGeneratorService:
                 "names it as module_owner."
             )
         owner = owner or module_owner
+        previous_read: Set[Any] = set()
         modules, window = self._build_modules(
             primary_module_vid=primary_module_vid,
             release_id=release_id,
@@ -707,7 +715,22 @@ class ASTGeneratorService:
                 else None
                 for item, _ in scope_pairs
             ],
+            previous_read=previous_read,
         )
+        # A previous: no version reads is left out: its tables are
+        # listed nowhere.
+        for item, refs in scope_pairs:
+            if refs.ast is None:
+                continue
+            for read in refs.reads:
+                if (
+                    read.shift is not None
+                    and read.shift[0] not in previous_read
+                ):
+                    read.shift[0].previous = None
+            operations[item[1]]["ast"] = self._clean_ast_data_entries(
+                script_ast(serialize_ast(refs.ast))
+            )
         for key, (code, start, end) in versioned.items():
             entry = operations[key]
             operations[key] = {
@@ -878,6 +901,7 @@ class ASTGeneratorService:
         scope_pairs: Sequence[Tuple[Tuple[str, str], _OperandRefs]],
         preconditions: Mapping[str, Any],
         statement_windows: Sequence[Optional["Window"]] = (),
+        previous_read: Optional[Set[Any]] = None,
     ) -> Tuple[Dict[str, Any], "Window"]:
         """Return the ``modules`` section and the own version's window.
 
@@ -916,6 +940,7 @@ class ASTGeneratorService:
             ghost_vids=ghost_vids,
             filing_indicators=self._tested_filing_indicators(preconditions),
             statement_windows=statement_windows,
+            previous_read=previous_read,
         )
         return modules, window
 
@@ -1005,6 +1030,7 @@ class ASTGeneratorService:
         List[Read],
         Optional[int],
         Optional[str],
+        Any,
     ]:
         """Resolve one operation's AST, parameters, reads and root id.
 
@@ -1013,9 +1039,9 @@ class ASTGeneratorService:
         *expr* when that isn't possible. Used by :meth:`script_from_db`,
         split out to keep its own branching within the complexity limit.
 
-        Returns ``(ast_dict, parameters, reads, root_operator_id, error)``
-        — a non-``None`` ``error`` means the operation failed and the
-        other fields should be ignored.
+        Returns ``(ast_dict, parameters, reads, root_operator_id, error,
+        ast)`` — a non-``None`` ``error`` means the operation failed and
+        the other fields should be ignored.
         """
         if self._semantic is None:
             raise InternalError(
@@ -1052,7 +1078,7 @@ class ASTGeneratorService:
                 self._semantic, expr, release_id, gate_failure=None
             )
             if prepared.error is not None:
-                return None, [], [], None, prepared.error
+                return None, [], [], None, prepared.error, None
             result, ast = prepared.result, prepared.ast
             # Same reasoning as script()'s own serialize_ast() call: a
             # root expression always renders as an object.
@@ -1065,6 +1091,7 @@ class ASTGeneratorService:
                 prepared.reads,
                 root_operator_id,
                 None,
+                ast,
             )
 
         # Same source script() uses — the AST itself — not whether it
@@ -1081,8 +1108,8 @@ class ASTGeneratorService:
         try:
             reads = self._extract_reads(built_ast)
         except _UnreadableOperation as exc:
-            return None, [], [], None, str(exc)
-        return ast_dict, parameters, reads, root_operator_id, None
+            return None, [], [], None, str(exc), None
+        return ast_dict, parameters, reads, root_operator_id, None, built_ast
 
     def _process_db_expression_item(
         self,
@@ -1130,6 +1157,7 @@ class ASTGeneratorService:
             reads,
             root_operator_id,
             resolve_error,
+            ast,
         ) = self._resolve_db_operation_ast(
             session=session,
             code=code,
@@ -1189,6 +1217,7 @@ class ASTGeneratorService:
                 resolver=resolver,
                 operation_vid=operation_vid,
                 scope_result=scope_result,
+                ast=ast,
             )
         except NoDependencyGroup as exc:
             return str(exc)

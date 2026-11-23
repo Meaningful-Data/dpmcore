@@ -115,3 +115,24 @@ def test_previous_serves_the_version_without_the_operand(
         for code, table in older["tables"].items()
     } == tables
     assert older.get("not_evaluable") == not_evaluable
+
+
+def test_previous_no_date_reads_is_left_out(fixture_session):
+    """A year back from COREP_OF 4.1.0 lands in 4.0.0 and 4.1.0, which both
+    define the Variable of the operand, so ``previous`` is never read.
+    """
+    result = ASTGeneratorService(fixture_session).script(
+        expressions=[
+            (
+                "time_shift({tC_02.00.a, r0010, c0010}, A, 1, refPeriod, "
+                "previous: {tC_02.00, r0010, c0010}) >= 0",
+                "v_prev",
+            )
+        ],
+        module_code="COREP_OF",
+        module_version="4.1.0",
+    )
+    assert result["success"], result["error"]
+    shift = result["enriched_ast"]["operations"]["v_prev"]["ast"]["left"]
+    assert shift["class_name"] == "TimeShiftOp"
+    assert "previous" not in shift

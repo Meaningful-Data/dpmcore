@@ -1398,6 +1398,30 @@ class TestModuleVersions:
         assert "not_evaluable" not in older
         assert "not_evaluable" not in current
 
+    def test_previous_no_date_reads_is_left_out(self, shifted_session):
+        """Not shifted, r0020 is read from 1.0.0 only, which holds it."""
+        _set_expression(
+            shifted_session,
+            102,
+            f"{{t{HOME_TABLE}, r0010, c{COLUMN}}} <- "
+            f"time_shift({{t{DEP_TABLE}, r0020, c{COLUMN}}}, A, 0, "
+            f"previous: {{t{DEP_TABLE}, r0010, c{COLUMN}}})",
+        )
+        export = ASTGeneratorService(shifted_session).calculations_for_module(
+            HOME_MODULE, REFERENCE_DATE, PUBLICATION_DATE
+        )
+        shift = next(
+            statement["right"]
+            for statement in export["calculations"]["ast"]["children"]
+            if statement["right"]["class_name"] == "TimeShiftOp"
+        )
+
+        assert "previous" not in shift
+        assert [
+            version["version"]
+            for version in export["modules"][DEP_MODULE]["versions"]
+        ] == ["1.0.0"]
+
     def test_previous_is_read_before_a_working_release_version(
         self, shifted_session
     ):

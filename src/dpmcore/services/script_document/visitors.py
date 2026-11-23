@@ -68,8 +68,7 @@ class DependencyTableExtractor(ASTTemplate):
         self._lag: Optional[RefDateLag] = AT_T
         self._branch: Tuple[Tuple[int, str], ...] = ()
         self._conditionals = 0
-        self._shift: Optional[Tuple[int, str]] = None
-        self._shifts = 0
+        self._shift: Optional[Tuple[Any, str]] = None
         # Operands repeat across a module's calculations, and
         # get_filtered_datapoints is uncached: without this, the same
         # selection is resolved once per occurrence, each time reloading
@@ -128,13 +127,12 @@ class DependencyTableExtractor(ASTTemplate):
         if node.previous is None:
             self._visit_at(node.operand, lag)
             return
-        self._shifts += 1
-        shift, outer = self._shifts, self._shift
+        outer = self._shift
         for side, operand in (
             ("operand", node.operand),
             ("previous", node.previous),
         ):
-            self._shift = (shift, side)
+            self._shift = (node, side)
             self._visit_at(operand, lag)
         self._shift = outer
 

@@ -197,7 +197,7 @@ class Read:
             outermost first, as ``(conditional, side)`` pairs where
             ``side`` is ``"then"`` or ``"else"``.
         shift: The innermost ``time_shift`` with ``previous`` the read
-            sits in, as ``(time_shift, side)`` where ``side`` is
+            sits in, as ``(time_shift, side)``: its node, and
             ``"operand"`` or ``"previous"``; ``None`` outside one.
         table_vid: The table version a read in ``previous`` was resolved
             at, which its code need not name at the script's release.
@@ -208,7 +208,7 @@ class Read:
     variable_ids: FrozenSet[int]
     lag: Optional[RefDateLag] = AT_T
     branch: Tuple[Tuple[int, str], ...] = ()
-    shift: Optional[Tuple[int, str]] = None
+    shift: Optional[Tuple[Any, str]] = None
     table_vid: Optional[int] = None
 
 
@@ -535,6 +535,7 @@ def build_modules(
     ghost_vids: Sequence[int] = (),
     filing_indicators: Iterable[int] = (),
     statement_windows: Sequence[Optional[Window]] = (),
+    previous_read: Optional[Set[Any]] = None,
 ) -> Dict[str, Any]:
     """Build the ``modules`` section of an export.
 
@@ -556,6 +557,9 @@ def build_modules(
         statement_windows: The dates each statement applies on, ``None``
             for every date of ``window``; a ``None`` bound stands for
             that bound of ``window``.
+        previous_read: Filled with each ``time_shift`` whose ``previous``
+            some version reads. The others are never read, and their
+            tables are listed nowhere.
 
     Returns:
         ``{module_code: {"versions": [...]}}``, ordered by code.
@@ -569,6 +573,7 @@ def build_modules(
         release_id,
         ghost_vids,
         statement_windows,
+        previous_read,
     ).build(reads, filing_indicators)
 
 
@@ -595,8 +600,10 @@ class _ModulesBuilder:
         release_id: Optional[int],
         ghost_vids: Sequence[int] = (),
         statement_windows: Sequence[Optional[Window]] = (),
+        previous_read: Optional[Set[Any]] = None,
     ) -> None:
         """Bind the export's own version and its release."""
+        self.previous_read = set() if previous_read is None else previous_read
         self.session = session
         self.own_vid = int(own["module_vid"])
         self.own_vids = [self.own_vid, *(int(vid) for vid in ghost_vids)]
@@ -723,7 +730,7 @@ class _ModulesBuilder:
         holders = modules_of_table_vids(
             self.session, set(self._base_vid.values()), self.release_id
         )
-        shifted: Dict[Tuple[int, int], Set[str]] = {}
+        shifted: Dict[Tuple[int, Any], Set[str]] = {}
         for read in reads:
             table_vid = self._base_vid.get(read.table)
             if table_vid is None:
@@ -931,7 +938,7 @@ class _ModulesBuilder:
             module_vids,
             {var for read in reads for var in read.variable_ids},
         )
-        shifted: Dict[Tuple[int, int], Set[int]] = {}
+        shifted: Dict[Tuple[int, Any], Set[int]] = {}
         for key, variable_ids in [
             ((read.statement, read.shift[0]), read.variable_ids)
             for read in reads
@@ -952,6 +959,7 @@ class _ModulesBuilder:
                 variables,
             ).keys()
         }
+        self.previous_read.update(time_shift for _, time_shift in in_previous)
         reads = [
             read
             for read in reads
