@@ -27,7 +27,7 @@ from dpmcore.dpm_xl.utils.tokens import (
     SEVERITY_WARNING,
     VALID_SEVERITIES,
 )
-from dpmcore.errors import InternalError, SemanticError
+from dpmcore.errors import InternalError, Invalid, SemanticError
 from dpmcore.services._parameters import (
     accumulate_ast_parameters,
     merge_parameters,
@@ -77,17 +77,21 @@ class _PreparedExpression:
 
     ``error`` is set when the expression cannot become a declarable
     operation — it failed semantic validation, it carries a shift whose
-    reference period cannot be declared (#326), or its precondition is
-    one the engine cannot evaluate (#338). All are reported the same
+    reference period cannot be declared (#326), its precondition is
+    one the engine cannot evaluate (#338), or its root is not an
+    operator the script can declare. All are reported the same
     way, through ``failed_operations``, and all must be caught before
     the caller accumulates anything for the operation: a skip afterwards
     would leave its tables, parameters and operation entry in the
     script.
+
+    ``root_operator_id`` is always set when ``error`` is not.
     """
 
     result: Any = None
     ast: Any = None
     ts: Dict[str, List[str]] = field(default_factory=dict)
+    root_operator_id: Optional[int] = None
     error: Optional[str] = None
 
 
@@ -226,8 +230,8 @@ class ASTGeneratorService:
             namespaced dict, or ``None`` on failure), ``error`` (str or
             ``None``), and ``failed_operations`` (a
             ``{validation_code: error_message}`` map of expressions
-            skipped due to semantic errors, or because their
-            precondition cannot be evaluated by the engine). The
+            skipped due to semantic errors, because their
+            precondition cannot be evaluated by the engine. The
             namespaced dict mirrors the shape pydpm's
             ``generate_validations_script`` produces.
         """
@@ -308,6 +312,7 @@ class ASTGeneratorService:
                     self._semantic,
                     expr,
                     release_id,
+                    session,
                     gate_failure=gate_failures.get(code),
                 )
                 if prepared.error is not None:
@@ -319,7 +324,8 @@ class ASTGeneratorService:
                 # root expression here, which the wire format always
                 # renders as an object.
                 ast_dict = cast(Dict[str, Any], serialize_ast(ast))
-                root_operator_id = self._resolve_root_operator_id(ast, session)
+                # Set whenever there is no error (see _PreparedExpression).
+                root_operator_id = cast(int, prepared.root_operator_id)
 
                 scope_error = self._process_operation(
                     item=item,
@@ -688,7 +694,7 @@ class ASTGeneratorService:
             # duplicated rather than shared, it's a handful of lines
             # (see dpmcore#364).
             prepared = self._prepare_expression(
-                self._semantic, expr, release_id, gate_failure=None
+                self._semantic, expr, release_id, session, gate_failure=None
             )
             if prepared.error is not None:
                 return None, [], {}, None, prepared.error
@@ -697,8 +703,7 @@ class ASTGeneratorService:
             # root expression always renders as an object.
             ast_dict = cast(Dict[str, Any], serialize_ast(ast))
             parameters = result.parameters
-            root_operator_id = self._resolve_root_operator_id(ast, session)
-            return ast_dict, parameters, ts, root_operator_id, None
+            return ast_dict, parameters, ts, prepared.root_operator_id, None
 
         # Same source script() uses — the AST itself — not whether it
         # came from the DB or a re-parse: a parameter is self-contained
@@ -2326,7 +2331,10 @@ class ASTGeneratorService:
         ``ParExpr`` carry no ``op`` attribute but map to fixed synthetic
         symbols.
 
-        Raises ``RuntimeError`` if no operator is resolvable.
+        Raises:
+            Invalid: when the root applies no operator (a bare
+                selection or constant), or its operator has no row in
+                the ``Operator`` table (e.g. ``nvl``).
         """
         from dpmcore.dpm_xl.model_queries import OperatorQuery
 
@@ -2360,16 +2368,17 @@ class ASTGeneratorService:
             # the operator inside. pydpm serialises this as OperatorID 37.
             op_symbol = "()"
         if not op_symbol:
-            raise RuntimeError(
-                f"Cannot resolve root operator: AST root "
-                f"{class_name!r} has no 'op' attribute."
+            raise Invalid(
+                "Cannot resolve root operator",
+                f"the expression root {class_name!r} is not an operation",
             )
 
         df = OperatorQuery.get_operators(session)
         matches = df[df["Symbol"] == op_symbol]["OperatorID"].values
         if len(matches) == 0:
-            raise RuntimeError(
-                f"No OperatorID found for symbol {op_symbol!r}."
+            raise Invalid(
+                "Cannot resolve root operator",
+                f"no Operator has the symbol {op_symbol!r}",
             )
         return int(matches[0])
 
@@ -3547,15 +3556,20 @@ extract_precondition_codes`, shared with
         semantic: SemanticService,
         expr: str,
         release_id: int,
+        session: "Session",
         gate_failure: Optional[str] = None,
     ) -> _PreparedExpression:
-        """Validate *expr* and read the reference periods it needs.
+        """Validate *expr*, then read its reference periods and root operator.
 
         ``validate()`` runs the per-expression scope check: a parameter
         referenced here must not clash with the declared type of a
         co-scoped operation already persisted in the DB (raises 3-8).
         ``_accumulate_parameters`` in the caller is complementary — it
         catches conflicts between two expressions in the same script.
+
+        A semantically valid expression can still be no operation at
+        all so the root operator is resolved here too: one that cannot be resolved
+        rejects just this expression, never the whole module (#484).
 
         ``gate_failure`` is the reason the operation's precondition
         cannot be evaluated by the engine, when there is one (see
@@ -3575,8 +3589,9 @@ extract_precondition_codes`, shared with
                 result=result,
                 ast=ast,
                 ts=self._extract_time_shifts(ast),
+                root_operator_id=self._resolve_root_operator_id(ast, session),
             )
-        except SemanticError as exc:
+        except (SemanticError, Invalid) as exc:
             return _PreparedExpression(error=str(exc))
 
     @staticmethod

@@ -1466,7 +1466,11 @@ class TestResolveRootOperatorId:
             "dpmcore.dpm_xl.model_queries",
             SimpleNamespace(OperatorQuery=FakeOperatorQuery),
         )
-        with pytest.raises(RuntimeError, match="Cannot resolve root"):
+        with pytest.raises(
+            errors.Invalid,
+            match="Cannot resolve root operator: the expression root "
+            "'Bare' is not an operation",
+        ):
             Cls._resolve_root_operator_id(bare, MagicMock())
 
     def test_unknown_symbol_raises(self, monkeypatch):
@@ -1487,7 +1491,11 @@ class TestResolveRootOperatorId:
             "dpmcore.dpm_xl.model_queries",
             SimpleNamespace(OperatorQuery=FakeOperatorQuery),
         )
-        with pytest.raises(RuntimeError, match="No OperatorID"):
+        with pytest.raises(
+            errors.Invalid,
+            match="Cannot resolve root operator: no Operator has the "
+            "symbol 'weird'",
+        ):
             Cls._resolve_root_operator_id(op, MagicMock())
 
 
@@ -2089,6 +2097,77 @@ class TestScript:
         assert "v3" in ns["operations"]
         assert out["failed_operations"] == {
             "v1": "Grey cells {F_32.03.a, r0040, c0010} were found."
+        }
+
+    def test_unresolvable_root_operator_skips_op_preserves_others(
+        self, monkeypatch
+    ):
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+
+        class FakeOperatorQuery:
+            @staticmethod
+            def get_operators(session):  # noqa: ARG004
+                import pandas as pd
+
+                return pd.DataFrame([{"Symbol": ">=", "OperatorID": 15}])
+
+        monkeypatch.setattr(
+            sys.modules["dpmcore.dpm_xl.model_queries"],
+            "OperatorQuery",
+            FakeOperatorQuery,
+        )
+
+        def _node(class_name, **attrs):
+            node = type(class_name, (), {})()
+            for name, value in attrs.items():
+                setattr(node, name, value)
+            return node
+
+        roots = {
+            "e_good": _node("BinOp", op=">="),
+            "e_selection": _node("VarID"),
+            "e_nvl": _node("BinOp", op="nvl"),
+        }
+        svc, _, _, mod = self._build_svc()
+        # The real resolver, not the fixed-id stub _build_svc installs.
+        svc._resolve_root_operator_id = (
+            mod.ASTGeneratorService._resolve_root_operator_id
+        )
+
+        def _validate(expr, release_id=None):
+            svc._semantic.ast = roots[expr]
+            return SimpleNamespace(
+                is_valid=True, error_message=None, parameters=()
+            )
+
+        svc._semantic.validate.side_effect = _validate
+
+        out = svc.script(
+            expressions=[
+                ("e_good", "v1"),
+                ("e_selection", "v2"),
+                ("e_nvl", "v3"),
+            ],
+            module_code="MOD",
+            module_version="1.0",
+        )
+
+        assert out["success"] is True, out["error"]
+        ns = next(iter(out["enriched_ast"].values()))
+        assert set(ns["operations"]) == {"v1"}
+        assert ns["operations"]["v1"]["root_operator_id"] == 15
+        assert out["failed_operations"] == {
+            "v2": (
+                "Cannot resolve root operator: the expression root "
+                "'VarID' is not an operation"
+            ),
+            "v3": (
+                "Cannot resolve root operator: no Operator has the "
+                "symbol 'nvl'"
+            ),
         }
 
     def _stub_serialize_ast_for_operations(self, monkeypatch, return_value):
@@ -3042,6 +3121,54 @@ class TestScriptFromDb:
         assert out["failed_operations"] == {"v1": "bad expr"}
         ns = next(iter(out["enriched_ast"].values()))
         assert "v1" not in ns["operations"]
+
+    def test_text_reparse_fallback_unresolvable_root_excludes_only_that_op(
+        self, monkeypatch
+    ):
+        build = MagicMock(
+            side_effect=_FakeUnsupportedDbAst("root has no OperatorID")
+        )
+        self._stub_db_ast(monkeypatch, build)
+        self._stub_serialize_ast(
+            monkeypatch,
+            {"class_name": "VarID", "table": "C_01.00", "data": []},
+        )
+        svc, mv, release_row, _ = self._build_svc()
+
+        def _validate(expr, release_id=None):
+            svc._semantic.ast = f"AST:{expr}"
+            return SimpleNamespace(
+                is_valid=True, error_message=None, parameters=()
+            )
+
+        def _resolve_root(ast, session):
+            if ast == "AST:e_bad":
+                raise errors.Invalid(
+                    "Cannot resolve root operator",
+                    "the expression root 'VarID' is not an operation",
+                )
+            return 24
+
+        svc._semantic.validate.side_effect = _validate
+        svc._resolve_root_operator_id = _resolve_root
+
+        out = svc.script_from_db(
+            expressions=[("e1", "v1"), ("e_bad", "v2")],
+            operation_vids={"v1": 555, "v2": 556},
+            mv=mv,
+            release_row=release_row,
+        )
+
+        assert out["success"] is True, out["error"]
+        assert out["failed_operations"] == {
+            "v2": (
+                "Cannot resolve root operator: the expression root "
+                "'VarID' is not an operation"
+            )
+        }
+        ns = next(iter(out["enriched_ast"].values()))
+        assert set(ns["operations"]) == {"v1"}
+        assert ns["operations"]["v1"]["root_operator_id"] == 24
 
     def test_no_operation_vid_skips_db_and_uses_crc32(self, monkeypatch):
         """A code with no entry in ``operation_vids`` never even attempts
