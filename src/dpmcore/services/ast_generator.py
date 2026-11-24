@@ -3568,8 +3568,9 @@ extract_precondition_codes`, shared with
         catches conflicts between two expressions in the same script.
 
         A semantically valid expression can still be no operation at
-        all so the root operator is resolved here too: one that cannot be resolved
-        rejects just this expression, never the whole module (#484).
+        all, so the root operator is resolved here too: one that cannot
+        be resolved rejects just this expression, never the whole
+        module (#484).
 
         ``gate_failure`` is the reason the operation's precondition
         cannot be evaluated by the engine, when there is one (see
