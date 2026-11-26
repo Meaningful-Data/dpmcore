@@ -57,6 +57,29 @@ _ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 _DEFAULT_NAMESPACE = "default_module"
 _DATA_FIELDS_TO_STRIP = ("data_type", "cell_code", "table_code", "table_vid")
 
+# Operator symbols of the AST nodes whose operator is fixed by their
+# class. Their ``op`` attribute stays unset after semantic analysis;
+# only ``MLGeneration`` fills it in, with these same symbols.
+_CLASS_OPERATOR_SYMBOLS: Dict[str, str] = {
+    "CondExpr": "if-then-else",
+    "FilterOp": "filter",
+    "TimeShiftOp": "time_shift",
+    "WhereClauseOp": "where",
+    "GetOp": "get",
+    "RenameOp": "rename",
+    "SubOp": "sub",
+}
+
+# Symbols the ``Operator`` table gives to two operators, told apart by
+# ``Name`` the way ``MLGeneration`` does: ``+`` is both Unary plus and
+# Addition, ``-`` both Unary minus and Subtraction.
+_SHARED_SYMBOL_OPERATOR_NAMES: Dict[Tuple[str, str], str] = {
+    ("UnaryOp", "+"): "Unary plus",
+    ("UnaryOp", "-"): "Unary minus",
+    ("BinOp", "+"): "Addition",
+    ("BinOp", "-"): "Subtraction",
+}
+
 
 @dataclass(frozen=True)
 class _OperandRefs:
@@ -231,7 +254,8 @@ class ASTGeneratorService:
             ``None``), and ``failed_operations`` (a
             ``{validation_code: error_message}`` map of expressions
             skipped due to semantic errors, because their
-            precondition cannot be evaluated by the engine. The
+            precondition cannot be evaluated by the engine, or because
+            they are not an operation the script can declare). The
             namespaced dict mirrors the shape pydpm's
             ``generate_validations_script`` produces.
         """
@@ -2315,31 +2339,13 @@ class ASTGeneratorService:
         return {code: per_code.get(code, default) for code in validation_codes}
 
     @staticmethod
-    def _resolve_root_operator_id(ast: Any, session: "Session") -> int:
-        """Resolve the OperatorID at the root of an expression AST.
+    def _root_node(ast: Any) -> Any:
+        """Walk past the structural wrappers down to the expression root.
 
-        Walks past structural wrappers (``Start``, ``WithExpression``,
-        ``PersistentAssignment`` / ``TemporaryAssignment``) down to the
-        first node carrying an ``op`` attribute, then looks up
-        ``Operator.OperatorID`` by ``Symbol`` via the same DataFrame
-        ``MLGeneration.create_operation_node`` uses.
-
-        ``ParExpr`` is treated as the operator itself (Symbol ``()``,
-        OperatorID 37 in the reference operator table), mirroring pydpm:
-        an expression whose body is wrapped in parentheses roots at the
-        paren operator, not at the operator inside. ``CondExpr`` and
-        ``ParExpr`` carry no ``op`` attribute but map to fixed synthetic
-        symbols.
-
-        Raises:
-            Invalid: when the root applies no operator (a bare
-                selection or constant), or its operator has no row in
-                the ``Operator`` table (e.g. ``nvl``).
+        The wrappers are ``Start``, ``WithExpression`` and
+        ``PersistentAssignment`` / ``TemporaryAssignment``.
         """
-        from dpmcore.dpm_xl.model_queries import OperatorQuery
-
         node: Any = ast
-        # Walk through wrappers down to the operator node.
         for _ in range(64):  # bounded to avoid runaway recursion
             class_name = type(node).__name__
             if class_name == "Start":
@@ -2356,25 +2362,74 @@ class ASTGeneratorService:
                 node = node.right
                 continue
             break
+        return node
 
-        class_name = type(node).__name__
+    @staticmethod
+    def _operator_symbol(node: Any) -> Optional[str]:
+        """Return the symbol of the operator *node* applies, if any.
+
+        ``None`` means *node* applies no operator at all: a selection,
+        a constant, a reference.
+        """
         op_symbol = getattr(node, "op", None)
-        if not op_symbol and class_name == "CondExpr":
-            # CondExpr carries no ``op`` attribute; its operator is fixed.
-            op_symbol = "if-then-else"
-        elif not op_symbol and class_name == "ParExpr":
-            # ParExpr carries no ``op`` attribute either; the root of
-            # a body wrapped in parentheses is the paren operator, not
-            # the operator inside. pydpm serialises this as OperatorID 37.
-            op_symbol = "()"
-        if not op_symbol:
+        if op_symbol:
+            return str(op_symbol)
+        return _CLASS_OPERATOR_SYMBOLS.get(type(node).__name__)
+
+    @staticmethod
+    def _resolve_root_operator_id(ast: Any, session: "Session") -> int:
+        """Resolve the OperatorID at the root of an expression AST.
+
+        Walks past structural wrappers (see ``_root_node``) down to the
+        expression root, then looks up ``Operator.OperatorID`` by
+        ``Symbol`` via the same DataFrame
+        ``MLGeneration.create_operation_node`` uses. A symbol the table
+        gives to two operators (``+``, ``-``) is told apart by ``Name``,
+        as ``MLGeneration`` does.
+
+        ``ParExpr`` is treated as the operator itself (Symbol ``()``,
+        OperatorID 37 in the reference operator table), mirroring pydpm:
+        an expression whose body is wrapped in parentheses roots at the
+        paren operator, not at the operator inside. The parentheses must
+        still wrap an operation, though: ``({tC_00.01})`` is as much a
+        bare selection as ``{tC_00.01}``.
+
+        Raises:
+            Invalid: when the root applies no operator (a bare
+                selection or constant, with or without parentheses), or
+                its operator has no row in the ``Operator`` table (e.g.
+                ``nvl``).
+        """
+        from dpmcore.dpm_xl.model_queries import OperatorQuery
+
+        root = ASTGeneratorService._root_node(ast)
+        inner = root
+        while type(inner).__name__ == "ParExpr":
+            inner = inner.expression
+        inner_symbol = ASTGeneratorService._operator_symbol(inner)
+        if inner_symbol is None:
             raise Invalid(
                 "Cannot resolve root operator",
-                f"the expression root {class_name!r} is not an operation",
+                f"the expression root {type(inner).__name__!r} "
+                "is not an operation",
+            )
+
+        name: Optional[str] = None
+        if inner is not root:
+            # The parentheses are the root; what they wrap only had to
+            # be an operation.
+            op_symbol = "()"
+        else:
+            op_symbol = inner_symbol
+            name = _SHARED_SYMBOL_OPERATOR_NAMES.get(
+                (type(root).__name__, op_symbol)
             )
 
         df = OperatorQuery.get_operators(session)
-        matches = df[df["Symbol"] == op_symbol]["OperatorID"].values
+        selected = df["Symbol"] == op_symbol
+        if name is not None:
+            selected &= df["Name"] == name
+        matches = df[selected]["OperatorID"].values
         if len(matches) == 0:
             raise Invalid(
                 "Cannot resolve root operator",

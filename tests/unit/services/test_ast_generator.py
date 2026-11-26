@@ -1498,6 +1498,129 @@ class TestResolveRootOperatorId:
         ):
             Cls._resolve_root_operator_id(op, MagicMock())
 
+    # The reference Operator rows the tests below resolve against, in
+    # table order: Unary plus/minus come before Addition/Subtraction, so
+    # a lookup by symbol alone picks the unary operator.
+    _OPERATOR_ROWS = [
+        (1, "Unary plus", "+"),
+        (2, "Addition", "+"),
+        (4, "Unary minus", "-"),
+        (5, "Subtraction", "-"),
+        (13, "Equal to", "="),
+        (28, "Where", "where"),
+        (29, "Get", "get"),
+        (30, "If then else", "if-then-else"),
+        (31, "Filter", "filter"),
+        (32, "Time shift", "time_shift"),
+        (33, "Rename", "rename"),
+        (37, "Parenthesis Expression", "()"),
+        (38, "Sub", "sub"),
+    ]
+
+    def _install_operator_table(self, monkeypatch):
+        rows = self._OPERATOR_ROWS
+
+        class FakeOperatorQuery:
+            @staticmethod
+            def get_operators(session):  # noqa: ARG004
+                import pandas as pd
+
+                return pd.DataFrame(
+                    [
+                        {"OperatorID": oid, "Name": name, "Symbol": sym}
+                        for oid, name, sym in rows
+                    ]
+                )
+
+        monkeypatch.setitem(
+            sys.modules,
+            "dpmcore.dpm_xl.model_queries",
+            SimpleNamespace(OperatorQuery=FakeOperatorQuery),
+        )
+
+    @staticmethod
+    def _node(class_name, **attrs):
+        node = type(class_name, (), {})()
+        # The semantic pass leaves ``op`` unset (None) on every node
+        # whose operator is fixed by its class.
+        node.op = None
+        for name, value in attrs.items():
+            setattr(node, name, value)
+        return node
+
+    @pytest.mark.parametrize(
+        ("class_name", "operator_id"),
+        [
+            ("FilterOp", 31),
+            ("TimeShiftOp", 32),
+            ("WhereClauseOp", 28),
+            ("GetOp", 29),
+            ("RenameOp", 33),
+            ("SubOp", 38),
+        ],
+    )
+    def test_class_fixed_operator_root_resolves(
+        self, monkeypatch, class_name, operator_id
+    ):
+        # These nodes carry no ``op`` after semantic analysis (only
+        # MLGeneration sets it), yet each is an operator with its own
+        # Operator row; they were reported as "not an operation".
+        _, Cls, _ = _bare_svc()
+        self._install_operator_table(monkeypatch)
+        node = self._node(class_name)
+        assert Cls._resolve_root_operator_id(node, MagicMock()) == operator_id
+
+    @pytest.mark.parametrize(
+        ("class_name", "symbol", "operator_id"),
+        [
+            ("BinOp", "+", 2),
+            ("BinOp", "-", 5),
+            ("UnaryOp", "+", 1),
+            ("UnaryOp", "-", 4),
+        ],
+    )
+    def test_shared_symbol_resolves_by_operator_name(
+        self, monkeypatch, class_name, symbol, operator_id
+    ):
+        # ``+`` and ``-`` each name two Operator rows; the binary root
+        # used to get the unary row because it comes first.
+        _, Cls, _ = _bare_svc()
+        self._install_operator_table(monkeypatch)
+        node = self._node(class_name, op=symbol)
+        assert Cls._resolve_root_operator_id(node, MagicMock()) == operator_id
+
+    @pytest.mark.parametrize(
+        ("inner_class", "depth"),
+        [("VarID", 1), ("Constant", 1), ("VarID", 2)],
+    )
+    def test_parenthesised_non_operation_raises(
+        self, monkeypatch, inner_class, depth
+    ):
+        # ``({tC_00.01})``, ``(1)`` and ``(({...}))`` apply no operator
+        # either; the parentheses alone used to make them root at 37.
+        _, Cls, _ = _bare_svc()
+        self._install_operator_table(monkeypatch)
+        node = self._node(inner_class)
+        for _ in range(depth):
+            node = self._node("ParExpr", expression=node)
+        with pytest.raises(
+            errors.Invalid,
+            match="Cannot resolve root operator: the expression root "
+            f"'{inner_class}' is not an operation",
+        ):
+            Cls._resolve_root_operator_id(node, MagicMock())
+
+    def test_nested_parentheses_around_operation_resolve_to_paren(
+        self, monkeypatch
+    ):
+        _, Cls, _ = _bare_svc()
+        self._install_operator_table(monkeypatch)
+        inner = self._node("FilterOp")
+        node = self._node(
+            "ParExpr", expression=self._node("ParExpr", expression=inner)
+        )
+        assert Cls._resolve_root_operator_id(node, MagicMock()) == 37
+
 
 # ------------------------------------------------------------------ #
 # _resolve_release
