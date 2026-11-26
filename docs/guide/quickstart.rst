@@ -108,7 +108,8 @@ Generate an engine-ready validations script
        )
        # script["enriched_ast"] is keyed by the resolved module URI;
        # script["failed_operations"] lists expressions skipped due to
-       # semantic errors (e.g. grey cells).
+       # semantic errors (e.g. grey cells) or because they are not an
+       # operation (e.g. a bare selection like {tC_00.01}).
 
 The same generation is exposed via ``dpmcore generate-script`` and the
 ``/api/v1/scripts`` REST endpoint.
