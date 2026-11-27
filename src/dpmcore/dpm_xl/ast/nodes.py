@@ -759,6 +759,7 @@ class TimeShiftOp(AST):
     :parameter component: Component inside the Recordset to be selected
     :parameter period_indicator: Period to be used based on specification.
     :parameter shift_number: Number of times to apply the specified time period over the operand.
+    :parameter previous: What is read instead of the operand in the previous module version.
     """
 
     def __init__(
@@ -767,29 +768,33 @@ class TimeShiftOp(AST):
         period_indicator: str,
         component: str | None,
         shift_number: "AST",
+        previous: AST | None = None,
     ) -> None:
         super().__init__()
         self.operand: AST = operand
         self.component = component
         self.period_indicator = period_indicator
         self.shift_number: AST = shift_number
+        self.previous: AST | None = previous
+        self.previous_operands: Any = None
 
     def __str__(self) -> str:
         return (
             "<AST(name='{name}', operand={operand}, component={component}, period_indicator={period_indicator}, "
-            "shift_number={shift_number})>".format(
+            "shift_number={shift_number}, previous={previous})>".format(
                 name=self.__class__.__name__,
                 operand=self.operand,
                 component=self.component,
                 period_indicator=self.period_indicator,
                 shift_number=self.shift_number,
+                previous=self.previous,
             )
         )
 
     __repr__ = __str__
 
     def toJSON(self) -> dict[str, Any]:
-        return {
+        result = {
             "class_name": self.__class__.__name__,
             "operand": self.operand,
             "period_indicator": {
@@ -800,6 +805,9 @@ class TimeShiftOp(AST):
             "shift_number": self.shift_number.toJSON(),
             "reference_period": self.component,
         }
+        if self.previous is not None:
+            result["previous"] = self.previous
+        return result
 
 
 class AnnualiseOp(AST):

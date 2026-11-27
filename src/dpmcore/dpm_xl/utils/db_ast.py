@@ -533,6 +533,17 @@ class _Builder:
         argument) is a component leaf, read the same way
         ``GetClauseOp`` reads its own.
         """
+        # Any other argument (a ``previous:``) would be dropped silently
+        unknown = set(children) - {
+            "operand",
+            "period_indicator",
+            "shift_number",
+            "dimension",
+        }
+        if unknown:
+            raise UnsupportedDbAst(
+                f"TimeShiftOp argument(s) {sorted(unknown)} not supported"
+            )
         period_node = _one(children, "period_indicator")
         if period_node.scalar is None:
             raise UnsupportedDbAst(

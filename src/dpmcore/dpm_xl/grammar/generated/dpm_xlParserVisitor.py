@@ -279,6 +279,11 @@ class dpm_xlParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by dpm_xlParser#previous.
+    def visitPrevious(self, ctx:dpm_xlParser.PreviousContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by dpm_xlParser#nvlFunction.
     def visitNvlFunction(self, ctx:dpm_xlParser.NvlFunctionContext):
         return self.visitChildren(ctx)

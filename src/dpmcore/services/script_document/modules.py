@@ -196,6 +196,11 @@ class Read:
         branch: The ``if-then-else`` branches the read sits in,
             outermost first, as ``(conditional, side)`` pairs where
             ``side`` is ``"then"`` or ``"else"``.
+        shift: The innermost ``time_shift`` with ``previous`` the read
+            sits in, as ``(time_shift, side)``: its node, and
+            ``"operand"`` or ``"previous"``; ``None`` outside one.
+        table_vid: The table version a read in ``previous`` was resolved
+            at, which its code need not name at the script's release.
     """
 
     statement: int
@@ -203,6 +208,8 @@ class Read:
     variable_ids: FrozenSet[int]
     lag: Optional[RefDateLag] = AT_T
     branch: Tuple[Tuple[int, str], ...] = ()
+    shift: Optional[Tuple[Any, str]] = None
+    table_vid: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -363,6 +370,105 @@ def _cut_overlaps(
     return chain
 
 
+def previous_version_release(
+    session: "Session",
+    variable_ids: Iterable[int],
+    table_vids: Iterable[int],
+    release_id: Optional[int],
+) -> Optional[int]:
+    """Return the release the ``previous`` of a ``time_shift`` is read at.
+
+    In each module holding ``table_vids``, it is the version just
+    before the first one holding every Variable read the module holds;
+    of several modules, the latest wins.
+
+    Args:
+        session: SQLAlchemy session.
+        variable_ids: The Variables the operand reads.
+        table_vids: The table versions it reads them from.
+        release_id: Release the operand is resolved at.
+
+    Returns:
+        That version's start release; ``None`` when there is none.
+    """
+    wanted = sorted({int(variable_id) for variable_id in variable_ids})
+    modules = {
+        int(row.module_id)
+        for row in chunked_in(
+            session.query(ModuleVersion.module_id.label("module_id"))
+            .join(
+                ModuleVersionComposition,
+                ModuleVersionComposition.module_vid
+                == ModuleVersion.module_vid,
+            )
+            .distinct(),
+            ModuleVersionComposition.table_vid,
+            sorted({int(table_vid) for table_vid in table_vids}),
+        )
+    }
+    if not wanted or not modules:
+        return None
+    query = (
+        session.query(
+            ModuleVersion.module_id.label("module_id"),
+            ModuleVersion.module_vid.label("module_vid"),
+            VariableVersion.variable_id.label("variable_id"),
+        )
+        .select_from(ModuleVersionComposition)
+        .join(
+            ModuleVersion,
+            ModuleVersion.module_vid == ModuleVersionComposition.module_vid,
+        )
+        .join(
+            TableVersionCell,
+            TableVersionCell.table_vid == ModuleVersionComposition.table_vid,
+        )
+        .join(
+            VariableVersion,
+            VariableVersion.variable_vid == TableVersionCell.variable_vid,
+        )
+        .filter(
+            TableVersionCell.is_void == False,  # noqa: E712
+            ModuleVersion.module_id.in_(sorted(modules)),
+        )
+        .distinct()
+    )
+    held: Dict[int, Dict[int, Set[int]]] = {}
+    for row in chunked_in(query, VariableVersion.variable_id, wanted):
+        held.setdefault(int(row.module_id), {}).setdefault(
+            int(row.module_vid), set()
+        ).add(int(row.variable_id))
+    sort_orders = load_release_sort_orders(session)
+    drafts = is_working_release(sort_orders, release_id)
+    previous: Optional[ModuleVersionInfo] = None
+    for module_id, by_version in sorted(held.items()):
+        variables = set().union(*by_version.values())
+        chain = version_chain(
+            _module_versions(session, [module_id]),
+            sort_orders,
+            drafts=drafts,
+        )
+        first = next(
+            (
+                index
+                for index, version in enumerate(chain)
+                if by_version.get(version.module_vid, set()) >= variables
+            ),
+            0,
+        )
+        candidate = chain[first - 1] if first else None
+        if (
+            candidate is not None
+            and candidate.start_release_id is not None
+            and (
+                previous is None
+                or (candidate.start or date.min) > (previous.start or date.min)
+            )
+        ):
+            previous = candidate
+    return previous.start_release_id if previous is not None else None
+
+
 def target_window(window: Window, lag: Optional[RefDateLag]) -> Window:
     """Return the dates a read at ``lag`` lands on from ``window``.
 
@@ -429,6 +535,7 @@ def build_modules(
     ghost_vids: Sequence[int] = (),
     filing_indicators: Iterable[int] = (),
     statement_windows: Sequence[Optional[Window]] = (),
+    previous_read: Optional[Set[Any]] = None,
 ) -> Dict[str, Any]:
     """Build the ``modules`` section of an export.
 
@@ -450,6 +557,9 @@ def build_modules(
         statement_windows: The dates each statement applies on, ``None``
             for every date of ``window``; a ``None`` bound stands for
             that bound of ``window``.
+        previous_read: Filled with each ``time_shift`` whose ``previous``
+            some version reads. The others are never read, and their
+            tables are listed nowhere.
 
     Returns:
         ``{module_code: {"versions": [...]}}``, ordered by code.
@@ -463,6 +573,7 @@ def build_modules(
         release_id,
         ghost_vids,
         statement_windows,
+        previous_read,
     ).build(reads, filing_indicators)
 
 
@@ -489,8 +600,10 @@ class _ModulesBuilder:
         release_id: Optional[int],
         ghost_vids: Sequence[int] = (),
         statement_windows: Sequence[Optional[Window]] = (),
+        previous_read: Optional[Set[Any]] = None,
     ) -> None:
         """Bind the export's own version and its release."""
+        self.previous_read = set() if previous_read is None else previous_read
         self.session = session
         self.own_vid = int(own["module_vid"])
         self.own_vids = [self.own_vid, *(int(vid) for vid in ghost_vids)]
@@ -548,11 +661,21 @@ class _ModulesBuilder:
         A table held by several modules is read from whichever is
         provided, so each of them gets the read. A table of the own
         module is read from the own module only, at any lag. The
-        export's own module is always there.
+        export's own module is always there. A read in the ``previous``
+        of a ``time_shift`` is read from the previous version of those
+        modules its operand is read from that hold its table.
         """
         groups: Dict[str, _ModuleReads] = {
             self.own_code: _ModuleReads({self.own_module_id}, set(), {})
         }
+        previous = {
+            read: (read.shift[0], read.table_vid)
+            for read in reads
+            if read.shift is not None
+            and read.shift[1] == "previous"
+            and read.table_vid is not None
+        }
+        reads = [read for read in reads if read not in previous]
         codes = list(dict.fromkeys(read.table for read in reads))
         self._base_vid = windowed_table_vids(
             self.session, codes, self.release_id
@@ -607,6 +730,7 @@ class _ModulesBuilder:
         holders = modules_of_table_vids(
             self.session, set(self._base_vid.values()), self.release_id
         )
+        shifted: Dict[Tuple[int, Any], Set[str]] = {}
         for read in reads:
             table_vid = self._base_vid.get(read.table)
             if table_vid is None:
@@ -620,6 +744,36 @@ class _ModulesBuilder:
                 group.module_ids.add(int(row.module_id))
                 group.base_vids.add(int(row.module_vid))
                 group.reads[read] = None
+                if read.shift is not None:
+                    shifted.setdefault(
+                        (read.statement, read.shift[0]), set()
+                    ).add(row.module_code)
+        # The modules whose versions hold each table read in ``previous``
+        previous_holders = {
+            (int(row.table_vid), int(row.module_id))
+            for row in chunked_in(
+                self.session.query(
+                    ModuleVersionComposition.table_vid.label("table_vid"),
+                    ModuleVersion.module_id.label("module_id"),
+                )
+                .join(
+                    ModuleVersion,
+                    ModuleVersion.module_vid
+                    == ModuleVersionComposition.module_vid,
+                )
+                .distinct(),
+                ModuleVersionComposition.table_vid,
+                sorted({table_vid for _, table_vid in previous.values()}),
+            )
+        }
+        for read, (time_shift, table_vid) in previous.items():
+            self._reference_vid[read] = table_vid
+            for code in shifted.get((read.statement, time_shift), ()):
+                if any(
+                    (table_vid, module_id) in previous_holders
+                    for module_id in groups[code].module_ids
+                ):
+                    groups[code].reads[read] = None
         return groups
 
     def _add_filing_indicators(
@@ -735,7 +889,9 @@ class _ModulesBuilder:
                 if fallback or overlaps(version, self.window)
                 else set()
             )
-            entry = self._version_entry(version, here, tested)
+            index = chain.index(version)
+            successor = chain[index + 1] if index + 1 < len(chain) else None
+            entry = self._version_entry(version, here, tested, successor)
             if entry is not None:
                 entries.append(entry)
         return entries
@@ -760,11 +916,16 @@ class _ModulesBuilder:
         version: ModuleVersionInfo,
         reads: Sequence[Read],
         indicators: Set[int],
+        successor: Optional[ModuleVersionInfo] = None,
     ) -> Optional[Dict[str, Any]]:
         """Return one ``versions[]`` entry, ``None`` when it has no URI.
 
         ``indicators`` are the filing indicators tested on a version of
         another module; the own version lists all of its own.
+
+        A ``time_shift`` reads ``previous`` instead of its operand only
+        where the version lacks a Variable of it and the ``successor``
+        (the next version of the chain) holds them all.
         """
         is_own = version.module_vid == self.own_vid
         uri = self.module_uri if is_own else self._uri(version)
@@ -777,6 +938,35 @@ class _ModulesBuilder:
             module_vids,
             {var for read in reads for var in read.variable_ids},
         )
+        shifted: Dict[Tuple[int, Any], Set[int]] = {}
+        for key, variable_ids in [
+            ((read.statement, read.shift[0]), read.variable_ids)
+            for read in reads
+            if read.shift is not None and read.shift[1] == "operand"
+        ]:
+            shifted.setdefault(key, set()).update(variable_ids)
+        in_previous = {
+            key
+            for key, variables in shifted.items()
+            if not variables <= holders.keys()
+            and successor is not None
+            and variables
+            <= _variable_holders(
+                self.session,
+                self.own_vids
+                if successor.module_vid == self.own_vid
+                else [successor.module_vid],
+                variables,
+            ).keys()
+        }
+        self.previous_read.update(time_shift for _, time_shift in in_previous)
+        reads = [
+            read
+            for read in reads
+            if read.shift is None
+            or ((read.statement, read.shift[0]) in in_previous)
+            == (read.shift[1] == "previous")
+        ]
         self._load_key_properties(
             [vid for tables in holders.values() for vid in tables]
             + [self._reference_vid[read] for read in reads]

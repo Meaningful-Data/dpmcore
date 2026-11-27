@@ -671,9 +671,10 @@ class ASTToJSONVisitor(NodeVisitor):
 
         ``period_indicator`` is wrapped in a ``Constant`` node so it matches
         how every other scalar literal is serialized, and the reference-period
-        selector is emitted under ``reference_period``.
+        selector is emitted under ``reference_period``. ``previous`` is
+        emitted only when the expression has one.
         """
-        return {
+        result: NodeDict = {
             "class_name": "TimeShiftOp",
             "operand": self.visit(node.operand),
             "period_indicator": {
@@ -684,6 +685,9 @@ class ASTToJSONVisitor(NodeVisitor):
             "shift_number": self.visit(node.shift_number),
             "reference_period": node.component,
         }
+        if getattr(node, "previous", None) is not None:
+            result["previous"] = self.visit(node.previous)
+        return result
 
     def visit_DateConstructorOp(self, node: Any) -> NodeDict:
         """Visit DateConstructorOp nodes.

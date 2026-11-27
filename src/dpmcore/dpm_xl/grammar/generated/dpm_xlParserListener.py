@@ -494,6 +494,15 @@ class dpm_xlParserListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by dpm_xlParser#previous.
+    def enterPrevious(self, ctx:dpm_xlParser.PreviousContext):
+        pass
+
+    # Exit a parse tree produced by dpm_xlParser#previous.
+    def exitPrevious(self, ctx:dpm_xlParser.PreviousContext):
+        pass
+
+
     # Enter a parse tree produced by dpm_xlParser#nvlFunction.
     def enterNvlFunction(self, ctx:dpm_xlParser.NvlFunctionContext):
         pass

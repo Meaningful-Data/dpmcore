@@ -64,6 +64,7 @@ from dpmcore.dpm_xl.symbols import (
     ScalarSet,
     Structure,
 )
+from dpmcore.dpm_xl.types.promotion import implicit_type_promotion_dict
 from dpmcore.dpm_xl.types.scalar import (
     Boolean,
     Integer,
@@ -851,6 +852,47 @@ class InputAnalyzer(ASTTemplate, ABC):
             period=node.period_indicator,
             shift_number=shift_number,
         )
+        if node.previous is None:
+            return result
+
+        # ``previous`` reads the tables of the previous module version,
+        # which operand checking resolved apart from the rest.
+        resolved = node.previous_operands
+        state = (self.data, self.key_components, self.open_keys)
+        if resolved is not None:
+            self.data = resolved.data
+            self.key_components = resolved.key_components
+            self.open_keys = resolved.open_keys
+        try:
+            previous = self.visit(node.previous)
+        finally:
+            self.data, self.key_components, self.open_keys = state
+        if not isinstance(previous, (RecordSet, Scalar, ConstantOperand)):
+            raise errors.SemanticError("4-7-1", op=TIME_SHIFT)
+        keys = [
+            sorted(symbol.get_key_components_names())
+            if isinstance(symbol, RecordSet)
+            else []
+            for symbol in (operand, previous)
+        ]
+        if keys[0] != keys[1] or isinstance(operand, RecordSet) != isinstance(
+            previous, RecordSet
+        ):
+            raise errors.SemanticError(
+                "4-7-7", operand=keys[0], previous=keys[1]
+            )
+        operand_type, previous_type = (
+            symbol.get_fact_component().type
+            if isinstance(symbol, RecordSet)
+            else symbol.type
+            for symbol in (operand, previous)
+        )
+        if not isinstance(previous_type, type(operand_type)) and type(
+            operand_type
+        ) not in implicit_type_promotion_dict.get(type(previous_type), set()):
+            raise errors.SemanticError(
+                "4-7-8", operand=operand_type, previous=previous_type
+            )
         return result
 
     def visit_AnnualiseOp(  # type: ignore[override]

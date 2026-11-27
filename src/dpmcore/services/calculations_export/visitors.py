@@ -439,6 +439,16 @@ class VarIDDataEnricher(ASTTemplate):
         self._ref_counter += 1
         return _FIRST_OPERAND_REFERENCE_ID + self._ref_counter
 
+    def visit_TimeShiftOp(self, node: Any) -> None:
+        """Enrich ``previous`` against the frame it was resolved in."""
+        self.visit(node.operand)
+        if node.previous is None:
+            return
+        data = self.data
+        self.data = node.previous_operands.data
+        self.visit(node.previous)
+        self.data = data
+
     def visit_VarID(self, node: VarID) -> None:
         """Record the operand's exported form under ``id(node)``."""
         if self.data is None or self.data.empty:

@@ -1829,6 +1829,7 @@ class TestScript:
         class _Read:
             statement: int
             table: str
+            shift: None = None
 
         self._stub_serialize_ast(
             monkeypatch,

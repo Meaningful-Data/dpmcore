@@ -55,7 +55,8 @@ class DependencyTableExtractor(ASTTemplate):
     operand once per period of the window. A ``where`` or ``sub`` on
     ``refPeriod``, and any other analytic ordered by it, read periods no
     lag describes, so their operands get the lag ``None``. Each read also
-    records the ``if-then-else`` branches it sits in.
+    records the ``if-then-else`` branches it sits in, and the side of the
+    ``time_shift`` with ``previous`` it sits in.
     """
 
     def __init__(self, session: "Session") -> None:
@@ -67,6 +68,7 @@ class DependencyTableExtractor(ASTTemplate):
         self._lag: Optional[RefDateLag] = AT_T
         self._branch: Tuple[Tuple[int, str], ...] = ()
         self._conditionals = 0
+        self._shift: Optional[Tuple[Any, str]] = None
         # Operands repeat across a module's calculations, and
         # get_filtered_datapoints is uncached: without this, the same
         # selection is resolved once per occurrence, each time reloading
@@ -114,11 +116,25 @@ class DependencyTableExtractor(ASTTemplate):
         self._branch = previous
 
     def visit_TimeShiftOp(self, node: Any) -> None:
-        """A shift without component, or on ``refPeriod``, moves the lag."""
+        """A shift without component, or on ``refPeriod``, moves the lag.
+
+        ``previous`` is read at the same lag, in place of the operand in
+        the previous module version, so the reads of each side say so.
+        """
         lag = self._lag
         if node.component in (None, tokens.REF_PERIOD):
             lag = combine_lags(lag, _time_shift_lag(node))
-        self._visit_at(node.operand, lag)
+        if node.previous is None:
+            self._visit_at(node.operand, lag)
+            return
+        outer = self._shift
+        for side, operand in (
+            ("operand", node.operand),
+            ("previous", node.previous),
+        ):
+            self._shift = (node, side)
+            self._visit_at(operand, lag)
+        self._shift = outer
 
     def visit_WhereClauseOp(self, node: Any) -> None:
         """A ``where`` constraining ``refPeriod`` reads other periods."""
@@ -234,11 +250,26 @@ class DependencyTableExtractor(ASTTemplate):
         return variable_ids
 
     def visit_VarID(self, node: VarID) -> None:
-        """Record the datapoints the node selects, at the current lag."""
+        """Record the datapoints the node selects, at the current lag.
+
+        One in ``previous`` keeps the datapoints and the table version
+        it was resolved at, in the previous module version.
+        """
         table = node.table
         if not table:
             return
-        variable_ids = self._variable_ids(table, node)
+        table_vid: Optional[int] = None
+        if self._shift is not None and self._shift[1] == "previous":
+            data = node.data
+            variable_ids = (
+                []
+                if data is None or data.empty
+                else [int(v) for v in data["variable_id"].dropna().unique()]
+            )
+            if variable_ids:
+                table_vid = int(data["table_vid"].dropna().min())
+        else:
+            variable_ids = self._variable_ids(table, node)
         if not variable_ids:
             return
         self.reads.append(
@@ -248,6 +279,8 @@ class DependencyTableExtractor(ASTTemplate):
                 frozenset(variable_ids),
                 self._lag,
                 self._branch,
+                self._shift,
+                table_vid,
             )
         )
 

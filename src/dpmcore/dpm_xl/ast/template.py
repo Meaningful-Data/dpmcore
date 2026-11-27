@@ -107,6 +107,8 @@ class ASTTemplate(NodeVisitor):
 
     def visit_TimeShiftOp(self, node: TimeShiftOp) -> None:
         self.visit(node.operand)
+        if node.previous is not None:
+            self.visit(node.previous)
 
     def visit_AnnualiseOp(self, node: AnnualiseOp) -> None:
         self.visit(node.operand)

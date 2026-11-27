@@ -18,6 +18,7 @@ from typing import (
     List,
     Optional,
     Sequence,
+    Set,
     Tuple,
 )
 
@@ -173,6 +174,7 @@ class CalculationsExporter:
         outputs = OutputExtractor(data=operands.data)
         outputs.visit(ast)
 
+        previous_read: Set[Any] = set()
         modules = build_modules(
             session,
             own=module_meta,
@@ -181,7 +183,18 @@ class CalculationsExporter:
             reads=dependencies.reads,
             operation_codes=operation_codes,
             release_id=release_id,
+            previous_read=previous_read,
         )
+        # A previous: no version reads is left out: its tables are
+        # listed nowhere.
+        shifts = dict.fromkeys(
+            read.shift[0]
+            for read in dependencies.reads
+            if read.shift is not None
+        )
+        for time_shift in shifts:
+            if time_shift not in previous_read:
+                time_shift.previous = None
         output_variables, output_tables = self._outputs(
             module_vid, outputs, release_id
         )
@@ -216,9 +229,24 @@ class CalculationsExporter:
             "output_tables": output_tables,
             "modules": modules,
         }
+        # The datapoints each previous: of a time_shift reads too
+        frames = [
+            frame
+            for frame in (
+                operands.data,
+                *(
+                    time_shift.previous_operands.data
+                    for time_shift in shifts
+                    if time_shift.previous is not None
+                ),
+            )
+            if frame is not None
+        ]
         return CalculationsExport(
             calculations=export,
-            datapoints=_build_datapoint_mapping(operands.data),
+            datapoints=_build_datapoint_mapping(
+                pd.concat(frames) if frames else None
+            ),
         )
 
     def _collect_calculations(
