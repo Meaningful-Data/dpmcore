@@ -4,11 +4,11 @@ Four walks, in the order the exporter runs them:
 
 1. :class:`CalculationsOperandsChecking` resolves every operand against
    the dictionary (inherited) *and* the assignment targets.
-2. :class:`DependencyTableExtractor` collects what each statement reads
-   and at which lag, and :class:`OutputExtractor` what they write.
+2. :class:`OutputExtractor` collects what each statement writes.
 3. :class:`VarIDDataEnricher` precomputes each ``VarID``'s ``data``
    array, so operand reference IDs follow visit order.
-4. :class:`CalculationsJSONVisitor` serialises the result.
+4. :func:`calculations_ast` serialises the result in the Script Format
+   2.0 shape.
 
 :class:`DAGAnalyzer` is not a serialisation pass: it reorders the
 script's statements so a calculation always follows the ones it
@@ -26,17 +26,14 @@ import pandas as pd
 from dpmcore.dpm_xl.ast.nodes import (
     AST,
     Constant,
-    ParExpr,
     PersistentAssignment,
     TemporaryAssignment,
-    UnaryOp,
     VarID,
     VarRef,
     WithExpression,
 )
 from dpmcore.dpm_xl.ast.operands import OperandsChecking
 from dpmcore.dpm_xl.ast.template import ASTTemplate
-from dpmcore.dpm_xl.ast.where_clause import WhereClauseChecker
 from dpmcore.dpm_xl.model_queries import ViewDatapointsQuery
 from dpmcore.dpm_xl.utils import tokens
 from dpmcore.dpm_xl.utils.data_handlers import filter_all_data, generate_xyz
@@ -46,11 +43,9 @@ from dpmcore.dpm_xl.utils.serialization import (
     NodeValue,
 )
 from dpmcore.errors import InternalError, Invalid, SemanticError
-from dpmcore.services.calculations_export.modules import (
-    AT_T,
-    Read,
-    RefDateLag,
-    combine_lags,
+from dpmcore.services.script_document.script_format import (
+    UnsupportedNode,
+    script_ast,
 )
 
 if TYPE_CHECKING:
@@ -420,168 +415,6 @@ class OutputExtractor(ASTTemplate):
             ).extend(var_ids)
 
 
-def _constrains_ref_period(condition: Any) -> bool:
-    """Whether a ``where`` or ``sub`` condition names ``refPeriod``."""
-    if condition is None:
-        return False
-    checker = WhereClauseChecker()
-    checker.visit(condition)
-    return tokens.REF_PERIOD in checker.key_components
-
-
-class DependencyTableExtractor(ASTTemplate):
-    """Collect what each statement reads, and at which lag.
-
-    Must run *after* operand resolution: a ``VarID`` inside a ``with``
-    block has no table of its own until the with-context has been
-    grafted onto it, and would otherwise be skipped silently.
-
-    Every ``VarID`` read becomes a :class:`~.modules.Read`. A
-    ``time_shift`` without component, or on ``refPeriod``, moves its
-    operand's lag by the period shifted. A ``where`` or ``sub`` on
-    ``refPeriod``, and an analytic ordered by it, read periods no lag
-    describes, so their operands get the lag ``None``.
-    """
-
-    def __init__(self, session: "Session") -> None:
-        """Collect the reads using *session* for the datapoint lookups."""
-        super().__init__()
-        self.session = session
-        self.reads: List[Read] = []
-        self._statement = 0
-        self._lag: Optional[RefDateLag] = AT_T
-        # Operands repeat across a module's calculations, and
-        # get_filtered_datapoints is uncached: without this, the same
-        # selection is resolved once per occurrence, each time reloading
-        # the release sort orders behind the live-version filter.
-        self._datapoints_cache: Dict[
-            tuple[str, tuple[str, ...], tuple[str, ...], tuple[str, ...]],
-            List[int],
-        ] = {}
-
-    def visit_Start(self, node: Any) -> None:
-        """Visit each statement, numbered by its position."""
-        for index, child in enumerate(node.children):
-            self._statement = index
-            self.visit(child)
-
-    def visit_PersistentAssignment(self, node: PersistentAssignment) -> None:
-        """Walk the expression only -- the target is written, not read.
-
-        ``ASTTemplate`` visits the assignment target as well, which
-        would register the cell the calculation *writes* as one of the
-        tables it depends on.
-        """
-        self.visit(node.right)
-
-    def _visit_at(self, operand: Any, lag: Optional[RefDateLag]) -> None:
-        """Visit ``operand`` as read at ``lag``."""
-        previous = self._lag
-        self._lag = lag
-        self.visit(operand)
-        self._lag = previous
-
-    def visit_TimeShiftOp(self, node: Any) -> None:
-        """A shift without component, or on ``refPeriod``, moves the lag."""
-        lag = self._lag
-        if node.component in (None, tokens.REF_PERIOD):
-            lag = combine_lags(lag, _time_shift_lag(node))
-        self._visit_at(node.operand, lag)
-
-    def visit_WhereClauseOp(self, node: Any) -> None:
-        """A ``where`` constraining ``refPeriod`` reads other periods."""
-        shifted = _constrains_ref_period(node.condition)
-        self._visit_at(node.operand, None if shifted else self._lag)
-        self.visit(node.condition)
-
-    def visit_SubOp(self, node: Any) -> None:
-        """A ``sub`` on, or constrained by, ``refPeriod`` is shifted."""
-        shifted = any(
-            sub.property_code == tokens.REF_PERIOD
-            or _constrains_ref_period(sub.value)
-            for sub in node.substitutions
-        )
-        self._visit_at(node.operand, None if shifted else self._lag)
-        for sub in node.substitutions:
-            self.visit(sub.value)
-
-    def visit_AggregationOp(self, node: Any) -> None:
-        """An analytic ordered by ``refPeriod`` reads other periods."""
-        clause = node.analytic_clause
-        shifted = clause is not None and any(
-            item.key_name == tokens.REF_PERIOD for item in clause.order_by
-        )
-        self._visit_at(node.operand, None if shifted else self._lag)
-
-    def _variable_ids(self, table: str, node: VarID) -> List[int]:
-        """Return the datapoint ids *node* selects, resolved once per key.
-
-        Args:
-            table: The operand's table code, already known non-empty.
-            node: The operand to resolve.
-
-        Returns:
-            The distinct ``VariableID``s the selection covers.
-        """
-        key = (
-            table,
-            tuple(node.rows or ()),
-            tuple(node.cols or ()),
-            tuple(node.sheets or ()),
-        )
-        cached = self._datapoints_cache.get(key)
-        if cached is not None:
-            return cached
-
-        # No release on the datapoints query on purpose. The table
-        # version is already pinned to the live one, and windowing the
-        # module join as well would empty the read for a table whose
-        # live version has moved into a newer module version. The
-        # ``modules`` section applies the release scoping.
-        datapoints_df = ViewDatapointsQuery.get_filtered_datapoints(
-            self.session,
-            table,
-            {"rows": node.rows, "cols": node.cols, "sheets": node.sheets},
-            live_table_versions=True,
-        )
-        # A grey cell carries no variable: it is part of the rendering,
-        # never a datapoint, and its NaN would poison the id list.
-        variable_ids = (
-            []
-            if datapoints_df.empty
-            else [
-                int(v)
-                for v in datapoints_df["variable_id"]
-                .dropna()
-                .unique()
-                .tolist()
-            ]
-        )
-        self._datapoints_cache[key] = variable_ids
-        return variable_ids
-
-    def visit_VarID(self, node: VarID) -> None:
-        """Record the datapoints the node selects, at the current lag."""
-        table = node.table
-        if not table:
-            return
-        variable_ids = self._variable_ids(table, node)
-        if not variable_ids:
-            return
-        self.reads.append(
-            Read(self._statement, table, frozenset(variable_ids), self._lag)
-        )
-
-
-def _time_shift_lag(node: Any) -> Optional[RefDateLag]:
-    """Return the lag a ``time_shift`` adds, ``None`` if not a literal."""
-    try:
-        shift = int(_shift_number_text(node.shift_number))
-    except Invalid:
-        return None
-    return RefDateLag.of_time_shift(node.period_indicator, shift)
-
-
 class VarIDDataEnricher(ASTTemplate):
     """Precompute each ``VarID``'s exported ``data`` array.
 
@@ -626,15 +459,10 @@ class VarIDDataEnricher(ASTTemplate):
             ].copy()
         )
 
-        unique_rows = filtered["row_code"].dropna().unique()
-        unique_cols = filtered["column_code"].dropna().unique()
-        # One code is reported once on the operand; several stay
-        # per-entry as x/row and y/column. An axis the operand does not
-        # select, and one with no code at all, is reported neither way.
-        multi_rows = len(unique_rows) > 1
-        multi_cols = len(unique_cols) > 1
-        single_row = _sole_code(unique_rows) if node.rows else None
-        single_col = _sole_code(unique_cols) if node.cols else None
+        # Only the axes that vary index the entries.
+        multi_rows = len(filtered["row_code"].dropna().unique()) > 1
+        multi_cols = len(filtered["column_code"].dropna().unique()) > 1
+        multi_sheets = len(filtered["sheet_code"].dropna().unique()) > 1
 
         data_list: List[NodeValue] = []
         for item in xyz_data:
@@ -645,39 +473,44 @@ class VarIDDataEnricher(ASTTemplate):
             variable_id = item.get("variable_id")
             if variable_id is None or pd.isna(variable_id):
                 continue
-            entry: NodeDict = {}
-            if multi_rows and item.get("x") is not None:
-                entry["x"] = int(item["x"])
-                entry["row"] = item["row_code"]
-            if multi_cols and item.get("y") is not None:
-                entry["y"] = int(item["y"])
-                entry["column"] = item["column_code"]
-            entry["datapoint"] = int(variable_id)
-            entry["operand_reference_id"] = self._next_ref_id()
+            entry: NodeDict = {
+                "datapoint": int(variable_id),
+                "operand_reference_id": self._next_ref_id(),
+            }
+            for multi, index in (
+                (multi_rows, "x"),
+                (multi_cols, "y"),
+                (multi_sheets, "z"),
+            ):
+                if multi and item.get(index) is not None:
+                    entry[index] = int(item[index])
             data_list.append(entry)
 
         result: NodeDict = {
             "class_name": "VarID",
-            "data": data_list,
             "table": node.table,
+            "interval": bool(node.interval),
+            "data": data_list,
         }
-        if single_row is not None:
-            result["row"] = single_row
-        if single_col is not None:
-            result["column"] = single_col
-        sheets: NodeValue = (
-            [str(sheet) for sheet in node.sheets]
-            if node.sheets is not None
-            else None
-        )
-        result["sheet"] = sheets
-        result["interval"] = bool(node.interval) if node.interval else False
-        result["default"] = _constant_value(node.default)
+        default = _constant_value(node.default)
+        if default is not None:
+            result["default"] = default
         self.payloads[id(node)] = result
 
 
+CALCULATION_NODE_CLASSES = (
+    "Start",
+    "PersistentAssignment",
+    "TemporaryAssignment",
+    "TemporaryIdentifier",
+    "VarRef",
+    "OperationRef",
+)
+"""The classes of a calculations script Script Format 2.0 has no node for."""
+
+
 class CalculationsJSONVisitor(ASTToJSONVisitor):
-    """dpmcore's AST serializer, in the shape the export contract wants.
+    """dpmcore's AST serializer, with each operand's precomputed data.
 
     Args:
         payloads: :attr:`VarIDDataEnricher.payloads`, the precomputed
@@ -699,30 +532,41 @@ class CalculationsJSONVisitor(ASTToJSONVisitor):
         return super().visit_VarID(node)
 
     def visit_TimeShiftOp(self, node: Any) -> NodeDict:
-        """Emit a flat shift: no ``Constant`` wrapper, ``component`` key."""
-        return {
-            "class_name": "TimeShiftOp",
-            "operand": self.visit(node.operand),
-            "period_indicator": node.period_indicator,
-            "component": node.component,
-            "shift_number": _shift_number_text(node.shift_number),
-        }
-
-    def visit_AggregationOp(self, node: Any) -> NodeDict:
-        """Drop ``analytic_clause`` when absent rather than emitting null."""
-        result = super().visit_AggregationOp(node)
-        if result.get("analytic_clause") is None:
-            result.pop("analytic_clause", None)
+        """A shift written without component is on ``refPeriod``."""
+        result = super().visit_TimeShiftOp(node)
+        if result.get("reference_period") is None:
+            result["reference_period"] = tokens.REF_PERIOD
         return result
 
-    def visit_CondExpr(self, node: Any) -> NodeDict:
-        """Always emit ``else_expr`` -- null for an if-then with no else."""
-        return {
-            "class_name": "CondExpr",
-            "condition": self.visit(node.condition),
-            "then_expr": self.visit(node.then_expr),
-            "else_expr": self.visit(node.else_expr),
-        }
+
+def calculations_ast(
+    ast: Any, payloads: Optional[Dict[int, NodeDict]] = None
+) -> Any:
+    """Serialize a calculations script in the Script Format 2.0 shape.
+
+    The format's nodes take its shape; the statements and their targets,
+    which it has no node for, keep the serializer's.
+
+    Args:
+        ast: The script's ``Start`` node.
+        payloads: :attr:`VarIDDataEnricher.payloads`.
+
+    Returns:
+        The serialized script.
+
+    Raises:
+        Invalid: If a node cannot be written in Script Format 2.0.
+    """
+    try:
+        return script_ast(
+            CalculationsJSONVisitor(payloads).visit(ast),
+            passthrough=CALCULATION_NODE_CLASSES,
+        )
+    except UnsupportedNode as exc:
+        raise Invalid(
+            title="Calculation not expressible in Script Format 2.0",
+            description=str(exc),
+        ) from exc
 
 
 def unwrap_with_expressions(node: Any) -> None:
@@ -778,59 +622,6 @@ def _strip_with(node: Any) -> Any:
 def _is_ast_node(node: Any) -> bool:
     """Whether ``node`` is an AST node the unwrap walk may descend into."""
     return isinstance(node, AST)
-
-
-def _shift_number_text(node: Any) -> str:
-    """Render a ``time_shift`` shift number as the contract's string.
-
-    The same written literal arrives in several shapes -- ``-1`` is a
-    ``UnaryOp`` over a ``Constant``, ``( -1 )`` a ``ParExpr`` around one,
-    ``(-1)`` a negative ``Constant`` -- and all of them mean the same
-    integer. Serializing the node instead would put a Python repr into
-    the exported contract.
-
-    Args:
-        node: The ``shift_number`` sub-expression.
-
-    Returns:
-        The signed integer as a string, e.g. ``"-1"``.
-
-    Raises:
-        Invalid: If the shift is not an integer literal. The exported
-            shape has nowhere to put an expression, so this fails
-            loudly rather than emitting something unreadable.
-    """
-    sign = 1
-    current = node
-    while True:
-        if isinstance(current, ParExpr):
-            current = current.expression
-        elif isinstance(current, UnaryOp) and current.op in ("+", "-"):
-            if current.op == "-":
-                sign = -sign
-            current = current.operand
-        else:
-            break
-    if isinstance(current, Constant):
-        try:
-            return str(sign * int(current.value))
-        except (TypeError, ValueError):
-            pass
-    raise Invalid(
-        title="Shift number is not a literal",
-        description=(
-            "time_shift was given a computed shift number "
-            f"({node}); the calculations export can only carry an "
-            "integer literal."
-        ),
-    )
-
-
-def _sole_code(codes: Any) -> Optional[str]:
-    """Return the single code in ``codes``, or ``None`` if not exactly one."""
-    if len(codes) != 1:
-        return None
-    return str(codes[0])
 
 
 def _constant_value(value: Any) -> Any:

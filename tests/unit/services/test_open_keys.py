@@ -262,6 +262,43 @@ class TestGetOpenKeysForTables:
         assert pre == {"T_01.01": {"LES": "s"}}
         assert post == {"T_01.01": {"qLES": "s"}}
 
+    def test_release_before_any_item_category_row_uses_the_earliest_code(
+        self, base_table
+    ):
+        """A table can predate its key property's first ItemCategory row
+        (the DPM has tables before it has a glossary). The key is then
+        named by the property's earliest code: ``LES``, not ``qLES``.
+        """
+        base_table.add_all(
+            [
+                Header(header_id=1, table_id=1, is_key=True),
+                Item(item_id=100),
+                Property(property_id=100, data_type_id=1),
+                ItemCategory(
+                    item_id=100,
+                    start_release_id=2,
+                    end_release_id=3,
+                    category_id=1,
+                    code="LES",
+                ),
+                ItemCategory(
+                    item_id=100,
+                    start_release_id=3,
+                    end_release_id=None,
+                    category_id=1,
+                    code="qLES",
+                ),
+                HeaderVersion(header_vid=1, header_id=1, property_id=100),
+                TableVersionHeader(table_vid=1, header_id=1, header_vid=1),
+            ]
+        )
+        base_table.commit()
+
+        result = get_open_keys_for_tables(
+            base_table, ["T_01.01"], release_id=1
+        )
+        assert result == {"T_01.01": {"LES": "s"}}
+
     def test_table_vids_pins_to_the_exact_table_version(self, base_table):
         """Regression (dpmcore#364): a superseded TableVersion sharing a
         code with the current one must not leak its key in.

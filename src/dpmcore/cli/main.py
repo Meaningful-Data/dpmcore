@@ -519,6 +519,14 @@ def _process_preconditions_from_json(
     ),
 )
 @click.option(
+    "--owner",
+    default=None,
+    help=(
+        "Acronym of the organisation that defined the expressions, "
+        "the script's 'owner'. Defaults to the module's owner."
+    ),
+)
+@click.option(
     "--database",
     required=True,
     help="SQLAlchemy database URL.",
@@ -535,6 +543,7 @@ def generate_script(
     module_version: str,
     severity: str | None,
     release: str | None,
+    owner: str | None,
     database: str,
     output: str,
 ) -> None:
@@ -623,6 +632,7 @@ def generate_script(
             severities=severities,
             from_submission_dates=from_submission_dates,
             release=release,
+            owner=owner,
         )
 
     if not result.get("success"):
@@ -690,6 +700,14 @@ def generate_script(
     "block (default: the date of the database's latest release).",
 )
 @click.option(
+    "--owner",
+    default=None,
+    help=(
+        "Acronym of the organisation whose validations are exported, "
+        "the script's 'owner'. Defaults to the module's owner."
+    ),
+)
+@click.option(
     "--database",
     required=True,
     help="SQLAlchemy database URL.",
@@ -700,10 +718,10 @@ def generate_script(
     type=click.Path(),
     help="Where to write the generated script(s). For a single "
     "module/version target, a JSON file path (defaults to "
-    "'<module_code>-<module_version>.json' in the current directory). "
-    "When sweeping (--all-modules/--all-versions), a directory to write "
-    "one '<module_code>-<version>.json' file per target into (defaults "
-    "to the current directory).",
+    "'<owner>-<module_code>-<module_version>.json' in the current "
+    "directory). When sweeping (--all-modules/--all-versions), a "
+    "directory to write one '<owner>-<module_code>-<version>.json' file "
+    "per target into (defaults to the current directory).",
 )
 def export_script(
     module_code: str | None,
@@ -712,6 +730,7 @@ def export_script(
     all_versions: bool,
     release: str | None,
     dpm_publication_date: datetime | None,
+    owner: str | None,
     database: str,
     output: str | None,
 ) -> None:
@@ -729,8 +748,8 @@ def export_script(
     same for every target; ``--dpm-publication-date`` overrides its
     publication date.
 
-    The output file holds only the ``enriched_ast`` content — the same
-    ``{namespace: ...}`` shape mdpm's own export produces — not the
+    The output file holds only the ``enriched_ast`` content — the
+    Script Format 2.0 document — not the
     ``success``/``error``/``failed_operations`` wrapper ``script()``
     returns internally. Skipped validations are reported on the console
     instead, not written into the file.
@@ -758,6 +777,7 @@ def export_script(
     from sqlalchemy.orm import Session
 
     from dpmcore.services.ast_generator import ASTGeneratorService
+    from dpmcore.services.script_document.script_format import script_file_name
 
     console = Console()
 
@@ -817,6 +837,7 @@ def export_script(
                     module_version=version,
                     release=release,
                     publication_date=publication_date,
+                    owner=owner,
                 )
                 if not result.get("success"):
                     console.print(
@@ -826,7 +847,9 @@ def export_script(
                     failed.append((code, version))
                     continue
 
-                out_path = out_dir / f"{code}-{version}.json"
+                out_path = out_dir / script_file_name(
+                    result["enriched_ast"]["owner"], code, version
+                )
                 out_path.write_text(
                     json.dumps(result["enriched_ast"], indent=2, default=str),
                     encoding="utf-8",
@@ -860,6 +883,7 @@ def export_script(
             module_version=cast(str, module_version),
             release=release,
             publication_date=publication_date,
+            owner=owner,
         )
 
     if not result.get("success"):
@@ -871,7 +895,13 @@ def export_script(
     out_path = (
         Path(output)
         if output
-        else Path(f"{module_code}-{module_version}.json")
+        else Path(
+            script_file_name(
+                result["enriched_ast"]["owner"],
+                cast(str, module_code),
+                cast(str, module_version),
+            )
+        )
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(
@@ -976,9 +1006,9 @@ def _print_sweep_summary(
     )
     if total_skipped:
         console.print(
-            f"[yellow]{total_skipped} validations skipped[/yellow] for "
-            "semantic errors — see the per-target detail printed above "
-            "for the reason per validation."
+            f"[yellow]{total_skipped} validations skipped[/yellow] — see "
+            "the per-target detail printed above for the reason per "
+            "validation."
         )
 
 
@@ -1002,10 +1032,7 @@ def _report_skipped_operations(
     failed_ops: dict[str, str] = result.get("failed_operations") or {}
     if not failed_ops:
         return
-    console.print(
-        f"[yellow]{len(failed_ops)} validations skipped[/yellow] "
-        "for semantic errors:"
-    )
+    console.print(f"[yellow]{len(failed_ops)} validations skipped[/yellow]:")
     for code, reason in list(failed_ops.items())[:limit]:
         console.print(f"  [yellow]{escape(code)}[/yellow]: {escape(reason)}")
     if len(failed_ops) > limit:
@@ -1095,11 +1122,10 @@ def _fix_script_file(console: Any, json_file: Any) -> int:
     from dpmcore.services.script_fixups import fix_module_operations
 
     data = json.loads(json_file.read_text(encoding="utf-8"))
-    changed_codes: list[str] = []
-    for module_data in data.values():
-        operations = module_data.get("operations")
-        if operations:
-            changed_codes.extend(fix_module_operations(operations))
+    operations = data.get("operations")
+    changed_codes: list[str] = (
+        fix_module_operations(operations) if operations else []
+    )
     if not changed_codes:
         return 0
 
@@ -1123,18 +1149,25 @@ def _script_result_counts(result: dict[str, Any]) -> tuple[int, int, int]:
     validation, so they are not in the script. Reporting only the
     validations that made it hides them (#355).
     """
-    enriched = result.get("enriched_ast") or {}
-    n_ops = sum(
-        len((ns_block or {}).get("operations") or {})
-        for ns_block in enriched.values()
-        if isinstance(ns_block, dict)
+    document = result.get("enriched_ast") or {}
+    # The versions of one validation are entries with the same ``code``.
+    n_ops = len(
+        {op["code"] for op in (document.get("operations") or {}).values()}
     )
-    n_dep = sum(
-        len((ns_block or {}).get("dependency_modules") or {})
-        for ns_block in enriched.values()
-        if isinstance(ns_block, dict)
-    )
+    codes: set[str] = set()
+    for group in (document.get("dependency_groups") or {}).values():
+        _required_codes(group["requires"], codes)
+    n_dep = len(codes - {document.get("module_code")})
     return n_ops, len(result.get("failed_operations") or {}), n_dep
+
+
+def _required_codes(requires: dict[str, Any], codes: set[str]) -> None:
+    """Add to ``codes`` the modules a ``requires`` names."""
+    if "code" in requires:
+        codes.add(requires["code"])
+    for key in ("is", "and", "or", "xor", "left", "right"):
+        if key in requires:
+            _required_codes(requires[key], codes)
 
 
 @main.command()
@@ -1375,6 +1408,7 @@ def export_calculations(
 
     from dpmcore.connection import connect
     from dpmcore.errors import DpmCoreError
+    from dpmcore.services.script_document.script_format import script_file_name
 
     try:
         with connect(database) as db:
@@ -1393,8 +1427,11 @@ def export_calculations(
         Path(output)
         if output
         else Path(
-            f"{document.get('owner')}-{document.get('module_code')}-"
-            f"{document.get('module_version')}.json"
+            script_file_name(
+                document["owner"],
+                document["module_code"],
+                document["module_version"],
+            )
         )
     )
     dp_path = (

@@ -9,7 +9,16 @@ other.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, FrozenSet, List, Optional, Sequence
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    FrozenSet,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+)
 
 from sqlalchemy import or_
 
@@ -65,8 +74,10 @@ def get_open_keys_for_tables(
     query = (
         session.query(
             TableVersion.code.label("table_code"),
+            ItemCategory.item_id.label("item_id"),
             ItemCategory.code.label("property_code"),
             DataType.code.label("data_type_code"),
+            ItemCategory.start_release_id.label("start_release_id"),
         )
         .select_from(DataType)
         .join(Property, DataType.data_type_id == Property.data_type_id)
@@ -90,6 +101,8 @@ def get_open_keys_for_tables(
     if table_vids is not None:
         query = query.filter(TableVersion.table_vid.in_(table_vids))
 
+    sort_orders: Dict[int, int] = {}
+    target_sort = -1
     if release_id is not None:
         # ``ReleaseID`` values are opaque from DPM 4.2.1 onwards — 4.2.1
         # is ``1010000003`` while older releases stay in 1..5, and the
@@ -106,12 +119,12 @@ def get_open_keys_for_tables(
         )
 
         sort_orders = load_release_sort_orders(session)
-        target_sort = sort_orders.get(release_id)
-        if target_sort is None:
+        if release_id not in sort_orders:
             raise ValueError(
                 f"release {release_id} has no sort_order — "
                 "no Release row matches that ID."
             )
+        target_sort = sort_orders[release_id]
         start_ids = release_ids_for_sort_order(sort_orders, le=target_sort)
         end_ids = release_ids_for_sort_order(sort_orders, gt=target_sort)
         if table_vids is None:
@@ -123,13 +136,6 @@ def get_open_keys_for_tables(
                 ),
             )
         query = query.filter(
-            # ItemCategory has its own release window: a property can
-            # be renamed across releases (e.g. ``LES`` up to release 3,
-            # ``qLES`` from release 3 onwards) and both rows share the
-            # same ``ItemID``. Without this filter both codes end up in
-            # the open_keys map for any release, duplicating each
-            # property with its historical alias.
-            ItemCategory.start_release_id.in_(start_ids),
             or_(
                 ItemCategory.end_release_id.is_(None),
                 ItemCategory.end_release_id.in_(end_ids),
@@ -149,12 +155,24 @@ def get_open_keys_for_tables(
         rows = chunked_in(query, TableVersion.table_vid, table_vids)
     else:
         rows = chunked_in(query, TableVersion.code, table_codes)
-    for row in rows:
-        tcode = row.table_code
-        pcode = row.property_code
-        dcode = row.data_type_code or ""
-        if tcode and pcode:
-            result.setdefault(tcode, {})[pcode] = dcode
+    # One code per key: a renamed property (``LES`` -> ``qLES``) keeps
+    # its ItemID, so take the row in force, or the earliest one before
+    # 3.4, where the DPM has tables but no glossary. Best rows go first.
+    chosen: Dict[Tuple[str, int], Any] = {}
+    for row in sorted(
+        rows,
+        key=lambda r: max(
+            sort_orders.get(r.start_release_id, -1), target_sort
+        ),
+    ):
+        if row.table_code and row.property_code:
+            chosen.setdefault((row.table_code, row.item_id), row)
+    for row in sorted(
+        chosen.values(), key=lambda r: (r.table_code, r.property_code)
+    ):
+        result.setdefault(row.table_code, {})[row.property_code] = (
+            row.data_type_code or ""
+        )
     return result
 
 

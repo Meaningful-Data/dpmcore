@@ -27,29 +27,34 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from dpmcore.errors import ConfigurationError, Invalid, NotFound
 from dpmcore.services._parameters import accumulate_ast_parameters
-from dpmcore.services.calculations_export.modules import (
-    build_modules,
-    reference_window,
-)
 from dpmcore.services.calculations_export.queries import (
     get_calculations,
     get_data_types,
     get_data_types_by_version,
-    get_module_metadata,
-    get_module_uri,
     get_module_version_id,
     get_output_tables,
     get_output_variable_vids,
     get_release_info,
 )
 from dpmcore.services.calculations_export.visitors import (
-    CalculationsJSONVisitor,
     CalculationsOperandsChecking,
     DAGAnalyzer,
-    DependencyTableExtractor,
     OutputExtractor,
     VarIDDataEnricher,
+    calculations_ast,
     unwrap_with_expressions,
+)
+from dpmcore.services.script_document.modules import (
+    build_modules,
+    reference_window,
+)
+from dpmcore.services.script_document.queries import (
+    get_module_metadata,
+    get_module_uri,
+)
+from dpmcore.services.script_document.script_format import FORMAT_VERSION
+from dpmcore.services.script_document.visitors import (
+    DependencyTableExtractor,
 )
 from dpmcore.services.syntax import SyntaxService
 
@@ -61,9 +66,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _OPERATION_OUTPUT_TABLE = "OperationOutput"
-
-FORMAT_VERSION = "2.0"
-"""Script Format version of the export."""
 
 
 @dataclass(frozen=True)
@@ -123,7 +125,8 @@ class CalculationsExporter:
             NotFound: If the module version, its owner or its
                 calculations cannot be resolved.
             Invalid: If the parsed script does not have one statement
-                per calculation.
+                per calculation, or holds a node Script Format 2.0
+                cannot express.
             SemanticError: ``6-4`` if the calculations form a cycle,
                 ``6-1`` if two of them assign the same output, or ``3-8``
                 if a Parameter is read with two types.
@@ -183,12 +186,10 @@ class CalculationsExporter:
             module_vid, outputs, release_id
         )
 
-        calculations_ast = CalculationsJSONVisitor(enricher.payloads).visit(
-            ast
-        )
+        script_ast = calculations_ast(ast, enricher.payloads)
         # The same {code: declared type} block as the validation script
         parameters: Dict[str, ParameterInfo] = {}
-        accumulate_ast_parameters(parameters, calculations_ast)
+        accumulate_ast_parameters(parameters, script_ast)
 
         # Not keyed by URI: several owners can export over one version.
         export = {
@@ -204,7 +205,7 @@ class CalculationsExporter:
                 "to": _as_date_string(window[1]),
             },
             "calculations": {
-                "ast": calculations_ast,
+                "ast": script_ast,
                 "operation_codes": operation_codes,
             },
             "parameters": {
